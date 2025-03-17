@@ -289,8 +289,8 @@ public:
 	QHostAddress logicalClientAddress;
 	QByteArray sigIss;
 	Jwt::EncodingKey sigKey;
-	WebSocket *inSock;
-	WebSocket *outSock;
+	std::unique_ptr<WebSocket> inSock;
+	std::unique_ptr<WebSocket> outSock;
 	QList<bool> inPendingFrames; // true means we should ack a send event
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
@@ -332,8 +332,6 @@ public:
 		useXForwardedProtocol(false),
 		acceptPushpinRoute(false),
 		trustedClient(false),
-		inSock(0),
-		outSock(0),
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
@@ -356,8 +354,7 @@ public:
 		cleanupInSock();
 		
 		outWSConnection = WSConnections();
-		delete outSock;
-		outSock = 0;
+		outSock.reset();
 
 		wsProxyConnectionMap.erase(wsControl);
 		delete wsControl;
@@ -374,10 +371,9 @@ public:
 	{
 		if(inSock)
 		{
-			connectionManager->removeConnection(inSock);
+			connectionManager->removeConnection(inSock.get());
 			inWSConnection = InWSConnections();
-			delete inSock;
-			inSock = 0;
+			inSock.reset();
 		}
 	}
 
@@ -403,8 +399,7 @@ public:
 		if(statsManager)
 			activityTime = QDateTime::currentDateTimeUtc();
 
-		inSock = sock;
-		inSock->setParent(this);
+		inSock = std::unique_ptr<WebSocket>(sock);
 		inWSConnection = InWSConnections{
 			inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
 			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
@@ -543,7 +538,7 @@ public:
 					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
 			}
 
-			outSock = new TestWebSocket(this);
+			outSock = std::make_unique<TestWebSocket>();
 		}
 		else
 		{
@@ -562,15 +557,15 @@ public:
 
 			if(target.overHttp)
 			{
-				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+				std::unique_ptr<WebSocketOverHttp> woh = std::make_unique<WebSocketOverHttp>(zhttpManager);
 
 				woh->setConnectionId(publicCid);
 
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
-				outSock = woh;
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh.get()));
+				outSock = std::move(woh);
 			}
 			else
 			{
@@ -581,8 +576,7 @@ public:
 					return;
 				}
 
-				outSock = zhttpManager->createSocket();
-				outSock->setParent(this);
+				outSock = std::unique_ptr<WebSocket>(zhttpManager->createSocket());
 			}
 		}
 		outWSConnection = {
@@ -863,8 +857,7 @@ public:
 				if(outSock->state() == WebSocket::Connecting)
 				{
 					outWSConnection = WSConnections();
-					delete outSock;
-					outSock = 0;
+					outSock.reset();
 
 					inSock->close();
 				}
@@ -895,8 +888,7 @@ public:
 		if(!detached)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 		}
 
 		tryFinish();
@@ -992,8 +984,7 @@ public:
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
 		outWSConnection = WSConnections();
-		delete outSock;
-		outSock = 0;
+		outSock.reset();
 
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close(code, reason);
@@ -1009,8 +1000,7 @@ public:
 		if(detached)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			tryFinish();
 			return;
@@ -1036,8 +1026,7 @@ public:
 			}
 
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			if(tryAgain)
 				tryNextTarget();
@@ -1047,8 +1036,7 @@ public:
 			cleanupInSock();
 
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			tryFinish();
 		}
@@ -1124,7 +1112,7 @@ private:
 
 	void wsControl_refreshEventReceived()
 	{
-		WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(outSock);
+		WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(outSock.get());
 		if(woh)
 			woh->refresh();
 	}
@@ -1155,8 +1143,7 @@ private:
 		if(outSock)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 		}
 
 		cleanupInSock();
@@ -1207,12 +1194,12 @@ QByteArray WsProxySession::cid() const
 
 WebSocket *WsProxySession::inSocket() const
 {
-	return d->inSock;
+	return d->inSock.get();
 }
 
 WebSocket *WsProxySession::outSocket() const
 {
-	return d->outSock;
+	return d->outSock.get();
 }
 
 void WsProxySession::setDebugEnabled(bool enabled)

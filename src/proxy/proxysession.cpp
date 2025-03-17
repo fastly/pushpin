@@ -129,7 +129,7 @@ public:
 	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
 	DomainMap::Target target;
-	HttpRequest *zhttpRequest;
+	std::unique_ptr<HttpRequest> zhttpRequest;
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
@@ -181,7 +181,6 @@ public:
 		inRequest(0),
 		acceptManager(_acceptManager),
 		isHttps(false),
-		zhttpRequest(0),
 		addAllowed(true),
 		haveInspectData(false),
 		shared(false),
@@ -438,7 +437,7 @@ public:
 					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
 			}
 
-			zhttpRequest = new TestHttpRequest(this);
+			zhttpRequest = std::make_unique<TestHttpRequest>();
 		}
 		else
 		{
@@ -455,8 +454,7 @@ public:
 
 			zroutes->addRef(zhttpManager);
 
-			zhttpRequest = zhttpManager->createRequest();
-			zhttpRequest->setParent(this);
+			zhttpRequest = std::unique_ptr<HttpRequest>(zhttpManager->createRequest());
 		}
 
 		zhttpReqConnections = {
@@ -626,8 +624,7 @@ public:
 	{
 		zhttpReqConnections = ZhttpReqConnections();
 		// kill the active target request, if any
-		delete zhttpRequest;
-		zhttpRequest = 0;
+		zhttpRequest.reset();
 
 		assert(state != Responding);
 		assert(state != Responded);
@@ -937,8 +934,7 @@ public:
 			}
 
 			zhttpReqConnections = ZhttpReqConnections();			
-			delete zhttpRequest;
-			zhttpRequest = 0;
+			zhttpRequest.reset();
 
 			// once the entire response has been received, cut off any new adds
 			if(addAllowed)

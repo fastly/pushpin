@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2017 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -84,7 +84,7 @@ public:
 	QString org;
 	ZhttpManager *zhttpManager;
 	std::unique_ptr<Timer> timer;
-	ZhttpRequest *req;
+	std::unique_ptr<ZhttpRequest> req;
 	Report report;
 	QDateTime lastLogTime;
 	ReqConnections reqConnections;
@@ -97,8 +97,7 @@ public:
 		quiet(_quiet),
 		currentVersion(_currentVersion),
 		org(_org),
-		zhttpManager(zhttp),
-		req(0)
+		zhttpManager(zhttp)
 	{
 		timer = std::make_unique<Timer>();
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
@@ -111,15 +110,13 @@ public:
 	void cleanupRequest()
 	{
 		reqConnections = ReqConnections();
-		delete req;
-		req = 0;
+		req.reset();
 	}
 
 private:
 	void doRequest()
 	{
-		req = zhttpManager->createRequest();
-		req->setParent(this);
+		req = std::unique_ptr<ZhttpRequest>(zhttpManager->createRequest());
 		reqConnections = {
 			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
 			req->error.connect(boost::bind(&Private::req_error, this))

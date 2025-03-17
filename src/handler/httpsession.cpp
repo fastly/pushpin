@@ -159,7 +159,7 @@ public:
 
 	HttpSession *q;
 	State state;
-	ZhttpRequest *req;
+	std::unique_ptr<ZhttpRequest> req;
 	AcceptData adata;
 	Instruct instruct;
 	int logLevel;
@@ -231,7 +231,6 @@ public:
 	{
 		state = NotStarted;
 
-		req->setParent(this);
 		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
@@ -1152,7 +1151,6 @@ private:
 		sentOutReqData = 0;
 
 		outReq.reset(outZhttp->createRequest());
-		outReq->setParent(this);
 		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
 		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 

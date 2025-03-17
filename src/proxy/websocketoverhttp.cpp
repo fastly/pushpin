@@ -64,27 +64,22 @@ public:
 
 }
 
-class WebSocketOverHttp::DisconnectManager : public QObject
+class WebSocketOverHttp::DisconnectManager
 {
-	Q_OBJECT
-
-	struct WSConnections {
-		Connection disconnectedConnection;
-		Connection closedConnection;
-		Connection errorConnection;
-	};
-
-	map<WebSocketOverHttp *, WSConnections> wsConnectionMap;
-
 public:
-	DisconnectManager(QObject *parent = 0) :
-		QObject(parent)
+	~DisconnectManager()
 	{
+		while(!wsConnectionMap.empty())
+		{
+			auto it = wsConnectionMap.begin();
+			WebSocketOverHttp *sock = it->first;
+			wsConnectionMap.erase(it);
+			delete sock;
+		}
 	}
 
 	void addSocket(WebSocketOverHttp *sock)
 	{
-		sock->setParent(this);
 		wsConnectionMap[sock] = { 
 			sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this, sock)),
 			sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this, sock)),
@@ -96,17 +91,30 @@ public:
 
 	int count() const
 	{
-		return children().count();
+		return wsConnectionMap.size();
+	}
+
+	bool contains(WebSocketOverHttp *sock)
+	{
+		auto it = wsConnectionMap.find(sock);
+		return (it != wsConnectionMap.end());
 	}
 
 private:
+	struct WSConnections {
+		Connection disconnectedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	map<WebSocketOverHttp *, WSConnections> wsConnectionMap;
+
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
 		wsConnectionMap.erase(sock);
 		delete sock;
 	}
 
-private:
 	void sock_disconnected(WebSocketOverHttp *sock)
 	{
 		cleanupSocket(sock);
@@ -215,7 +223,7 @@ public:
 	int keepAliveInterval;
 	HttpHeaders meta;
 	bool updating;
-	ZhttpRequest *req;
+	std::unique_ptr<ZhttpRequest> req;
 	QByteArray reqBody;
 	int reqPendingBytes;
 	int reqFrames;
@@ -254,7 +262,6 @@ public:
 		pendingErrorCondition((ErrorCondition)-1),
 		keepAliveInterval(-1),
 		updating(false),
-		req(0),
 		reqPendingBytes(0),
 		reqFrames(0),
 		reqContentSize(0),
@@ -291,8 +298,7 @@ public:
 		updateQueued = false;
 
 		reqConnections = ReqConnections();
-		delete req;
-		req = 0;
+		req.reset();
 
 		state = Idle;
 	}
@@ -610,8 +616,7 @@ private:
 
 		q->aboutToSendRequest();
 
-		req = zhttpManager->createRequest();
-		req->setParent(this);
+		req = std::unique_ptr<ZhttpRequest>(zhttpManager->createRequest());
 		reqConnections = {
 			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
 			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1)),
@@ -670,8 +675,7 @@ private:
 		QByteArray responseBody = inBuf.take();
 
 		reqConnections = ReqConnections();
-		delete req;
-		req = 0;
+		req.reset();
 
 		if(state == Connecting)
 		{
@@ -951,8 +955,7 @@ private:
 		}
 
 		reqConnections = ReqConnections();
-		delete req;
-		req = 0;
+		req.reset();
 
 		if(retry && retries < RETRY_MAX && state != Connecting)
 		{
@@ -1018,12 +1021,11 @@ WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
 
 WebSocketOverHttp::~WebSocketOverHttp()
 {
-	if(d->state != Idle && parent() != g_disconnectManager && (g_maxManagedDisconnects < 0 || g_disconnectManager->count() < g_maxManagedDisconnects))
+	if(d->state != Idle && !g_disconnectManager->contains(this) && (g_maxManagedDisconnects < 0 || g_disconnectManager->count() < g_maxManagedDisconnects))
 	{
 		// if we get destructed while active, clean up in the background
 		WebSocketOverHttp *sock = new WebSocketOverHttp;
 		sock->d = d;
-		d->setParent(sock);
 		d->q = sock;
 		d.reset();
 		g_disconnectManager->addSocket(sock);
