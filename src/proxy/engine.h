@@ -98,6 +98,8 @@ public:
 		bool cacheEnable;
 		QStringList httpBackendUrlList;
 		QStringList wsBackendUrlList;
+		QStringList cacheMethodList;
+		QStringList subscribeMethodList;
 		QStringList cacheKeyItemList;
 		QString msgIdFieldName;
 		QString msgMethodFieldName;

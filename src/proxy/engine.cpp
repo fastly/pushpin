@@ -237,6 +237,8 @@ public:
 			config.cacheEnable,
 			config.httpBackendUrlList,
 			config.wsBackendUrlList,
+			config.cacheMethodList,
+			config.subscribeMethodList,
 			config.cacheKeyItemList,
 			config.msgIdFieldName,
 			config.msgMethodFieldName,

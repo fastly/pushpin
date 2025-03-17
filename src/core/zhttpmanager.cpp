@@ -2221,6 +2221,8 @@ void ZhttpManager::setCacheParameters(
 	bool enable,
 	const QStringList &httpBackendUrlList,
 	const QStringList &wsBackendUrlList,
+	const QStringList &cacheMethodList,
+	const QStringList &subscribeMethodList,
 	const QStringList &cacheKeyItemList,
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
@@ -2230,6 +2232,22 @@ void ZhttpManager::setCacheParameters(
 	gCacheEnable = enable;
 	gHttpBackendUrlList = httpBackendUrlList;
 	gWsBackendUrlList = wsBackendUrlList;
+
+	// method list
+	foreach (QString method, cacheMethodList)
+	{
+		gCacheMethodList.append(method.toLower());
+	}
+	for (int i = 0; i < subscribeMethodList.count(); i++)
+	{
+		QStringList tmpList = subscribeMethodList[i].split(u'+');
+		if (tmpList.count() == 2)
+		{
+			gSubscribeMethodMap[tmpList[0].toLower()] = tmpList[1];
+		}
+	}
+
+	// cache key item list
 	for (int i = 0; i < cacheKeyItemList.size(); ++i) 
 	{
 		int lastDot = cacheKeyItemList[i].lastIndexOf('.');
@@ -2253,6 +2271,8 @@ void ZhttpManager::setCacheParameters(
 			continue;
 		}
 	}
+
+	// attributes
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
@@ -2263,6 +2283,14 @@ void ZhttpManager::setCacheParameters(
 
 	for (int i = 0; i < gWsBackendUrlList.size(); ++i) {
 		log_debug("%s", qPrintable(gWsBackendUrlList[i]));
+	}
+
+	for (int i = 0; i < gCacheMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gCacheMethodList[i]));
+	}
+
+	for (int i = 0; i < gSubscribeMethodMap.size(); ++i) {
+		log_debug("%s:%s", qPrintable(gSubscribeMethodMap[i].key(), qPrintable(gSubscribeMethodMap[i].value()));
 	}
 
 	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {
