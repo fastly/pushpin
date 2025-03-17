@@ -1961,7 +1961,7 @@ public:
 							gCacheItemMap[itemId].subscriptionPacket = gCacheItemMap[resultBytes].subscriptionPacket;
 							gCacheItemMap[itemId].cachedFlag = true;
 							gCacheItemMap.remove(resultBytes);
-							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdAttr, qPrintable(msgResultStr));
+							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdStr, qPrintable(msgResultStr));
 						}
 					}
 
