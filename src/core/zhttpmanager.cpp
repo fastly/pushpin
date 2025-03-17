@@ -2293,6 +2293,10 @@ void ZhttpManager::setCacheParameters(
 		log_debug("%s:%s", qPrintable(gSubscribeMethodMap[i].key()), qPrintable(gSubscribeMethodMap[i].value()));
 	}
 
+	for (const auto &key : gSubscribeMethodMap.keys()) {
+		log_debug("%s:%s", qPrintable(key), qPrintable(gSubscribeMethodMap.value(key)));
+	}
+
 	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {
 		log_debug("%s, %d", qPrintable(gCacheKeyItemList[i].keyName), gCacheKeyItemList[i].flag);
 	}
