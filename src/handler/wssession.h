@@ -71,9 +71,9 @@ public:
 	QByteArray delayedType;
 	QByteArray delayedMessage;
 	QHash<int, qint64> pendingRequests;
-	Timer *expireTimer;
-	Timer *delayedTimer;
-	Timer *requestTimer;
+	std::unique_ptr<Timer> expireTimer;
+	std::unique_ptr<Timer> delayedTimer;
+	std::unique_ptr<Timer> requestTimer;
 	QList<PublishItem> publishQueue;
 	ZhttpManager *zhttpOut;
 	std::shared_ptr<RateLimiter> filterLimiter;
