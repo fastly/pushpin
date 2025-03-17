@@ -68,7 +68,7 @@ struct CacheKeyItem {
 enum CacheMethodFlag {
 	CACHE_METHOD,
 	SUBSCRIBE_METHOD
-}
+};
 
 bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
