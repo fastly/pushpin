@@ -1747,12 +1747,12 @@ public:
 						// update subscription packet
 						gCacheItemMap[itemId].subscriptionPacket = p;
 
-						if (gSubscriptionItemMap[itemId].msgId != -1)
+						if (gCacheItemMap[itemId].msgId != -1)
 						{
-							gSubscriptionItemMap[itemId].cachedFlag = true;
-							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gSubscriptionItemMap[itemId].msgId, qPrintable(msgSubscriptionStr));
+							gCacheItemMap[itemId].cachedFlag = true;
+							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gCacheItemMap[itemId].msgId, qPrintable(msgSubscriptionStr));
 							// send update subscribe to all clients
-							foreach(QByteArray cliId, gSubscriptionItemMap[itemId].clientMap.keys())
+							foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 							{
 								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 
@@ -1777,7 +1777,7 @@ public:
 						{
 							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
 							QString msgChangesStr = jsonMap[gSubscribeChangesAttrName].toString().toLower();
-							ZhttpResponsePacket tempPacket = gSubscriptionItemMap[itemId].subscriptionPacket;
+							ZhttpResponsePacket tempPacket = gCacheItemMap[itemId].subscriptionPacket;
 
 							QString patternStr("\"block\":\"");
 							qsizetype idxStart = tempPacket.body.indexOf(patternStr);
