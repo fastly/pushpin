@@ -40,8 +40,6 @@ class SockJsManager;
 
 class SockJsSession : public WebSocket
 {
-	Q_OBJECT
-
 public:
 	~SockJsSession();
 
@@ -86,7 +84,7 @@ private:
 	std::shared_ptr<Private> d;
 
 	friend class SockJsManager;
-	SockJsSession(QObject *parent = 0);
+	SockJsSession();
 	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);
