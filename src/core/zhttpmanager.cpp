@@ -1592,8 +1592,8 @@ public:
 		}
 
 		// read msgIdStr (id)
-		int msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
-		if(msgIdStr < 0)
+		int msgIdValue = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
+		if(msgIdValue < 0)
 		{
 			log_debug("[HTTP] invalid id in response, skipping");
 			return -1;
@@ -1606,16 +1606,16 @@ public:
 		{
 			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
-				(msgIdStr == 0 || gCacheItemMap[itemId].newMsgId == -1))
+				(msgIdValue == 0 || gCacheItemMap[itemId].newMsgId == -1))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
+				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdStr;
-				gCacheItemMap[itemId].newMsgId = msgIdStr;
+				gCacheItemMap[itemId].msgId = msgIdValue;
+				gCacheItemMap[itemId].newMsgId = msgIdValue;
 
 				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[HTTP] Added Cache content for method id=%d", msgIdStr);
+				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
 
 				// set random last refresh time
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -1720,14 +1720,8 @@ public:
 		}
 
 		// id
-		int msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
-		if(msgIdStr < 0)
-		{
-			// make invalild
-			log_debug("[WS] detected response without id");
-			return -1;
-		}
-
+		int msgIdValue = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
+		
 		// result
 		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 
@@ -1883,10 +1877,17 @@ public:
 			return -1;
 		}
 
+		if(msgIdValue < 0)
+		{
+			// make invalild
+			log_debug("[WS] detected response without id");
+			return -1;
+		}
+
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
-				(gCacheItemMap[itemId].newMsgId == msgIdStr) &&
+				(gCacheItemMap[itemId].newMsgId == msgIdValue) &&
 				(gCacheItemMap[itemId].cacheClientId == pId))
 			{
 				if (gCacheItemMap[itemId].methodFlag == CacheMethodFlag::CACHE_METHOD)
@@ -1894,9 +1895,9 @@ public:
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
 					
 					gCacheItemMap[itemId].responsePacket = p;
-					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
+					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 					log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-					gCacheItemMap[itemId].msgId = msgIdStr;
+					gCacheItemMap[itemId].msgId = msgIdValue;
 					gCacheItemMap[itemId].cachedFlag = true;
 
 					// set random last refresh time
@@ -1936,7 +1937,7 @@ public:
 						return -1;
 					}
 					gCacheItemMap[itemId].responsePacket = p;
-					gCacheItemMap[itemId].msgId = msgIdStr;
+					gCacheItemMap[itemId].msgId = msgIdValue;
 					gCacheItemMap[itemId].subscriptionStr = msgResultStr;
 					if (gCacheItemMap[itemId].orgSubscriptionStr.isEmpty())
 					{
@@ -1961,7 +1962,7 @@ public:
 							gCacheItemMap[itemId].subscriptionPacket = gCacheItemMap[resultBytes].subscriptionPacket;
 							gCacheItemMap[itemId].cachedFlag = true;
 							gCacheItemMap.remove(resultBytes);
-							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdStr, qPrintable(msgResultStr));
+							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdValue, qPrintable(msgResultStr));
 						}
 					}
 
