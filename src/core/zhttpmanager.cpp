@@ -1857,7 +1857,7 @@ public:
 		// Params hash val
 		QByteArray paramsHash = build_hash_key(jsonMap, "WS+");
 
-		if (is_cache_method(methodName))
+		if (is_cache_method(methodName) || is_subscribe_method(methodName))
 		{
 			if (gCacheItemMap.contains(paramsHash) && gCacheItemMap[paramsHash].proto == Scheme::websocket)
 			{
@@ -1897,11 +1897,6 @@ public:
 				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			}
 			
-			return -1;
-		}
-		else if (is_subscribe_method(methodName))
-		{
-			log_debug("[WS] Detected subscribe request %s", qPrintable(methodName));
 			return -1;
 		}
 
