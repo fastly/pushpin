@@ -87,6 +87,15 @@ bool is_cache_method(QString methodStr)
 	return false;
 }
 
+bool is_subscribe_method(QString methodStr)
+{
+	if (gSubscribeMethodMap.contains(methodStr, Qt::CaseInsensitive))
+	{
+		return true;
+	}
+	return false;
+}
+
 int get_cc_index_from_packet(QByteArray packetId)
 {
 	for (int i = 0; i < gWsCacheClientList.count(); i++)

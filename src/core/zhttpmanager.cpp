@@ -1599,9 +1599,9 @@ public:
 			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
 		}
 
-		// read msgIdAttr (id)
-		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
-		if(msgIdAttr < 0)
+		// read msgIdStr (id)
+		int msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
+		if(msgIdStr < 0)
 		{
 			log_debug("[HTTP] invalid id in response, skipping");
 			return -1;
@@ -1614,16 +1614,16 @@ public:
 		{
 			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
-				(msgIdAttr == 0 || gCacheItemMap[itemId].newMsgId == -1))
+				(msgIdStr == 0 || gCacheItemMap[itemId].newMsgId == -1))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdAttr);
+				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdAttr;
-				gCacheItemMap[itemId].newMsgId = msgIdAttr;
+				gCacheItemMap[itemId].msgId = msgIdStr;
+				gCacheItemMap[itemId].newMsgId = msgIdStr;
 
 				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[HTTP] Added Cache content for method id=%d", msgIdAttr);
+				log_debug("[HTTP] Added Cache content for method id=%d", msgIdStr);
 
 				// set random last refresh time
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -1728,8 +1728,8 @@ public:
 		}
 
 		// id
-		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
-		if(msgIdAttr < 0)
+		int msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
+		if(msgIdStr < 0)
 		{
 			// make invalild
 			log_debug("[WS] detected response without id");
@@ -1740,8 +1740,8 @@ public:
 		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 
 		// if it is curie response without change, ignore			
-		QString cacheMethodAttr = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		if (cacheMethodAttr == "curie_hash")
+		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		if (methodName == "curie_hash")
 		{
 			log_debug("[WS] detected curie_hash response, skipping");
 			return -1;
@@ -1750,15 +1750,15 @@ public:
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
-				(gCacheItemMap[itemId].newMsgId == msgIdAttr) &&
+				(gCacheItemMap[itemId].newMsgId == msgIdStr) &&
 				(gCacheItemMap[itemId].cacheClientId == pId))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdAttr);
+				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
 				log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdAttr;
+				gCacheItemMap[itemId].msgId = msgIdStr;
 				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[WS] Added Cache content for method id=%d", msgIdAttr);
+				log_debug("[WS] Added Cache content for method id=%d", msgIdStr);
 
 				// set random last refresh time
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -1858,23 +1858,23 @@ public:
 			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
 		}
 
-		// read msgIdAttr (id) and cacheMethodAttr (method)
-		QString msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
-		QString cacheMethodAttr = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		// read msgIdStr (id) and methodName (method)
+		QString msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
 		QString paramsStr = jsonMap.contains("params") ? jsonMap["params"].toString() : "";
-		if (msgIdAttr.isEmpty() || cacheMethodAttr.isEmpty())
+		if (msgIdStr.isEmpty() || methodName.isEmpty())
 		{
 			log_debug("[WS] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return 0;
 		}
 
 		// get method string			
-		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr), qPrintable(paramsStr));
+		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName), qPrintable(paramsStr));
 
 		// Params hash val
 		QByteArray paramsHash = build_hash_key(jsonMap, "WS+");
 
-		if (is_cache_method(cacheMethodAttr))
+		if (is_cache_method(methodName))
 		{
 			if (gCacheItemMap.contains(paramsHash) && gCacheItemMap[paramsHash].proto == Scheme::websocket)
 			{
@@ -1888,16 +1888,16 @@ public:
 						ccIndex = get_main_cc_index();
 					}
 
-					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
+					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(methodName));
 					send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Data, p.from, 0, paramsHash);
 				}
 				else
 				{
-					log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
+					log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(methodName));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdAttr;
+					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdStr;
 					gCacheItemMap[paramsHash].clientMap[packetId].from = p.from;
-					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), packetId.data());
+					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 
@@ -1906,19 +1906,24 @@ public:
 			else
 			{
 				// Register new cache item
-				int ccIndex = registerWsCacheItem(p, packetId, msgIdAttr, cacheMethodAttr, paramsHash);
-				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
+				int ccIndex = registerWsCacheItem(p, packetId, msgIdStr, methodName, paramsHash);
+				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
 				// Send new client cache request packet
-				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdAttr, ccIndex);
+				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
 				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			}
 			
 			return -1;
 		}
+		else if (is_subscribe_method(methodName))
+		{
+			log_debug("[WS] Detected subscribe request %s", qPrintable(methodName));
+			return -1;
+		}
 
 		// log unhitted method
-		log_debug("[CACHE ITME] not hit method = %s", qPrintable(cacheMethodAttr));
+		log_debug("[CACHE ITME] not hit method = %s", qPrintable(methodName));
 
 		return 0;
 	}
