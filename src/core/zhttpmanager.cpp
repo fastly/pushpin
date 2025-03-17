@@ -1750,7 +1750,7 @@ public:
 						if (gCacheItemMap[itemId].msgId != -1)
 						{
 							gCacheItemMap[itemId].cachedFlag = true;
-							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gCacheItemMap[itemId].msgId, qPrintable(msgSubscriptionStr));
+							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gCacheItemMap[itemId].msgId, qPrintable(subscriptionStr));
 							// send update subscribe to all clients
 							foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 							{
@@ -1761,12 +1761,12 @@ public:
 
 								ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
 								replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
-								replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+								replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
 								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 								ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 								replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
-								replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+								replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
 								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 							}
 						}
@@ -1851,7 +1851,7 @@ public:
 
 							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
-							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
 							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
@@ -1861,20 +1861,20 @@ public:
 			}
 
 			// create new subscription item
-			struct cacheItem cacheItem;
+			struct CacheItem cacheItem;
 			cacheItem.msgId = -1;
 			cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.cachedFlag = false;
 			cacheItem.methodFlag = CacheMethodFlag::SUBSCRIBE_METHOD;
-			cacheItem.originSubscriptionStr = msgSubscriptionStr;
-			cacheItem.subscriptionStr = msgSubscriptionStr;
+			cacheItem.orgSubscriptionStr = subscriptionStr;
+			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
 			cacheItem.subscriptionPacket = p;
 
-			QByteArray subscriptionBytes = msgSubscriptionStr.toLatin1();
+			QByteArray subscriptionBytes = subscriptionStr.toLatin1();
 			gCacheItemMap[subscriptionBytes] = cacheItem;
-			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(msgSubscriptionStr));
+			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(subscriptionStr));
 
 			// make invalild
 			return -1;
@@ -1935,13 +1935,13 @@ public:
 					gCacheItemMap[itemId].responsePacket = p;
 					gCacheItemMap[itemId].msgId = msgIdAttr;
 					gCacheItemMap[itemId].subscriptionStr = msgResultStr;
-					if (gCacheItemMap[itemId].originSubscriptionStr.isEmpty())
+					if (gCacheItemMap[itemId].orgubscriptionStr.isEmpty())
 					{
-						gCacheItemMap[itemId].originSubscriptionStr = msgResultStr;
+						gCacheItemMap[itemId].orgSubscriptionStr = msgResultStr;
 					}
 					else
 					{
-						log_debug("[WS] Detected the original subscription string \"%s\"", qPrintable(gCacheItemMap[itemId].originSubscriptionStr));
+						log_debug("[WS] Detected the original subscription string \"%s\"", qPrintable(gCacheItemMap[itemId].orgSubscriptionStr));
 					}
 					
 					log_debug("[WS] Registered Subscription result for \"%s\"", qPrintable(msgResultStr));
@@ -1974,12 +1974,12 @@ public:
 
 							ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
 							replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
-							replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
 							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
-							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
 							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
@@ -2097,7 +2097,7 @@ public:
 					QByteArray from = p.from;
 					ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
 					replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
-					send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Data, p.from, 0, &out);
+					send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 				}
 				else
 				{
