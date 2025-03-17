@@ -36,10 +36,8 @@ class ZhttpManager;
 
 class WebSocketOverHttp : public WebSocket
 {
-	Q_OBJECT
-
 public:
-	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
+	WebSocketOverHttp(ZhttpManager *zhttpManager);
 	~WebSocketOverHttp();
 
 	void setConnectionId(const QByteArray &id);
@@ -91,7 +89,7 @@ private:
 	class DisconnectManager;
 	friend class DisconnectManager;
 
-	WebSocketOverHttp(QObject *parent = 0);
+	WebSocketOverHttp();
 	void sendDisconnect();
 
 	class Private;

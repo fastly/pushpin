@@ -111,7 +111,6 @@ public:
 	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -1204,8 +1203,7 @@ public:
 	}
 };
 
-ZhttpRequest::ZhttpRequest(QObject *parent) :
-	HttpRequest(parent)
+ZhttpRequest::ZhttpRequest()
 {
 	d = std::make_shared<Private>(this);
 }

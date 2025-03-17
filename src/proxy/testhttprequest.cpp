@@ -58,7 +58,6 @@ public:
 	DeferCall deferCall;
 
 	Private(TestHttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		requestBodyFinished(false),
@@ -141,8 +140,7 @@ public:
 	}
 };
 
-TestHttpRequest::TestHttpRequest(QObject *parent) :
-	HttpRequest(parent)
+TestHttpRequest::TestHttpRequest()
 {
 	d = new Private(this);
 }

@@ -59,7 +59,6 @@ public:
 	DeferCall deferCall;
 
 	Private(TestWebSocket *_q) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		gripEnabled(false),
@@ -155,8 +154,7 @@ public:
 	}
 };
 
-TestWebSocket::TestWebSocket(QObject *parent) :
-	WebSocket(parent)
+TestWebSocket::TestWebSocket()
 {
 	d = new Private(this);
 }

@@ -251,7 +251,6 @@ public:
 	DeferCall deferCall;
 
 	Private(WebSocketOverHttp *_q) :
-		QObject(_q),
 		q(_q),
 		connectPort(-1),
 		ignorePolicies(false),
@@ -1007,17 +1006,13 @@ private:
 	}
 };
 
-WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent) :
-	WebSocket(parent)
+WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager)
 {
 	d = std::make_shared<Private>(this);
 	d->zhttpManager = zhttpManager;
 }
 
-WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
-	WebSocket(parent)
-{
-}
+WebSocketOverHttp::WebSocketOverHttp() = default;
 
 WebSocketOverHttp::~WebSocketOverHttp()
 {

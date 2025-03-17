@@ -169,7 +169,6 @@ public:
 	DeferCall deferCall;
 
 	Private(SockJsSession *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		mode((Mode)-1),
@@ -1112,8 +1111,7 @@ public:
 	}
 };
 
-SockJsSession::SockJsSession(QObject *parent) :
-	WebSocket(parent)
+SockJsSession::SockJsSession()
 {
 	d = std::make_shared<Private>(this);
 }

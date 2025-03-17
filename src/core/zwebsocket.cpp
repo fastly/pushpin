@@ -98,7 +98,6 @@ public:
 	DeferCall deferCall;
 
 	Private(ZWebSocket *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -1091,8 +1090,7 @@ public:
 	}
 };
 
-ZWebSocket::ZWebSocket(QObject *parent) :
-	WebSocket(parent)
+ZWebSocket::ZWebSocket()
 {
 	d = std::make_shared<Private>(this);
 }
