@@ -1756,7 +1756,7 @@ public:
 							{
 								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 
-								QByteArray orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
+								QString orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
 								QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
 
 								ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
@@ -1849,6 +1849,9 @@ public:
 						{
 							log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
 
+							QString orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
+							QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
+
 							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
 							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
@@ -1933,9 +1936,9 @@ public:
 						return -1;
 					}
 					gCacheItemMap[itemId].responsePacket = p;
-					gCacheItemMap[itemId].msgId = msgIdAttr;
+					gCacheItemMap[itemId].msgId = msgIdStr;
 					gCacheItemMap[itemId].subscriptionStr = msgResultStr;
-					if (gCacheItemMap[itemId].orgubscriptionStr.isEmpty())
+					if (gCacheItemMap[itemId].orgSubscriptionStr.isEmpty())
 					{
 						gCacheItemMap[itemId].orgSubscriptionStr = msgResultStr;
 					}
@@ -1969,7 +1972,7 @@ public:
 						{
 							log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 							
-							QByteArray orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
+							QString orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
 							QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
 
 							ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
