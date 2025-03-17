@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2017 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,14 +34,12 @@ class ConnCheck : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(controlClient);
+		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
 
 		QVariantList vcids;
 		foreach(const QString &cid, cids)
@@ -53,7 +51,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{
@@ -91,21 +92,23 @@ class Refresh : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(controlClient);
+		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this));
 
 		QVariantHash args;
 		args["cid"] = cid;
 		req->start("refresh", args);
 	}
 
-	void req_finished(ZrpcRequest *req)
+private:
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 			setFinished(true);
@@ -118,21 +121,23 @@ class Report : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(controlClient);
+		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this));
 
 		QVariantHash args;
 		args["stats"] = packet.toVariant();
 		req->start("report", args);
 	}
 
-	void req_finished(ZrpcRequest *req)
+private:
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 			setFinished(true);

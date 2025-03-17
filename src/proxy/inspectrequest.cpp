@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2015 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -112,14 +112,13 @@ public:
 	InspectData idata;
 
 	Private(InspectRequest *_q) :
-		QObject(_q),
 		q(_q)
 	{
 	}
 };
 
-InspectRequest::InspectRequest(ZrpcManager *manager, QObject *parent) :
-	ZrpcRequest(manager, parent)
+InspectRequest::InspectRequest(ZrpcManager *manager) :
+	ZrpcRequest(manager)
 {
 	d = new Private(this);
 }

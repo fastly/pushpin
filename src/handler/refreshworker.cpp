@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2017-2020 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,8 +34,6 @@ RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, 
 	proxyControlClient_(proxyControlClient),
 	req_(req)
 {
-	req_->setParent(this);
-
 	QVariantHash args = req_->args();
 
 	if(args.contains("cid"))

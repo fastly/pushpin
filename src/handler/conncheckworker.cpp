@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,8 +31,6 @@
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
 	req_(req)
 {
-	req_->setParent(this);
-
 	QVariantHash args = req_->args();
 
 	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
