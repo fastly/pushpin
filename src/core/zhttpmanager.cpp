@@ -109,9 +109,13 @@ struct CacheItem {
 	int retryCount;
 	int httpBackendNo;
 	QByteArray cacheClientId;
+	QString methodName;
 	ZhttpRequestPacket requestPacket;
 	ZhttpResponsePacket responsePacket;
 	QByteArray responseHashVal;
+	QString orgSubscriptionStr;
+	QString subscriptionStr;
+	ZhttpResponsePacket subscriptionPacket;
 	struct ClientInCacheItem {
 		QString msgId;
 		QByteArray from;
@@ -119,27 +123,6 @@ struct CacheItem {
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 };
 QMap<QByteArray, CacheItem> gCacheItemMap;
-
-// Subscription Item
-struct SubscriptionItem {
-	QString orgMsgId;
-	int msgId;
-	int newMsgId;
-	qint64 lastRequestTime;
-	qint64 lastRefreshTime;
-	bool cachedFlag;
-	int retryCount;
-	QByteArray cacheClientId;
-	ZhttpRequestPacket requestPacket;
-	ZhttpResponsePacket responsePacket;
-	QString subscriptionMethodName;
-	QString originSubscriptionStr;
-	QString subscriptionStr;
-	ZhttpResponsePacket subscriptionPacket;
-	QMap<QString, QString> paramsMap;
-	QMap<QByteArray, QString> clientMap;	// <ClienId, MsgId>
-};
-QMap<QByteArray, SubscriptionItem> gSubscriptionItemMap;
 
 // health client list
 bool gHealthCheckExcludeFlag = true;
@@ -1318,12 +1301,12 @@ public:
 		else
 		{
 			// cache lookup
-			foreach(QByteArray itemId, gSubscriptionItemMap.keys())
+			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
-				if (gSubscriptionItemMap[itemId].clientMap.contains(clientId))
+				if (gCacheItemMap[itemId].clientMap.contains(clientId))
 				{
-					gSubscriptionItemMap[itemId].clientMap.remove(clientId);
-					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", clientId.data(), gSubscriptionItemMap[itemId].msgId, qPrintable(gSubscriptionItemMap[itemId].subscriptionStr.left(16)));
+					gCacheItemMap[itemId].clientMap.remove(clientId);
+					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", clientId.data(), gCacheItemMap[itemId].msgId, qPrintable(gCacheItemMap[itemId].subscriptionStr.left(16)));
 				}
 			}
 
