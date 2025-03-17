@@ -65,7 +65,7 @@ struct CacheKeyItem {
 	QString keyName;
 	ItemFlag flag;
 };
-enum CacheMethodFlag {
+enum CacheMethodType {
 	CACHE_METHOD,
 	SUBSCRIBE_METHOD
 };

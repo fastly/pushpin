@@ -113,7 +113,7 @@ struct CacheItem {
 	ZhttpRequestPacket requestPacket;
 	ZhttpResponsePacket responsePacket;
 	QByteArray responseHashVal;
-	CacheMethodFlag methodFlag;
+	CacheMethodType methodType;
 	QString orgSubscriptionStr;
 	QString subscriptionStr;
 	ZhttpResponsePacket subscriptionPacket;
@@ -1420,11 +1420,11 @@ public:
 		// check cache/subscribe method
 		if (is_cache_method(methodName))
 		{
-			cacheItem.methodFlag = CACHE_METHOD;
+			cacheItem.methodType = CACHE_METHOD;
 		}
 		else if (is_subscribe_method(methodName))
 		{
-			cacheItem.methodFlag = SUBSCRIBE_METHOD;
+			cacheItem.methodType = SUBSCRIBE_METHOD;
 		}
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
@@ -1863,7 +1863,7 @@ public:
 			cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.cachedFlag = false;
-			cacheItem.methodFlag = CacheMethodFlag::SUBSCRIBE_METHOD;
+			cacheItem.methodType = CacheMethodType::SUBSCRIBE_METHOD;
 			cacheItem.orgSubscriptionStr = subscriptionStr;
 			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
@@ -1890,7 +1890,7 @@ public:
 				(gCacheItemMap[itemId].newMsgId == msgIdValue) &&
 				(gCacheItemMap[itemId].cacheClientId == pId))
 			{
-				if (gCacheItemMap[itemId].methodFlag == CacheMethodFlag::CACHE_METHOD)
+				if (gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD)
 				{
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
 					
@@ -1927,7 +1927,7 @@ public:
 					//config.cacheConfig.cacheMethodList.clear();
 					return -1;
 				}
-				else if (gCacheItemMap[itemId].methodFlag == CacheMethodFlag::SUBSCRIBE_METHOD)
+				else if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD)
 				{
 					log_debug("[WS] Adding Subscribe content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
 					
@@ -2099,9 +2099,25 @@ public:
 					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(methodName));
 					QString orgMsgId = msgIdStr;
 					QByteArray from = p.from;
-					ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
-					replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
-					send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+
+					if (gCacheItemMap[paramsHash].methodType == CacheMethodType::CACHE_METHOD)
+					{
+						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
+						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+					}
+					else if (gCacheItemMap[paramsHash].methodType == CacheMethodType::SUBSCRIBE_METHOD)
+					{
+						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
+						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
+						replace_result_field(out.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+
+						ZhttpResponsePacket out1 = gCacheItemMap[paramsHash].subscriptionPacket;
+						replace_id_field(out1.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
+						replace_subscription_field(out1.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
+					}
 				}
 				else
 				{
