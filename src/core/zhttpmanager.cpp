@@ -86,7 +86,7 @@ static int gAutoRefreshLongerTimeoutSeconds = 10;
 static int gAutoRefreshCacheTimeoutSeconds = 15;
 
 
-QStringList gCacheMethodList = {"*"};
+QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
 
 // Cache Item
