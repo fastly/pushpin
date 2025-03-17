@@ -2290,7 +2290,7 @@ void ZhttpManager::setCacheParameters(
 	}
 
 	for (int i = 0; i < gSubscribeMethodMap.size(); ++i) {
-		log_debug("%s:%s", qPrintable(gSubscribeMethodMap[i].key(), qPrintable(gSubscribeMethodMap[i].value()));
+		log_debug("%s:%s", qPrintable(gSubscribeMethodMap[i].key(), qPrintable(gSubscribeMethodMap[i].value())));
 	}
 
 	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {
