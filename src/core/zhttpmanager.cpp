@@ -113,6 +113,7 @@ struct CacheItem {
 	ZhttpRequestPacket requestPacket;
 	ZhttpResponsePacket responsePacket;
 	QByteArray responseHashVal;
+	CacheMethodFlag methodFlag;
 	QString orgSubscriptionStr;
 	QString subscriptionStr;
 	ZhttpResponsePacket subscriptionPacket;
@@ -123,6 +124,10 @@ struct CacheItem {
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 };
 QMap<QByteArray, CacheItem> gCacheItemMap;
+
+QString gSubscriptionAttrName = "params>>subscription";
+QString gSubscribeBlockAttrName = "params>>result>>block";
+QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 // health client list
 bool gHealthCheckExcludeFlag = true;
@@ -428,12 +433,11 @@ public:
 
 	void send_response_to_client(
 		SessionType sessionType, 
-		const QByteArray &clientId, 
 		ZhttpResponsePacket::Type packetType,
+		const QByteArray &clientId, 
 		const QByteArray &from,
 		int credits = 0,
-		const QByteArray &cacheItemId = NULL,
-		ZhttpResponsePacket *responsePacket = NULL,
+		ZhttpResponsePacket &responsePacket = NULL,
 		const QByteArray &responseKey = NULL)
 	{
 		assert(!from.isEmpty());
@@ -448,23 +452,16 @@ public:
 		switch (packetType)
 		{
 		case ZhttpResponsePacket::Data:
-			if (cacheItemId != NULL)
+			if (responsePacket != NULL)
 			{
-				QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[clientId].msgId;
-				newFrom = gCacheItemMap[cacheItemId].clientMap[clientId].from;
-				out = gCacheItemMap[cacheItemId].responsePacket;
-				replace_id_field(out.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+				out = responsePacket;
 				out.ids[0].id = clientId;
 				out.ids[0].seq = newSeq;
-				break;
-			}
-			else if (responsePacket != NULL)
-			{
-				out = *responsePacket;
-				out.ids[0].id = clientId;
-				out.ids[0].seq = newSeq;
-				out.headers.removeAll("sec-websocket-accept");
-				out.headers += HttpHeader("sec-websocket-accept", responseKey);
+				if (responseKey != NULL)
+				{
+					out.headers.removeAll("sec-websocket-accept");
+					out.headers += HttpHeader("sec-websocket-accept", responseKey);
+				}
 				break;
 			}
 			return;
@@ -919,7 +916,7 @@ public:
 			{
 				log_warning("zws server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Cancel, p.from);
+					send_response_to_client(WebSocketSession, ZhttpResponsePacket::Cancel, id.id, p.from);
 				return;
 			}
 
@@ -944,7 +941,7 @@ public:
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-							send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Cancel, p.from);
+							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Cancel, id.id, p.from);
 						return;
 					}
 					else
@@ -954,7 +951,8 @@ public:
 						// register ws client
 						register_ws_client(id.id);
 						// respond with cached init packet
-						send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Data, p.from, 0, NULL, &gWsInitResponsePacket, responseKey);
+						ZhttpResponsePacket out = gWsInitResponsePacket;
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, id.id, p.from, 0, out, responseKey);
 						return;
 					}
 				}
@@ -984,7 +982,7 @@ public:
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(HttpSession, id.id, ZhttpResponsePacket::Cancel, p.from);
+					send_response_to_client(HttpSession, ZhttpResponsePacket::Cancel, id.id, p.from);
 				return;
 			}
 
@@ -1013,7 +1011,7 @@ public:
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
 			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-				send_response_to_client(UnknownSession, id.id, ZhttpResponsePacket::Cancel, p.from);
+				send_response_to_client(UnknownSession, ZhttpResponsePacket::Cancel, id.id, p.from);
 			return;
 		}
 	}
@@ -1081,7 +1079,7 @@ public:
 						//send_wsCloseResponse(packetId);
 						continue;
 					case ZhttpRequestPacket::Close:
-						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Close, p.from);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Close, packetId, p.from);
 						unregister_client(packetId);
 						continue;
 					case ZhttpRequestPacket::KeepAlive:
@@ -1089,16 +1087,16 @@ public:
 						//send_pingResponse(packetId);
 						continue;
 					case ZhttpRequestPacket::Pong:
-						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, 0);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, 0);
 						continue;
 					case ZhttpRequestPacket::Ping:
-						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Pong, p.from);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Pong, packetId, p.from);
 						continue;
 					case ZhttpRequestPacket::Credit:
 						continue;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
-						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, static_cast<int>(p.body.size()));
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 						if (process_ws_stream_request(packetId, p) < 0)
 							continue;
 						break;
@@ -1418,6 +1416,18 @@ public:
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[cacheClientNo].clientId;
 
+		cacheItem.methodName = methodName;
+
+		// check cache/subscribe method
+		if (is_cache_method(methodName))
+		{
+			cacheItem.methodFlag = CACHE_METHOD;
+		}
+		else if (is_subscribe_method(methodName))
+		{
+			cacheItem.methodFlag = SUBSCRIBE_METHOD;
+		}
+
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 
 		return cacheClientNo;
@@ -1724,9 +1734,150 @@ public:
 
 		// if it is curie response without change, ignore			
 		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		if (methodName == "curie_hash")
+
+		if (jsonMap.contains(gSubscriptionAttrName))
 		{
-			log_debug("[WS] detected curie_hash response, skipping");
+			QString subscriptionStr = jsonMap[gSubscriptionAttrName].toString();
+
+			foreach(QByteArray itemId, gCacheItemMap.keys())
+			{
+				if (gCacheItemMap[itemId].subscriptionStr == subscriptionStr)
+				{
+					if (gCacheItemMap[itemId].cachedFlag == false)
+					{
+						// update subscription packet
+						gCacheItemMap[itemId].subscriptionPacket = p;
+
+						if (gSubscriptionItemMap[itemId].msgId != -1)
+						{
+							gSubscriptionItemMap[itemId].cachedFlag = true;
+							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gSubscriptionItemMap[itemId].msgId, qPrintable(msgSubscriptionStr));
+							// send update subscribe to all clients
+							foreach(QByteArray cliId, gSubscriptionItemMap[itemId].clientMap.keys())
+							{
+								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
+
+								QByteArray orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
+								QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
+
+								ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
+								replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
+								replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, out);
+
+								ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
+								replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
+								replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, out1);
+							}
+						}
+					}
+					else
+					{
+						if (jsonMap.contains(gSubscribeBlockAttrName) || jsonMap.contains(gSubscribeChangesAttrName))
+						{
+							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
+							QString msgChangesStr = jsonMap[gSubscribeChangesAttrName].toString().toLower();
+							ZhttpResponsePacket tempPacket = gSubscriptionItemMap[itemId].subscriptionPacket;
+
+							QString patternStr("\"block\":\"");
+							qsizetype idxStart = tempPacket.body.indexOf(patternStr);
+							if (idxStart >= 0)
+							{
+								qsizetype idxEnd = tempPacket.body.indexOf("\"", idxStart+9);
+								tempPacket.body.replace(idxStart+9, idxEnd-(idxStart+9), QByteArray(qPrintable(msgBlockStr)));
+							}
+							else
+							{
+								log_debug("[WS] not found block in subscription cached response");
+							}
+
+							QStringList changesList = msgChangesStr.split("/");
+							for ( const auto& changes : changesList )
+							{
+								QStringList changeList = changes.split("+");
+								if (changeList.size() != 2)
+								{
+									log_debug("[WS] Invalid change list");
+									continue;
+								}
+
+								QString patternStr(qPrintable("[\"" + changeList[0] + "\""));
+								QString newPattern = "[\"";
+								newPattern += changeList[0];
+								newPattern += "\",\"";
+								newPattern += changeList[1];
+								newPattern += "\"]";
+
+								qsizetype idxStart = 0;
+								qsizetype idxEnd = 0;
+								while (1)
+								{
+									idxStart = tempPacket.body.indexOf(patternStr, idxEnd);
+									if (idxStart < 0)
+										break;
+									
+									idxEnd = tempPacket.body.indexOf("]", idxStart+changeList[0].length());
+									if (idxEnd > idxStart)
+									{
+										//QByteArray oldPattern = tempPacket.body.mid(idxStart, idxEnd-idxStart+1);
+										//log_debug("[WS] replaced old=%s pattern=%s", tempPacket.body.data(), oldPattern.data());
+										tempPacket.body.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
+										//log_debug("[WS] replaced new=%s pattern=%s", tempPacket.body.data(), qPrintable(newPattern));
+										//log_debug("[WS] replaced at offset=%d", idxStart);
+									}
+									else
+									{
+										log_debug("[WS] not found change param in subscription cached response");
+										break;
+									}	
+								}
+								
+							}
+
+							gCacheItemMap[itemId].subscriptionPacket = tempPacket;
+						}
+						else // it`s for non state_subscribeStorage methods
+						{
+							gCacheItemMap[itemId].subscriptionPacket = p;
+						}
+
+						// update subscription last update time
+						gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
+						// send update subscribe to all clients
+						foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+						{
+							log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
+
+							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
+							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
+							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, out1);
+						}
+					}
+
+					return -1;
+				}
+			}
+
+			// create new subscription item
+			struct cacheItem cacheItem;
+			cacheItem.msgId = -1;
+			cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+			cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+			cacheItem.cachedFlag = false;
+			cacheItem.methodFlag = CacheMethodFlag::SUBSCRIBE_METHOD;
+			cacheItem.originSubscriptionStr = msgSubscriptionStr;
+			cacheItem.subscriptionStr = msgSubscriptionStr;
+			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
+			cacheItem.subscriptionPacket = p;
+
+			QByteArray subscriptionBytes = msgSubscriptionStr.toLatin1();
+			gCacheItemMap[subscriptionBytes] = cacheItem;
+			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(msgSubscriptionStr));
+
+			// make invalild
 			return -1;
 		}
 
@@ -1736,36 +1887,107 @@ public:
 				(gCacheItemMap[itemId].newMsgId == msgIdStr) &&
 				(gCacheItemMap[itemId].cacheClientId == pId))
 			{
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
-				log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdStr;
-				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[WS] Added Cache content for method id=%d", msgIdStr);
-
-				// set random last refresh time
-				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-				int nextTimeMSeconds = 0;
-				if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
-					nextTimeMSeconds = (clock() % gAutoRefreshShorterTimeoutSeconds) * 1000;
-				else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
-					nextTimeMSeconds = (clock() % gAutoRefreshLongerTimeoutSeconds) * 1000;
-				else
-					nextTimeMSeconds = (clock() % gAutoRefreshCacheTimeoutSeconds) * 1000;
-				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
-				log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
-
-				// send response to all clients
-				foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())
+				if (gCacheItemMap[itemId].methodFlag == CacheMethodFlag::CACHE_METHOD)
 				{
-					log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
-					QByteArray from = gCacheItemMap[itemId].clientMap[clientId].from;
-					send_response_to_client(WebSocketSession, clientId, ZhttpResponsePacket::Data, from, 0, itemId);
+					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
+					
+					gCacheItemMap[itemId].responsePacket = p;
+					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdStr);
+					log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+					gCacheItemMap[itemId].msgId = msgIdStr;
+					gCacheItemMap[itemId].cachedFlag = true;
+
+					// set random last refresh time
+					qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+					int nextTimeMSeconds = 0;
+					if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
+						nextTimeMSeconds = (clock() % gAutoRefreshShorterTimeoutSeconds) * 1000;
+					else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
+						nextTimeMSeconds = (clock() % gAutoRefreshLongerTimeoutSeconds) * 1000;
+					else
+						nextTimeMSeconds = (clock() % gAutoRefreshCacheTimeoutSeconds) * 1000;
+					gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
+					log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
+
+					// send response to all clients
+					foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())
+					{
+						log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
+						QString orgMsgId = gCacheItemMap[itemId].clientMap[clientId].msgId;
+						QByteArray from = gCacheItemMap[itemId].clientMap[clientId].from;
+						ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
+						replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
+						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, clientId, from, 0, out);
+					}
+				
+					// make invalid
+					//config.cacheConfig.cacheMethodList.clear();
+					return -1;
 				}
-			
-				// make invalid
-				//config.cacheConfig.cacheMethodList.clear();
-				return -1;
+				else if (gCacheItemMap[itemId].methodFlag == CacheMethodFlag::SUBSCRIBE_METHOD)
+				{
+					log_debug("[WS] Adding Subscribe content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
+					
+					// result
+					if(msgResultStr.isNull())
+					{
+						return -1;
+					}
+					gCacheItemMap[itemId].responsePacket = p;
+					gCacheItemMap[itemId].msgId = msgIdAttr;
+					gCacheItemMap[itemId].subscriptionStr = msgResultStr;
+					if (gCacheItemMap[itemId].originSubscriptionStr.isEmpty())
+					{
+						gCacheItemMap[itemId].originSubscriptionStr = msgResultStr;
+					}
+					else
+					{
+						log_debug("[WS] Detected the original subscription string \"%s\"", qPrintable(gCacheItemMap[itemId].originSubscriptionStr));
+					}
+					
+					log_debug("[WS] Registered Subscription result for \"%s\"", qPrintable(msgResultStr));
+
+					// update subscription last update time
+					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
+					// Search temp teim in SubscriptionItemMap
+					QByteArray resultBytes = msgResultStr.toLatin1();
+					if (gCacheItemMap.contains(resultBytes))
+					{
+						if (gCacheItemMap[resultBytes].msgId == -1)
+						{
+							gCacheItemMap[itemId].subscriptionPacket = gCacheItemMap[resultBytes].subscriptionPacket;
+							gCacheItemMap[itemId].cachedFlag = true;
+							gCacheItemMap.remove(resultBytes);
+							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdAttr, qPrintable(msgResultStr));
+						}
+					}
+
+					if (gCacheItemMap[itemId].cachedFlag == true)
+					{
+						// send update subscribe to all clients
+						foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+						{
+							log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
+							
+							QByteArray orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
+							QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
+
+							ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
+							replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
+							replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, out);
+
+							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
+							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
+							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].originSubscriptionStr);
+							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, out1);
+						}
+					}
+											
+					// make invalid
+					return -1;
+				}
 			}
 		}
 
@@ -1872,7 +2094,11 @@ public:
 					}
 
 					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(methodName));
-					send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Data, p.from, 0, paramsHash);
+					QString orgMsgId = msgIdStr;
+					QByteArray from = p.from;
+					ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
+					replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
+					send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Data, p.from, 0, out);
 				}
 				else
 				{

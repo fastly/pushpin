@@ -89,7 +89,7 @@ bool is_cache_method(QString methodStr)
 
 bool is_subscribe_method(QString methodStr)
 {
-	if (gSubscribeMethodMap.contains(methodStr))
+	if (gSubscribeMethodMap.contains(methodStr.toLower()))
 	{
 		return true;
 	}
