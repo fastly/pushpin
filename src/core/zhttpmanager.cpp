@@ -2185,6 +2185,7 @@ ZhttpManager::ZhttpManager(QObject *parent) :
 	QObject(parent)
 {
 	d = std::make_shared<Private>(this);
+	log_debug("AAAAAAAAAAAAAAAAAAAAAA");
 }
 
 ZhttpManager::~ZhttpManager() = default;
