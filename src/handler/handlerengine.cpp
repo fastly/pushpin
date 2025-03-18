@@ -1232,13 +1232,13 @@ public:
 
 	HandlerEngine *q;
 	Configuration config;
-	ZhttpManager *zhttpIn;
-	ZhttpManager *zhttpOut;
-	ZrpcManager *inspectServer;
-	ZrpcManager *acceptServer;
-	ZrpcManager *stateClient;
-	ZrpcManager *controlServer;
-	ZrpcManager *proxyControlClient;
+	std::unique_ptr<ZhttpManager> zhttpIn;
+	std::unique_ptr<ZhttpManager> zhttpOut;
+	std::unique_ptr<ZrpcManager> inspectServer;
+	std::unique_ptr<ZrpcManager> acceptServer;
+	std::unique_ptr<ZrpcManager> stateClient;
+	std::unique_ptr<ZrpcManager> controlServer;
+	std::unique_ptr<ZrpcManager> proxyControlClient;
 	std::unique_ptr<QZmq::Socket> inPullSock;
 	std::unique_ptr<QZmq::Valve> inPullValve;
 	std::unique_ptr<QZmq::Socket> inSubSock;
@@ -1251,8 +1251,8 @@ public:
 	std::unique_ptr<QZmq::Socket> statsSock;
 	std::unique_ptr<QZmq::Socket> proxyStatsSock;
 	std::unique_ptr<QZmq::Valve> proxyStatsValve;
-	SimpleHttpServer *controlHttpServer;
-	StatsManager *stats;
+	std::unique_ptr<SimpleHttpServer> controlHttpServer;
+	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<RateLimiter> publishLimiter;
 	std::unique_ptr<RateLimiter> updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
@@ -1286,15 +1286,6 @@ public:
 	Private(HandlerEngine *_q) :
 		QObject(_q),
 		q(_q),
-		zhttpIn(0),
-		zhttpOut(0),
-		inspectServer(0),
-		acceptServer(0),
-		stateClient(0),
-		controlServer(0),
-		proxyControlClient(0),
-		controlHttpServer(0),
-		stats(0),
 		report(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
@@ -1334,12 +1325,12 @@ public:
 		sequencer->setWaitMax(config.messageWait);
 		sequencer->setIdCacheTtl(config.idCacheTtl);
 
-		zhttpIn = new ZhttpManager(this);
+		zhttpIn = std::make_unique<ZhttpManager>();
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
 
-		zhttpOut = new ZhttpManager(this);
+		zhttpOut = std::make_unique<ZhttpManager>();
 		zhttpOut->setInstanceId(config.instanceId);
 		zhttpOut->setClientOutSpecs(config.clientOutSpecs);
 		zhttpOut->setClientOutStreamSpecs(config.clientOutStreamSpecs);
@@ -1350,7 +1341,7 @@ public:
 
 		if(!config.inspectSpecs.isEmpty())
 		{
-			inspectServer = new ZrpcManager(this);
+			inspectServer = std::make_unique<ZrpcManager>();
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
 			inspectReqReadyConnection = inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
@@ -1366,7 +1357,7 @@ public:
 
 		if(!config.acceptSpecs.isEmpty())
 		{
-			acceptServer = new ZrpcManager(this);
+			acceptServer = std::make_unique<ZrpcManager>();
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
 			acceptReqReadyConnection = acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
@@ -1382,7 +1373,7 @@ public:
 
 		if(!config.stateSpec.isEmpty())
 		{
-			stateClient = new ZrpcManager(this);
+			stateClient = std::make_unique<ZrpcManager>();
 			stateClient->setBind(true);
 			stateClient->setIpcFileMode(config.ipcFileMode);
 			stateClient->setTimeout(STATE_RPC_TIMEOUT);
@@ -1398,7 +1389,7 @@ public:
 
 		if(!config.commandSpec.isEmpty())
 		{
-			controlServer = new ZrpcManager(this);
+			controlServer = std::make_unique<ZrpcManager>();
 			controlServer->setBind(true);
 			controlServer->setIpcFileMode(config.ipcFileMode);
 			controlReqReadyConnection = controlServer->requestReady.connect(boost::bind(&Private::controlServer_requestReady, this));
@@ -1520,7 +1511,7 @@ public:
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
-		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX, this);
+		stats = std::make_unique<StatsManager>(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
 		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
@@ -1590,7 +1581,7 @@ public:
 
 		if(!config.proxyCommandSpec.isEmpty())
 		{
-			proxyControlClient = new ZrpcManager(this);
+			proxyControlClient = std::make_unique<ZrpcManager>();
 			proxyControlClient->setIpcFileMode(config.ipcFileMode);
 			proxyControlClient->setTimeout(PROXY_RPC_TIMEOUT);
 
@@ -1605,7 +1596,7 @@ public:
 
 		if(config.pushInHttpPort != -1)
 		{
-			controlHttpServer = new SimpleHttpServer(CONTROL_CONNECTIONS_MAX, config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
+			controlHttpServer = std::make_unique<SimpleHttpServer>(CONTROL_CONNECTIONS_MAX, config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize);
 			controlServerConnection = controlHttpServer->requestReady.connect(boost::bind(&Private::controlHttpServer_requestReady, this));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
@@ -1895,7 +1886,7 @@ private:
 		if(!req)
 			return;
 
-		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		InspectWorker *w = new InspectWorker(req, stateClient.get(), config.shareAll, this);
 		finishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
 		inspectWorkers += w;
 	}
@@ -1916,7 +1907,7 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			AcceptWorker *w = new AcceptWorker(req, stateClient.get(), &cs, zhttpIn.get(), zhttpOut.get(), stats.get(), updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
@@ -1965,7 +1956,7 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient, stats);
+			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats.get());
 			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
 			deferredMap[w.get()] = std::move(w);
 		}
@@ -1989,7 +1980,7 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			auto w = std::make_unique<RefreshWorker>(req, proxyControlClient, &cs.wsSessionsByChannel);
+			auto w = std::make_unique<RefreshWorker>(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
 			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
 			deferredMap[w.get()] = std::move(w);
 		}
@@ -2247,7 +2238,7 @@ private:
 				sidLastIds[sid] = lastIds;
 			}
 
-			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+			Deferred *d = SessionRequest::updateMany(stateClient.get(), sidLastIds, this);
 			finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 			deferreds += d;
 		}
@@ -2364,7 +2355,7 @@ private:
 
 			if(!sidLastIds.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+				Deferred *d = SessionRequest::updateMany(stateClient.get(), sidLastIds, this);
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
@@ -2405,7 +2396,7 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		report = ControlRequest::report(proxyControlClient, all, this);
+		report = ControlRequest::report(proxyControlClient.get(), all, this);
 		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds += report;
 	}
@@ -2597,7 +2588,7 @@ private:
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
-					s->zhttpOut = zhttpOut;
+					s->zhttpOut = zhttpOut.get();
 					s->filterLimiter = filterLimiter;
 					s->refreshExpiration();
 					cs.wsSessions.insert(s->cid, s);
@@ -2837,14 +2828,14 @@ private:
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
-				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
+				Deferred *d = SessionRequest::createOrUpdate(stateClient.get(), sid, LastIds(), this);
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 
 			if(!updateSids.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
+				Deferred *d = SessionRequest::updateMany(stateClient.get(), updateSids, this);
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}

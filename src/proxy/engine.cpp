@@ -107,15 +107,15 @@ public:
 	bool destroying;
 	DomainMap *domainMap;
 	Configuration config;
-	ZhttpManager *zhttpIn;
-	ZhttpManager *intZhttpIn;
+	std::unique_ptr<ZhttpManager> zhttpIn;
+	std::unique_ptr<ZhttpManager> intZhttpIn;
 	ZRoutes *zroutes;
-	ZrpcManager *inspect;
+	std::unique_ptr<ZrpcManager> inspect;
 	std::unique_ptr<WsControlManager> wsControl;
 	ZrpcChecker *inspectChecker;
-	StatsManager *stats;
-	ZrpcManager *command;
-	ZrpcManager *accept;
+	std::unique_ptr<StatsManager> stats;
+	std::unique_ptr<ZrpcManager> command;
+	std::unique_ptr<ZrpcManager> accept;
 	std::unique_ptr<QZmq::Socket> handler_retry_in_sock;
 	std::unique_ptr<QZmq::Valve> handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
@@ -141,14 +141,8 @@ public:
 		q(_q),
 		destroying(false),
 		domainMap(_domainMap),
-		zhttpIn(0),
-		intZhttpIn(0),
 		zroutes(0),
-		inspect(0),
 		inspectChecker(0),
-		stats(0),
-		command(0),
-		accept(0),
 		sockJsManager(0),
 		updater(0)
 	{
@@ -210,7 +204,7 @@ public:
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
 
-		zhttpIn = new ZhttpManager(this);
+		zhttpIn = std::make_unique<ZhttpManager>();
 		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
 		socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
 
@@ -221,7 +215,7 @@ public:
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{
-			intZhttpIn = new ZhttpManager(this);
+			intZhttpIn = std::make_unique<ZhttpManager>();
 			intZhttpIn->setBind(true);
 			intZhttpIn->setIpcFileMode(config.ipcFileMode);
 			iRequestReadyConnection = intZhttpIn->requestReady.connect(boost::bind(&Private::intZhttpIn_requestReady, this));
@@ -243,7 +237,7 @@ public:
 
 		if(!config.inspectSpec.isEmpty())
 		{
-			inspect = new ZrpcManager(this);
+			inspect = std::make_unique<ZrpcManager>();
 			inspect->setBind(true);
 			inspect->setIpcFileMode(config.ipcFileMode);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
@@ -259,7 +253,7 @@ public:
 
 		if(!config.acceptSpec.isEmpty())
 		{
-			accept = new ZrpcManager(this);
+			accept = std::make_unique<ZrpcManager>();
 			accept->setInstanceId(config.clientId);
 			accept->setBind(true);
 			accept->setIpcFileMode(config.ipcFileMode);
@@ -316,7 +310,7 @@ public:
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX, this);
+			stats = std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
 
 			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
@@ -351,7 +345,7 @@ public:
 
 		if(!config.commandSpec.isEmpty())
 		{
-			command = new ZrpcManager(this);
+			command = std::make_unique<ZrpcManager>();
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
 			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
@@ -411,7 +405,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, logConfig, stats);
+			ps = new ProxySession(zroutes, accept.get(), logConfig, stats.get());
 			// TODO: use callbacks for performance
 			proxySessionConnectionMap[ps] = {
 				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
@@ -457,7 +451,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl.get());
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats.get(), wsControl.get());
 		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -557,7 +551,7 @@ public:
 				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
-		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect.get(), inspectChecker, accept.get(), stats.get());
 
 		if(passthroughData.isValid() && !preferInternal)
 		{
@@ -909,7 +903,7 @@ private:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect.get(), inspectChecker, accept.get(), stats.get());
 
 			requestSessions += rs;
 
@@ -1084,7 +1078,7 @@ Engine::~Engine()
 
 StatsManager *Engine::statsManager() const
 {
-	return d->stats;
+	return d->stats.get();
 }
 
 bool Engine::start(const Configuration &config)
