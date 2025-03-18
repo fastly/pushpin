@@ -218,6 +218,7 @@ public:
 		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 
+		log_debug("[CACHE] Starting timer");
 		cacheTimer = std::make_unique<Timer>();
 		cacheTimerConnection = cacheTimer->timeout.connect(boost::bind(&Private::refresh_cache, this));
 
@@ -226,7 +227,11 @@ public:
 
 	~Private()
 	{
-		cacheTimer->stop();
+		if(keepAliveTimer->isActive())
+		{
+			log_debug("[CACHE] Stopping timer");
+			cacheTimer->stop();
+		}
 
 		while(!serverPendingReqs.isEmpty())
 		{
