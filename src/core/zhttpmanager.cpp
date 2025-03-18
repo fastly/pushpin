@@ -32,6 +32,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QTimer>
+#include <functional>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -1058,13 +1059,12 @@ public:
 			return;
 		}
 
-		// Use a lambda to capture and pass the parameter
-		int val = gTmpCnt;
-		log_debug("[TIMER] %d", val);
-		QTimer::singleShot(1000, [&]() {
-			myFunction(val);
-		});
-		gTmpCnt = gTmpCnt + 1;
+		// Bind the function with the parameter
+		int value = gTmpCnt++;
+	    auto boundFunction = std::bind(&myFunction, value);
+
+    	// Use QTimer::singleShot to execute the bound function
+    	QTimer::singleShot(1000, this, boundFunction);
 
 		std::weak_ptr<Private> self = q->d;
 
