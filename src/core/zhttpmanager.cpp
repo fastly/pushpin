@@ -953,7 +953,7 @@ public:
 						// get resp key
 						QByteArray responseKey = calculate_response_seckey_from_init_request(p);
 						// register ws client
-						register_ws_client(id.id);
+						register_ws_client(id.id, p.from);
 						// respond with cached init packet
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
 						return;
@@ -1408,7 +1408,7 @@ public:
 		return;
 	}
 
-	void register_ws_client(QByteArray packetId)
+	void register_ws_client(QByteArray packetId, QByteArray from)
 	{
 		if (gWsClientMap.contains(packetId))
 		{
@@ -1421,6 +1421,7 @@ public:
 		clientItem.lastResponseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
+		clientItem.from = from;
 		gWsClientMap[packetId] = clientItem;
 		log_debug("[WS] added ws client id=%s", packetId.data());
 
