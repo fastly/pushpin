@@ -1060,11 +1060,10 @@ public:
 		}
 
 		// Bind the function with the parameter
-		int value = gTmpCnt++;
-	    auto boundFunction = std::bind(&myFunction, value);
-
-    	// Use QTimer::singleShot to execute the bound function
-    	QTimer::singleShot(1000, this, boundFunction);
+		int val = gTmpCnt++;
+		QTimer::singleShot(2000, this, [this]() {
+            myFunction(val);  // Correct way to call a non-static member function
+        });
 
 		std::weak_ptr<Private> self = q->d;
 
