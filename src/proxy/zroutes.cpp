@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -70,21 +71,16 @@ public:
 	{
 	public:
 		QString spec;
-		ZhttpManager *manager;
+		std::unique_ptr<ZhttpManager> manager;
 		int refs;
 		bool markedForRemoval;
 
-		Item(const QString &_spec, ZhttpManager *_manager) :
+		Item(const QString &_spec, std::unique_ptr<ZhttpManager> _manager) :
 			spec(_spec),
-			manager(_manager),
+			manager(std::move(_manager)),
 			refs(0),
 			markedForRemoval(false)
 		{
-		}
-
-		~Item()
-		{
-			delete manager;
 		}
 	};
 
@@ -120,13 +116,13 @@ public:
 	{
 		if(!defaultItem)
 		{
-			ZhttpManager *manager = new ZhttpManager(this);
+			std::unique_ptr<ZhttpManager> manager = std::make_unique<ZhttpManager>();
 			manager->setInstanceId(instanceId);
 			manager->setClientOutSpecs(defaultOutSpecs);
 			manager->setClientOutStreamSpecs(defaultOutStreamSpecs);
 			manager->setClientInSpecs(defaultInSpecs);
 
-			defaultItem = new Item(QString(), manager);
+			defaultItem = new Item(QString(), std::move(manager));
 		}
 
 		return defaultItem;
@@ -137,7 +133,7 @@ public:
 		Item *i = itemsBySpec.value(route.baseSpec);
 		if(!i)
 		{
-			ZhttpManager *manager = new ZhttpManager(this);
+			std::unique_ptr<ZhttpManager> manager = std::make_unique<ZhttpManager>();
 			manager->setInstanceId(instanceId);
 			manager->setIpcFileMode(route.ipcFileMode);
 			manager->setBind(true);
@@ -154,9 +150,9 @@ public:
 				manager->setClientInSpecs(QStringList() << specs[2]);
 			}
 
-			i = new Item(route.baseSpec, manager);
+			i = new Item(route.baseSpec, std::move(manager));
 			itemsBySpec.insert(route.baseSpec, i);
-			itemsByManager.insert(manager, i);
+			itemsByManager.insert(i->manager.get(), i);
 		}
 
 		return i;
@@ -176,7 +172,7 @@ public:
 
 		assert(i->refs == 0 && i->manager->connectionCount() == 0);
 		itemsBySpec.remove(i->spec);
-		itemsByManager.remove(i->manager);
+		itemsByManager.remove(i->manager.get());
 		delete i;
 	}
 
@@ -277,24 +273,24 @@ void ZRoutes::setup(const QList<DomainMap::ZhttpRoute> &routes)
 
 ZhttpManager *ZRoutes::defaultManager()
 {
-	return d->ensureDefaultItem()->manager;
+	return d->ensureDefaultItem()->manager.get();
 }
 
 ZhttpManager *ZRoutes::managerForRoute(const DomainMap::ZhttpRoute &route)
 {
-	return d->ensureItem(route)->manager;
+	return d->ensureItem(route)->manager.get();
 }
 
 void ZRoutes::addRef(ZhttpManager *zhttpManager)
 {
-	Private::Item *i = (d->defaultItem->manager == zhttpManager ? d->defaultItem : d->itemsByManager.value(zhttpManager));
+	Private::Item *i = (d->defaultItem->manager.get() == zhttpManager ? d->defaultItem : d->itemsByManager.value(zhttpManager));
 	assert(i);
 	++(i->refs);
 }
 
 void ZRoutes::removeRef(ZhttpManager *zhttpManager)
 {
-	Private::Item *i = (d->defaultItem->manager == zhttpManager ? d->defaultItem : d->itemsByManager.value(zhttpManager));
+	Private::Item *i = (d->defaultItem->manager.get() == zhttpManager ? d->defaultItem : d->itemsByManager.value(zhttpManager));
 	assert(i);
 	assert(i->refs > 0);
 	--(i->refs);
