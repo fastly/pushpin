@@ -29,6 +29,9 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include <QThread>
+#include <QMutex>
+#include <QWaitCondition>
 #include "processquit.h"
 #include "timer.h"
 #include "defercall.h"

@@ -18,8 +18,6 @@ QMAKE_LFLAGS += $$(LDFLAGS)
 
 SRC_DIR = $$PWD
 
-DEFINES += NO_IRISNET
-
 INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
 
