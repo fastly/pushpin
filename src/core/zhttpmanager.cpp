@@ -1922,11 +1922,11 @@ public:
 					qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 					int nextTimeMSeconds = 0;
 					if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
-						nextTimeMSeconds = (clock() % gAutoRefreshShorterTimeoutSeconds) * 1000;
+						nextTimeMSeconds = (clock() % gShorterTimeoutSeconds) * 1000;
 					else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
-						nextTimeMSeconds = (clock() % gAutoRefreshLongerTimeoutSeconds) * 1000;
+						nextTimeMSeconds = (clock() % gLongerTimeoutSeconds) * 1000;
 					else
-						nextTimeMSeconds = (clock() % gAutoRefreshCacheTimeoutSeconds) * 1000;
+						nextTimeMSeconds = (clock() % gCacheTimeoutSeconds) * 1000;
 					gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
 					log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
