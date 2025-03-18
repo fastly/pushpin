@@ -45,7 +45,7 @@ namespace XMPP {
 #endif
 
 Q_GLOBAL_STATIC(QMutex, pq_mutex)
-static ProcessQuit *g_pq = 0;
+static ProcessQuit *g_pq = nullptr;
 
 inline bool is_gui_app()
 {
@@ -73,7 +73,8 @@ public:
 	std::unique_ptr<SocketNotifier> sig_notifier;
 #endif
 
-	Private(ProcessQuit *_q) : QObject(_q), q(_q)
+	Private(ProcessQuit *_q) :
+		q(_q)
 	{
 		done = false;
 #ifdef Q_OS_WIN
@@ -206,8 +207,7 @@ private:
 	}
 };
 
-ProcessQuit::ProcessQuit(QObject *parent)
-:QObject(parent)
+ProcessQuit::ProcessQuit()
 {
 	d = new Private(this);
 }
@@ -223,7 +223,6 @@ ProcessQuit *ProcessQuit::instance()
 	if(!g_pq)
 	{
 		g_pq = new ProcessQuit;
-		g_pq->moveToThread(QCoreApplication::instance()->thread());
 #ifndef NO_IRISNET
 		irisNetAddPostRoutine(cleanup);
 #endif
@@ -241,7 +240,7 @@ void ProcessQuit::reset()
 void ProcessQuit::cleanup()
 {
 	delete g_pq;
-	g_pq = 0;
+	g_pq = nullptr;
 }
 
 #ifndef NO_IRISNET

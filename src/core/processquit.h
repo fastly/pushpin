@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2006 Justin Karneges
  * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -55,9 +56,8 @@ myapp.connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(do_quit()));
 
    Calling instance() returns a pointer to the global ProcessQuit instance, which will be created if necessary.  The quit() signal is emitted when a request to terminate is received.    The quit() signal is only emitted once, future termination requests are ignored.  Call reset() to allow the quit() signal to be emitted again.
 */
-class IRISNET_EXPORT ProcessQuit : public QObject
+class IRISNET_EXPORT ProcessQuit
 {
-	Q_OBJECT
 public:
 	/**
 	   \brief Returns the global ProcessQuit instance
@@ -89,7 +89,6 @@ public:
 	static void cleanup();
 
 	Signal quit;
-
 	Signal hup;
 
 private:
@@ -97,7 +96,7 @@ private:
 	friend class Private;
 	Private *d;
 
-	ProcessQuit(QObject *parent = 0);
+	ProcessQuit();
 	~ProcessQuit();
 };
 
