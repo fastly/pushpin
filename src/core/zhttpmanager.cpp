@@ -1059,9 +1059,11 @@ public:
 		}
 
 		// Use a lambda to capture and pass the parameter
-		log_debug("[TIMER] %d", gTmpCnt);
+		int val = gTmpCnt;
+		gTmpCnt = gTmpCnt + 1;
+		log_debug("[TIMER] %d", val);
 		QTimer::singleShot(1000, [&]() {
-			myFunction(gTmpCnt++);
+			myFunction(val);
 		});
 
 		std::weak_ptr<Private> self = q->d;
