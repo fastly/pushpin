@@ -91,7 +91,7 @@ static int gShorterTimeoutSeconds = 5;
 static int gLongerTimeoutSeconds = 60;
 static int gCacheItemMaxCount = 1000;
 
-static int gTmpCnt = 0;
+int gTmpCnt = 0;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
@@ -1060,11 +1060,11 @@ public:
 
 		// Use a lambda to capture and pass the parameter
 		int val = gTmpCnt;
-		gTmpCnt = gTmpCnt + 1;
 		log_debug("[TIMER] %d", val);
 		QTimer::singleShot(1000, [&]() {
 			myFunction(val);
 		});
+		gTmpCnt = gTmpCnt + 1;
 
 		std::weak_ptr<Private> self = q->d;
 
