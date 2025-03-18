@@ -1061,6 +1061,7 @@ public:
 
 		// Bind the function with the parameter
 		int val = gTmpCnt++;
+		log_debug("[TIMER] %d", val);
 		QTimer::singleShot(2000, [=]() {
             myFunction(val);  // Correct way to call a non-static member function
         });
