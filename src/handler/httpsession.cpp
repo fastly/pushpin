@@ -164,8 +164,8 @@ public:
 	Instruct instruct;
 	int logLevel;
 	QHash<QString, Instruct::Channel> channels;
-	Timer *timer;
-	Timer *retryTimer;
+	std::unique_ptr<Timer> timer;
+	std::unique_ptr<Timer> retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
 	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
@@ -235,11 +235,11 @@ public:
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
-		timer = new Timer;
-		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+		timer = std::make_unique<Timer>();
+		timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
-		retryTimer = new Timer;
-		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
+		retryTimer = std::make_unique<Timer>();
+		retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -263,14 +263,6 @@ public:
 	~Private()
 	{
 		cleanup();
-
-		timerConnection.disconnect();
-		timer->setParent(0);
-		DeferCall::deleteLater(timer);
-
-		retryTimerConnection.disconnect();
-		retryTimer->setParent(0);
-		DeferCall::deleteLater(retryTimer);
 	}
 
 	void start()

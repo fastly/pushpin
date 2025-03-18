@@ -43,33 +43,20 @@ WsSession::WsSession(QObject *parent) :
 	inProcessPublishQueue(false),
 	closed(false)
 {
-	expireTimer = new Timer;
+	expireTimer = std::make_unique<Timer>();
 	expireTimer->setSingleShot(true);
 	expireTimer->timeout.connect(boost::bind(&WsSession::expireTimer_timeout, this));
 
-	delayedTimer = new Timer;
+	delayedTimer = std::make_unique<Timer>();
 	delayedTimer->setSingleShot(true);
 	delayedTimer->timeout.connect(boost::bind(&WsSession::delayedTimer_timeout, this));
 
-	requestTimer = new Timer;
+	requestTimer = std::make_unique<Timer>();
 	requestTimer->setSingleShot(true);
 	requestTimer->timeout.connect(boost::bind(&WsSession::requestTimer_timeout, this));
 }
 
-WsSession::~WsSession()
-{
-	expireTimer->disconnect(this);
-	expireTimer->setParent(0);
-	DeferCall::deleteLater(expireTimer);
-
-	delayedTimer->disconnect(this);
-	delayedTimer->setParent(0);
-	DeferCall::deleteLater(delayedTimer);
-
-	requestTimer->disconnect(this);
-	requestTimer->setParent(0);
-	DeferCall::deleteLater(requestTimer);
-}
+WsSession::~WsSession() = default;
 
 void WsSession::refreshExpiration()
 {

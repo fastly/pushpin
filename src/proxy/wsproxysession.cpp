@@ -303,7 +303,7 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	Timer *keepAliveTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
@@ -335,7 +335,6 @@ public:
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
-		keepAliveTimer(0),
 		keepAliveMode(WsControl::NoKeepAlive),
 		keepAliveTimeout(0),
 		logConfig(_logConfig)
@@ -379,13 +378,7 @@ public:
 
 	void cleanupKeepAliveTimer()
 	{
-		if(keepAliveTimer)
-		{
-			keepAliveConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			DeferCall::deleteLater(keepAliveTimer);
-			keepAliveTimer = 0;
-		}
+		keepAliveTimer.reset();
 	}
 
 	void start(WebSocket *sock, const QByteArray &_publicCid, const DomainMap::Entry &entry)
@@ -1097,8 +1090,11 @@ private:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new Timer;
-				keepAliveConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+				keepAliveTimer = std::make_unique<Timer>();
+
+				// safe to not track, since timer doesn't outlive this
+				keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+
 				keepAliveTimer->setSingleShot(true);
 			}
 

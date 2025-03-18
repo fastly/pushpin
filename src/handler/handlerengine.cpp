@@ -1162,20 +1162,8 @@ class Subscription : public QObject
 
 public:
 	Subscription(const QString &channel) :
-		channel_(channel),
-		timer_(0)
+		channel_(channel)
 	{
-	}
-
-	~Subscription()
-	{
-		if(timer_)
-		{
-			timer_->stop();
-			timer_->disconnect(this);
-			timer_->setParent(0);
-			DeferCall::deleteLater(timer_);
-		}
 	}
 
 	const QString & channel() const
@@ -1185,7 +1173,7 @@ public:
 
 	void start()
 	{
-		timer_ = new Timer;
+		timer_ = std::make_unique<Timer>();
 		timer_->timeout.connect(boost::bind(&Subscription::timer_timeout, this));
 		timer_->setSingleShot(true);
 		timer_->start(SUBSCRIBED_DELAY);
@@ -1195,7 +1183,7 @@ public:
 
 private:
 	QString channel_;
-	Timer *timer_;
+	std::unique_ptr<Timer> timer_;
 
 	void timer_timeout()
 	{

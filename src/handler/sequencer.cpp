@@ -69,7 +69,7 @@ public:
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
-	Timer *expireTimer;
+	std::unique_ptr<Timer> expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
@@ -82,16 +82,12 @@ public:
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
-		expireTimer = new Timer;
+		expireTimer = std::make_unique<Timer>();
 		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
 	}
 
 	~Private()
 	{
-		expireTimer->disconnect(this);
-		expireTimer->setParent(0);
-		DeferCall::deleteLater(expireTimer);
-
 		qDeleteAll(idCacheById);
 	}
 
