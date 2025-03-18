@@ -31,6 +31,7 @@
 #include <QJsonArray>
 #include <QCryptographicHash>
 #include <QDateTime>
+#include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
