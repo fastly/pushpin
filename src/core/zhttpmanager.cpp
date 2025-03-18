@@ -1059,6 +1059,7 @@ public:
 		}
 
 		// Use a lambda to capture and pass the parameter
+		log_debug("[TIMER] %d", gTmpCnt);
 		QTimer::singleShot(1000, [&]() {
 			myFunction(gTmpCnt++);
 		});
