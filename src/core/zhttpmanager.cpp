@@ -2117,6 +2117,12 @@ public:
 						replace_id_field(out1.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
 						replace_subscription_field(out1.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
+
+						// add client to list
+						gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdStr;
+						gCacheItemMap[paramsHash].clientMap[packetId].from = p.from;
+						log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
+						gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					}
 				}
 				else
