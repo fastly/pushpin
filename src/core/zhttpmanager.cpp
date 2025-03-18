@@ -1024,7 +1024,7 @@ public:
 
 	void myFunction(int paramVal)
 	{
-		log_debug("[TIMER] %d", paramVal);
+		log_debug("_[TIMER] %d", paramVal);
 	}
 
 	void server_in_stream_readyRead(const QList<QByteArray> &msg)
