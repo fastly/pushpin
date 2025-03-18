@@ -73,7 +73,6 @@ public:
 	Connection serverValveConnection;
 
 	Private(ZrpcManager *_q) :
-		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
 		doBind(false),
@@ -251,8 +250,7 @@ public:
 	}
 };
 
-ZrpcManager::ZrpcManager(QObject *parent) :
-	QObject(parent)
+ZrpcManager::ZrpcManager()
 {
 	d = new Private(this);
 }

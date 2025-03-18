@@ -638,8 +638,7 @@ public:
 	}
 };
 
-SimpleHttpServer::SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax, QObject *parent) :
-	QObject(parent)
+SimpleHttpServer::SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax)
 {
 	d = new SimpleHttpServerPrivate(connectionsMax, headersSizeMax, bodySizeMax, this);
 }

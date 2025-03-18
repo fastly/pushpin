@@ -56,7 +56,6 @@ public:
 	DeferCall deferCall;
 
 	Private(ZrpcRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		success(false),
@@ -176,14 +175,12 @@ public:
 	}
 };
 
-ZrpcRequest::ZrpcRequest(QObject *parent) :
-	QObject(parent)
+ZrpcRequest::ZrpcRequest()
 {
 	d = new Private(this);
 }
 
-ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
-	QObject(parent)
+ZrpcRequest::ZrpcRequest(ZrpcManager *manager)
 {
 	d = new Private(this);
 	setupClient(manager);
