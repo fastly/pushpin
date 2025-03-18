@@ -87,12 +87,10 @@ static QString gResultAttrName = "result";
 
 static int gAccessTimeoutSeconds = 30;
 static int gResponseTimeoutSeconds = 30;
-static int gCacheTimeoutSeconds = 30;
+static int gCacheTimeoutSeconds = 3;
 static int gShorterTimeoutSeconds = 5;
 static int gLongerTimeoutSeconds = 60;
 static int gCacheItemMaxCount = 1000;
-
-int gTmpCnt = 0;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
@@ -102,11 +100,7 @@ struct CacheItem {
 	QString orgMsgId;
 	int msgId;
 	int newMsgId;
-	bool arNoDeleteFlag;
-	bool arShorterTimeoutFlag;
-	bool arLongerTimeoutFlag;
-	bool noRefreshFlag;
-	bool passThroughFlag;
+	char refreshFlag;
 	qint64 lastRequestTime;
 	qint64 lastRefreshTime;
 	qint64 lastAccessTime;
@@ -1023,11 +1017,6 @@ public:
 		}
 	}
 
-	void myFunction(int paramVal)
-	{
-		log_debug("_[TIMER] %d", paramVal);
-	}
-
 	void server_in_stream_readyRead(const QList<QByteArray> &msg)
 	{
 		if(msg.count() != 3)
@@ -1058,13 +1047,6 @@ public:
 			log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
 			return;
 		}
-
-		// Bind the function with the parameter
-		int val = gTmpCnt++;
-		log_debug("[TIMER] %d", val);
-		QTimer::singleShot(2000, [=]() {
-            myFunction(val);  // Correct way to call a non-static member function
-        });
 
 		std::weak_ptr<Private> self = q->d;
 
@@ -1307,9 +1289,56 @@ public:
 			currentSessionRefreshBucket = 0;
 	}
 
-	void refresh_cache()
+	void refresh_cache(int timeInterval, const QByteArray& itemId)
 	{
-		log_debug("[TIMER]");
+		log_debug("_[TIMER] %d %s", timeInterval, itemId.data());
+		if (gCacheItemMap.contains(itemId))
+		{
+			QTimer::singleShot(refreshTimeInterval * 1000, [=]() {
+				refresh_cache(refreshTimeInterval, itemId);  // Correct way to call a non-static member function
+			});
+		}
+	}
+
+	void register_cache_refresh(const QByteArray& itemId)
+	{
+		if (!gCacheItemMap.contains(itemId))
+		{
+			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.data());
+			return;
+		}
+
+		CacheItem cacheItem = gCacheItemMap[itemId];
+
+		int refreshTimeInterval = 0;
+		// if it`s websocket and cache method
+		if (cacheItem.proto == Scheme::http ||
+			(cacheItem.proto == Scheme::websocket && cacheItem.methodType == CacheMethodType::CACHE_METHOD))
+		{
+			if (cacheItem.refreshFlag == AUTO_REFRESH_NO_REFRESH)
+			{
+				refreshTimeInterval = 0;
+			}
+			else if (cacheItem.refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
+			{
+				refreshTimeInterval = gShorterTimeoutSeconds;
+			}
+			else if (cacheItem.refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
+			{
+				refreshTimeInterval = gLongerTimeoutSeconds;
+			}
+			else
+			{
+				refreshTimeInterval = gCacheTimeoutSeconds;
+			}
+		}
+
+		if (refreshTimeInterval > 0)
+		{
+			QTimer::singleShot(refreshTimeInterval * 1000, [=]() {
+				refresh_cache(refreshTimeInterval, itemId);  // Correct way to call a non-static member function
+			});
+		}		
 	}
 
 	void unregister_client(const QByteArray& clientId)
@@ -1392,6 +1421,7 @@ public:
 		struct CacheItem cacheItem;
 		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
+		cacheItem.refreshFlag = 0x00;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
@@ -1426,6 +1456,7 @@ public:
 		int cacheClientNo = get_main_cc_index();
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
+		cacheItem.refreshFlag = 0x00;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.accessCount = 2;
@@ -1925,17 +1956,8 @@ public:
 					gCacheItemMap[itemId].msgId = msgIdValue;
 					gCacheItemMap[itemId].cachedFlag = true;
 
-					// set random last refresh time
-					qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-					int nextTimeMSeconds = 0;
-					if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
-						nextTimeMSeconds = (clock() % gShorterTimeoutSeconds) * 1000;
-					else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
-						nextTimeMSeconds = (clock() % gLongerTimeoutSeconds) * 1000;
-					else
-						nextTimeMSeconds = (clock() % gCacheTimeoutSeconds) * 1000;
-					gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
-					log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
+					// register cache refresh
+					register_cache_refresh(itemId);
 
 					// send response to all clients
 					foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())

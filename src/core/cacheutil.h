@@ -33,6 +33,12 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
+#define AUTO_REFRESH_SHORTER_TIMEOUT	0x01
+#define AUTO_REFRESH_LONGER_TIMEOUT		0x02
+#define AUTO_REFRESH_NO_DELETE			0x04
+#define AUTO_REFRESH_NO_REFRESH			0x08
+#define AUTO_REFRESH_PATH_THROUGH		0x10
+
 enum Scheme {
 	none,
 	http,
