@@ -90,6 +90,8 @@ static int gShorterTimeoutSeconds = 5;
 static int gLongerTimeoutSeconds = 60;
 static int gCacheItemMaxCount = 1000;
 
+static int gTmpCnt = 0;
+
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
 
@@ -193,7 +195,6 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
 	std::unique_ptr<Timer> refreshTimer;
-	std::unique_ptr<Timer> cacheTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -206,7 +207,6 @@ public:
 	Connection serverConnection;
 	Connection serverStreamConnection;
 	Connection refreshTimerConnection;
-	Connection cacheTimerConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -217,22 +217,10 @@ public:
 	{
 		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
-
-		log_debug("[CACHE] Starting timer");
-		cacheTimer = std::make_unique<Timer>();
-		cacheTimerConnection = cacheTimer->timeout.connect(boost::bind(&Private::refresh_cache, this));
-
-		cacheTimer->start(CACHE_INTERVAL);
 	}
 
 	~Private()
 	{
-		if(cacheTimer->isActive())
-		{
-			log_debug("[CACHE] Stopping timer");
-			cacheTimer->stop();
-		}
-
 		while(!serverPendingReqs.isEmpty())
 		{
 			ZhttpRequest *req = serverPendingReqs.takeFirst();
@@ -1033,6 +1021,11 @@ public:
 		}
 	}
 
+	void myFunction(int paramVal)
+	{
+		log_debug("[TIMER] %d", paramVal);
+	}
+
 	void server_in_stream_readyRead(const QList<QByteArray> &msg)
 	{
 		if(msg.count() != 3)
@@ -1063,6 +1056,11 @@ public:
 			log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
 			return;
 		}
+
+		// Use a lambda to capture and pass the parameter
+		QTimer::singleShot(1000, [&]() {
+			myFunction(gTmpCnt++);
+		});
 
 		std::weak_ptr<Private> self = q->d;
 
@@ -2185,7 +2183,6 @@ ZhttpManager::ZhttpManager(QObject *parent) :
 	QObject(parent)
 {
 	d = std::make_shared<Private>(this);
-	log_debug("AAAAAAAAAAAAAAAAAAAAAA");
 }
 
 ZhttpManager::~ZhttpManager() = default;
