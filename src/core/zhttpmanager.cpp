@@ -1294,8 +1294,8 @@ public:
 		log_debug("_[TIMER] %d %s", timeInterval, itemId.data());
 		if (gCacheItemMap.contains(itemId))
 		{
-			QTimer::singleShot(refreshTimeInterval * 1000, [=]() {
-				refresh_cache(refreshTimeInterval, itemId);  // Correct way to call a non-static member function
+			QTimer::singleShot(timeInterval * 1000, [=]() {
+				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
 			});
 		}
 	}
@@ -1310,33 +1310,33 @@ public:
 
 		CacheItem cacheItem = gCacheItemMap[itemId];
 
-		int refreshTimeInterval = 0;
+		int timeInterval = 0;
 		// if it`s websocket and cache method
 		if (cacheItem.proto == Scheme::http ||
 			(cacheItem.proto == Scheme::websocket && cacheItem.methodType == CacheMethodType::CACHE_METHOD))
 		{
 			if (cacheItem.refreshFlag == AUTO_REFRESH_NO_REFRESH)
 			{
-				refreshTimeInterval = 0;
+				timeInterval = 0;
 			}
 			else if (cacheItem.refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
 			{
-				refreshTimeInterval = gShorterTimeoutSeconds;
+				timeInterval = gShorterTimeoutSeconds;
 			}
 			else if (cacheItem.refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
 			{
-				refreshTimeInterval = gLongerTimeoutSeconds;
+				timeInterval = gLongerTimeoutSeconds;
 			}
 			else
 			{
-				refreshTimeInterval = gCacheTimeoutSeconds;
+				timeInterval = gCacheTimeoutSeconds;
 			}
 		}
 
-		if (refreshTimeInterval > 0)
+		if (timeInterval > 0)
 		{
-			QTimer::singleShot(refreshTimeInterval * 1000, [=]() {
-				refresh_cache(refreshTimeInterval, itemId);  // Correct way to call a non-static member function
+			QTimer::singleShot(timeInterval * 1000, [=]() {
+				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
 			});
 		}		
 	}
