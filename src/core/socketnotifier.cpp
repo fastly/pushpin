@@ -58,7 +58,9 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 		if(interest & Read)
 		{
 			readInner_ = new QSocketNotifier(socket, QSocketNotifier::Read);
-			connect(readInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerReadActivated);
+			readInnerConnection_ = QObject::connect(readInner_, &QSocketNotifier::activated, [=](int socket) {
+				innerReadActivated(socket);
+			});
 
 			// start out disabled. will enable when initial readiness cleared
 			readInner_->setEnabled(false);
@@ -67,7 +69,9 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 		if(interest & Write)
 		{
 			writeInner_ = new QSocketNotifier(socket, QSocketNotifier::Write);
-			connect(writeInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerWriteActivated);
+			writeInnerConnection_ = QObject::connect(writeInner_, &QSocketNotifier::activated, [=](int socket) {
+				innerWriteActivated(socket);
+			});
 
 			// start out disabled. will enable when initial readiness cleared
 			writeInner_->setEnabled(false);
@@ -81,7 +85,7 @@ SocketNotifier::~SocketNotifier()
 	{
 		readInner_->setEnabled(false);
 
-		readInner_->disconnect(this);
+		QObject::disconnect(readInnerConnection_);
 		readInner_->setParent(0);
 		DeferCall::deleteLater(readInner_);
 	}
@@ -90,7 +94,7 @@ SocketNotifier::~SocketNotifier()
 	{
 		writeInner_->setEnabled(false);
 
-		writeInner_->disconnect(this);
+		QObject::disconnect(writeInnerConnection_);
 		writeInner_->setParent(0);
 		DeferCall::deleteLater(writeInner_);
 	}
