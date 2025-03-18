@@ -67,6 +67,8 @@
 
 #define CACHE_INTERVAL 1000
 
+#define PING_INTERVAL	20
+
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
@@ -1289,6 +1291,22 @@ public:
 			currentSessionRefreshBucket = 0;
 	}
 
+	void timer_send_ping_to_client(QByteArray clientId)
+	{
+		if (gWsClientMap.contains(clientId))
+		{
+			log_debug("_[TIMER] send ping to client %s", clientId.data());
+			send_response_to_client(
+				WebSocketSession, 
+				ZhttpResponsePacket::Ping,
+				clientId,
+				gWsClientMap[clientId].from);
+			QTimer::singleShot(PING_INTERVAL * 1000, [=]() {
+				timer_send_ping_to_client(clientId);
+			});
+		}
+	}
+
 	void refresh_cache(int timeInterval, const QByteArray& itemId)
 	{
 		log_debug("_[TIMER] %d %s", timeInterval, itemId.data());
@@ -1405,6 +1423,10 @@ public:
 		clientItem.lastResponseTime = time(NULL);
 		gWsClientMap[packetId] = clientItem;
 		log_debug("[WS] added ws client id=%s", packetId.data());
+
+		QTimer::singleShot(PING_INTERVAL * 1000, [=]() {
+			timer_send_ping_to_client(packetId);
+		});
 
 		return;
 	}
