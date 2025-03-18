@@ -117,7 +117,6 @@ public:
 	Connection refreshTimerConnection;
 
 	Private(ZhttpManager *_q) :
-		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
 		doBind(false),
@@ -968,8 +967,7 @@ public:
 	}
 };
 
-ZhttpManager::ZhttpManager(QObject *parent) :
-	QObject(parent)
+ZhttpManager::ZhttpManager()
 {
 	d = std::make_shared<Private>(this);
 }

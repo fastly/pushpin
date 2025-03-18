@@ -22,8 +22,8 @@
  */
 
 #ifndef SIMPLEHTTPSERVER_H
+#define SIMPLEHTTPSERVER_H
 
-#include <QObject>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
 #include <map>
@@ -38,10 +38,8 @@ class HttpHeaders;
 
 class SimpleHttpServerPrivate;
 
-class SimpleHttpRequest : public QObject
+class SimpleHttpRequest
 {
-	Q_OBJECT
-
 public:
 	~SimpleHttpRequest();
 
@@ -64,12 +62,10 @@ private:
 	SimpleHttpRequest(int headersSizeMax, int bodySizeMax);
 };
 
-class SimpleHttpServer : public QObject
+class SimpleHttpServer
 {
-	Q_OBJECT
-
 public:
-	SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax, QObject *parent = 0);
+	SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax);
 	~SimpleHttpServer();
 
 	bool listen(const QHostAddress &addr, int port);

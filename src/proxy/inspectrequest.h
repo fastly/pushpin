@@ -33,8 +33,6 @@ class ZrpcManager;
 
 class InspectRequest : public ZrpcRequest
 {
-	Q_OBJECT
-
 public:
 	InspectRequest(ZrpcManager *manager);
 	~InspectRequest();
