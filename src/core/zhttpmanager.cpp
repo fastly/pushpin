@@ -227,7 +227,7 @@ public:
 
 	~Private()
 	{
-		if(keepAliveTimer->isActive())
+		if(cacheTimer->isActive())
 		{
 			log_debug("[CACHE] Stopping timer");
 			cacheTimer->stop();
