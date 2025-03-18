@@ -992,7 +992,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				register_http_client(id.id);
+				register_http_client(id.id, p.from);
 			}
 
 			req = new ZhttpRequest;
@@ -1389,7 +1389,7 @@ public:
 			gHealthClientList.removeAll(clientId);
 	}
 
-	void register_http_client(QByteArray packetId)
+	void register_http_client(QByteArray packetId, QByteArray from)
 	{
 		if (gHttpClientMap.contains(packetId))
 		{
@@ -1402,6 +1402,7 @@ public:
 		clientItem.lastResponseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
+		clientItem.from = from;
 		gHttpClientMap[packetId] = clientItem;
 		log_debug("[HTTP] added http client id=%s", packetId.data());
 
