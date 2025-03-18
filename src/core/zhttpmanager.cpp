@@ -63,6 +63,8 @@
 // max length of one packet in log
 #define DEBUG_LOG_MAX_LENGTH	1024
 
+#define CACHE_INTERVAL 1000
+
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
@@ -81,10 +83,12 @@ static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
-static int gAutoRefreshShorterTimeoutSeconds = 5;
-static int gAutoRefreshLongerTimeoutSeconds = 10;
-static int gAutoRefreshCacheTimeoutSeconds = 15;
-
+static int gAccessTimeoutSeconds = 30;
+static int gResponseTimeoutSeconds = 30;
+static int gCacheTimeoutSeconds = 30;
+static int gShorterTimeoutSeconds = 5;
+static int gLongerTimeoutSeconds = 60;
+static int gCacheItemMaxCount = 1000;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
@@ -189,6 +193,7 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
 	std::unique_ptr<Timer> refreshTimer;
+	std::unique_ptr<Timer> cacheTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -201,6 +206,7 @@ public:
 	Connection serverConnection;
 	Connection serverStreamConnection;
 	Connection refreshTimerConnection;
+	Connection cacheTimerConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -211,10 +217,17 @@ public:
 	{
 		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
+
+		cacheTimer = std::make_unique<Timer>();
+		cacheTimerConnection = cacheTimer->timeout.connect(boost::bind(&Private::refresh_cache, this));
+
+		cacheTimer->start(CACHE_INTERVAL);
 	}
 
 	~Private()
 	{
+		cacheTimer->stop();
+
 		while(!serverPendingReqs.isEmpty())
 		{
 			ZhttpRequest *req = serverPendingReqs.takeFirst();
@@ -1285,6 +1298,11 @@ public:
 		++currentSessionRefreshBucket;
 		if(currentSessionRefreshBucket >= ZHTTP_REFRESH_BUCKETS)
 			currentSessionRefreshBucket = 0;
+	}
+
+	void refresh_cache()
+	{
+		log_debug("[TIMER]");
 	}
 
 	void unregister_client(const QByteArray& clientId)
