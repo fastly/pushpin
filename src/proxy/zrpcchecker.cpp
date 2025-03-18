@@ -135,7 +135,6 @@ public:
 		if(i)
 		{
 			// take over ownership
-			req->setParent(this);
 			i->owned = true;
 		}
 		else

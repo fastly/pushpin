@@ -46,7 +46,7 @@ private:
 	QStringList cids_;
 	bool ignoreErrors_;
 	ZrpcManager *proxyControlClient_;
-	ZrpcRequest *req_;
+	std::unique_ptr<ZrpcRequest> req_;
 	Connection finishedConnection_;
 
 	void refreshNextCid();

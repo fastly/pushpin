@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -37,14 +37,12 @@ class DetectRulesSet : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(stateClient);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this));
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -64,7 +62,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{
@@ -81,14 +82,12 @@ class DetectRulesGet : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	DetectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(stateClient);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this));
 
 		QVariantHash args;
 		args["domain"] = domain.toUtf8();
@@ -97,7 +96,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{
@@ -174,14 +176,12 @@ class CreateOrUpdate : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-	
 public:
 	CreateOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(stateClient);
+		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this));
 
 		QVariantHash args;
 
@@ -200,7 +200,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{
@@ -217,14 +220,12 @@ class UpdateMany : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-	
 public:
 	UpdateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(stateClient);
+		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this));
 
 		QVariantHash vsidLastIds;
 
@@ -253,7 +254,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{
@@ -270,14 +274,12 @@ class GetLastIds : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-	
 public:
 	GetLastIds(ZrpcManager *stateClient, const QString &sid, QObject *parent = 0) :
 		Deferred(parent)
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req));
+		req = std::make_unique<ZrpcRequest>(stateClient);
+		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this));
 
 		QVariantHash args;
 		args["sid"] = sid.toUtf8();
@@ -285,7 +287,10 @@ public:
 	}
 
 private:
-	void req_finished(ZrpcRequest *req)
+	std::unique_ptr<ZrpcRequest> req;
+	Connection finishedConnection;
+
+	void req_finished()
 	{
 		if(req->success())
 		{

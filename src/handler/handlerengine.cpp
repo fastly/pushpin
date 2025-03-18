@@ -116,7 +116,7 @@ class InspectWorker : public Deferred
 	Q_OBJECT
 
 public:
-	ZrpcRequest *req;
+	std::unique_ptr<ZrpcRequest> req;
 	ZrpcManager *stateClient;
 	bool shareAll;
 	HttpRequestData requestData;
@@ -134,8 +134,6 @@ public:
 		truncated(false),
 		autoShare(false)
 	{
-		req->setParent(this);
-
 		if(req->method() == "inspect")
 		{
 			QVariantHash args = req->args();
@@ -411,7 +409,7 @@ class AcceptWorker : public Deferred
 	Q_OBJECT
 
 public:
-	ZrpcRequest *req;
+	std::unique_ptr<ZrpcRequest> req;
 	ZrpcManager *stateClient;
 	CommonState *cs;
 	ZhttpManager *zhttpIn;
@@ -457,7 +455,6 @@ public:
 		responseSent(false),
 		connectionSubscriptionMax(_connectionSubscriptionMax)
 	{
-		req->setParent(this);
 	}
 
 	~AcceptWorker()
