@@ -39,7 +39,7 @@
 #define AUTO_REFRESH_NO_REFRESH			0x08
 #define AUTO_REFRESH_PATH_THROUGH		0x10
 
-#define HTTP_REFRESH_HEADER				"HTTP_REFRESH_REQUEST"
+#define HTTP_REFRESH_HEADER		"HTTP_REFRESH_REQUEST"
 
 enum Scheme {
 	none,
@@ -105,6 +105,6 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 int update_request_seq(const QByteArray &clientId);
 int update_response_seq(const QByteArray &clientId);
 
-void send_http_post_request(QString backend, QByteArray data);
+void send_http_post_request(QString backend, QByteArray data, QByteArray headerValue);
 
 #endif

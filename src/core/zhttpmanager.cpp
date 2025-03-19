@@ -996,6 +996,13 @@ public:
 				{
 					register_http_client(id.id, p.from, p.uri.toString());
 				}
+				else
+				{
+					QString headerValue = requestHeaders.get(HTTP_REFRESH_HEADER);
+					id.id = headerValue;
+					// remove HTTP_REFRESH_HEADER header
+					p.headers.removeAll(HTTP_REFRESH_HEADER);
+				}
 			}
 
 			req = new ZhttpRequest;
@@ -1321,7 +1328,7 @@ public:
 		{
 			if (gCacheItemMap[itemId].proto == Scheme::http)
 			{
-				send_http_post_request(urlPath, gCacheItemMap[itemId].requestPacket.body);
+				send_http_post_request(urlPath, gCacheItemMap[itemId].requestPacket.body, gCacheItemMap[itemId].requestPacket.ids[0].id);
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{
