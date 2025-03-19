@@ -1774,7 +1774,7 @@ public:
 				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
 				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
-				if (msgIdStr != itemId.toHex().data())
+				if (msgIdStr != itemIdStr)
 				{
 					// send response to all clients
 					QString urlPath = "";
