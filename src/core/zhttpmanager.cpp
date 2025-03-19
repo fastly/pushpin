@@ -1429,7 +1429,7 @@ public:
 		return;
 	}
 
-	void register_ws_client(QByteArray packetId, QByteArray from)
+	void register_ws_client(QByteArray packetId, QByteArray from, QString urlPath)
 	{
 		if (gWsClientMap.contains(packetId))
 		{
@@ -1443,6 +1443,7 @@ public:
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
 		clientItem.from = from;
+		clientItem.urlPath = urlPath;
 		gWsClientMap[packetId] = clientItem;
 		log_debug("[WS] added ws client id=%s", packetId.data());
 
