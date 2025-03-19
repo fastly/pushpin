@@ -1754,15 +1754,17 @@ public:
 		{
 			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
-				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) || 
+				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].newMsgId == -1) || 
 				(msgIdStr == itemId.toHex().data())))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
 				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdValue;
-				gCacheItemMap[itemId].newMsgId = msgIdValue;
-
+				if (msgIdValue != -1)
+				{
+					gCacheItemMap[itemId].msgId = msgIdValue;
+					gCacheItemMap[itemId].newMsgId = msgIdValue;
+				}
 				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
 
 				// set random last refresh time
