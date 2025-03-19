@@ -1992,10 +1992,13 @@ public:
 					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 					log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
 					gCacheItemMap[itemId].msgId = msgIdValue;
-					gCacheItemMap[itemId].cachedFlag = true;
 
-					// register cache refresh
-					register_cache_refresh(itemId);
+					if (gCacheItemMap[itemId].cachedFlag == false)
+					{
+						// register cache refresh
+						register_cache_refresh(itemId);
+					}
+					gCacheItemMap[itemId].cachedFlag = true;
 
 					// send response to all clients
 					foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())
@@ -2008,7 +2011,7 @@ public:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 
-					gCacheItemMap[itemId].clientMap.clear();
+					//gCacheItemMap[itemId].clientMap.clear();
 				
 					// make invalid
 					//config.cacheConfig.cacheMethodList.clear();
