@@ -1802,7 +1802,7 @@ public:
 				else
 				{
 					// recover original msgId
-					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].orgMsgId);
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, itemId.toHex().data(), gCacheItemMap[itemId].orgMsgId);
 				}
 
 				return 0;
