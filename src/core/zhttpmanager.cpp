@@ -1748,7 +1748,7 @@ public:
 
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
-			log_debug("[HTTP] %s, %s", qPrintable(msgIdStr), itemId.toHex().data());
+			log_debug("[HTTP] %s, %s", msgIdStr.data(), itemId.toHex().data());
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
 				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
 				(msgIdStr == itemId.toHex().data() && gCacheItemMap[itemId].cachedFlag == true)))
