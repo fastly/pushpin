@@ -1748,10 +1748,11 @@ public:
 
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
-			log_debug("[HTTP] %s, %s", msgIdStr.data(), itemId.toHex().data());
+			QString itemIdStr = "\"" + itemId.toHex().data() + "\""
+			log_debug("[HTTP] %s, %s", qPrintable(msgIdStr), qPrintable(itemIdStr));
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
 				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
-				(msgIdStr == itemId.toHex().data() && gCacheItemMap[itemId].cachedFlag == true)))
+				(msgIdStr == itemIdStr && gCacheItemMap[itemId].cachedFlag == true)))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
 				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
