@@ -998,8 +998,6 @@ public:
 				}
 				else
 				{
-					QByteArray headerValue = p.headers.get(HTTP_REFRESH_HEADER);
-					p.ids[0].id = headerValue;
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
 				}
@@ -1328,7 +1326,9 @@ public:
 		{
 			if (gCacheItemMap[itemId].proto == Scheme::http)
 			{
-				send_http_post_request(urlPath, gCacheItemMap[itemId].requestPacket.body, gCacheItemMap[itemId].requestPacket.ids[0].id);
+				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+				send_http_post_request(urlPath, reqBody, gCacheItemMap[itemId].orgMsgId);
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{

@@ -90,6 +90,7 @@ void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
 
 void replace_id_field(QByteArray &body, QString oldId, int newId);
+void replace_id_field(QByteArray &body, QString oldId, QString newId);
 void replace_id_field(QByteArray &body, int oldId, QString newId);
 void replace_result_field(QByteArray &body, QString oldResult, QString newResult);
 void replace_subscription_field(QByteArray &body, QString oldSubscription, QString newSubscription);

@@ -351,6 +351,38 @@ void replace_id_field(QByteArray &body, QString oldId, int newId)
 	}
 }
 
+void replace_id_field(QByteArray &body, QString oldId, QString newId)
+{
+	// new pattern
+	char newPattern[64];
+	qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
+
+	// find pattern
+	for (int i = 0; i < 20; i++)
+	{
+		QString iSpace = "";
+		QString jSpace = "";
+		for (int k = 0; k < i; k++)
+		{
+			iSpace += " ";
+		}
+		for (int j = 0; j < 20; j++)
+		{
+			for (int k = 0; k < j; k++)
+			{
+				jSpace += " ";
+			}
+			QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
+			int idx = body.indexOf(oldPattern);
+			if (idx >= 0)
+			{
+				body.replace(idx, oldPattern.length(), newPattern);
+				return;
+			}
+		}
+	}
+}
+
 void replace_id_field(QByteArray &body, int oldId, QString newId)
 {
 	// new pattern
