@@ -992,7 +992,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				if (!p.headers.conntains(HTTP_REFRESH_HEADER))
+				if (!p.headers.contains(HTTP_REFRESH_HEADER))
 				{
 					register_http_client(id.id, p.from, p.uri.toString());
 				}
