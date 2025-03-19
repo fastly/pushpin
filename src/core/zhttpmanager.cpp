@@ -1779,7 +1779,7 @@ public:
 						{
 							if (urlPath.isEmpty())
 								urlPath = gHttpClientMap[cliId].urlPath;
-							seqNum = packet.ids.first().seq;
+							seqNum = p.ids.first().seq;
 							// delete original item
 							gHttpClientMap.remove(cliId);
 						}
