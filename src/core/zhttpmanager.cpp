@@ -953,7 +953,7 @@ public:
 						// get resp key
 						QByteArray responseKey = calculate_response_seckey_from_init_request(p);
 						// register ws client
-						register_ws_client(id.id, p.from);
+						register_ws_client(id.id, p.from, p.uri.toString());
 						// respond with cached init packet
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
 						return;
@@ -992,7 +992,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				register_http_client(id.id, p.from);
+				register_http_client(id.id, p.from, p.uri.toString());
 			}
 
 			req = new ZhttpRequest;
@@ -1311,19 +1311,26 @@ public:
 		}
 	}
 
-	void refresh_cache(int timeInterval, const QByteArray& itemId)
+	void refresh_cache(int timeInterval, QByteArray itemId, QString urlPath)
 	{
 		log_debug("_[TIMER] cache refresh %d %s", timeInterval, itemId.toHex().data());
 		if (gCacheItemMap.contains(itemId))
 		{
-			// Send client cache request packet for auto-refresh
-			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
-			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+			if (gCacheItemMap[itemId].proto == Scheme::http)
+			{
+				send_http_post_request(urlPath, gCacheItemMap[itemId].requestPacket.body);
+			}
+			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+			{
+				// Send client cache request packet for auto-refresh
+				int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+				QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
+				gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
+				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+			}
 
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
+				refresh_cache(timeInterval, itemId, urlPath);  // Correct way to call a non-static member function
 			});
 		}
 		else
@@ -1332,7 +1339,7 @@ public:
 		}
 	}
 
-	void register_cache_refresh(const QByteArray& itemId)
+	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
 		if (!gCacheItemMap.contains(itemId))
 		{
@@ -1340,22 +1347,20 @@ public:
 			return;
 		}
 
-		CacheItem cacheItem = gCacheItemMap[itemId];
-
 		int timeInterval = 0;
 		// if it`s websocket and cache method
-		if (cacheItem.proto == Scheme::http ||
-			(cacheItem.proto == Scheme::websocket && cacheItem.methodType == CacheMethodType::CACHE_METHOD))
+		if (gCacheItemMap[itemId].proto == Scheme::http ||
+			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (cacheItem.refreshFlag == AUTO_REFRESH_NO_REFRESH)
+			if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_NO_REFRESH)
 			{
 				timeInterval = 0;
 			}
-			else if (cacheItem.refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
 			{
 				timeInterval = gShorterTimeoutSeconds;
 			}
-			else if (cacheItem.refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
 			{
 				timeInterval = gLongerTimeoutSeconds;
 			}
@@ -1368,7 +1373,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
+				refresh_cache(timeInterval, itemId, urlPath);  // Correct way to call a non-static member function
 			});
 		}		
 	}
@@ -1403,7 +1408,7 @@ public:
 			gHealthClientList.removeAll(clientId);
 	}
 
-	void register_http_client(QByteArray packetId, QByteArray from)
+	void register_http_client(QByteArray packetId, QByteArray from, QString urlPath)
 	{
 		if (gHttpClientMap.contains(packetId))
 		{
@@ -1417,6 +1422,7 @@ public:
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
 		clientItem.from = from;
+		clientItem.urlPath = urlPath;
 		gHttpClientMap[packetId] = clientItem;
 		log_debug("[HTTP] added http client id=%s", packetId.data());
 
@@ -1598,7 +1604,7 @@ public:
 		QVariantMap jsonMap;
 		if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
-			log_debug("[WS] failed to parse JSON msg");
+			log_debug("[HTTP] failed to parse JSON msg");
 			// make invalid
 			return -1;
 		}
@@ -1674,6 +1680,44 @@ public:
 		QVariantMap jsonMap;
 		QByteArray pId = p.ids[0].id;
 
+		switch (p.type)
+		{
+		case ZhttpResponsePacket::Cancel:
+		case ZhttpResponsePacket::Close:
+		case ZhttpResponsePacket::Error:
+			{
+				// set log level to debug
+				//set_debugLogLevel(true);
+
+				log_debug("[HTTP] switching client of error, condition=%s", p.condition.data());
+
+				// get error type
+				QString conditionStr = QString(p.condition);
+				if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
+					conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
+				{
+					log_debug("[HTTP] Sleeping for 10 seconds");
+					sleep(10);
+				}
+
+				// if cache client0 is ON, start cache client1
+				//switch_cacheClient(pId, false);
+			}
+			return -1;
+		case ZhttpResponsePacket::Credit:
+			log_debug("[HTTP] skipping credit response");
+			if (p.credits > 0)
+			{
+				return -1;
+			}
+			break;
+		case ZhttpResponsePacket::Ping:
+			log_debug("[HTTP] received ping response");
+			break;
+		default:
+			break;
+		}
+
 		// parse json body
 		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
@@ -1708,7 +1752,6 @@ public:
 				gCacheItemMap[itemId].msgId = msgIdValue;
 				gCacheItemMap[itemId].newMsgId = msgIdValue;
 
-				gCacheItemMap[itemId].cachedFlag = true;
 				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
 
 				// set random last refresh time
@@ -1718,12 +1761,15 @@ public:
 				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
 				// send response to all clients
+				QString urlPath = "";
 				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 				{
 					// update seq
 					int seqNum = 0;
 					if (gHttpClientMap.contains(cliId))
 					{
+						if (urlPath.isEmpty())
+							urlPath = gHttpClientMap[cliId].urlPath;
 						seqNum = gHttpClientMap[cliId].lastResponseSeq + 1;
 						// delete original item
 						gHttpClientMap.remove(cliId);
@@ -1733,6 +1779,13 @@ public:
 					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 				}
 				gCacheItemMap[itemId].clientMap.clear();
+
+				if (gCacheItemMap[itemId].cachedFlag == false && !urlPath.isEmpty())
+				{
+					// register cache refresh
+					register_cache_refresh(itemId, urlPath);
+				}
+				gCacheItemMap[itemId].cachedFlag = true;
 
 				return 0;
 			}
@@ -1745,7 +1798,7 @@ public:
 	{
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
-		QByteArray pId = response.ids[0].id;
+		QByteArray pId = p.ids[0].id;
 		switch (p.type)
 		{
 		case ZhttpResponsePacket::Cancel:
@@ -1993,16 +2046,12 @@ public:
 					log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
 					gCacheItemMap[itemId].msgId = msgIdValue;
 
-					if (gCacheItemMap[itemId].cachedFlag == false)
-					{
-						// register cache refresh
-						register_cache_refresh(itemId);
-					}
-					gCacheItemMap[itemId].cachedFlag = true;
-
 					// send response to all clients
+					QString urlPath = "";
 					foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())
 					{
+						if (urlPath.isEmpty())
+							urlPath = gWsClientMap[clientId].urlPath;
 						log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
 						QString orgMsgId = gCacheItemMap[itemId].clientMap[clientId].msgId;
 						QByteArray from = gCacheItemMap[itemId].clientMap[clientId].from;
@@ -2010,8 +2059,14 @@ public:
 						replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
-
 					gCacheItemMap[itemId].clientMap.clear();
+
+					if (gCacheItemMap[itemId].cachedFlag == false && !urlPath.isEmpty())
+					{
+						// register cache refresh
+						register_cache_refresh(itemId, urlPath);
+					}
+					gCacheItemMap[itemId].cachedFlag = true;
 				
 					// make invalid
 					//config.cacheConfig.cacheMethodList.clear();
@@ -2631,7 +2686,7 @@ void ZhttpManager::setCacheParameters(
 				ClientItem cacheClient;
 				cacheClient.initFlag = false;
 				cacheClient.processId = processId;
-				cacheClient.connectPath = gWsBackendUrlList[i];
+				cacheClient.urlPath = gWsBackendUrlList[i];
 				cacheClient.lastResponseTime = time(NULL);
 
 				gWsCacheClientList.append(cacheClient);

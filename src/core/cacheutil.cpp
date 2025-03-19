@@ -41,6 +41,10 @@
 #include <QDebug>
 #include <QCryptographicHash>
 #include <QThread>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QUrl>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -135,7 +139,7 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 	return -1;
 }
 
-pid_t create_process_for_cacheclient(QString connectPath, int _no)
+pid_t create_process_for_cacheclient(QString urlPath, int _no)
 {
 	char socketHeaderStr[64];
 	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", _no);
@@ -155,7 +159,7 @@ pid_t create_process_for_cacheclient(QString connectPath, int _no)
 		char * argv_list[] = {
 			bin, 
 			(char*)"-H", socketHeaderStr, 
-			(char*)"-c", (char*)qPrintable(connectPath), 
+			(char*)"-c", (char*)qPrintable(urlPath), 
 			NULL
 		};
 		execve(bin, argv_list, NULL);
@@ -170,6 +174,19 @@ pid_t create_process_for_cacheclient(QString connectPath, int _no)
 	log_debug("[WS] created new cache client%d parent=%d processId=%d", _no, getpid(), processId);
 
 	return processId;
+}
+
+int get_main_http_backend_index()
+{
+	for (int i=0; i<gHttpBackendUrlList.count(); i++)
+	{
+		if (i == 0)
+		{
+			// TODO
+			return i;
+		}
+	}
+	return -1;
 }
 
 int get_main_cc_index()
@@ -646,4 +663,28 @@ int update_response_seq(const QByteArray &clientId)
 	}
 	
 	return ret;
+}
+
+
+void send_http_post_request(QString backend, QByteArray data)
+{
+    // Create the QNetworkAccessManager
+    QNetworkAccessManager *manager = new QNetworkAccessManager();
+
+    // Set the target URL
+    QUrl url(backend);
+    QNetworkRequest request(url);
+
+    // Set request headers
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+	request.setRawHeader("Custom-Header", HTTP_REFRESH_HEADER);
+
+    // Send the POST request asynchronously
+    QNetworkReply *reply = manager->post(request, data);
+
+    // Ignore the response - don't connect any slots to 'reply->finished'
+    QObject::connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
+
+    // Optionally, delete manager after sending request (if you don't need it later)
+    QObject::connect(reply, &QNetworkReply::destroyed, manager, &QNetworkAccessManager::deleteLater);
 }

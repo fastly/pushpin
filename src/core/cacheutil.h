@@ -39,6 +39,8 @@
 #define AUTO_REFRESH_NO_REFRESH			0x08
 #define AUTO_REFRESH_PATH_THROUGH		0x10
 
+#define HTTP_REFRESH_HEADER				"HTTP_REFRESH_REQUEST"
+
 enum Scheme {
 	none,
 	http,
@@ -47,7 +49,7 @@ enum Scheme {
 
 // cache client params
 struct ClientItem {
-	QString connectPath;
+	QString urlPath;
 	pid_t processId;
 	bool initFlag;
 	QString resultStr;
@@ -80,7 +82,9 @@ bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
 int get_cc_index_from_clientId(QByteArray packetId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
-pid_t create_process_for_cacheclient(QString connectPath, int _no);
+pid_t create_process_for_cacheclient(QString urlPath, int _no);
+
+int get_main_http_backend_index();
 int get_main_cc_index();
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
@@ -101,5 +105,7 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 
 int update_request_seq(const QByteArray &clientId);
 int update_response_seq(const QByteArray &clientId);
+
+void send_http_post_request(QString backend, QByteArray data);
 
 #endif
