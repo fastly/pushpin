@@ -611,10 +611,6 @@ public:
 				}
 				else
 				{
-					if (gHttpClientMap.contains(packetId))
-					{
-						gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
-					}
 					int ret = process_http_response(packet);
 					if (ret == 0)
 						return;
@@ -1771,28 +1767,28 @@ public:
 				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
 				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
-				// send response to all clients
-				QString urlPath = "";
-				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
-				{
-					// update seq
-					int seqNum = 0;
-					if (gHttpClientMap.contains(cliId))
-					{
-						if (urlPath.isEmpty())
-							urlPath = gHttpClientMap[cliId].urlPath;
-						seqNum = gHttpClientMap[cliId].lastResponseSeq + 1;
-						// delete original item
-						gHttpClientMap.remove(cliId);
-					}
-
-					send_http_response_to_client(itemId, cliId, seqNum);
-					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
-				}
-				gCacheItemMap[itemId].clientMap.clear();
-
 				if (msgIdStr != itemId.toHex().data())
 				{
+					// send response to all clients
+					QString urlPath = "";
+					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+					{
+						// update seq
+						int seqNum = 0;
+						if (gHttpClientMap.contains(cliId))
+						{
+							if (urlPath.isEmpty())
+								urlPath = gHttpClientMap[cliId].urlPath;
+							seqNum = packet.ids.first().seq;
+							// delete original item
+							gHttpClientMap.remove(cliId);
+						}
+
+						send_http_response_to_client(itemId, cliId, seqNum);
+						log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
+					}
+					gCacheItemMap[itemId].clientMap.clear();
+					
 					// register cache refresh
 					register_cache_refresh(itemId, urlPath);
 				}
