@@ -685,7 +685,7 @@ int update_response_seq(const QByteArray &clientId)
 }
 
 
-void send_http_post_request(QString backend, QByteArray data, QByteArray headerValue)
+void send_http_post_request(QString backend, QByteArray data, QString headerValue)
 {
     // Create the QNetworkAccessManager
     QNetworkAccessManager *manager = new QNetworkAccessManager();
@@ -696,7 +696,7 @@ void send_http_post_request(QString backend, QByteArray data, QByteArray headerV
 
     // Set request headers
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-	request.setRawHeader(HTTP_REFRESH_HEADER, headerValue.data());
+	request.setRawHeader(HTTP_REFRESH_HEADER, headerValue);
 
     // Send the POST request asynchronously
     QNetworkReply *reply = manager->post(request, data);
