@@ -1795,6 +1795,11 @@ public:
 					// register cache refresh
 					register_cache_refresh(itemId, urlPath);
 				}
+				else
+				{
+					// recover original msgId
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].orgMsgId);
+				}
 
 				return 0;
 			}
