@@ -89,7 +89,7 @@ static QString gResultAttrName = "result";
 
 static int gAccessTimeoutSeconds = 30;
 static int gResponseTimeoutSeconds = 30;
-static int gCacheTimeoutSeconds = 3;
+static int gCacheTimeoutSeconds = 10;
 static int gShorterTimeoutSeconds = 5;
 static int gLongerTimeoutSeconds = 60;
 static int gCacheItemMaxCount = 1000;
@@ -574,7 +574,7 @@ public:
 		if (gCacheEnable == true)
 		{
 			QByteArray packetId = packet.ids.first().id;
-			int ccIndex = get_cc_index_from_packet(packetId);
+			int ccIndex = get_cc_index_from_clientId(packetId);
 			if (packet.code == 101) // ws client init response code
 			{
 				if (ccIndex >= 0)
@@ -927,7 +927,7 @@ public:
 			if (gCacheEnable == true)
 			{
 				// if requests from cache client
-				int ccIndex = get_cc_no_from_init_request(p);
+				int ccIndex = get_cc_index_from_init_request(p);
 				if (ccIndex >= 0 && ccIndex < gWsCacheClientList.count())
 				{
 					gWsCacheClientList[ccIndex].initFlag = false;
@@ -1109,7 +1109,7 @@ public:
 				}
 				else
 				{
-					int ccIndex = get_cc_index_from_packet(packetId);
+					int ccIndex = get_cc_index_from_clientId(packetId);
 					if (ccIndex >= 0)
 					{
 						p.ids[i].seq = update_request_seq(packetId);
@@ -1305,16 +1305,30 @@ public:
 				timer_send_ping_to_client(clientId);
 			});
 		}
+		else
+		{
+			log_debug("_[TIMER] exit ping for client %s", clientId.data());
+		}
 	}
 
 	void refresh_cache(int timeInterval, const QByteArray& itemId)
 	{
-		log_debug("_[TIMER] %d %s", timeInterval, itemId.data());
+		log_debug("_[TIMER] cache refresh %d %s", timeInterval, itemId.toHex().data());
 		if (gCacheItemMap.contains(itemId))
 		{
+			// Send client cache request packet for auto-refresh
+			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
+			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(p, orgMsgId, ccIndex);
+			gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
 			QTimer::singleShot(timeInterval * 1000, [=]() {
 				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
 			});
+		}
+		else
+		{
+			log_debug("_[TIMER] exit refresh %d %s", timeInterval, itemId.toHex().data());
 		}
 	}
 
@@ -2161,7 +2175,7 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int ccIndex = get_cc_index_from_packet(gCacheItemMap[paramsHash].cacheClientId);
+					int ccIndex = get_cc_index_from_clientId(gCacheItemMap[paramsHash].cacheClientId);
 					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
 						ccIndex = get_main_cc_index();

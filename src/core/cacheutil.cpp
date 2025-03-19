@@ -96,7 +96,7 @@ bool is_subscribe_method(QString methodStr)
 	return false;
 }
 
-int get_cc_index_from_packet(QByteArray packetId)
+int get_cc_index_from_clientId(QByteArray packetId)
 {
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
@@ -108,7 +108,7 @@ int get_cc_index_from_packet(QByteArray packetId)
 	return -1;
 }
 
-int get_cc_no_from_init_request(ZhttpRequestPacket &p)
+int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
@@ -617,7 +617,7 @@ int update_request_seq(const QByteArray &clientId)
 	}
 	else // cache client
 	{
-		int ccIndex = get_cc_index_from_packet(clientId);
+		int ccIndex = get_cc_index_from_clientId(clientId);
 		gWsCacheClientList[ccIndex].lastRequestSeq += 1;
 		ret = gWsCacheClientList[ccIndex].lastRequestSeq;
 	}
@@ -640,7 +640,7 @@ int update_response_seq(const QByteArray &clientId)
 	}
 	else // cache client
 	{
-		int ccIndex = get_cc_index_from_packet(clientId);
+		int ccIndex = get_cc_index_from_clientId(clientId);
 		gWsCacheClientList[ccIndex].lastResponseSeq += 1;
 		ret = gWsCacheClientList[ccIndex].lastResponseSeq;
 	}
