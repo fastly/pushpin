@@ -611,6 +611,10 @@ public:
 				}
 				else
 				{
+					if (gHttpClientMap.contains(packetId))
+					{
+						gWsCacheClientList[ccIndex].lastResponseSeq = packet.ids.first().seq;
+					}
 					int ret = process_http_response(packet);
 					if (ret == 0)
 						return;
