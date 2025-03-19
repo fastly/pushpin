@@ -999,7 +999,7 @@ public:
 				else
 				{
 					QByteArray headerValue = p.headers.get(HTTP_REFRESH_HEADER);
-					id.id = headerValue;
+					p.ids[0].id = headerValue;
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
 				}
