@@ -1801,8 +1801,9 @@ public:
 				}
 				else
 				{
+					gCacheItemMap[itemId].msgId = 0;
 					// recover original msgId
-					replace_id_field(gCacheItemMap[itemId].responsePacket.body, itemId.toHex().data(), gCacheItemMap[itemId].orgMsgId);
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, itemId.toHex().data(), gCacheItemMap[itemId].msgId);
 				}
 
 				return 0;
