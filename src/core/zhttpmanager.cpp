@@ -1320,7 +1320,7 @@ public:
 			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
 			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
 			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-			gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 			QTimer::singleShot(timeInterval * 1000, [=]() {
 				refresh_cache(timeInterval, itemId);  // Correct way to call a non-static member function
