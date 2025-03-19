@@ -1328,7 +1328,7 @@ public:
 			{
 				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
 				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-				send_http_post_request(urlPath, reqBody, gCacheItemMap[itemId].orgMsgId);
+				send_http_post_request(urlPath, reqBody, gCacheItemMap[itemId].clientId);
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{
