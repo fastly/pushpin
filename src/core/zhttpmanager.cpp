@@ -2011,7 +2011,7 @@ public:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 
-					//gCacheItemMap[itemId].clientMap.clear();
+					gCacheItemMap[itemId].clientMap.clear();
 				
 					// make invalid
 					//config.cacheConfig.cacheMethodList.clear();
