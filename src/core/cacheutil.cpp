@@ -355,7 +355,7 @@ void replace_id_field(QByteArray &body, QString oldId, QString newId)
 {
 	// new pattern
 	char newPattern[64];
-	qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
+	qsnprintf(newPattern, 64, "\"id\":\"%s\"", qPrintable(newId));
 
 	// find pattern
 	for (int i = 0; i < 20; i++)
@@ -685,7 +685,7 @@ int update_response_seq(const QByteArray &clientId)
 }
 
 
-void send_http_post_request(QString backend, QByteArray data)
+void send_http_post_request(QString backend, QByteArray data, char *headerVal)
 {
     // Create the QNetworkAccessManager
     QNetworkAccessManager *manager = new QNetworkAccessManager();
@@ -696,7 +696,7 @@ void send_http_post_request(QString backend, QByteArray data)
 
     // Set request headers
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-	request.setRawHeader(HTTP_REFRESH_HEADER, HTTP_REFRESH_HEADER);
+	request.setRawHeader(HTTP_REFRESH_HEADER, headerVal);
 
     // Send the POST request asynchronously
     QNetworkReply *reply = manager->post(request, data);
