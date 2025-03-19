@@ -1803,9 +1803,7 @@ public:
 				{
 					gCacheItemMap[itemId].msgId = 0;
 					// recover original msgId
-					log_debug("AAAAAA %s", gCacheItemMap[itemId].responsePacket.body.data());
 					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].msgId);
-					log_debug("BBBBBB %s", gCacheItemMap[itemId].responsePacket.body.data());
 				}
 
 				return 0;
