@@ -696,7 +696,7 @@ void send_http_post_request(QString backend, QByteArray data, QString headerValu
 
     // Set request headers
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-	request.setRawHeader(HTTP_REFRESH_HEADER, headerValue);
+	request.setRawHeader(HTTP_REFRESH_HEADER, HTTP_REFRESH_HEADER);
 
     // Send the POST request asynchronously
     QNetworkReply *reply = manager->post(request, data);

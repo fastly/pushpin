@@ -106,6 +106,6 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 int update_request_seq(const QByteArray &clientId);
 int update_response_seq(const QByteArray &clientId);
 
-void send_http_post_request(QString backend, QByteArray data, QString headerValue);
+void send_http_post_request(QString backend, QByteArray data);
 
 #endif
