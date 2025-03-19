@@ -613,11 +613,11 @@ public:
 				{
 					if (gHttpClientMap.contains(packetId))
 					{
-						int ret = process_http_response(packet);
-						if (ret == 0)
-							return;
 						gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
 					}
+					int ret = process_http_response(packet);
+					if (ret == 0)
+						return;
 				}
 			}
 		}
@@ -1739,21 +1739,23 @@ public:
 		}
 
 		// read msgIdStr (id)
-		int msgIdValue = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
-		if(msgIdValue < 0)
+		int msgIdValue = -1;
+		QString msgIdStr = "";
+		if (jsonMap[gMsgIdAttrName].type() == QVariant::Int) 
 		{
-			log_debug("[HTTP] invalid id in response, skipping");
-			return -1;
+			msgIdValue = jsonMap[gMsgIdAttrName].toInt();
+		} 
+		else if (jsonMap[gMsgIdAttrName].type() == QVariant::String) 
+		{
+			msgIdStr = jsonMap[gMsgIdAttrName].toString();
 		}
-
-		// result
-		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) && 
-				(msgIdValue == 0 || gCacheItemMap[itemId].newMsgId == -1))
+			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
+				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) || 
+				(msgIdStr == itemId.toHex().data())))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
 				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
