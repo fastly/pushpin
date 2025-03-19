@@ -613,7 +613,7 @@ public:
 				{
 					if (gHttpClientMap.contains(packetId))
 					{
-						gWsCacheClientList[ccIndex].lastResponseSeq = packet.ids.first().seq;
+						gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
 					}
 					int ret = process_http_response(packet);
 					if (ret == 0)
