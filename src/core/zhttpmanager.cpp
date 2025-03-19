@@ -998,7 +998,7 @@ public:
 				}
 				else
 				{
-					QString headerValue = requestHeaders.get(HTTP_REFRESH_HEADER);
+					QByteArray headerValue = p.headers.get(HTTP_REFRESH_HEADER);
 					id.id = headerValue;
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
