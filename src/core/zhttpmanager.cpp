@@ -109,7 +109,6 @@ struct CacheItem {
 	int accessCount;
 	bool cachedFlag;
 	Scheme proto;
-	QByteArray pId;
 	int retryCount;
 	int httpBackendNo;
 	QByteArray cacheClientId;
@@ -1328,7 +1327,7 @@ public:
 			{
 				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
 				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-				send_http_post_request(urlPath, reqBody, gCacheItemMap[itemId].clientId);
+				send_http_post_request(urlPath, reqBody, itemId.toHex().data());
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{
@@ -1486,7 +1485,6 @@ public:
 		// save the request packet with new id
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
-		cacheItem.pId = clientPacket.ids[0].id;
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::http;
@@ -1689,7 +1687,7 @@ public:
 	{
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
-		QByteArray pId = p.ids[0].id;
+		QByteArray packetId = p.ids[0].id;
 
 		switch (p.type)
 		{
@@ -1712,7 +1710,7 @@ public:
 				}
 
 				// if cache client0 is ON, start cache client1
-				//switch_cacheClient(pId, false);
+				//switch_cacheClient(packetId, false);
 			}
 			return -1;
 		case ZhttpResponsePacket::Credit:
@@ -1754,7 +1752,7 @@ public:
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
+			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) && 
 				(msgIdValue == 0 || gCacheItemMap[itemId].newMsgId == -1))
 			{
 				gCacheItemMap[itemId].responsePacket = p;
@@ -1809,7 +1807,7 @@ public:
 	{
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
-		QByteArray pId = p.ids[0].id;
+		QByteArray packetId = p.ids[0].id;
 		switch (p.type)
 		{
 		case ZhttpResponsePacket::Cancel:
@@ -1831,7 +1829,7 @@ public:
 				}
 
 				// if cache client0 is ON, start cache client1
-				//switch_cacheClient(pId, false);
+				//switch_cacheClient(packetId, false);
 			}
 			return -1;
 		case ZhttpResponsePacket::Credit:
@@ -1856,7 +1854,7 @@ public:
 			gWsCacheClientList[cacheClientNumber].lastResponseSeq = p.ids[0].seq;
 			gWsCacheClientList[cacheClientNumber].lastResponseTime = time(NULL);
 
-			//tryRespondEtc(WebSocketSession, pId, p);
+			//tryRespondEtc(WebSocketSession, packetId, p);
 			return -1;
 		}
 
@@ -2046,7 +2044,7 @@ public:
 		{
 			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
 				(gCacheItemMap[itemId].newMsgId == msgIdValue) &&
-				(gCacheItemMap[itemId].cacheClientId == pId))
+				(gCacheItemMap[itemId].cacheClientId == packetId))
 			{
 				if (gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD)
 				{
