@@ -176,19 +176,6 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	return processId;
 }
 
-int get_main_http_backend_index()
-{
-	for (int i=0; i<gHttpBackendUrlList.count(); i++)
-	{
-		if (i == 0)
-		{
-			// TODO
-			return i;
-		}
-	}
-	return -1;
-}
-
 int get_main_cc_index()
 {
 	for (int i=0; i<gWsCacheClientList.count(); i++)

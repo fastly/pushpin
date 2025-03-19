@@ -84,7 +84,6 @@ int get_cc_index_from_clientId(QByteArray packetId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString urlPath, int _no);
 
-int get_main_http_backend_index();
 int get_main_cc_index();
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
