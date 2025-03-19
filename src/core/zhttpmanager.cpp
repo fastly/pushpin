@@ -1319,7 +1319,7 @@ public:
 			// Send client cache request packet for auto-refresh
 			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
 			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(p, orgMsgId, ccIndex);
+			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
 			gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 			QTimer::singleShot(timeInterval * 1000, [=]() {
