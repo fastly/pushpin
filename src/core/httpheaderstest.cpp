@@ -81,13 +81,9 @@ static void parseParameters()
 	TEST_ASSERT_EQ(params[0][1].second, QByteArray("gala"));
 }
 
-extern "C" {
-
-int httpheaders_test(ffi::TestException *out_ex)
+extern "C" int httpheaders_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(parseParameters());
 
 	return 0;
-}
-
 }

@@ -45,7 +45,7 @@ public:
     }
 };
 
-void test_assert(bool cond, const char *condStr, const char *file, int line)
+inline void test_assert(bool cond, const char *condStr, const char *file, int line)
 {
     if(!cond)
         throw TestException(file, line, std::string("assertion failed: ") + condStr);
@@ -53,7 +53,7 @@ void test_assert(bool cond, const char *condStr, const char *file, int line)
 
 // uses QtTest to stringify values
 template <typename T1, typename T2>
-void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line)
+inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line)
 {
     if(!(left == right))
         throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + QTest::toString(left) + "\n right: " + QTest::toString(right));
