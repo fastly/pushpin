@@ -94,6 +94,8 @@ static int gShorterTimeoutSeconds = 5;
 static int gLongerTimeoutSeconds = 60;
 static int gCacheItemMaxCount = 1000;
 
+QFuture<void> gCacheThread;
+
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
 
@@ -572,6 +574,8 @@ public:
 		// cache process
 		if (gCacheEnable == true)
 		{
+			pause_cache_thread();
+
 			QByteArray packetId = packet.ids.first().id;
 			int ccIndex = get_cc_index_from_clientId(packetId);
 			if (packet.code == 101) // ws client init response code
@@ -620,6 +624,8 @@ public:
 						return;
 				}
 			}
+
+			resume_cache_thread();
 		}
 
 		server_out_sock->write(QList<QByteArray>() << buf);
@@ -925,6 +931,8 @@ public:
 
 			if (gCacheEnable == true)
 			{
+				pause_cache_thread();
+
 				// if requests from cache client
 				int ccIndex = get_cc_index_from_init_request(p);
 				if (ccIndex >= 0 && ccIndex < gWsCacheClientList.count())
@@ -958,6 +966,8 @@ public:
 						return;
 					}
 				}
+
+				resume_cache_thread();
 			}
 
 			sock = new ZWebSocket;
@@ -991,6 +1001,8 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
+				pause_cache_thread();
+
 				if (!p.headers.contains(HTTP_REFRESH_HEADER))
 				{
 					register_http_client(id.id, p.from, p.uri.toString());
@@ -1000,6 +1012,8 @@ public:
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
 				}
+
+				resume_cache_thread();
 			}
 
 			req = new ZhttpRequest;
@@ -1066,6 +1080,8 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
+				pause_cache_thread();
+
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
@@ -1127,6 +1143,8 @@ public:
 						log_debug("[WS] received request from unknown client=%s", packetId.data());
 					}
 				}
+
+				resume_cache_thread();
 			}
 
 			// is this for a websocket?
@@ -2714,6 +2732,8 @@ void ZhttpManager::setCacheParameters(
 				gWsCacheClientList.append(cacheClient);
 			}
 		}
+
+		gCacheThread = QtConcurrent::run(cache_thread);
 	}
 }
 

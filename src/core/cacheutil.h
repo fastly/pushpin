@@ -78,6 +78,10 @@ enum CacheMethodType {
 	SUBSCRIBE_METHOD
 };
 
+void pause_cache_thread();
+void resume_cache_thread();
+void cache_thread();
+
 bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
 int get_cc_index_from_clientId(QByteArray packetId);

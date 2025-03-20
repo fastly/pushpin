@@ -70,6 +70,59 @@ extern QList<QByteArray> gHealthClientList;
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cache Thread
+int gMainThreadRunning = 0;
+bool gCacheThreadRunning = false;
+
+void pause_cache_thread()
+{
+	if (gMainThreadRunning)
+	{
+		gMainThreadRunning++;
+		return;
+	}
+	
+	while (gCacheThreadRunning)
+	{
+		QThread::usleep(1);
+	}
+	
+	gMainThreadRunning++;
+}
+
+void resume_cache_thread()
+{
+	if (!gMainThreadRunning)
+	{
+		return;
+	}
+	
+	gMainThreadRunning--;
+}
+
+void cache_thread()
+{
+	gCacheThreadRunningFlag = true;
+	while (gCacheThreadRunningFlag)
+	{
+		while (gMainThreadRunning)
+		{
+			gCacheThreadRunning = false;
+			QThread::usleep(1);
+		}
+		gCacheThreadRunning = true;
+
+		log_debug("Running Cache Thread");
+
+		gCacheThreadRunning = false;
+
+		QThread::msleep(10);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Utils
 bool is_cache_method(QString methodStr)
 {
 	if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
