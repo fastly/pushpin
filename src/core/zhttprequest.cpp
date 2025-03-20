@@ -38,10 +38,8 @@
 #define KEEPALIVE_INTERVAL 45000
 #define REQ_BUF_MAX 1000000
 
-class ZhttpRequest::Private : public QObject
+class ZhttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -1450,5 +1448,3 @@ void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePack
 
 	d->handle(id, seq, packet);
 }
-
-#include "zhttprequest.moc"

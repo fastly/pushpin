@@ -54,10 +54,8 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
-class ZhttpManager::Private : public QObject
+class ZhttpManager::Private
 {
-	Q_OBJECT
-
 public:
 	enum SessionType
 	{
@@ -1253,5 +1251,3 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 
 	return total;
 }
-
-#include "zhttpmanager.moc"
