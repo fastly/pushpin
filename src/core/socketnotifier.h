@@ -22,10 +22,8 @@
 
 class EventLoop;
 
-class SocketNotifier : public QObject
+class SocketNotifier
 {
-	Q_OBJECT
-
 public:
 	enum Interest
 	{
@@ -54,10 +52,6 @@ public:
 
 	boost::signals2::signal<void(int, uint8_t)> activated;
 
-private slots:
-	void innerReadActivated(int socket);
-	void innerWriteActivated(int socket);
-
 private:
 	int socket_;
 	uint8_t interest_;
@@ -65,10 +59,14 @@ private:
 	bool writeEnabled_;
 	QSocketNotifier *readInner_;
 	QSocketNotifier *writeInner_;
+	QMetaObject::Connection readInnerConnection_;
+	QMetaObject::Connection writeInnerConnection_;
 	uint8_t readiness_;
 	EventLoop *loop_;
 	int regId_;
 
+	void innerReadActivated(int socket);
+	void innerWriteActivated(int socket);
 	void apply(uint8_t readiness);
 	static void cb_fd_activated(void *ctx, uint8_t readiness);
 	void fd_activated(uint8_t readiness);

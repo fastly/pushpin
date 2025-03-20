@@ -48,37 +48,37 @@ static qint64 ticksToDuration(qint64 ticks)
 	return ticks * TICK_DURATION_MS;
 }
 
-class TimerManager : public QObject
+class TimerManager
 {
-	Q_OBJECT
-
 public:
-	TimerManager(int capacity, QObject *parent = 0);
+	TimerManager(int capacity);
 
 	int add(int msec, Timer *r);
 	void remove(int key);
-
-private slots:
-	void t_timeout();
 
 private:
 	TimerWheel wheel_;
 	qint64 startTime_;
 	quint64 currentTicks_;
-	QTimer *t_;
+	std::unique_ptr<QTimer> t_;
 
+	void t_timeout();
 	void updateTimeout(qint64 currentTime);
 };
 
-TimerManager::TimerManager(int capacity, QObject *parent) :
-	QObject(parent),
+TimerManager::TimerManager(int capacity) :
 	wheel_(TimerWheel(capacity))
 {
 	startTime_ = QDateTime::currentMSecsSinceEpoch();
 	currentTicks_ = 0;
 
-	t_ = new QTimer(this);
-	connect(t_, &QTimer::timeout, this, &TimerManager::t_timeout);
+	t_ = std::make_unique<QTimer>();
+
+	// safe to not track, since t_ can't outlive this
+	QObject::connect(t_.get(), &QTimer::timeout, [=] {
+		t_timeout();
+	});
+
 	t_->setSingleShot(true);
 }
 
@@ -296,5 +296,3 @@ void Timer::deinit()
 	delete g_manager;
 	g_manager = 0;
 }
-
-#include "timer.moc"
