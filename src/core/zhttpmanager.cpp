@@ -1339,7 +1339,7 @@ public:
 			}
 
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId, urlPath);  // Correct way to call a non-static member function
+				refresh_cache(timeInterval, itemId, urlPath);
 			});
 		}
 		else

@@ -685,25 +685,33 @@ int update_response_seq(const QByteArray &clientId)
 }
 
 
-void send_http_post_request(QString backend, QByteArray data, char *headerVal)
+void send_http_post_request(QString backend, QByteArray postData, char *headerVal)
 {
-    // Create the QNetworkAccessManager
-    QNetworkAccessManager *manager = new QNetworkAccessManager();
+	// Create the QNetworkAccessManager
+	QNetworkAccessManager *manager = new QNetworkAccessManager();
 
-    // Set the target URL
-    QUrl url(backend);
-    QNetworkRequest request(url);
+	// Set the target URL
+	QUrl url(backend);
+	QNetworkRequest request(url);
 
-    // Set request headers
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+	// Set request headers
+	request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 	request.setRawHeader(HTTP_REFRESH_HEADER, headerVal);
 
-    // Send the POST request asynchronously
-    QNetworkReply *reply = manager->post(request, data);
+	// Send the POST request asynchronously
+	QNetworkReply *reply = manager->post(request, postData);
+	/*
+	// Ignore the response - don't connect any slots to 'reply->finished'
+	QObject::connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
 
-    // Ignore the response - don't connect any slots to 'reply->finished'
-    QObject::connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
+	// Optionally, delete manager after sending request (if you don't need it later)
+	QObject::connect(reply, &QNetworkReply::destroyed, manager, &QNetworkAccessManager::deleteLater);
+	*/
+	// Disconnect immediately without waiting for a reply
+	QObject::connect(reply, &QNetworkReply::finished, [reply]() {
+		reply->deleteLater();  // Clean up reply object
+	});
 
-    // Optionally, delete manager after sending request (if you don't need it later)
-    QObject::connect(reply, &QNetworkReply::destroyed, manager, &QNetworkAccessManager::deleteLater);
+	// Optionally, delete manager after request is sent
+	QObject::connect(reply, &QNetworkReply::finished, manager, &QNetworkAccessManager::deleteLater);
 }
