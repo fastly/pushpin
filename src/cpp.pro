@@ -3,6 +3,7 @@ CONFIG -= app_bundle
 CONFIG += staticlib c++17
 QT -= gui
 QT += network
+QT += concurrent
 TARGET = pushpin-cpp
 
 cpp_build_dir = $$OUT_PWD
