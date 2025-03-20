@@ -39,6 +39,8 @@
 #include "engine.h"
 #include "config.h"
 
+extern bool gCacheThreadAllowFlag;
+
 using Connection = boost::signals2::scoped_connection;
 
 static void trimlist(QStringList *list)
@@ -769,6 +771,8 @@ private slots:
 			delete t;
 
 		threads.clear();
+
+		gCacheThreadAllowFlag = false;
 
 		log_debug("stopped");
 		q->quit(0);

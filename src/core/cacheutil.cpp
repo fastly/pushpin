@@ -72,7 +72,7 @@ extern QList<QByteArray> gHealthClientList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Thread
-static bool gCacheThreadAllowFlag = true;
+bool gCacheThreadAllowFlag = true;
 static int gMainThreadRunning = 0;
 static bool gCacheThreadRunning = false;
 
@@ -118,7 +118,7 @@ void cache_thread()
 
 		gCacheThreadRunning = false;
 
-		QThread::msleep(10);
+		QThread::msleep(100);
 	}
 }
 
