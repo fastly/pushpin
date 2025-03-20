@@ -20,7 +20,6 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
 #include "test.h"
 #include "timer.h"
 #include "defercall.h"
@@ -66,9 +65,7 @@ static void deferCall()
 
 static void deferCallQt()
 {
-	int argc = 1;
-	char *argv[] = { "zeroTimeoutQt" };
-	QCoreApplication qapp(argc, argv);
+	TestQCoreApplication qapp;
 	Timer::init(1);
 
 	auto [pendingCount, count] = runDeferCall([&] {

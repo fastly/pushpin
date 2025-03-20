@@ -20,7 +20,6 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
 #include <QHostAddress>
 #include "test.h"
 #include "timer.h"
@@ -277,9 +276,7 @@ static void accept()
 
 static void acceptQt()
 {
-	int argc = 1;
-	char *argv[] = { "zeroTimeoutQt" };
-	QCoreApplication qapp(argc, argv);
+	TestQCoreApplication qapp;
 	Timer::init(100);
 
 	runAccept([] { QTest::qWait(10); });
@@ -302,9 +299,7 @@ static void io()
 
 static void ioQt()
 {
-	int argc = 1;
-	char *argv[] = { "zeroTimeoutQt" };
-	QCoreApplication qapp(argc, argv);
+	TestQCoreApplication qapp;
 	Timer::init(100);
 
 	runIo([] { QTest::qWait(10); });

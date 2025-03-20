@@ -20,7 +20,6 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
 #include "test.h"
 #include "timer.h"
 #include "eventloop.h"
@@ -65,9 +64,7 @@ static void zeroTimeout()
 
 static void zeroTimeoutQt()
 {
-	int argc = 1;
-	char *argv[] = { "zeroTimeoutQt" };
-	QCoreApplication qapp(argc, argv);
+	TestQCoreApplication qapp;
 	Timer::init(1);
 
 	int count = runZeroTimeout([] {

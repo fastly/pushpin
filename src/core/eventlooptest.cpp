@@ -21,7 +21,6 @@
 */
 
 #include <unistd.h>
-#include <QCoreApplication>
 #include <boost/signals2.hpp>
 #include "test.h"
 #include "defercall.h"

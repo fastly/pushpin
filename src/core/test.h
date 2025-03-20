@@ -19,6 +19,7 @@
  *
  */
 
+#include "string.h"
 #include <QtTest/QtTest>
 #include "rust/bindings.h"
 
@@ -73,5 +74,27 @@ do {\
 
 // for running a test and catching an exception if any. expects local variable ffi::TestException* out_ex to exist
 #define TEST_CATCH(statement) try { statement; } catch(const TestException &ex) { ex.toFfi(out_ex); return 1; }
+
+class TestQCoreApplication
+{
+public:
+    TestQCoreApplication()
+    {
+        argc_ = 1;
+        argv_[0] = strdup("qt-test");
+        qapp_ = new QCoreApplication(argc_, argv_);
+    }
+
+    ~TestQCoreApplication()
+    {
+        delete qapp_;
+        free(argv_[0]);
+    }
+
+private:
+    int argc_;
+    char *argv_[1];
+    QCoreApplication *qapp_;
+};
 
 #endif
