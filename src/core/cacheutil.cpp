@@ -40,7 +40,6 @@
 #include <QString>
 #include <QDebug>
 #include <QCryptographicHash>
-#include <QtConcurrent>
 #include <QThread>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
