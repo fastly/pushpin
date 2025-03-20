@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2013-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QtTest/QtTest>
+#include "test.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qtcompat.h"
@@ -81,114 +81,102 @@ static const char *test_rsa_public_key_pem =
 	"FwIDAQAB\n"
 	"-----END PUBLIC KEY-----\n";
 
-class JwtTest : public QObject
+static void validToken()
 {
-	Q_OBJECT
-
-private slots:
-	void validToken()
-	{
-		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
-		QVERIFY(typeId(vclaim) == QMetaType::QVariantMap);
-		QVariantMap claim = vclaim.toMap();
-		QVERIFY(claim.value("foo") == "bar");
-	}
-
-	void validTokenBinaryKey()
-	{
-		QByteArray key;
-		key += 0x01;
-		key += 0x61;
-		key += 0x80;
-		key += 0xfe;
-		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
-		QVERIFY(typeId(vclaim) == QMetaType::QVariantMap);
-		QVariantMap claim = vclaim.toMap();
-		QVERIFY(claim.value("foo") == "bar");
-	}
-
-	void invalidKey()
-	{
-		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("wrong"));
-		QVERIFY(vclaim.isNull());
-	}
-
-	void es256EncodeDecode()
-	{
-		Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_ec_private_key_pem));
-		QVERIFY(!privateKey.isNull());
-		QCOMPARE(privateKey.type(), Jwt::KeyType::Ec);
-
-		Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_ec_public_key_pem));
-		QVERIFY(!publicKey.isNull());
-		QCOMPARE(publicKey.type(), Jwt::KeyType::Ec);
-
-		QVariantMap claim;
-		claim["iss"] = "nobody";
-
-		QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
-		QVERIFY(!claimJson.isNull());
-
-		QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
-		QVERIFY(!token.isNull());
-
-		QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
-		QVERIFY(!resultJson.isNull());
-
-		QJsonParseError error;
-		QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
-		QVERIFY(error.error == QJsonParseError::NoError);
-		QVERIFY(doc.isObject());
-
-		QVariantMap result = doc.object().toVariantMap();
-		QCOMPARE(result["iss"], "nobody");
-	}
-
-	void rs256EncodeDecode()
-	{
-		Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_rsa_private_key_pem));
-		QVERIFY(!privateKey.isNull());
-		QCOMPARE(privateKey.type(), Jwt::KeyType::Rsa);
-
-		Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_rsa_public_key_pem));
-		QVERIFY(!publicKey.isNull());
-		QCOMPARE(publicKey.type(), Jwt::KeyType::Rsa);
-
-		QVariantMap claim;
-		claim["iss"] = "nobody";
-
-		QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
-		QVERIFY(!claimJson.isNull());
-
-		QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson, privateKey);
-		QVERIFY(!token.isNull());
-
-		QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);
-		QVERIFY(!resultJson.isNull());
-
-		QJsonParseError error;
-		QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
-		QVERIFY(error.error == QJsonParseError::NoError);
-		QVERIFY(doc.isObject());
-
-		QVariantMap result = doc.object().toVariantMap();
-		QCOMPARE(result["iss"], "nobody");
-	}
-};
-
-namespace {
-namespace Main {
-QTEST_MAIN(JwtTest)
-}
+	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
+	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
+	QVariantMap claim = vclaim.toMap();
+	TEST_ASSERT(claim.value("foo") == "bar");
 }
 
-extern "C" {
-
-int jwt_test(int argc, char **argv)
+static void validTokenBinaryKey()
 {
-	return Main::main(argc, argv);
+	QByteArray key;
+	key += 0x01;
+	key += 0x61;
+	key += 0x80;
+	key += 0xfe;
+	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
+	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
+	QVariantMap claim = vclaim.toMap();
+	TEST_ASSERT(claim.value("foo") == "bar");
 }
 
+static void invalidKey()
+{
+	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("wrong"));
+	TEST_ASSERT(vclaim.isNull());
 }
 
-#include "jwttest.moc"
+static void es256EncodeDecode()
+{
+	Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_ec_private_key_pem));
+	TEST_ASSERT(!privateKey.isNull());
+	TEST_ASSERT_EQ(privateKey.type(), Jwt::KeyType::Ec);
+
+	Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_ec_public_key_pem));
+	TEST_ASSERT(!publicKey.isNull());
+	TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Ec);
+
+	QVariantMap claim;
+	claim["iss"] = "nobody";
+
+	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
+	TEST_ASSERT(!claimJson.isNull());
+
+	QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
+	TEST_ASSERT(!token.isNull());
+
+	QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
+	TEST_ASSERT(!resultJson.isNull());
+
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
+	TEST_ASSERT(error.error == QJsonParseError::NoError);
+	TEST_ASSERT(doc.isObject());
+
+	QVariantMap result = doc.object().toVariantMap();
+	TEST_ASSERT_EQ(result["iss"], "nobody");
+}
+
+static void rs256EncodeDecode()
+{
+	Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_rsa_private_key_pem));
+	TEST_ASSERT(!privateKey.isNull());
+	TEST_ASSERT_EQ(privateKey.type(), Jwt::KeyType::Rsa);
+
+	Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_rsa_public_key_pem));
+	TEST_ASSERT(!publicKey.isNull());
+	TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Rsa);
+
+	QVariantMap claim;
+	claim["iss"] = "nobody";
+
+	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
+	TEST_ASSERT(!claimJson.isNull());
+
+	QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson, privateKey);
+	TEST_ASSERT(!token.isNull());
+
+	QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);
+	TEST_ASSERT(!resultJson.isNull());
+
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
+	TEST_ASSERT(error.error == QJsonParseError::NoError);
+	TEST_ASSERT(doc.isObject());
+
+	QVariantMap result = doc.object().toVariantMap();
+	TEST_ASSERT_EQ(result["iss"], "nobody");
+}
+
+extern "C" int jwt_test(ffi::TestException *out_ex)
+{
+	TEST_CATCH(validToken());
+	TEST_CATCH(validTokenBinaryKey());
+	TEST_CATCH(invalidKey());
+	TEST_CATCH(es256EncodeDecode());
+	TEST_CATCH(rs256EncodeDecode());
+
+	return 0;
+}

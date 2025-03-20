@@ -112,9 +112,9 @@ mod tests {
         unsafe { ffi::httpheaders_test(ex) == 0 }
     }
 
-    fn jwt_test(args: &[&OsStr]) -> u8 {
+    fn jwt_test(ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::jwt_test, args) as u8 }
+        unsafe { ffi::jwt_test(ex) == 0 }
     }
 
     fn timer_test(args: &[&OsStr]) -> u8 {
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn jwt() {
-        assert!(qtest::run(jwt_test));
+        qtest::run_no_main(jwt_test);
     }
 
     #[test]
