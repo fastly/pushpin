@@ -33,6 +33,8 @@
 #include <QDateTime>
 #include <QTimer>
 #include <functional>
+#include <QtConcurrent>
+#include <QThread>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"

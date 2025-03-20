@@ -40,6 +40,7 @@
 #include <QString>
 #include <QDebug>
 #include <QCryptographicHash>
+#include <QtConcurrent>
 #include <QThread>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -72,8 +73,9 @@ extern QList<QByteArray> gHealthClientList;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Thread
-int gMainThreadRunning = 0;
-bool gCacheThreadRunning = false;
+static bool gCacheThreadAllowFlag = true;
+static int gMainThreadRunning = 0;
+static bool gCacheThreadRunning = false;
 
 void pause_cache_thread()
 {
@@ -103,8 +105,8 @@ void resume_cache_thread()
 
 void cache_thread()
 {
-	gCacheThreadRunningFlag = true;
-	while (gCacheThreadRunningFlag)
+	gCacheThreadAllowFlag = true;
+	while (gCacheThreadAllowFlag)
 	{
 		while (gMainThreadRunning)
 		{
