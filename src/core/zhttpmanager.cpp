@@ -33,6 +33,8 @@
 #include <QDateTime>
 #include <QTimer>
 #include <functional>
+#include <QMutex>
+#include <QThread>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -68,6 +70,9 @@
 #define CACHE_INTERVAL 1000
 
 #define PING_INTERVAL	20
+
+// Global mutex to protect the variable
+QMutex mutex;
 
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
@@ -572,6 +577,8 @@ public:
 		// cache process
 		if (gCacheEnable == true)
 		{
+			QMutexLocker locker(&mutex);
+
 			QByteArray packetId = packet.ids.first().id;
 			int ccIndex = get_cc_index_from_clientId(packetId);
 			if (packet.code == 101) // ws client init response code
@@ -925,6 +932,8 @@ public:
 
 			if (gCacheEnable == true)
 			{
+				QMutexLocker locker(&mutex);
+
 				// if requests from cache client
 				int ccIndex = get_cc_index_from_init_request(p);
 				if (ccIndex >= 0 && ccIndex < gWsCacheClientList.count())
@@ -991,6 +1000,8 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
+				QMutexLocker locker(&mutex);
+
 				if (!p.headers.contains(HTTP_REFRESH_HEADER))
 				{
 					register_http_client(id.id, p.from, p.uri.toString());
@@ -1066,6 +1077,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
+				QMutexLocker locker(&mutex);
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
@@ -1797,7 +1809,8 @@ public:
 					gCacheItemMap[itemId].clientMap.clear();
 					
 					// register cache refresh
-					register_cache_refresh(itemId, urlPath);
+					if (!urlPath.isEmpty())
+						register_cache_refresh(itemId, urlPath);
 				}
 				else
 				{
