@@ -613,7 +613,10 @@ public:
 
 					int ret = process_ws_cacheclient_response(packet, ccIndex);
 					if (ret == 0)
+					{
+						resume_cache_thread();
 						return;
+					}
 				}
 				else
 				{
@@ -623,7 +626,10 @@ public:
 					}
 					int ret = process_http_response(packet);
 					if (ret == 0)
+					{
+						resume_cache_thread();
 						return;
+					}
 				}
 			}
 
@@ -955,6 +961,7 @@ public:
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
 							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Cancel, id.id, p.from);
+						resume_cache_thread();
 						return;
 					}
 					else
@@ -965,6 +972,7 @@ public:
 						register_ws_client(id.id, p.from, p.uri.toString());
 						// respond with cached init packet
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
+						resume_cache_thread();
 						return;
 					}
 				}
@@ -1089,7 +1097,10 @@ public:
 				{
 					int ret = process_http_request(packetId, p);
 					if (ret == 0)
+					{
+						resume_cache_thread();
 						continue;
+					}
 				}
 				else if (gWsClientMap.contains(packetId))
 				{
@@ -1105,28 +1116,37 @@ public:
 					case ZhttpRequestPacket::Cancel:
 						unregister_client(packetId);
 						//send_wsCloseResponse(packetId);
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::Close:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Close, packetId, p.from);
 						unregister_client(packetId);
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::KeepAlive:
 						log_debug("[WS] received KeepAlive, ignoring");
 						//send_pingResponse(packetId);
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::Pong:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, 0);
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::Ping:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Pong, packetId, p.from);
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::Credit:
+						resume_cache_thread();
 						continue;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 						if (process_ws_stream_request(packetId, p) < 0)
+						{
+							resume_cache_thread();
 							continue;
+						}
 						break;
 					default:
 						break;
