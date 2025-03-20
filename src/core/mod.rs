@@ -33,6 +33,7 @@ pub mod reactor;
 pub mod select;
 pub mod shuffle;
 pub mod task;
+pub mod test;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
@@ -102,12 +103,13 @@ pub fn ensure_example_config(dest: &Path) {
 mod tests {
     use super::*;
     use crate::core::call_c_main;
+    use crate::core::test::TestException;
     use crate::ffi;
     use std::ffi::OsStr;
 
-    fn httpheaders_test(args: &[&OsStr]) -> u8 {
+    fn httpheaders_test(ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::httpheaders_test, args) as u8 }
+        unsafe { ffi::httpheaders_test(ex) == 0 }
     }
 
     fn jwt_test(args: &[&OsStr]) -> u8 {
@@ -142,7 +144,7 @@ mod tests {
 
     #[test]
     fn httpheaders() {
-        assert!(qtest::run(httpheaders_test));
+        qtest::run_no_main(httpheaders_test);
     }
 
     #[test]

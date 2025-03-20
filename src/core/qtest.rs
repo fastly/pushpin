@@ -14,15 +14,26 @@
  * limitations under the License.
  */
 
+use crate::core::test::TestException;
 use crate::core::test_dir;
 use std::env;
 use std::ffi::{CString, OsStr, OsString};
-use std::fs::File;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
+
+fn get_root_dir() -> &'static Path {
+    static ROOT_DIR: OnceLock<PathBuf> = OnceLock::new();
+    const VAR: &'static str = "CARGO_MANIFEST_DIR";
+
+    ROOT_DIR.get_or_init(|| {
+        fs::canonicalize(env::var(VAR).expect(&format!("{} should be set", VAR)))
+            .expect(&format!("{} should canonicalize", VAR))
+    })
+}
 
 fn mkfifo<P: AsRef<Path>>(path: P) -> Result<(), io::Error> {
     let path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
@@ -48,7 +59,7 @@ fn read_and_print_all<R: Read>(r: R) -> Result<(), io::Error> {
     Ok(())
 }
 
-fn call_qtest<F>(test_fn: F, output_file: Option<&Path>) -> u8
+fn call_qtest_main<F>(test_fn: F, output_file: Option<&Path>) -> u8
 where
     F: FnOnce(&[&OsStr]) -> u8,
 {
@@ -59,7 +70,7 @@ where
             .name("qtest-log".to_string())
             .spawn(move || {
                 // this will block until the other side opens the file for writing
-                let f = File::open(&f).unwrap();
+                let f = fs::File::open(&f).unwrap();
 
                 // forward the output until EOF or error
                 if let Err(e) = read_and_print_all(f) {
@@ -98,6 +109,19 @@ where
     ret
 }
 
+fn call_qtest_catch<F>(test_fn: F) -> Option<TestException>
+where
+    F: FnOnce(&mut TestException) -> bool,
+{
+    let mut ex = TestException::default();
+
+    if !test_fn(&mut ex) {
+        return Some(ex);
+    }
+
+    None
+}
+
 // return fifo path, if applicable
 fn setup_output_file() -> Option<PathBuf> {
     // when cargo runs tests, it normally captures their output. however,
@@ -133,15 +157,22 @@ fn setup_output_file() -> Option<PathBuf> {
     output_file
 }
 
-struct RunQTest {
-    f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send>,
-    ret: mpsc::SyncSender<u8>,
+enum TestFn {
+    Main(Box<dyn FnOnce(&[&OsStr]) -> u8 + Send>),
+    Catch(Box<dyn FnOnce(&mut TestException) -> bool + Send>),
 }
 
-pub fn run<F>(test_fn: F) -> bool
-where
-    F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
-{
+enum TestResult {
+    Main(u8),
+    Catch(Option<TestException>),
+}
+
+struct RunQTest {
+    f: TestFn,
+    ret: mpsc::SyncSender<TestResult>,
+}
+
+fn run_inner(test_fn: TestFn) -> TestResult {
     // qt tests cannot be run concurrently within the same process, and
     // qt also doesn't like it when QCoreApplication is recreated in
     // different threads, so this function sets up a background thread
@@ -159,7 +190,12 @@ where
             .name("qtest-run".to_string())
             .spawn(move || {
                 for t in r {
-                    let ret = call_qtest(t.f, output_file.as_deref());
+                    let ret = match t.f {
+                        TestFn::Main(f) => {
+                            TestResult::Main(call_qtest_main(f, output_file.as_deref()))
+                        }
+                        TestFn::Catch(f) => TestResult::Catch(call_qtest_catch(f)),
+                    };
 
                     // if receiver is gone, keep going
                     let _ = t.ret.send(ret);
@@ -177,12 +213,44 @@ where
         .lock()
         .unwrap()
         .send(RunQTest {
-            f: Box::new(test_fn),
+            f: test_fn,
             ret: s_ret,
         })
         .unwrap();
 
-    let ret = r_ret.recv().unwrap();
+    r_ret.recv().unwrap()
+}
 
-    ret == 0
+pub fn run<F>(test_fn: F) -> bool
+where
+    F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
+{
+    match run_inner(TestFn::Main(Box::new(test_fn))) {
+        TestResult::Main(ret) => ret == 0,
+        _ => unreachable!(),
+    }
+}
+
+#[track_caller]
+pub fn run_no_main<F>(test_fn: F)
+where
+    F: FnOnce(&mut TestException) -> bool + Send + 'static,
+{
+    let root_dir = get_root_dir();
+
+    match run_inner(TestFn::Catch(Box::new(test_fn))) {
+        TestResult::Catch(Some(ex)) => {
+            let file = Path::new(&ex.file);
+            let file = file.strip_prefix(root_dir).unwrap_or(file);
+
+            panic!(
+                "exception thrown at {}:{}:\n{}",
+                file.display(),
+                ex.line,
+                ex.message
+            );
+        }
+        TestResult::Catch(None) => {}
+        _ => unreachable!(),
+    }
 }

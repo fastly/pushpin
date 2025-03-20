@@ -119,6 +119,7 @@ macro_rules! import_cpptest {
         #[cfg_attr(target_os = "macos", link(name = "c++"))]
         #[cfg_attr(not(target_os = "macos"), link(name = "stdc++"))]
         extern "C" {
+            #[allow(improper_ctypes)]
             $($tt)*
         }
     };
@@ -126,8 +127,11 @@ macro_rules! import_cpptest {
 
 pub mod ffi {
     #[cfg(test)]
+    use crate::core::test::TestException;
+
+    #[cfg(test)]
     import_cpptest! {
-        pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn httpheaders_test(f: *mut TestException) -> libc::c_int;
         pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn timer_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn defercall_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;

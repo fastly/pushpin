@@ -15,6 +15,7 @@ HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp
 
 HEADERS += \
+	$$PWD/test.h \
 	$$PWD/tnetstring.h \
 	$$PWD/httpheaders.h \
 	$$PWD/zhttprequestpacket.h \
