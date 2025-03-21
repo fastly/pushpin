@@ -113,8 +113,6 @@ static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, Q
 
 class InspectWorker : public Deferred
 {
-	Q_OBJECT
-
 public:
 	std::unique_ptr<ZrpcRequest> req;
 	ZrpcManager *stateClient;
@@ -416,8 +414,6 @@ public:
 
 class AcceptWorker : public Deferred
 {
-	Q_OBJECT
-
 public:
 	std::unique_ptr<ZrpcRequest> req;
 	ZrpcManager *stateClient;
@@ -3187,5 +3183,3 @@ void HandlerEngine::reload()
 {
 	d->reload();
 }
-
-#include "handlerengine.moc"

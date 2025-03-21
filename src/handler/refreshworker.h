@@ -39,8 +39,6 @@ class WsSession;
 
 class RefreshWorker : public Deferred
 {
-	Q_OBJECT
-
 public:
 	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel);
 

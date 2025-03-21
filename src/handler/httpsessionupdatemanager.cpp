@@ -28,10 +28,8 @@
 #include "defercall.h"
 #include "httpsession.h"
 
-class HttpSessionUpdateManager::Private : public QObject
+class HttpSessionUpdateManager::Private
 {
-	Q_OBJECT
-
 public:
 	class Bucket
 	{
@@ -48,7 +46,6 @@ public:
 	QHash<HttpSession*, Bucket*> bucketsBySession;
 
 	Private(HttpSessionUpdateManager *_q) :
-		QObject(_q),
 		q(_q)
 	{
 	}
@@ -162,8 +159,7 @@ private:
 	}
 };
 
-HttpSessionUpdateManager::HttpSessionUpdateManager(QObject *parent) :
-	QObject(parent)
+HttpSessionUpdateManager::HttpSessionUpdateManager()
 {
 	d = new Private(this);
 }
@@ -182,5 +178,3 @@ void HttpSessionUpdateManager::unregisterSession(HttpSession *hs)
 {
 	d->unregisterSession(hs);
 }
-
-#include "httpsessionupdatemanager.moc"

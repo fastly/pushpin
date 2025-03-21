@@ -32,11 +32,8 @@ namespace ControlRequest {
 
 class ConnCheck : public Deferred
 {
-	Q_OBJECT
-
 public:
-	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
-		Deferred(parent)
+	ConnCheck(ZrpcManager *controlClient, const CidSet &cids)
 	{
 		req = std::make_unique<ZrpcRequest>(controlClient);
 		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
@@ -90,11 +87,8 @@ private:
 
 class Refresh : public Deferred
 {
-	Q_OBJECT
-
 public:
-	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
-		Deferred(parent)
+	Refresh(ZrpcManager *controlClient, const QByteArray &cid)
 	{
 		req = std::make_unique<ZrpcRequest>(controlClient);
 		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this));
@@ -119,11 +113,8 @@ private:
 
 class Report : public Deferred
 {
-	Q_OBJECT
-
 public:
-	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
-		Deferred(parent)
+	Report(ZrpcManager *controlClient, const StatsPacket &packet)
 	{
 		req = std::make_unique<ZrpcRequest>(controlClient);
 		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this));
@@ -146,21 +137,19 @@ private:
 	}
 };
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent)
+Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
 {
-	return new ConnCheck(controlClient, cids, parent);
+	return new ConnCheck(controlClient, cids);
 }
 
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent)
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
 {
-	return new Refresh(controlClient, cid, parent);
+	return new Refresh(controlClient, cid);
 }
 
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent)
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet)
 {
-	return new Report(controlClient, packet, parent);
+	return new Report(controlClient, packet);
 }
 
 }
-
-#include "controlrequest.moc"

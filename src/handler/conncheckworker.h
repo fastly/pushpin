@@ -37,8 +37,6 @@ class StatsManager;
 
 class ConnCheckWorker : public Deferred
 {
-	Q_OBJECT
-
 public:
 	ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats);
 
