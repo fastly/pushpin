@@ -1283,8 +1283,8 @@ public:
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
+	std::unique_ptr<Deferred> report;
 	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
-	Deferred *report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
 	Connection controlReqReadyConnection;
@@ -1303,8 +1303,7 @@ public:
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
-		q(_q),
-		report(0)
+		q(_q)
 	{
 		qRegisterMetaType<DetectRuleList>();
 
@@ -2278,6 +2277,13 @@ private:
 	}
 
 private:
+	void report_finished(const DeferredResult &result)
+	{
+		Q_UNUSED(result);
+
+		report.reset();
+	}
+
 	void sessionUpdateMany_finished(Deferred *d, const DeferredResult &result)
 	{
 		deferreds.erase(d);
@@ -2414,12 +2420,10 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		auto d = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
+		report = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
 
-		// safe to not track, since d can't outlive this
-		d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
-
-		deferreds[d.get()] = std::move(d);
+		// safe to not track, since report can't outlive this
+		report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 	}
 
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
