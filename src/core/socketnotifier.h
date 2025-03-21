@@ -54,7 +54,6 @@ public:
 
 private:
 	int socket_;
-	uint8_t interest_;
 	bool readEnabled_;
 	bool writeEnabled_;
 	QSocketNotifier *readInner_;

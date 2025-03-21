@@ -22,7 +22,6 @@
 
 SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 	socket_(socket),
-	interest_(interest),
 	readEnabled_(true),
 	writeEnabled_(true),
 	readInner_(nullptr),
