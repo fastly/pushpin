@@ -118,12 +118,17 @@ static void remove_old_cache_items()
 		// Remove items where the value is greater than 30
 		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
 		{
+			if ((it.refreshFlag & AUTO_REFRESH_NO_DELETE) != 0)
+			{
+				log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(it.methodName), it.key().toHex().data());
+				continue;
+			}
 			qint64 accessDiff = currMTime - it.lastAccessTime;
 			if ((it.arNoDeleteFlag == false) && (accessDiff > accessTimeoutMSeconds))
 			{
 				// remove cache item
-				log_debug("[WS] deleting cache item for access timeout %s", itemId.toHex().data());
-				it = myMap.erase(it);  // Safely erase and move to the next item
+				log_debug("[CACHE] deleting cache item for access timeout %s", it.key().toHex().data());
+				it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
 			} 
 			else 
 			{
@@ -137,7 +142,7 @@ static void remove_old_cache_items()
 			break;
 		}
 
-		log_debug("[WS] detected MAX cache item count %d", cacheItemCount);
+		log_debug("[CACHE] detected MAX cache item count %d", cacheItemCount);
 		accessTimeoutMSeconds -= 1000;
 	}
 }

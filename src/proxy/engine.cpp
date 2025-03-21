@@ -239,6 +239,7 @@ public:
 			config.wsBackendUrlList,
 			config.cacheMethodList,
 			config.subscribeMethodList,
+			config.uneraseMethodList,
 			config.cacheKeyItemList,
 			config.msgIdFieldName,
 			config.msgMethodFieldName,

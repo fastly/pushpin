@@ -632,6 +632,7 @@ public:
 		QStringList wsBackendUrlList = settings.value("cache/ws_backend_urls").toStringList();
 		QStringList cacheMethodList = settings.value("cache/ws_cache_methods").toStringList();
 		QStringList subscribeMethodList = settings.value("cache/ws_subscribe_methods").toStringList();
+		QStringList uneraseMethodList = settings.value("cache/ws_unerase_methods").toStringList();
 		QString cacheKeyConfig = settings.value("cache/ws_cache_key", "").toString().simplified().remove("'").remove("\"").toLower();
 		QStringList cacheKeyParts = cacheKeyConfig.split(u'+', QString::SkipEmptyParts);
 		QStringList cacheKeyItemList;
@@ -694,6 +695,7 @@ public:
 		config.wsBackendUrlList = wsBackendUrlList;
 		config.cacheMethodList = cacheMethodList;
 		config.subscribeMethodList = subscribeMethodList;
+		config.uneraseMethodList = uneraseMethodList;
 		config.cacheKeyItemList = cacheKeyItemList;
 		config.msgIdFieldName = msgIdFieldName;
 		config.msgMethodFieldName = msgMethodFieldName;
