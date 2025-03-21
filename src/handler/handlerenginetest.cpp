@@ -286,7 +286,7 @@ private slots:
 		wrapper->startHttp();
 		wrapper->startProxy();
 
-		engine = new HandlerEngine(this);
+		engine = new HandlerEngine;
 
 		HandlerEngine::Configuration config;
 		config.instanceId = "handler";
