@@ -68,9 +68,9 @@ public:
 		const QStringList &wsBackendUrlList,
 		const QStringList &cacheMethodList,
 		const QStringList &subscribeMethodList,
-		const QStringList &refreshUneraseMethodList;
-		const QStringList &refreshExcludeMethodList;
-		const QStringList &refreshPassthroughMethodList;
+		const QStringList &refreshUneraseMethodList,
+		const QStringList &refreshExcludeMethodList,
+		const QStringList &refreshPassthroughMethodList,
 		const QStringList &cacheKeyItemList,
 		const QString &msgIdFieldName,
 		const QString &msgMethodFieldName,
