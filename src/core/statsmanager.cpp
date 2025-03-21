@@ -60,10 +60,8 @@ static qint64 durationToTicksRoundUp(qint64 msec)
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
 
-class StatsManager::Private : public QObject
+class StatsManager::Private
 {
-	Q_OBJECT
-
 public:
 	class TimerBase
 	{
@@ -2124,5 +2122,3 @@ void StatsManager::setRetrySeq(const QByteArray &routeId, int value)
 
 	cm.retrySeq = value;
 }
-
-#include "statsmanager.moc"

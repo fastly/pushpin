@@ -44,10 +44,8 @@
 
 #define PENDING_MAX 100
 
-class ZrpcManager::Private : public QObject
+class ZrpcManager::Private
 {
-	Q_OBJECT
-
 public:
 	class PendingItem
 	{
@@ -338,5 +336,3 @@ void ZrpcManager::write(const QList<QByteArray> &headers, const ZrpcResponsePack
 {
 	d->write(headers, packet);
 }
-
-#include "zrpcmanager.moc"

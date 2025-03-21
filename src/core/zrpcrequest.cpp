@@ -35,10 +35,8 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class ZrpcRequest::Private : public QObject
+class ZrpcRequest::Private
 {
-	Q_OBJECT
-
 public:
 	ZrpcRequest *q;
 	ZrpcManager *manager;
@@ -291,5 +289,3 @@ void ZrpcRequest::handle(const ZrpcResponsePacket &packet)
 
 	d->handle(packet);
 }
-
-#include "zrpcrequest.moc"

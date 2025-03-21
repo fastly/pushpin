@@ -36,10 +36,8 @@
 #define SESSION_EXPIRE 60000
 #define KEEPALIVE_INTERVAL 45000
 
-class ZWebSocket::Private : public QObject
+class ZWebSocket::Private
 {
-	Q_OBJECT
-
 public:
 	enum InternalState
 	{
@@ -1296,5 +1294,3 @@ void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpResponsePacket
 
 	d->handle(id, seq, packet);
 }
-
-#include "zwebsocket.moc"
