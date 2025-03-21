@@ -124,7 +124,7 @@ public:
 	bool autoShare;
 	QString sid;
 	LastIds lastIds;
-	map<Deferred*, Connection> finishedConnection;
+	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
 
 	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
 		Deferred(parent),
@@ -230,8 +230,13 @@ public:
 			if(getSession && stateClient)
 			{
 				// determine session info
-				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
+
+				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8()));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 				return;
 			}
 
@@ -300,9 +305,10 @@ private:
 		setFinished(true);
 	}
 
-private:
-	void sessionDetectRulesGet_finished(const DeferredResult &result)
+	void sessionDetectRulesGet_finished(Deferred *d, const DeferredResult &result)
 	{
+		deferreds.erase(d);
+
 		if(result.success)
 		{
 			QList<DetectRule> rules = result.value.value<DetectRuleList>();
@@ -349,8 +355,12 @@ private:
 
 			if(!sid.isEmpty())
 			{
-				Deferred *d = SessionRequest::getLastIds(stateClient, sid, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
+				auto d = std::unique_ptr<Deferred>(SessionRequest::getLastIds(stateClient, sid, this));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 				return;
 			}
 		}
@@ -363,9 +373,10 @@ private:
 		doFinish();
 	}
 
-private:
-	void sessionGetLastIds_finished(const DeferredResult &result)
+	void sessionGetLastIds_finished(Deferred *d, const DeferredResult &result)
 	{
+		deferreds.erase(d);
+
 		if(result.success)
 		{
 			lastIds = result.value.value<LastIds>();
@@ -436,7 +447,7 @@ public:
 	QList<std::shared_ptr<HttpSession>> sessions;
 	int connectionSubscriptionMax;
 	QSet<QByteArray> needRemoveFromStats;
-	map<Deferred*, Connection> finishedConnection;
+	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> &_filterLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
@@ -807,8 +818,12 @@ public:
 		{
 			if(!rules.isEmpty())
 			{
-				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
+				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesSet(stateClient, rules));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 			}
 			else
 			{
@@ -890,8 +905,12 @@ private:
 	{
 		if(!sid.isEmpty())
 		{
-			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds, this);
-			finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
+			auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient, sid, lastIds));
+
+			// safe to not track, since d can't outlive this
+			d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, d.get(), boost::placeholders::_1));
+
+			deferreds[d.get()] = std::move(d);
 		}
 		else
 		{
@@ -1135,17 +1154,20 @@ private:
 		setFinished(true);
 	}
 
-private:
-	void sessionDetectRulesSet_finished(const DeferredResult &result)
+	void sessionDetectRulesSet_finished(Deferred *d, const DeferredResult &result)
 	{
+		deferreds.erase(d);
+
 		if(!result.success)
 			log_error("couldn't store detection rules: condition=%d", result.value.toInt());
 
 		afterSetRules();
 	}
 
-	void sessionCreateOrUpdate_finished(const DeferredResult &result)
+	void sessionCreateOrUpdate_finished(Deferred *d, const DeferredResult &result)
 	{
+		deferreds.erase(d);
+
 		if(!result.success)
 			log_error("couldn't create/update session: condition=%d", result.value.toInt());
 
@@ -1261,18 +1283,14 @@ public:
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
-	QSet<Deferred*> deferreds;
-	std::map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
+	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
 	Deferred *report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
 	Connection controlReqReadyConnection;
 	Connection controlServerConnection;
 	Connection itemReadyConnection;
-	map<Deferred*, Connection> finishedConnection;
 	map<Subscription*, Connection> subscribedConnection;
-	map<AcceptWorker*, Connection> retryPacketReadyConnection;
-	map<AcceptWorker*, Connection> sessionsReadyConnection;
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
 	Connection reportedConnection;
@@ -1304,7 +1322,7 @@ public:
 	{
 		qDeleteAll(inspectWorkers);
 		qDeleteAll(acceptWorkers);
-		qDeleteAll(deferreds);
+		deferreds.clear();
 		cs.wsSessions.clear();
 		cs.httpSessions.clear();
 		qDeleteAll(cs.subs);
@@ -1886,8 +1904,11 @@ private:
 		if(!req)
 			return;
 
-		InspectWorker *w = new InspectWorker(req, stateClient.get(), config.shareAll, this);
-		finishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
+		InspectWorker *w = new InspectWorker(req, stateClient.get(), config.shareAll);
+
+		// safe to not track, since w can't outlive this
+		w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, w, boost::placeholders::_1));
+
 		inspectWorkers += w;
 	}
 
@@ -1907,10 +1928,13 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient.get(), &cs, zhttpIn.get(), zhttpOut.get(), stats.get(), updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
-			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
-			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
+			AcceptWorker *w = new AcceptWorker(req, stateClient.get(), &cs, zhttpIn.get(), zhttpOut.get(), stats.get(), updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax);
+
+			// safe to not track, since w can't outlive this
+			w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, w, boost::placeholders::_1));
+			w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
+			w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
+
 			acceptWorkers += w;
 
 			w->start();
@@ -1956,9 +1980,12 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats.get());
-			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
-			deferredMap[w.get()] = std::move(w);
+			auto d = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats.get());
+
+			// safe to not track, since d can't outlive this
+			d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
+
+			deferreds[d.get()] = std::move(d);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -1980,9 +2007,12 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			auto w = std::make_unique<RefreshWorker>(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
-			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
-			deferredMap[w.get()] = std::move(w);
+			auto d = std::make_unique<RefreshWorker>(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
+
+			// safe to not track, since d can't outlive this
+			d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
+
+			deferreds[d.get()] = std::move(d);
 		}
 		else if(req->method() == "publish")
 		{
@@ -2238,74 +2268,59 @@ private:
 				sidLastIds[sid] = lastIds;
 			}
 
-			Deferred *d = SessionRequest::updateMany(stateClient.get(), sidLastIds, this);
-			finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-			deferreds += d;
+			auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), sidLastIds));
+
+			// safe to not track, since d can't outlive this
+			d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
+
+			deferreds[d.get()] = std::move(d);
 		}
 	}
 
 private:
-	void report_finished(const DeferredResult &result)
+	void sessionUpdateMany_finished(Deferred *d, const DeferredResult &result)
 	{
-		Q_UNUSED(result);
-
-		finishedConnection.erase(report);
-		deferreds.remove(report);
-		deferredMap.erase(report);
-		report = 0;
-	}
-
-	void sessionUpdateMany_finished(const DeferredResult &result, Deferred *d)
-	{
-		finishedConnection.erase(d);
-		deferreds.remove(d);
-		deferredMap.erase(d);
+		deferreds.erase(d);
 
 		if(!result.success)
 			log_error("couldn't update session: condition=%d", result.value.toInt());
 	}
 
-	void sessionCreateOrUpdate_finished(const DeferredResult &result, Deferred *d)
+	void sessionCreateOrUpdate_finished(Deferred *d, const DeferredResult &result)
 	{
-		finishedConnection.erase(d);
-		deferreds.remove(d);
-		deferredMap.erase(d);
+		deferreds.erase(d);
 
 		if(!result.success)
 			log_error("couldn't create/update session: condition=%d", result.value.toInt());
 	}
 
-	void inspectWorker_finished(const DeferredResult &result, InspectWorker *w)
+	void inspectWorker_finished(InspectWorker *w, const DeferredResult &result)
 	{
 		Q_UNUSED(result);
 
-		finishedConnection.erase(w);
 		inspectWorkers.remove(w);
+		delete w;
 
 		// try to read again
 		inspectServer_requestReady();
 	}
 
-	void acceptWorker_finished(const DeferredResult &result, AcceptWorker *w )
+	void acceptWorker_finished(AcceptWorker *w, const DeferredResult &result)
 	{
 		Q_UNUSED(result);
 
-		finishedConnection.erase(w);
-		sessionsReadyConnection.erase(w);
-		retryPacketReadyConnection.erase(w);
 		acceptWorkers.remove(w);
+		delete w;
 
 		// try to read again
 		acceptServer_requestReady();
 	}
 
-	void deferred_finished(const DeferredResult &result, Deferred *w)
+	void deferred_finished(Deferred *d, const DeferredResult &result)
 	{
 		Q_UNUSED(result);
 
-		finishedConnection.erase(w);
-		deferreds.remove(w);
-		deferredMap.erase(w);
+		deferreds.erase(d);
 	}
 	
 	void sub_subscribed(Subscription *sub)
@@ -2355,9 +2370,12 @@ private:
 
 			if(!sidLastIds.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient.get(), sidLastIds, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), sidLastIds));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 			}
 		}
 	}
@@ -2396,9 +2414,12 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		report = ControlRequest::report(proxyControlClient.get(), all, this);
-		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
-		deferreds += report;
+		auto d = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
+
+		// safe to not track, since d can't outlive this
+		d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
+
+		deferreds[d.get()] = std::move(d);
 	}
 
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
@@ -2828,16 +2849,22 @@ private:
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
-				Deferred *d = SessionRequest::createOrUpdate(stateClient.get(), sid, LastIds(), this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient.get(), sid, LastIds()));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 			}
 
 			if(!updateSids.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient.get(), updateSids, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), updateSids));
+
+				// safe to not track, since d can't outlive this
+				d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
+
+				deferreds[d.get()] = std::move(d);
 			}
 		}
 	}
