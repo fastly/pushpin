@@ -133,11 +133,11 @@ pub mod ffi {
     import_cpptest! {
         pub fn httpheaders_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn jwt_test(out_ex: *mut TestException) -> libc::c_int;
-        pub fn timer_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn defercall_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn tcpstream_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn unixstream_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn eventloop_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn timer_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn defercall_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn tcpstream_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn unixstream_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn eventloop_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn filter_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;

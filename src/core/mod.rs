@@ -102,44 +102,42 @@ pub fn ensure_example_config(dest: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::call_c_main;
     use crate::core::test::TestException;
     use crate::ffi;
-    use std::ffi::OsStr;
 
-    fn httpheaders_test(ex: &mut TestException) -> bool {
+    fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { ffi::httpheaders_test(ex) == 0 }
+        unsafe { ffi::httpheaders_test(out_ex) == 0 }
     }
 
-    fn jwt_test(ex: &mut TestException) -> bool {
+    fn jwt_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { ffi::jwt_test(ex) == 0 }
+        unsafe { ffi::jwt_test(out_ex) == 0 }
     }
 
-    fn timer_test(args: &[&OsStr]) -> u8 {
+    fn timer_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::timer_test, args) as u8 }
+        unsafe { ffi::timer_test(out_ex) == 0 }
     }
 
-    fn defercall_test(args: &[&OsStr]) -> u8 {
+    fn defercall_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::defercall_test, args) as u8 }
+        unsafe { ffi::defercall_test(out_ex) == 0 }
     }
 
-    fn tcpstream_test(args: &[&OsStr]) -> u8 {
+    fn tcpstream_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::tcpstream_test, args) as u8 }
+        unsafe { ffi::tcpstream_test(out_ex) == 0 }
     }
 
-    fn unixstream_test(args: &[&OsStr]) -> u8 {
+    fn unixstream_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::unixstream_test, args) as u8 }
+        unsafe { ffi::unixstream_test(out_ex) == 0 }
     }
 
-    fn eventloop_test(args: &[&OsStr]) -> u8 {
+    fn eventloop_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
+        unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
 
     #[test]
@@ -154,26 +152,26 @@ mod tests {
 
     #[test]
     fn timer() {
-        assert!(qtest::run(timer_test));
+        qtest::run_no_main(timer_test);
     }
 
     #[test]
     fn defercall() {
-        assert!(qtest::run(defercall_test));
+        qtest::run_no_main(defercall_test);
     }
 
     #[test]
     fn tcpstream() {
-        assert!(qtest::run(tcpstream_test));
+        qtest::run_no_main(tcpstream_test);
     }
 
     #[test]
     fn unixstream() {
-        assert!(qtest::run(unixstream_test));
+        qtest::run_no_main(unixstream_test);
     }
 
     #[test]
     fn eventloop() {
-        assert!(qtest::run(eventloop_test));
+        qtest::run_no_main(eventloop_test);
     }
 }
