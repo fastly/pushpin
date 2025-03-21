@@ -1371,7 +1371,7 @@ public:
 		if (gCacheItemMap[itemId].proto == Scheme::http ||
 			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NO_REFRESH)
+			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NO_REFRESH)
 			{
 				timeInterval = 0;
 			}
