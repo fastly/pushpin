@@ -632,7 +632,9 @@ public:
 		QStringList wsBackendUrlList = settings.value("cache/ws_backend_urls").toStringList();
 		QStringList cacheMethodList = settings.value("cache/ws_cache_methods").toStringList();
 		QStringList subscribeMethodList = settings.value("cache/ws_subscribe_methods").toStringList();
-		QStringList uneraseMethodList = settings.value("cache/ws_unerase_methods").toStringList();
+		QStringList refreshUneraseMethodList = settings.value("cache/ws_refresh_unerase_methods").toStringList();
+		QStringList refreshExcludeMethodList = settings.value("cache/ws_refresh_exclude_methods").toStringList();
+		QStringList refreshPassthroughMethodList = settings.value("cache/ws_refresh_passthrough_methods").toStringList();
 		QString cacheKeyConfig = settings.value("cache/ws_cache_key", "").toString().simplified().remove("'").remove("\"").toLower();
 		QStringList cacheKeyParts = cacheKeyConfig.split(u'+', QString::SkipEmptyParts);
 		QStringList cacheKeyItemList;
@@ -695,7 +697,9 @@ public:
 		config.wsBackendUrlList = wsBackendUrlList;
 		config.cacheMethodList = cacheMethodList;
 		config.subscribeMethodList = subscribeMethodList;
-		config.uneraseMethodList = uneraseMethodList;
+		config.refreshUneraseMethodList = refreshUneraseMethodList;
+		config.refreshExcludeMethodList = refreshExcludeMethodList;
+		config.refreshPassthroughMethodList = refreshPassthroughMethodList;
 		config.cacheKeyItemList = cacheKeyItemList;
 		config.msgIdFieldName = msgIdFieldName;
 		config.msgMethodFieldName = msgMethodFieldName;

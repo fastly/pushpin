@@ -89,7 +89,7 @@ static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
-int gAccessTimeoutSeconds = 10;
+int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 30;
 int gCacheTimeoutSeconds = 10;
 int gShorterTimeoutSeconds = 5;
@@ -100,7 +100,9 @@ QFuture<void> gCacheThread;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
-QStringList gUneraseMethodList;
+QStringList gRefreshUneraseMethodList;
+QStringList gRefreshExcludeMethodList;
+QStringList gRefreshPassthroughMethodList;
 
 QMap<QByteArray, CacheItem> gCacheItemMap;
 
@@ -1369,15 +1371,15 @@ public:
 		if (gCacheItemMap[itemId].proto == Scheme::http ||
 			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_NO_REFRESH)
+			if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NO_REFRESH)
 			{
 				timeInterval = 0;
 			}
-			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_SHORTER_TIMEOUT)
 			{
 				timeInterval = gShorterTimeoutSeconds;
 			}
-			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_LONGER_TIMEOUT)
 			{
 				timeInterval = gLongerTimeoutSeconds;
 			}
@@ -1480,10 +1482,20 @@ public:
 		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
 		cacheItem.refreshFlag = 0x00;
-		if (gUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
+		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
-			cacheItem.refreshFlag |= AUTO_REFRESH_NO_DELETE;
-			log_debug("[HTTP] added unerase method");
+			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
+			log_debug("[HTTP] added refresh unerase method");
+		}
+		if (gRefreshExcludeMethodList.contains(methodName, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_EXCLUDE;
+			log_debug("[HTTP] added refresh exclude method");
+		}
+		if (gRefreshPassthroughMethodList.contains(methodName, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
+			log_debug("[HTTP] added refresh passthrough method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
@@ -1518,10 +1530,20 @@ public:
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.refreshFlag = 0x00;
-		if (gUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
+		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
-			cacheItem.refreshFlag |= AUTO_REFRESH_NO_DELETE;
-			log_debug("[WS] added unerase method");
+			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
+			log_debug("[WS] added refresh unerase method");
+		}
+		if (gRefreshExcludeMethodList.contains(methodName, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_EXCLUDE;
+			log_debug("[WS] added refresh exclude method");
+		}
+		if (gRefreshPassthroughMethodList.contains(methodName, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
+			log_debug("[WS] added refresh passthrough method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
@@ -2631,7 +2653,9 @@ void ZhttpManager::setCacheParameters(
 	const QStringList &wsBackendUrlList,
 	const QStringList &cacheMethodList,
 	const QStringList &subscribeMethodList,
-	const QStringList &uneraseMethodList,
+	const QStringList &refreshUneraseMethodList;
+	const QStringList &refreshExcludeMethodList;
+	const QStringList &refreshPassthroughMethodList;
 	const QStringList &cacheKeyItemList,
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
@@ -2655,9 +2679,17 @@ void ZhttpManager::setCacheParameters(
 			gSubscribeMethodMap[tmpList[0].toLower()] = tmpList[1];
 		}
 	}
-	foreach (QString method, uneraseMethodList)
+	foreach (QString method, refreshUneraseMethodList)
 	{
-		gUneraseMethodList.append(method.toLower());
+		gRefreshUneraseMethodList.append(method.toLower());
+	}
+	foreach (QString method, refreshExcludeMethodList)
+	{
+		gRefreshExcludeMethodList.append(method.toLower());
+	}
+	foreach (QString method, refreshPassthroughMethodList)
+	{
+		gRefreshPassthroughMethodList.append(method.toLower());
 	}
 
 	// cache key item list
@@ -2706,8 +2738,16 @@ void ZhttpManager::setCacheParameters(
 		log_debug("%s:%s", qPrintable(key), qPrintable(gSubscribeMethodMap.value(key)));
 	}
 
-	for (int i = 0; i < gUneraseMethodList.size(); ++i) {
-		log_debug("%s", qPrintable(gUneraseMethodList[i]));
+	for (int i = 0; i < gRefreshUneraseMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gRefreshUneraseMethodList[i]));
+	}
+
+	for (int i = 0; i < gRefreshExcludeMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gRefreshExcludeMethodList[i]));
+	}
+
+	for (int i = 0; i < gRefreshPassthroughMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gRefreshPassthroughMethodList[i]));
 	}
 
 	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {

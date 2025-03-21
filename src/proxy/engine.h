@@ -100,7 +100,9 @@ public:
 		QStringList wsBackendUrlList;
 		QStringList cacheMethodList;
 		QStringList subscribeMethodList;
-		QStringList uneraseMethodList;
+		QStringList refreshUneraseMethodList;
+		QStringList refreshExcludeMethodList;
+		QStringList refreshPassthroughMethodList;
 		QStringList cacheKeyItemList;
 		QString msgIdFieldName;
 		QString msgMethodFieldName;
