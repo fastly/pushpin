@@ -83,7 +83,7 @@ struct CacheItem {
 	QString orgMsgId;
 	int msgId;
 	int newMsgId;
-	char cacheItemFlag;
+	char refreshFlag;
 	qint64 lastRequestTime;
 	qint64 lastRefreshTime;
 	qint64 lastAccessTime;

@@ -1369,15 +1369,15 @@ public:
 		if (gCacheItemMap[itemId].proto == Scheme::http ||
 			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (gCacheItemMap[itemId].cacheItemFlag == AUTO_REFRESH_NO_REFRESH)
+			if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_NO_REFRESH)
 			{
 				timeInterval = 0;
 			}
-			else if (gCacheItemMap[itemId].cacheItemFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_SHORTER_TIMEOUT)
 			{
 				timeInterval = gShorterTimeoutSeconds;
 			}
-			else if (gCacheItemMap[itemId].cacheItemFlag == AUTO_REFRESH_LONGER_TIMEOUT)
+			else if (gCacheItemMap[itemId].refreshFlag == AUTO_REFRESH_LONGER_TIMEOUT)
 			{
 				timeInterval = gLongerTimeoutSeconds;
 			}
@@ -1479,10 +1479,10 @@ public:
 		struct CacheItem cacheItem;
 		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
-		cacheItem.cacheItemFlag = 0x00;
+		cacheItem.refreshFlag = 0x00;
 		if (gUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
-			cacheItem.cacheItemFlag |= AUTO_REFRESH_NO_DELETE;
+			cacheItem.refreshFlag |= AUTO_REFRESH_NO_DELETE;
 			log_debug("[HTTP] added unerase method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -1517,10 +1517,10 @@ public:
 		int cacheClientNo = get_main_cc_index();
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
-		cacheItem.cacheItemFlag = 0x00;
+		cacheItem.refreshFlag = 0x00;
 		if (gUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
-			cacheItem.cacheItemFlag |= AUTO_REFRESH_NO_DELETE;
+			cacheItem.refreshFlag |= AUTO_REFRESH_NO_DELETE;
 			log_debug("[WS] added unerase method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();

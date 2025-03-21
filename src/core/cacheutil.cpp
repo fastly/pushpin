@@ -111,6 +111,7 @@ void resume_cache_thread()
 
 static void remove_old_cache_items()
 {
+	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 	qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
 
 	while (accessTimeoutMSeconds > 0)
@@ -675,12 +676,6 @@ int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
 		{
 			log_debug("[WS] Detected start of multi-parts request");
 
-			if (!gHealthClientList.contains(pId))
-			{
-				// add ws Cache multi-part request
-				numRequestMultiPart++;
-			}
-
 			// register new multi-request item
 			gWsMultiPartRequestItemMap[pId] = p;
 			
@@ -720,12 +715,6 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 		if (p.more == true)
 		{
 			log_debug("[WS] Detected start of multi-parts response");
-
-			if (!gHealthClientList.contains(pId))
-			{
-				// add ws Cache multi-part response
-				numRequestMultiPart++;
-			}
 
 			// register new multi-response item
 			gWsMultiPartResponseItemMap[pId] = p;
