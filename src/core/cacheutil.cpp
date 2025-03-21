@@ -65,7 +65,14 @@ extern QList<ClientItem> gWsCacheClientList;
 extern QMap<QByteArray, ClientItem> gWsClientMap;
 extern QMap<QByteArray, ClientItem> gHttpClientMap;
 
-extern QList<QByteArray> gHealthClientList;
+extern QMap<QByteArray, CacheItem> gCacheItemMap;
+
+extern int gAccessTimeoutSeconds;
+extern int gResponseTimeoutSeconds;
+extern int gCacheTimeoutSeconds;
+extern int gShorterTimeoutSeconds;
+extern int gLongerTimeoutSeconds;
+extern int gCacheItemMaxCount;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -102,6 +109,39 @@ void resume_cache_thread()
 	gMainThreadRunning--;
 }
 
+static void remove_old_cache_items()
+{
+	qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
+
+	while (accessTimeoutMSeconds > 0)
+	{
+		// Remove items where the value is greater than 30
+		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
+		{
+			qint64 accessDiff = currMTime - it.lastAccessTime;
+			if ((it.arNoDeleteFlag == false) && (accessDiff > accessTimeoutMSeconds))
+			{
+				// remove cache item
+				log_debug("[WS] deleting cache item for access timeout %s", itemId.toHex().data());
+				it = myMap.erase(it);  // Safely erase and move to the next item
+			} 
+			else 
+			{
+				++it;  // Move to the next item
+			}
+		}
+
+		int cacheItemCount = gCacheItemMap.count();
+		if (cacheItemCount < gCacheItemMaxCount)
+		{
+			break;
+		}
+
+		log_debug("[WS] detected MAX cache item count %d", cacheItemCount);
+		accessTimeoutMSeconds -= 1000;
+	}
+}
+
 void cache_thread()
 {
 	gCacheThreadAllowFlag = true;
@@ -114,7 +154,7 @@ void cache_thread()
 		}
 		gCacheThreadRunning = true;
 
-		log_debug("Running Cache Thread");
+		remove_old_cache_items();
 
 		gCacheThreadRunning = false;
 

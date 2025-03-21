@@ -78,6 +78,35 @@ enum CacheMethodType {
 	SUBSCRIBE_METHOD
 };
 
+// Cache Item
+struct CacheItem {
+	QString orgMsgId;
+	int msgId;
+	int newMsgId;
+	char refreshFlag;
+	qint64 lastRequestTime;
+	qint64 lastRefreshTime;
+	qint64 lastAccessTime;
+	bool cachedFlag;
+	Scheme proto;
+	int retryCount;
+	int httpBackendNo;
+	QByteArray cacheClientId;
+	QString methodName;
+	ZhttpRequestPacket requestPacket;
+	ZhttpResponsePacket responsePacket;
+	QByteArray responseHashVal;
+	CacheMethodType methodType;
+	QString orgSubscriptionStr;
+	QString subscriptionStr;
+	ZhttpResponsePacket subscriptionPacket;
+	struct ClientInCacheItem {
+		QString msgId;
+		QByteArray from;
+	};
+	QMap<QByteArray, ClientInCacheItem> clientMap;
+};
+
 void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();

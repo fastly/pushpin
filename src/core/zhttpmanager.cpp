@@ -89,56 +89,23 @@ static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
-static int gAccessTimeoutSeconds = 30;
-static int gResponseTimeoutSeconds = 30;
-static int gCacheTimeoutSeconds = 10;
-static int gShorterTimeoutSeconds = 5;
-static int gLongerTimeoutSeconds = 60;
-static int gCacheItemMaxCount = 1000;
+int gAccessTimeoutSeconds = 10;
+int gResponseTimeoutSeconds = 30;
+int gCacheTimeoutSeconds = 10;
+int gShorterTimeoutSeconds = 5;
+int gLongerTimeoutSeconds = 60;
+int gCacheItemMaxCount = 1000;
 
 QFuture<void> gCacheThread;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
 
-// Cache Item
-struct CacheItem {
-	QString orgMsgId;
-	int msgId;
-	int newMsgId;
-	char refreshFlag;
-	qint64 lastRequestTime;
-	qint64 lastRefreshTime;
-	qint64 lastAccessTime;
-	int accessCount;
-	bool cachedFlag;
-	Scheme proto;
-	int retryCount;
-	int httpBackendNo;
-	QByteArray cacheClientId;
-	QString methodName;
-	ZhttpRequestPacket requestPacket;
-	ZhttpResponsePacket responsePacket;
-	QByteArray responseHashVal;
-	CacheMethodType methodType;
-	QString orgSubscriptionStr;
-	QString subscriptionStr;
-	ZhttpResponsePacket subscriptionPacket;
-	struct ClientInCacheItem {
-		QString msgId;
-		QByteArray from;
-	};
-	QMap<QByteArray, ClientInCacheItem> clientMap;
-};
 QMap<QByteArray, CacheItem> gCacheItemMap;
 
 QString gSubscriptionAttrName = "params>>subscription";
 QString gSubscribeBlockAttrName = "params>>result>>block";
 QString gSubscribeChangesAttrName = "params>>result>>changes";
-
-// health client list
-bool gHealthCheckExcludeFlag = true;
-QList<QByteArray> gHealthClientList;
 
 // multi packets params
 ZhttpResponsePacket gHttpMultiPartResponsePacket;
@@ -1451,10 +1418,6 @@ public:
 			gWsClientMap.remove(clientId);
 			log_debug("[WS] Deleted one client in gWsClientMap, current count=%d", gWsClientMap.size());
 		}
-
-		// delete from health client list
-		if (gHealthClientList.contains(clientId))
-			gHealthClientList.removeAll(clientId);
 	}
 
 	void register_http_client(QByteArray packetId, QByteArray from, QString urlPath)
@@ -1519,7 +1482,6 @@ public:
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
-		cacheItem.accessCount = 2;
 		cacheItem.cachedFlag = false;
 
 		// save the request packet with new id
@@ -1552,7 +1514,6 @@ public:
 		cacheItem.refreshFlag = 0x00;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
-		cacheItem.accessCount = 2;
 		cacheItem.cachedFlag = false;
 
 		// save the request packet with new id
@@ -1679,7 +1640,7 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
-				gCacheItemMap[paramsHash].accessCount = 2;
+				gCacheItemMap[paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
@@ -2293,7 +2254,7 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash) && gCacheItemMap[paramsHash].proto == Scheme::websocket)
 			{
-				gCacheItemMap[paramsHash].accessCount = 2;
+				gCacheItemMap[paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
