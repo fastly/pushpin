@@ -85,6 +85,7 @@ static void deferCallQt()
 
 static void retract()
 {
+	TestQCoreApplication qapp;
 	Timer::init(1);
 
 	bool called = false;
@@ -105,6 +106,7 @@ static void retract()
 
 static void managerCleanup()
 {
+	TestQCoreApplication qapp;
 	Timer::init(1);
 
 	int count = 0;
