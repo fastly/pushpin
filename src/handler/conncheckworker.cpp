@@ -61,8 +61,8 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 	if(!missing_.isEmpty())
 	{
 		// ask the proxy about any cids we don't know about
-		Deferred *d = ControlRequest::connCheck(proxyControlClient, missing_, this);
-		finishedConnection_ = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
+		connCheck_ = std::unique_ptr<Deferred>(ControlRequest::connCheck(proxyControlClient, missing_));
+		finishedConnection_ = connCheck_->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
 		return;
 	}
 

@@ -46,6 +46,7 @@ private:
 	std::unique_ptr<ZrpcRequest> req_;
 	CidSet cids_;
 	CidSet missing_;
+	std::unique_ptr<Deferred> connCheck_;
 	Connection finishedConnection_;
 
 	void respondError(const QByteArray &condition);
