@@ -90,8 +90,8 @@ void RefreshWorker::refreshNextCid()
 		return;
 	}
 
-	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8(), this);
-	finishedConnection_ = d->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
+	refresh_ = std::unique_ptr<Deferred>(ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8()));
+	finishedConnection_ = refresh_->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
 }
 
 void RefreshWorker::proxyRefresh_finished(const DeferredResult &result)

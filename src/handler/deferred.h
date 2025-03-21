@@ -56,8 +56,6 @@ class Deferred : public QObject
 public:
 	virtual ~Deferred();
 
-	virtual void cancel();
-
 	boost::signals2::signal<void(const DeferredResult&)> finished;
 
 protected:
