@@ -101,10 +101,8 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 	return body;
 }
 
-class HttpSession::Private : public QObject
+class HttpSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -209,7 +207,6 @@ public:
 	DeferCall deferCall;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &_updateManager, int _connectionSubscriptionMax) :
-		QObject(_q),
 		q(_q),
 		req(_req),
 		logLevel(LOG_LEVEL_DEBUG),
@@ -1677,8 +1674,7 @@ private:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax, QObject *parent) :
-	QObject(parent)
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax)
 {
 	d = std::make_shared<Private>(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
 }
@@ -1770,5 +1766,3 @@ Callback<std::tuple<HttpSession *>> & HttpSession::finishedCallback()
 {
 	return d->finishedCallback;
 }
-
-#include "httpsession.moc"

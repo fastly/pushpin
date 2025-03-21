@@ -1209,11 +1209,11 @@ public:
 	{
 	public:
 		std::weak_ptr<HandlerEngine::Private> ep;
-		std::weak_ptr<QObject> target;
+		std::weak_ptr<ClientSession> target;
 		PublishItem item;
 		QList<QByteArray> exposeHeaders;
 
-		PublishAction(const std::weak_ptr<HandlerEngine::Private> _ep, const std::weak_ptr<QObject> _target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
+		PublishAction(const std::weak_ptr<HandlerEngine::Private> _ep, const std::weak_ptr<ClientSession> _target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
 			ep(_ep),
 			target(_target),
 			item(_item),
@@ -1749,7 +1749,7 @@ private:
 		log_debug("%s", qPrintable(msg));
 	}
 
-	void publishSend(const std::shared_ptr<QObject> &target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
+	void publishSend(const std::shared_ptr<ClientSession> &target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
 		if(auto hs = std::dynamic_pointer_cast<HttpSession>(target))
 			hs->publish(item, exposeHeaders);

@@ -24,7 +24,7 @@
 #ifndef HTTPSESSION_H
 #define HTTPSESSION_H
 
-#include <QObject>
+#include <boost/signals2.hpp>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "callback.h"
@@ -32,7 +32,7 @@
 #include "zhttprequest.h"
 #include "instruct.h"
 #include "filter.h"
-#include <boost/signals2.hpp>
+#include "clientsession.h"
 
 // each session can have a bunch of timers:
 // incoming request
@@ -52,12 +52,8 @@ class PublishLastIds;
 class HttpSessionUpdateManager;
 class RetryRequestPacket;
 
-class HttpSession;
-
-class HttpSession : public QObject
+class HttpSession : public ClientSession
 {
-	Q_OBJECT
-
 public:
 	class AcceptData
 	{
@@ -96,7 +92,7 @@ public:
 		}
 	};
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax, QObject *parent = 0);
+	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax);
 	~HttpSession();
 
 	Instruct::HoldMode holdMode() const;
