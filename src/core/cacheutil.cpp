@@ -122,6 +122,7 @@ static void remove_old_cache_items()
 			if (it.value().refreshFlag & AUTO_REFRESH_UNERASE)
 			{
 				log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(it.value().methodName), it.key().toHex().data());
+				++it;  // Move to the next item
 				continue;
 			}
 			qint64 accessDiff = currMTime - it.value().lastAccessTime;
