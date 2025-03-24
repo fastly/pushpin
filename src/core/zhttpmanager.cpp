@@ -2267,7 +2267,7 @@ public:
 			ZhttpRequestPacket p;
 			ZhttpRequestPacket::Id tempId;
 
-			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+			int ccIndex = get_cc_index_from_clientId(reqItem.cacheClientId);
 
 			if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 			{
@@ -2276,7 +2276,6 @@ public:
 			}
 
 			ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
-			CacheItem cacheItem = gCacheItemMap[itemId];
 
 			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
 			tempId.seq = update_request_seq(cacheClient->clientId);
