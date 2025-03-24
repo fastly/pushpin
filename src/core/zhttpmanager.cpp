@@ -2797,45 +2797,54 @@ void ZhttpManager::setCacheParameters(
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
 
+	log_debug("[CONFIG] gHttpBackendUrlList");
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
 		log_debug("%s", qPrintable(gHttpBackendUrlList[i]));
 	}
 
+	log_debug("[CONFIG] gWsBackendUrlList");
 	for (int i = 0; i < gWsBackendUrlList.size(); ++i) {
 		log_debug("%s", qPrintable(gWsBackendUrlList[i]));
 	}
 
+	log_debug("[CONFIG] gCacheMethodList");
 	for (int i = 0; i < gCacheMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gCacheMethodList[i]));
 	}
 
+	log_debug("[CONFIG] gSubscribeMethodMap");
 	for (const auto &key : gSubscribeMethodMap.keys()) {
 		log_debug("%s:%s", qPrintable(key), qPrintable(gSubscribeMethodMap.value(key)));
 	}
 
+	log_debug("[CONFIG] gNeverTimeoutMethodList");
 	for (int i = 0; i < gNeverTimeoutMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gNeverTimeoutMethodList[i]));
 	}
 
+	log_debug("[CONFIG] gRefreshUneraseMethodList");
 	for (int i = 0; i < gRefreshUneraseMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gRefreshUneraseMethodList[i]));
 	}
 
+	log_debug("[CONFIG] gRefreshExcludeMethodList");
 	for (int i = 0; i < gRefreshExcludeMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gRefreshExcludeMethodList[i]));
 	}
 
+	log_debug("[CONFIG] gRefreshPassthroughMethodList");
 	for (int i = 0; i < gRefreshPassthroughMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gRefreshPassthroughMethodList[i]));
 	}
 
+	log_debug("[CONFIG] gCacheKeyItemList");
 	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {
 		log_debug("%s, %d", qPrintable(gCacheKeyItemList[i].keyName), gCacheKeyItemList[i].flag);
 	}
 
-	log_debug("%s", qPrintable(gMsgIdAttrName));
-	log_debug("%s", qPrintable(gMsgMethodAttrName));
-	log_debug("%s", qPrintable(gMsgParamsAttrName));
+	log_debug("gMsgIdAttrName = %s", qPrintable(gMsgIdAttrName));
+	log_debug("gMsgMethodAttrName = %s", qPrintable(gMsgMethodAttrName));
+	log_debug("gMsgParamsAttrName = %s", qPrintable(gMsgParamsAttrName));
 
 	if (gCacheEnable == true)
 	{
