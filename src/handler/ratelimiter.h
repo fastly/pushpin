@@ -25,12 +25,11 @@
 #define RATELIMITER_H
 
 #include <memory>
-#include <QObject>
 
-class RateLimiter : public QObject
+class QString;
+
+class RateLimiter
 {
-	Q_OBJECT
-
 public:
 	class Action
 	{

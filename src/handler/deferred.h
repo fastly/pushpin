@@ -25,7 +25,6 @@
 #define DEFERRED_H
 
 #include <QVariant>
-#include <QObject>
 #include <boost/signals2.hpp>
 #include "defercall.h"
 
@@ -49,17 +48,15 @@ public:
 
 Q_DECLARE_METATYPE(DeferredResult)
 
-class Deferred : public QObject
+class Deferred
 {
-	Q_OBJECT
-
 public:
 	virtual ~Deferred();
 
 	boost::signals2::signal<void(const DeferredResult&)> finished;
 
 protected:
-	Deferred(QObject *parent = 0);
+	Deferred();
 
 	void setFinished(bool ok, const QVariant &value = QVariant());
 

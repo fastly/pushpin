@@ -34,10 +34,8 @@
 #define DEFAULT_PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
-class Sequencer::Private : public QObject
+class Sequencer::Private
 {
-	Q_OBJECT
-
 public:
 	class PendingItem
 	{
@@ -76,7 +74,6 @@ public:
 	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
 
 	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
-		QObject(_q),
 		q(_q),
 		lastIds(_publishLastIds),
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
@@ -261,8 +258,7 @@ public:
 	}
 };
 
-Sequencer::Sequencer(PublishLastIds *publishLastIds, QObject *parent) :
-	QObject(parent)
+Sequencer::Sequencer(PublishLastIds *publishLastIds)
 {
 	d = new Private(this, publishLastIds);
 }
@@ -291,5 +287,3 @@ void Sequencer::clearPendingForChannel(const QString &channel)
 {
 	d->clear(channel);
 }
-
-#include "sequencer.moc"

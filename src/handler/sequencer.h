@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2021 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,18 +24,17 @@
 #ifndef SEQUENCER_H
 #define SEQUENCER_H
 
-#include <QObject>
 #include <boost/signals2.hpp>
+
+class QString;
 
 class PublishLastIds;
 class PublishItem;
 
-class Sequencer : public QObject
+class Sequencer
 {
-	Q_OBJECT
-
 public:
-	Sequencer(PublishLastIds *publishLastIds, QObject *parent = 0);
+	Sequencer(PublishLastIds *publishLastIds);
 	~Sequencer();
 
 	void setWaitMax(int msecs);
