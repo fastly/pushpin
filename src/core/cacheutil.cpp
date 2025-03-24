@@ -154,12 +154,14 @@ static void remove_old_subscribe_items()
 {
 	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
+	log_debug("[WS] 1");
 	// cache lookup
 	foreach(QByteArray itemId, gCacheItemMap.keys())
 	{
 		if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD && 
 			gCacheItemMap[itemId].cachedFlag == true)
 		{
+			log_debug("[WS] 2");
 			qint64 refreshDiff = currMTime - gCacheItemMap[itemId].lastRefreshTime;
 			
 			if (gCacheItemMap[itemId].clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
