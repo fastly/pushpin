@@ -33,8 +33,7 @@
 
 #define WSCONTROL_REQUEST_TIMEOUT 8000
 
-WsSession::WsSession(QObject *parent) :
-	QObject(parent),
+WsSession::WsSession() :
 	nextReqId(0),
 	debug(false),
 	logLevel(LOG_LEVEL_DEBUG),
