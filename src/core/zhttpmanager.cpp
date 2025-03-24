@@ -2293,7 +2293,7 @@ public:
 			gWsCacheClientList[ccIndex].msgIdCount++;
 			p.body = QByteArray(bodyStr);
 
-			log_debug("[WS] send_unsubscribeRequest: %s", qPrintable(TnetString::variantToString(tempPacket.toVariant(), -1)));
+			log_debug("[WS] send_unsubscribeRequest: %s", qPrintable(TnetString::variantToString(p.toVariant(), -1)));
 
 			std::weak_ptr<Private> self = q->d;
 
