@@ -2750,7 +2750,7 @@ void ZhttpManager::setCacheParameters(
 			gSubscribeMethodMap[tmpList[0].toLower()] = tmpList[1];
 		}
 	}
-	foreach (QString method, neverTimeoutMethodListMethodList)
+	foreach (QString method, neverTimeoutMethodList)
 	{
 		gNeverTimeoutMethodList.append(method.toLower());
 	}
