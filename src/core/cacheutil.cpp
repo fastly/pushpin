@@ -55,6 +55,7 @@ unsigned long long numRequestMultiPart = 0;
 extern QStringList gCacheMethodList;
 extern QMap<QString, QString> gSubscribeMethodMap;
 extern QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
+extern QStringList gNeverTimeoutMethodList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
 // multi packets params
@@ -240,6 +241,19 @@ bool is_subscribe_method(QString methodStr)
 	if (gSubscribeMethodMap.contains(methodStr.toLower()))
 	{
 		return true;
+	}
+	return false;
+}
+
+bool is_never_timeout_method(QString methodStr, QString paramsStr)
+{
+	if (gNeverTimeoutMethodList.contains(methodStr, Qt::CaseInsensitive))
+	{
+		if (jsonMap.contains(gMsgParamsAttrName) && 
+			(QString::compare(paramsStr, "[LIST]", Qt::CaseInsensitive) != 0))
+		{
+			return true;
+		}
 	}
 	return false;
 }

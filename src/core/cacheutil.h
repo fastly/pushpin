@@ -35,9 +35,10 @@
 
 #define AUTO_REFRESH_SHORTER_TIMEOUT	0x01
 #define AUTO_REFRESH_LONGER_TIMEOUT		0x02
-#define AUTO_REFRESH_UNERASE			0x04
-#define AUTO_REFRESH_EXCLUDE			0x08
-#define AUTO_REFRESH_PASSTHROUGH		0x10
+#define AUTO_REFRESH_NEVER_TIMEOUT		0x04
+#define AUTO_REFRESH_UNERASE			0x08
+#define AUTO_REFRESH_EXCLUDE			0x10
+#define AUTO_REFRESH_PASSTHROUGH		0x20
 
 #define HTTP_REFRESH_HEADER		"HTTP_REFRESH_REQUEST"
 
@@ -120,6 +121,7 @@ void cache_thread();
 
 bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
+bool is_never_timeout_method(QString methodStr, QString paramsStr);
 int get_cc_index_from_clientId(QByteArray packetId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString urlPath, int _no);

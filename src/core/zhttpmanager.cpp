@@ -86,7 +86,7 @@ QMap<QByteArray, ClientItem> gHttpClientMap;
 QList<CacheKeyItem> gCacheKeyItemList;
 static QString gMsgIdAttrName = "id";
 static QString gMsgMethodAttrName = "method";
-static QString gMsgParamsAttrName = "";
+static QString gMsgParamsAttrName = "params";
 static QString gResultAttrName = "result";
 
 int gAccessTimeoutSeconds = 30;
@@ -1476,7 +1476,8 @@ public:
 		const ZhttpRequestPacket &clientPacket, 
 		QByteArray clientId, 
 		QString orgMsgId, 
-		QString methodName, 
+		QString methodName,
+		QString msgParams, 
 		const QByteArray &methodNameParamsHashVal, 
 		int backendNo)
 	{
@@ -1485,6 +1486,11 @@ public:
 		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
 		cacheItem.refreshFlag = 0x00;
+		if (is_never_timeout_method(methodName, msgParams))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
+			log_debug("[HTTP] added refresh never timeout method");
+		}
 		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
@@ -1525,7 +1531,8 @@ public:
 		const ZhttpRequestPacket &clientPacket, 
 		QByteArray clientId, 
 		QString orgMsgId, 
-		QString methodName, 
+		QString methodName,
+		QString msgParams, 
 		const QByteArray &methodNameParamsHashVal)
 	{
 		// create new cache item
@@ -1535,6 +1542,11 @@ public:
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.refreshFlag = 0x00;
+		if (is_never_timeout_method(methodName, msgParams))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
+			log_debug("[WS] added refresh never timeout method");
+		}
 		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
@@ -1664,12 +1676,13 @@ public:
 		// get method string
 		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
 		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		QString msgParams = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 		if (msgId.isEmpty() || msgMethod.isEmpty())
 		{
 			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
+		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\" msgParams=\"%s\"", qPrintable(msgId), qPrintable(msgMethod), qPrintable(msgParams));
 
 		// Params hash val
 		QByteArray paramsHash = build_hash_key(jsonMap, "HTTP+");
@@ -1715,7 +1728,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(packet, packetId, msgId, msgMethod, paramsHash, backendNo);
+			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
 		}
 
@@ -2340,7 +2353,7 @@ public:
 		// read msgIdStr (id) and methodName (method)
 		QString msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
 		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		QString paramsStr = jsonMap.contains("params") ? jsonMap["params"].toString() : "";
+		QString msgParams = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 		if (msgIdStr.isEmpty() || methodName.isEmpty())
 		{
 			log_debug("[WS] failed to get gMsgIdAttrName and gMsgMethodAttrName");
@@ -2348,7 +2361,7 @@ public:
 		}
 
 		// get method string			
-		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName), qPrintable(paramsStr));
+		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName), qPrintable(msgParams));
 
 		// Params hash val
 		QByteArray paramsHash = build_hash_key(jsonMap, "WS+");
@@ -2411,7 +2424,7 @@ public:
 			else
 			{
 				// Register new cache item
-				int ccIndex = registerWsCacheItem(p, packetId, msgIdStr, methodName, paramsHash);
+				int ccIndex = registerWsCacheItem(p, packetId, msgIdStr, methodName, msgParams, paramsHash);
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
 				// Send new client cache request packet
