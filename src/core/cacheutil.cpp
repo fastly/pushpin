@@ -249,8 +249,7 @@ bool is_never_timeout_method(QString methodStr, QString paramsStr)
 {
 	if (gNeverTimeoutMethodList.contains(methodStr, Qt::CaseInsensitive))
 	{
-		if (jsonMap.contains(gMsgParamsAttrName) && 
-			(QString::compare(paramsStr, "[LIST]", Qt::CaseInsensitive) != 0))
+		if (QString::compare(paramsStr, "[LIST]", Qt::CaseInsensitive) != 0)
 		{
 			return true;
 		}
