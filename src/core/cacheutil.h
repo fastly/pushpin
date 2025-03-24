@@ -107,6 +107,13 @@ struct CacheItem {
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 };
 
+struct UnsubscribeRequestItem {
+	QString subscriptionStr;
+	QByteArray from;
+	QString unsubscribeMethodName;
+	QByteArray cacheClientId;
+};
+
 void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();

@@ -100,6 +100,7 @@ QFuture<void> gCacheThread;
 
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
+QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
@@ -1331,31 +1332,29 @@ public:
 	void refresh_cache(int timeInterval, QByteArray itemId, QString urlPath)
 	{
 		log_debug("_[TIMER] cache refresh %d %s", timeInterval, itemId.toHex().data());
-		if (gCacheItemMap.contains(itemId))
-		{
-			if (gCacheItemMap[itemId].proto == Scheme::http)
-			{
-				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
-				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-				send_http_post_request(urlPath, reqBody, itemId.toHex().data());
-			}
-			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
-			{
-				// Send client cache request packet for auto-refresh
-				int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
-				QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-				gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-			}
-
-			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId, urlPath);
-			});
-		}
-		else
+		if (!gCacheItemMap.contains(itemId))
 		{
 			log_debug("_[TIMER] exit refresh %d %s", timeInterval, itemId.toHex().data());
 		}
+
+		if (gCacheItemMap[itemId].proto == Scheme::http)
+		{
+			QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+			replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+			send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+		}
+		else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+		{
+			// Send client cache request packet for auto-refresh
+			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
+			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
+			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+		}
+
+		QTimer::singleShot(timeInterval * 1000, [=]() {
+			refresh_cache(timeInterval, itemId, urlPath);
+		});
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
@@ -1371,7 +1370,7 @@ public:
 		if (gCacheItemMap[itemId].proto == Scheme::http ||
 			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE)
+			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_EXCLUDE)
 			{
 				timeInterval = 0;
 			}
@@ -1392,7 +1391,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId, urlPath);  // Correct way to call a non-static member function
+				refresh_cache(timeInterval, itemId, urlPath);
 			});
 		}		
 	}
@@ -1501,6 +1500,8 @@ public:
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.cachedFlag = false;
+
+		cacheItem.methodName = methodName;
 
 		// save the request packet with new id
 		cacheItem.orgMsgId = orgMsgId;
@@ -2200,6 +2201,12 @@ public:
 
 	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, QString orgMsgId, int ccIndex)
 	{
+		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
+		{
+			log_debug("[WS] Invalid cache client %d", ccIndex);
+			return;
+		}
+
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
@@ -2246,6 +2253,65 @@ public:
 			}
 		}
 		return msgId;
+	}
+
+	void send_unsubscribe_request_over_cacheclient(const QByteArray &itemId)
+	{
+		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
+		{
+			log_debug("[WS] Invalid cache client %d", ccIndex);
+			return;
+		}
+
+		int itemCount = gUnsubscribeRequestList.count();
+		if (itemCount > 0)
+		{			
+			UnsubscribeRequestItem reqItem = gUnsubscribeRequestList[0];
+			gUnsubscribeRequestList.removeAt(0);
+
+			// Create new packet by cache client
+			ZhttpRequestPacket p;
+			ZhttpRequestPacket::Id tempId;
+
+			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+
+			ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
+			CacheItem cacheItem = gCacheItemMap[itemId];
+
+			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
+			tempId.seq = update_request_seq(cacheClient->clientId);
+			p.ids.append(tempId);
+			gWsCacheClientList[ccIndex].requestSeqCount++;
+
+			p.type = ZhttpRequestPacket::Data;
+			p.from = reqItem.from;
+
+			char bodyStr[1024];
+			int msgId = gWsCacheClientList[ccIndex].msgIdCount;
+			QString methodName = reqItem.unsubscribeMethodName;
+			qsnprintf(bodyStr, 1024, "{\"id\":%d,\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":[\"%s\"]}", 
+				msgId, qPrintable(methodName), qPrintable(reqItem.subscriptionStr));
+			gWsCacheClientList[ccIndex].msgIdCount++;
+			tempPacket.body = QByteArray(bodyStr);
+
+			log_debug("[WS] send_unsubscribeRequest: %s", qPrintable(TnetString::variantToString(tempPacket.toVariant(), -1)));
+
+			std::weak_ptr<Private> self = q->d;
+
+			foreach(const ZhttpRequestPacket::Id &id, p.ids)
+			{
+				// is this for a websocket?
+				ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+				if(sock)
+				{
+					sock->handle(id.id, id.seq, p);
+					if(self.expired())
+						return -1;
+
+					continue;
+				}
+			}
+		}
 	}
 
 	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)

@@ -149,6 +149,50 @@ static void remove_old_cache_items()
 	}
 }
 
+static void remove_old_subscribe_items()
+{
+	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
+	// cache lookup
+	foreach(QByteArray itemId, gCacheItemMap.keys())
+	{
+		if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD && 
+			gCacheItemMap[itemId].cachedFlag == true)
+		{
+			qint64 refreshDiff = currMTime - gCacheItemMap[itemId].lastRefreshTime;
+			
+			if (gCacheItemMap[itemId].clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
+			{
+				log_debug("[WS] checking subscription item clientCount=%d diff=%ld originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
+						gCacheItemMap[itemId].clientMap.count(),
+						refreshDiff,
+						qPrintable(gCacheItemMap[itemId].originSubscriptionStr),
+						qPrintable(gCacheItemMap[itemId].subscriptionStr));
+
+				// add unsubscribe request item for cache thread
+				if (gCacheItemMap[itemId].orgMsgId.isEmpty() == false)
+				{
+					UnsubscribeRequestItem reqItem;
+					reqItem.subscriptionStr = gCacheItemMap[itemId].subscriptionStr;
+					reqItem.from = gCacheItemMap[itemId].requestPacket.from;
+					reqItem.unsubscribeMethodName = gSubscribeMethodMap[gCacheItemMap[itemId].methodName];
+					reqItem.cacheClientId = gCacheItemMap[itemId].cacheClientId;
+					gUnsubscribeRequestList.append(reqItem);
+				}
+
+				if (gCacheItemMap[itemId].clientMap.count() == 0)
+				{
+					// remove subscription item
+					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
+						qPrintable(gCacheItemMap[itemId].originSubscriptionStr),
+						qPrintable(gCacheItemMap[itemId].subscriptionStr));
+					gCacheItemMap.remove(itemId);
+				}
+			}
+		}
+	}
+}
+
 void cache_thread()
 {
 	gCacheThreadAllowFlag = true;
