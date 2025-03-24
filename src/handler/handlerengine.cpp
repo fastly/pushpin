@@ -126,8 +126,7 @@ public:
 	LastIds lastIds;
 	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
 
-	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
-		Deferred(parent),
+	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll) :
 		req(_req),
 		stateClient(_stateClient),
 		shareAll(_shareAll),
@@ -355,7 +354,7 @@ private:
 
 			if(!sid.isEmpty())
 			{
-				auto d = std::unique_ptr<Deferred>(SessionRequest::getLastIds(stateClient, sid, this));
+				auto d = std::unique_ptr<Deferred>(SessionRequest::getLastIds(stateClient, sid));
 
 				// safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, d.get(), boost::placeholders::_1));
@@ -428,7 +427,7 @@ public:
 	StatsManager *stats;
 	RateLimiter *updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
-	HttpSessionUpdateManager *httpSessionUpdateManager;
+	std::shared_ptr<HttpSessionUpdateManager> httpSessionUpdateManager;
 	QString route;
 	QString statsRoute;
 	QString channelPrefix;
@@ -449,8 +448,7 @@ public:
 	QSet<QByteArray> needRemoveFromStats;
 	std::map<Deferred*, std::unique_ptr<Deferred>> deferreds;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> &_filterLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
-		Deferred(parent),
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> &_filterLimiter, const std::shared_ptr<HttpSessionUpdateManager> &_httpSessionUpdateManager, int _connectionSubscriptionMax) :
 		req(_req),
 		stateClient(_stateClient),
 		cs(_cs),
@@ -841,10 +839,6 @@ public:
 		// swap instead of std::move since sessions is a member and should have a known state
 		QList<std::shared_ptr<HttpSession>> out;
 		out.swap(sessions);
-
-		foreach(const std::shared_ptr<HttpSession> &hs, out)
-			hs->setParent(0);
-
 		return out;
 	}
 
@@ -1175,10 +1169,8 @@ private:
 	}
 };
 
-class Subscription : public QObject
+class Subscription
 {
-	Q_OBJECT
-
 public:
 	Subscription(const QString &channel) :
 		channel_(channel)
@@ -1210,10 +1202,8 @@ private:
 	}
 };
 
-class HandlerEngine::Private : public QObject
+class HandlerEngine::Private
 {
-	Q_OBJECT
-
 public:
 	class PublishAction : public RateLimiter::Action
 	{
@@ -1278,8 +1268,8 @@ public:
 	std::unique_ptr<RateLimiter> publishLimiter;
 	std::unique_ptr<RateLimiter> updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
-	HttpSessionUpdateManager *httpSessionUpdateManager;
-	Sequencer *sequencer;
+	std::shared_ptr<HttpSessionUpdateManager> httpSessionUpdateManager;
+	std::unique_ptr<Sequencer> sequencer;
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
@@ -1302,7 +1292,6 @@ public:
 	Connection proxyStatConnection;
 
 	Private(HandlerEngine *_q) :
-		QObject(_q),
 		q(_q)
 	{
 		qRegisterMetaType<DetectRuleList>();
@@ -1311,9 +1300,9 @@ public:
 		updateLimiter = std::make_unique<RateLimiter>();
 		filterLimiter = std::make_shared<RateLimiter>();
 
-		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
+		httpSessionUpdateManager = std::make_shared<HttpSessionUpdateManager>();
 
-		sequencer = new Sequencer(&cs.publishLastIds, this);
+		sequencer = std::make_unique<Sequencer>(&cs.publishLastIds);
 		itemReadyConnection = sequencer->itemReady.connect(boost::bind(&Private::sequencer_itemReady, this, boost::placeholders::_1));
 	}
 
@@ -3182,8 +3171,7 @@ private:
 	}
 };
 
-HandlerEngine::HandlerEngine(QObject *parent) :
-	QObject(parent)
+HandlerEngine::HandlerEngine()
 {
 	d = std::make_shared<Private>(this);
 }

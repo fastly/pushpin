@@ -96,7 +96,7 @@ public:
 		}
 	};
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent = 0);
+	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax, QObject *parent = 0);
 	~HttpSession();
 
 	Instruct::HoldMode holdMode() const;

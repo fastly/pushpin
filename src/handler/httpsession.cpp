@@ -172,7 +172,7 @@ public:
 	RateLimiter *updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
 	PublishLastIds *publishLastIds;
-	HttpSessionUpdateManager *updateManager;
+	std::shared_ptr<HttpSessionUpdateManager> updateManager;
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
 	int sentOutReqData;
@@ -208,7 +208,7 @@ public:
 	Connection messageFiltersFinishedConnection;
 	DeferCall deferCall;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
 		q(_q),
 		req(_req),
@@ -1677,7 +1677,7 @@ private:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax, QObject *parent) :
 	QObject(parent)
 {
 	d = std::make_shared<Private>(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
