@@ -54,6 +54,7 @@ unsigned long long numRequestMultiPart = 0;
 
 extern QStringList gCacheMethodList;
 extern QMap<QString, QString> gSubscribeMethodMap;
+extern QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
 // multi packets params
@@ -166,7 +167,7 @@ static void remove_old_subscribe_items()
 				log_debug("[WS] checking subscription item clientCount=%d diff=%ld originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
 						gCacheItemMap[itemId].clientMap.count(),
 						refreshDiff,
-						qPrintable(gCacheItemMap[itemId].originSubscriptionStr),
+						qPrintable(gCacheItemMap[itemId].orgSubscriptionStr),
 						qPrintable(gCacheItemMap[itemId].subscriptionStr));
 
 				// add unsubscribe request item for cache thread
@@ -184,7 +185,7 @@ static void remove_old_subscribe_items()
 				{
 					// remove subscription item
 					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						qPrintable(gCacheItemMap[itemId].originSubscriptionStr),
+						qPrintable(gCacheItemMap[itemId].orgSubscriptionStr),
 						qPrintable(gCacheItemMap[itemId].subscriptionStr));
 					gCacheItemMap.remove(itemId);
 				}
@@ -206,6 +207,7 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
+		remove_old_subscribe_items();
 
 		gCacheThreadRunning = false;
 

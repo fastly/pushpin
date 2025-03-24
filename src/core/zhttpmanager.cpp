@@ -2204,7 +2204,7 @@ public:
 		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 		{
 			log_debug("[WS] Invalid cache client %d", ccIndex);
-			return;
+			return -1;
 		}
 
 		// Create new packet by cache client
@@ -2255,14 +2255,8 @@ public:
 		return msgId;
 	}
 
-	void send_unsubscribe_request_over_cacheclient(const QByteArray &itemId)
+	int send_unsubscribe_request_over_cacheclient(const QByteArray &itemId)
 	{
-		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
-		{
-			log_debug("[WS] Invalid cache client %d", ccIndex);
-			return;
-		}
-
 		int itemCount = gUnsubscribeRequestList.count();
 		if (itemCount > 0)
 		{			
@@ -2275,13 +2269,18 @@ public:
 
 			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
 
+			if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
+			{
+				log_debug("[WS] Invalid cache client %d", ccIndex);
+				return -1;
+			}
+
 			ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
 			CacheItem cacheItem = gCacheItemMap[itemId];
 
 			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
 			tempId.seq = update_request_seq(cacheClient->clientId);
 			p.ids.append(tempId);
-			gWsCacheClientList[ccIndex].requestSeqCount++;
 
 			p.type = ZhttpRequestPacket::Data;
 			p.from = reqItem.from;
@@ -2292,7 +2291,7 @@ public:
 			qsnprintf(bodyStr, 1024, "{\"id\":%d,\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":[\"%s\"]}", 
 				msgId, qPrintable(methodName), qPrintable(reqItem.subscriptionStr));
 			gWsCacheClientList[ccIndex].msgIdCount++;
-			tempPacket.body = QByteArray(bodyStr);
+			p.body = QByteArray(bodyStr);
 
 			log_debug("[WS] send_unsubscribeRequest: %s", qPrintable(TnetString::variantToString(tempPacket.toVariant(), -1)));
 
@@ -2312,6 +2311,8 @@ public:
 				}
 			}
 		}
+
+		return 0;
 	}
 
 	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)
