@@ -101,6 +101,7 @@ QFuture<void> gCacheThread;
 QStringList gCacheMethodList;
 QMap<QString, QString> gSubscribeMethodMap;
 QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
+QStringList gNeverTimeoutMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
@@ -1063,6 +1064,7 @@ public:
 			{
 				pause_cache_thread();
 
+				// complete tasks from cache thread
 				send_unsubscribe_request_over_cacheclient();
 
 				// if request from cache client, skip
@@ -2721,6 +2723,7 @@ void ZhttpManager::setCacheParameters(
 	const QStringList &wsBackendUrlList,
 	const QStringList &cacheMethodList,
 	const QStringList &subscribeMethodList,
+	const QStringList &neverTimeoutMethodList,
 	const QStringList &refreshUneraseMethodList,
 	const QStringList &refreshExcludeMethodList,
 	const QStringList &refreshPassthroughMethodList,
@@ -2746,6 +2749,10 @@ void ZhttpManager::setCacheParameters(
 		{
 			gSubscribeMethodMap[tmpList[0].toLower()] = tmpList[1];
 		}
+	}
+	foreach (QString method, neverTimeoutMethodListMethodList)
+	{
+		gNeverTimeoutMethodList.append(method.toLower());
 	}
 	foreach (QString method, refreshUneraseMethodList)
 	{
@@ -2804,6 +2811,10 @@ void ZhttpManager::setCacheParameters(
 
 	for (const auto &key : gSubscribeMethodMap.keys()) {
 		log_debug("%s:%s", qPrintable(key), qPrintable(gSubscribeMethodMap.value(key)));
+	}
+
+	for (int i = 0; i < gNeverTimeoutMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gNeverTimeoutMethodList[i]));
 	}
 
 	for (int i = 0; i < gRefreshUneraseMethodList.size(); ++i) {

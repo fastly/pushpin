@@ -100,6 +100,7 @@ public:
 		QStringList wsBackendUrlList;
 		QStringList cacheMethodList;
 		QStringList subscribeMethodList;
+		QStringList neverTimeoutMethodList;
 		QStringList refreshUneraseMethodList;
 		QStringList refreshExcludeMethodList;
 		QStringList refreshPassthroughMethodList;

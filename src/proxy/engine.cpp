@@ -239,6 +239,7 @@ public:
 			config.wsBackendUrlList,
 			config.cacheMethodList,
 			config.subscribeMethodList,
+			config.neverTimeoutMethodList,
 			config.refreshUneraseMethodList,
 			config.refreshExcludeMethodList,
 			config.refreshPassthroughMethodList,

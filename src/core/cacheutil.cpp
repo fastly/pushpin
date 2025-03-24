@@ -154,23 +154,19 @@ static void remove_old_subscribe_items()
 {
 	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
-	log_debug("[WS] 1");
+
 	// cache lookup
 	foreach(QByteArray itemId, gCacheItemMap.keys())
 	{
 		if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD && 
 			gCacheItemMap[itemId].cachedFlag == true)
 		{
-			log_debug("[WS] 2");
 			qint64 refreshDiff = currMTime - gCacheItemMap[itemId].lastRefreshTime;
 			
 			if (gCacheItemMap[itemId].clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
 			{
-				log_debug("[WS] checking subscription item clientCount=%d diff=%ld originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						gCacheItemMap[itemId].clientMap.count(),
-						refreshDiff,
-						qPrintable(gCacheItemMap[itemId].orgSubscriptionStr),
-						qPrintable(gCacheItemMap[itemId].subscriptionStr));
+				log_debug("[WS] checking subscription item clientCount=%d diff=%ld", 
+					gCacheItemMap[itemId].clientMap.count(), refreshDiff);
 
 				// add unsubscribe request item for cache thread
 				if (gCacheItemMap[itemId].orgMsgId.isEmpty() == false)
@@ -187,8 +183,7 @@ static void remove_old_subscribe_items()
 				{
 					// remove subscription item
 					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						qPrintable(gCacheItemMap[itemId].orgSubscriptionStr),
-						qPrintable(gCacheItemMap[itemId].subscriptionStr));
+						qPrintable(gCacheItemMap[itemId].orgSubscriptionStr), qPrintable(gCacheItemMap[itemId].subscriptionStr));
 					gCacheItemMap.remove(itemId);
 				}
 			}

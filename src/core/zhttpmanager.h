@@ -68,6 +68,7 @@ public:
 		const QStringList &wsBackendUrlList,
 		const QStringList &cacheMethodList,
 		const QStringList &subscribeMethodList,
+		const QStringList &neverTimeoutMethodList,
 		const QStringList &refreshUneraseMethodList,
 		const QStringList &refreshExcludeMethodList,
 		const QStringList &refreshPassthroughMethodList,
