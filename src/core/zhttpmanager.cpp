@@ -1063,6 +1063,8 @@ public:
 			{
 				pause_cache_thread();
 
+				send_unsubscribe_request_over_cacheclient();
+
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
@@ -2255,7 +2257,7 @@ public:
 		return msgId;
 	}
 
-	int send_unsubscribe_request_over_cacheclient(const QByteArray &itemId)
+	int send_unsubscribe_request_over_cacheclient()
 	{
 		int itemCount = gUnsubscribeRequestList.count();
 		if (itemCount > 0)
