@@ -16,10 +16,9 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::core::qtest;
     use crate::core::test::TestException;
-    use crate::core::{call_c_main, qtest};
     use crate::ffi;
-    use std::ffi::OsStr;
 
     fn filter_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
@@ -41,19 +40,19 @@ mod tests {
         unsafe { ffi::idformat_test(out_ex) == 0 }
     }
 
-    fn publishformat_test(args: &[&OsStr]) -> u8 {
+    fn publishformat_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::publishformat_test, args) as u8 }
+        unsafe { ffi::publishformat_test(out_ex) == 0 }
     }
 
-    fn publishitem_test(args: &[&OsStr]) -> u8 {
+    fn publishitem_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::publishitem_test, args) as u8 }
+        unsafe { ffi::publishitem_test(out_ex) == 0 }
     }
 
-    fn handlerengine_test(args: &[&OsStr]) -> u8 {
+    fn handlerengine_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::handlerengine_test, args) as u8 }
+        unsafe { ffi::handlerengine_test(out_ex) == 0 }
     }
 
     #[test]
@@ -78,16 +77,16 @@ mod tests {
 
     #[test]
     fn publishformat() {
-        assert!(qtest::run(publishformat_test));
+        qtest::run_no_main(publishformat_test);
     }
 
     #[test]
     fn publishitem() {
-        assert!(qtest::run(publishitem_test));
+        qtest::run_no_main(publishitem_test);
     }
 
     #[test]
     fn handlerengine() {
-        assert!(qtest::run(handlerengine_test));
+        qtest::run_no_main(handlerengine_test);
     }
 }
