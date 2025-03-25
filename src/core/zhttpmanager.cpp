@@ -1339,6 +1339,21 @@ public:
 		if (!gCacheItemMap.contains(itemId))
 		{
 			log_debug("_[TIMER] exit refresh %d %s", timeInterval, itemId.toHex().data());
+			return;
+		}
+
+		// delete old cache items if it`s not auto_refresh_unerase
+		if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE) == 0)
+		{
+			qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+			qint64 accessDiff = currMTime - gCacheItemMap[itemId].lastAccessTime;
+			if (accessDiff > accessTimeoutMSeconds)
+			{
+				// remove cache item
+				log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
+				gCacheItemMap.remove(itemId);
+				return;
+			}
 		}
 
 		if (gCacheItemMap[itemId].proto == Scheme::http)
@@ -1374,7 +1389,7 @@ public:
 		if (gCacheItemMap[itemId].proto == Scheme::http ||
 			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_EXCLUDE)
+			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
 			{
 				timeInterval = 0;
 			}
