@@ -74,9 +74,9 @@
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
-static bool gCacheEnable = false;
-static QStringList gHttpBackendUrlList;
-static QStringList gWsBackendUrlList;
+bool gCacheEnable = false;
+QStringList gHttpBackendUrlList;
+QStringList gWsBackendUrlList;
 
 QList<ClientItem> gWsCacheClientList;
 ZhttpResponsePacket gWsInitResponsePacket;
@@ -1333,7 +1333,7 @@ public:
 		}
 	}
 
-	void refresh_cache(int timeInterval, QByteArray itemId, QString urlPath)
+	void refresh_cache(QByteArray itemId, QString urlPath)
 	{
 		log_debug("_[TIMER] cache refresh %d %s", timeInterval, itemId.toHex().data());
 		if (!gCacheItemMap.contains(itemId))
@@ -1342,39 +1342,71 @@ public:
 			return;
 		}
 
-		// delete old cache items if it`s not auto_refresh_unerase
-		if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE) == 0)
+		int timeInterval = get_next_cache_refresh_interval(itemId);
+		if (gCacheItemMap[itemId].cachedFlag == true)
 		{
-			qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-			qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
-			qint64 accessDiff = currMTime - gCacheItemMap[itemId].lastAccessTime;
-			if (accessDiff > accessTimeoutMSeconds)
+			// delete old cache items if it`s not auto_refresh_unerase
+			if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE) == 0)
 			{
-				// remove cache item
-				log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
-				gCacheItemMap.remove(itemId);
-				return;
+				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+				qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
+				qint64 accessDiff = currMTime - gCacheItemMap[itemId].lastAccessTime;
+				if (accessDiff > accessTimeoutMSeconds)
+				{
+					// remove cache item
+					log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
+					gCacheItemMap.remove(itemId);
+					return;
+				}
+			}
+
+			if (timeInterval > 0)
+			{
+				if (gCacheItemMap[itemId].proto == Scheme::http)
+				{
+					QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+					replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+					send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+				}
+				else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+				{
+					// Send client cache request packet for auto-refresh
+					int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+					QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
+					gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
+					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				}
+			}
+		}
+		else
+		{
+			// switch backend of the failed response
+			if (gCacheItemMap[itemId].proto == Scheme::http)
+			{
+				if (gCacheItemMap[itemId].retryCount > RETRY_RESPONSE_MAX_COUNT)
+				{
+					gCacheItemMap.remove(itemId);
+					return;
+				}
+				gCacheItemMap[itemId].retryCount++;
+
+				urlPath = get_switched_http_backend_url(urlPath);
+				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+				send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+			}
+			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+			{
+
 			}
 		}
 
-		if (gCacheItemMap[itemId].proto == Scheme::http)
+		if (timeInterval > 0)
 		{
-			QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
-			replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-			send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+			QTimer::singleShot(timeInterval * 1000, [=]() {
+				refresh_cache(itemId, urlPath);
+			});
 		}
-		else if (gCacheItemMap[itemId].proto == Scheme::websocket)
-		{
-			// Send client cache request packet for auto-refresh
-			int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
-			QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-			gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-		}
-
-		QTimer::singleShot(timeInterval * 1000, [=]() {
-			refresh_cache(timeInterval, itemId, urlPath);
-		});
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
@@ -1385,33 +1417,11 @@ public:
 			return;
 		}
 
-		int timeInterval = 0;
-		// if it`s websocket and cache method
-		if (gCacheItemMap[itemId].proto == Scheme::http ||
-			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
-		{
-			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
-			{
-				timeInterval = 0;
-			}
-			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_SHORTER_TIMEOUT)
-			{
-				timeInterval = gShorterTimeoutSeconds;
-			}
-			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_LONGER_TIMEOUT)
-			{
-				timeInterval = gLongerTimeoutSeconds;
-			}
-			else
-			{
-				timeInterval = gCacheTimeoutSeconds;
-			}
-		}
-
+		int timeInterval = get_next_cache_refresh_interval(itemId);
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(timeInterval, itemId, urlPath);
+				refresh_cache(itemId, urlPath);
 			});
 		}		
 	}
@@ -1743,6 +1753,9 @@ public:
 				}				
 			}
 
+			// register cache refresh
+			register_cache_refresh(itemId, urlPath);
+
 			// Register new cache item
 			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
@@ -1845,15 +1858,12 @@ public:
 				if (msgIdStr != itemIdStr)
 				{
 					// send response to all clients
-					QString urlPath = "";
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
 						// update seq
 						int seqNum = 0;
 						if (gHttpClientMap.contains(cliId))
 						{
-							if (urlPath.isEmpty())
-								urlPath = gHttpClientMap[cliId].urlPath;
 							seqNum = p.ids.first().seq;
 							// delete original item
 							gHttpClientMap.remove(cliId);
@@ -1863,10 +1873,6 @@ public:
 						log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 					}
 					gCacheItemMap[itemId].clientMap.clear();
-					
-					// register cache refresh
-					if (!urlPath.isEmpty())
-						register_cache_refresh(itemId, urlPath);
 				}
 				else
 				{

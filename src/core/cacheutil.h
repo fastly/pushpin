@@ -42,6 +42,8 @@
 
 #define HTTP_REFRESH_HEADER		"HTTP_REFRESH_REQUEST"
 
+#define RETRY_RESPONSE_MAX_COUNT	10
+
 enum Scheme {
 	none,
 	http,
@@ -149,5 +151,10 @@ int update_request_seq(const QByteArray &clientId);
 int update_response_seq(const QByteArray &clientId);
 
 void send_http_post_request(QString backend, QByteArray postData, char *headerVal);
+
+int get_next_cache_refresh_interval(const QByteArray &itemId);
+
+QString get_switched_http_backend_url(QString currUrl);
+QString get_switched_ws_backend_url(QString currUrl);
 
 #endif

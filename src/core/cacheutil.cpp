@@ -50,6 +50,10 @@
 #include "tnetstring.h"
 #include "log.h"
 
+extern bool gCacheEnable = false;
+extern QStringList gHttpBackendUrlList;
+extern QStringList gWsBackendUrlList;
+
 unsigned long long numRequestMultiPart = 0;
 
 extern QStringList gCacheMethodList;
@@ -859,4 +863,99 @@ void send_http_post_request(QString backend, QByteArray postData, char *headerVa
 
 	// Optionally, delete manager after request is sent
 	QObject::connect(reply, &QNetworkReply::finished, manager, &QNetworkAccessManager::deleteLater);
+}
+
+int get_next_cache_refresh_interval(const QByteArray &itemId)
+{
+	int timeInterval = 0;
+
+	if (gCacheItemMap[itemId].cachedFlag == true)
+	{
+		// if it`s websocket and cache method
+		if (gCacheItemMap[itemId].proto == Scheme::http ||
+			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
+		{
+			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
+			{
+				timeInterval = 0;
+			}
+			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_SHORTER_TIMEOUT)
+			{
+				timeInterval = gShorterTimeoutSeconds;
+			}
+			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_LONGER_TIMEOUT)
+			{
+				timeInterval = gLongerTimeoutSeconds;
+			}
+			else
+			{
+				timeInterval = gCacheTimeoutSeconds;
+			}
+		}
+	}
+	else
+	{
+		// set interval to the fixed value
+		timeInterval = 5;
+	}
+
+	return timeInterval;
+}
+
+QString get_switched_http_backend_url(QString currUrl)
+{
+	int index = -1;
+
+	// Iterate through the list
+	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) 
+	{
+		if (gHttpBackendUrlList.at(i).compare(currUrl, Qt::CaseInsensitive) == 0) 
+		{
+			index = i;
+			break;  // Stop after finding the match
+		}
+	}
+
+	// Check the result
+	if (index != -1) 
+	{
+		index++;
+		if (index >= gHttpBackendUrlList.size())
+			index = 0;
+	}
+	else
+	{
+		index = 0;
+	}
+
+	return gHttpBackendUrlList[index];
+}
+
+QString get_switched_ws_backend_url(QString currUrl)
+{
+	int index = -1;
+
+	// Iterate through the list
+	for (int i = 0; i < gWsBackendUrlList.size(); ++i) 
+	{
+		if (gWsBackendUrlList.at(i).compare(currUrl, Qt::CaseInsensitive) == 0) 
+		{
+			index = i;
+			break;  // Stop after finding the match
+		}
+	}
+
+	// Check the result
+	if (index != -1) 
+	{
+		index++;
+		if (index >= gWsBackendUrlList.size())
+			index = 0;
+	}
+	else
+	{
+		index = 0;
+	}
+
+	return gWsBackendUrlList[index];
 }
