@@ -1831,6 +1831,8 @@ public:
 			msgIdStr = jsonMap[gMsgIdAttrName].toString();
 		}
 
+		// result
+		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			QString itemIdStr = "\""; 
@@ -1841,6 +1843,11 @@ public:
 				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
 				(msgIdStr == itemIdStr && gCacheItemMap[itemId].cachedFlag == true)))
 			{
+				if(jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				{
+					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+					continue;
+				}
 				gCacheItemMap[itemId].responsePacket = p;
 				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
