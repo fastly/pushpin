@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,28 +16,29 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::core::test::TestException;
     use crate::core::{call_c_main, qtest};
     use crate::ffi;
     use std::ffi::OsStr;
 
-    fn filter_test(args: &[&OsStr]) -> u8 {
+    fn filter_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::filter_test, args) as u8 }
+        unsafe { ffi::filter_test(out_ex) == 0 }
     }
 
-    fn jsonpatch_test(args: &[&OsStr]) -> u8 {
+    fn jsonpatch_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::jsonpatch_test, args) as u8 }
+        unsafe { ffi::jsonpatch_test(out_ex) == 0 }
     }
 
-    fn instruct_test(args: &[&OsStr]) -> u8 {
+    fn instruct_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::instruct_test, args) as u8 }
+        unsafe { ffi::instruct_test(out_ex) == 0 }
     }
 
-    fn idformat_test(args: &[&OsStr]) -> u8 {
+    fn idformat_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::idformat_test, args) as u8 }
+        unsafe { ffi::idformat_test(out_ex) == 0 }
     }
 
     fn publishformat_test(args: &[&OsStr]) -> u8 {
@@ -57,22 +58,22 @@ mod tests {
 
     #[test]
     fn filter() {
-        assert!(qtest::run(filter_test));
+        qtest::run_no_main(filter_test);
     }
 
     #[test]
     fn jsonpatch() {
-        assert!(qtest::run(jsonpatch_test));
+        qtest::run_no_main(jsonpatch_test);
     }
 
     #[test]
     fn instruct() {
-        assert!(qtest::run(instruct_test));
+        qtest::run_no_main(instruct_test);
     }
 
     #[test]
     fn idformat() {
-        assert!(qtest::run(idformat_test));
+        qtest::run_no_main(idformat_test);
     }
 
     #[test]
