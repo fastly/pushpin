@@ -1346,6 +1346,7 @@ public:
 		if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE) == 0)
 		{
 			qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+			qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
 			qint64 accessDiff = currMTime - gCacheItemMap[itemId].lastAccessTime;
 			if (accessDiff > accessTimeoutMSeconds)
 			{
