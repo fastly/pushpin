@@ -50,7 +50,7 @@
 #include "tnetstring.h"
 #include "log.h"
 
-extern bool gCacheEnable = false;
+extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 

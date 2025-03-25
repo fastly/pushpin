@@ -1335,10 +1335,10 @@ public:
 
 	void refresh_cache(QByteArray itemId, QString urlPath)
 	{
-		log_debug("_[TIMER] cache refresh %d %s", timeInterval, itemId.toHex().data());
+		log_debug("_[TIMER] cache refresh %d %s", itemId.toHex().data());
 		if (!gCacheItemMap.contains(itemId))
 		{
-			log_debug("_[TIMER] exit refresh %d %s", timeInterval, itemId.toHex().data());
+			log_debug("_[TIMER] exit refresh %d %s", itemId.toHex().data());
 			return;
 		}
 
@@ -1754,7 +1754,7 @@ public:
 			}
 
 			// register cache refresh
-			register_cache_refresh(itemId, urlPath);
+			register_cache_refresh(paramsHash, uriPath);
 
 			// Register new cache item
 			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
