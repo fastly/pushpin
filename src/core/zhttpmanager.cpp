@@ -1860,7 +1860,6 @@ public:
 
 				// set random last refresh time
 				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
 				if (gCacheItemMap[itemId].cachedFlag == false)
 				{
