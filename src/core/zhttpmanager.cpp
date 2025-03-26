@@ -1385,7 +1385,7 @@ public:
 			{
 				if (gCacheItemMap[itemId].retryCount > RETRY_RESPONSE_MAX_COUNT)
 				{
-					gCacheItemMap.remove(itemId);
+					log_debug("[_TIMER] reached max retry count");
 					return;
 				}
 				gCacheItemMap[itemId].retryCount++;
