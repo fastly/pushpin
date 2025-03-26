@@ -1388,6 +1388,7 @@ public:
 					log_debug("[_TIMER] reached max retry count");
 					return;
 				}
+				log_debug("aaaaaaaaa %d", gCacheItemMap[itemId].retryCount);
 				gCacheItemMap[itemId].retryCount++;
 
 				urlPath = get_switched_http_backend_url(urlPath);
