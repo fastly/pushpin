@@ -1409,6 +1409,11 @@ public:
 		}
 	}
 
+	void refresh_cache_(int timeInterval)
+	{
+		log_debug("asdfasdfasdfasddf %d", timeInterval);
+	}
+
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
 		if (!gCacheItemMap.contains(itemId))
@@ -1423,7 +1428,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				log_debug("asdfasdfasdfasddf %d", timeInterval);
+				refresh_cache_(timeInterval);
 			});
 			//QTimer::singleShot(timeInterval * 1000, [=]() {
 			//	refresh_cache(itemId, urlPath);
