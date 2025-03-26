@@ -1335,7 +1335,7 @@ public:
 
 	void refresh_cache(QByteArray itemId, QString urlPath)
 	{
-		log_debug("_[TIMER] cache refresh %d %s", itemId.toHex().data(), qPrintable(urlPath));
+		log_debug("_[TIMER] cache refresh %s %s", itemId.toHex().data(), qPrintable(urlPath));
 		if (!gCacheItemMap.contains(itemId))
 		{
 			log_debug("_[TIMER] exit refresh %d %s", itemId.toHex().data());
@@ -1409,11 +1409,6 @@ public:
 		}
 	}
 
-	void refresh_cache_(QByteArray itemId, QString urlPath)
-	{
-		log_debug("_[TIMER] cache refresh %d %s", itemId.toHex().data(), qPrintable(urlPath));
-	}
-
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
 		if (!gCacheItemMap.contains(itemId))
@@ -1428,11 +1423,8 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache_(itemId, urlPath);
+				refresh_cache(itemId, urlPath);
 			});
-			//QTimer::singleShot(timeInterval * 1000, [=]() {
-			//	refresh_cache(itemId, urlPath);
-			//});
 		}		
 	}
 
