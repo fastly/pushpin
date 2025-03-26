@@ -43,27 +43,6 @@
 #define RETRY_MAX 5
 #define RETRY_RAND_MAX 1000
 
-namespace {
-
-class WsEvent
-{
-public:
-	QByteArray type;
-	QByteArray content;
-
-	WsEvent()
-	{
-	}
-
-	WsEvent(const QByteArray &_type, const QByteArray &_content = QByteArray()) :
-		type(_type),
-		content(_content)
-	{
-	}
-};
-
-}
-
 class WebSocketOverHttp::DisconnectManager
 {
 public:
@@ -134,9 +113,9 @@ private:
 thread_local WebSocketOverHttp::DisconnectManager *WebSocketOverHttp::g_disconnectManager = 0;
 thread_local int WebSocketOverHttp::g_maxManagedDisconnects = -1;
 
-static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
+static QList<WebSocketOverHttp::Event> decodeEvents(const QByteArray &in, bool *ok = 0)
 {
-	QList<WsEvent> out;
+	QList<WebSocketOverHttp::Event> out;
 	if(ok)
 		*ok = false;
 
@@ -145,12 +124,12 @@ static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 	{
 		int at = in.indexOf("\r\n", start);
 		if(at == -1)
-			return QList<WsEvent>();
+			return QList<WebSocketOverHttp::Event>();
 
 		QByteArray typeLine = in.mid(start, at - start);
 		start = at + 2;
 
-		WsEvent e;
+		WebSocketOverHttp::Event e;
 		at = typeLine.indexOf(' ');
 		if(at != -1)
 		{
@@ -159,7 +138,7 @@ static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 			bool check;
 			int clen = typeLine.mid(at + 1).toInt(&check, 16);
 			if(!check)
-				return QList<WsEvent>();
+				return QList<WebSocketOverHttp::Event>();
 
 			e.content = in.mid(start, clen);
 			start += clen + 2;
@@ -177,11 +156,11 @@ static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 	return out;
 }
 
-static QByteArray encodeEvents(const QList<WsEvent> &events)
+static QByteArray encodeEvents(const QList<WebSocketOverHttp::Event> &events)
 {
 	QByteArray out;
 
-	foreach(const WsEvent &e, events)
+	foreach(const WebSocketOverHttp::Event &e, events)
 	{
 		if(!e.content.isNull())
 		{
@@ -509,74 +488,31 @@ private:
 		reqContentSize = 0;
 		reqClose = false;
 
-		QList<WsEvent> events;
+		QList<Event> events;
 
 		if(state == Connecting)
 		{
-			events += WsEvent("OPEN");
+			events += Event("OPEN");
 		}
 		else if(disconnecting && !disconnectSent)
 		{
-			events += WsEvent("DISCONNECT");
+			events += Event("DISCONNECT");
 			disconnectSent = true;
 		}
 		else
 		{
-			while(!outFrames.isEmpty() && reqContentSize < BUFFER_SIZE && (maxEvents <= 0 || events.count() < maxEvents))
+			bool ok = false;
+			events += framesToEvents(outFrames, BUFFER_SIZE, maxEvents, &ok, &reqFrames, &reqContentSize);
+			if(!ok)
 			{
-				// make sure the next message is fully readable
-				int takeCount = -1;
-				for(int n = 0; n < outFrames.count(); ++n)
-				{
-					if(!outFrames[n].more)
-					{
-						takeCount = n + 1;
-						break;
-					}
-				}
-				if(takeCount < 1)
-					break;
-
-				Frame::Type ftype = Frame::Text;
-				BufferList content;
-
-				for(int n = 0; n < takeCount; ++n)
-				{
-					Frame f = outFrames.takeFirst();
-
-					if((n == 0 && f.type == Frame::Continuation) || (n > 0 && f.type != Frame::Continuation))
-					{
-						updating = false;
-						queueError(ErrorGeneric);
-						return;
-					}
-
-					if(n == 0)
-					{
-						assert(f.type != Frame::Continuation);
-						ftype = f.type;
-					}
-
-					content += f.data;
-
-					assert(n + 1 < takeCount || !f.more);
-				}
-
-				QByteArray data = content.toByteArray();
-
-				// for compactness, we only include content on ping/pong if non-empty
-				if(ftype == Frame::Text)
-					events += WsEvent("TEXT", data);
-				else if(ftype == Frame::Binary)
-					events += WsEvent("BINARY", data);
-				else if(ftype == Frame::Ping)
-					events += WsEvent("PING", !data.isEmpty() ? data : QByteArray());
-				else if(ftype == Frame::Pong)
-					events += WsEvent("PONG", !data.isEmpty() ? data : QByteArray());
-
-				reqFrames += takeCount;
-				reqContentSize += content.size();
+				updating = false;
+				queueError(ErrorGeneric);
+				return;
 			}
+
+			// guaranteed to succeed since outFrames hasn't been touched
+			// since the content size was calculated
+			assert(removeContentFromFrames(&outFrames, reqContentSize) == reqContentSize);
 
 			if(state == Closing && (maxEvents <= 0 || events.count() < maxEvents))
 			{
@@ -595,10 +531,10 @@ private:
 					buf[0] = (closeCode >> 8) & 0xff;
 					buf[1] = closeCode & 0xff;
 					memcpy(buf.data() + 2, rawReason.data(), rawReason.size());
-					events += WsEvent("CLOSE", buf);
+					events += Event("CLOSE", buf);
 				}
 				else
-					events += WsEvent("CLOSE");
+					events += Event("CLOSE");
 
 				reqClose = true;
 			}
@@ -729,7 +665,7 @@ private:
 		}
 
 		bool ok;
-		QList<WsEvent> events = decodeEvents(responseBody, &ok);
+		QList<Event> events = decodeEvents(responseBody, &ok);
 		if(!ok)
 		{
 			cleanup();
@@ -788,7 +724,7 @@ private:
 		bool closed = false;
 		bool disconnected = false;
 
-		foreach(const WsEvent &e, events)
+		foreach(const Event &e, events)
 		{
 			if(e.type == "OPEN")
 			{
@@ -1201,6 +1137,121 @@ void WebSocketOverHttp::setHeaders(const HttpHeaders &headers)
 	d->requestData.headers = headers;
 
 	d->sanitizeRequestHeaders();
+}
+
+QList<WebSocketOverHttp::Event> WebSocketOverHttp::framesToEvents(const QList<Frame> &frames, int eventsMax, int contentMax, bool *ok, int *framesRepresented, int *contentRepresented)
+{
+	QList<WebSocketOverHttp::Event> out;
+	int pos = 0;
+	int contentSize = 0;
+
+	while(pos < frames.count() && (eventsMax <= 0 || out.count() < eventsMax) && (contentMax <= 0 || contentSize < contentMax))
+	{
+		// make sure the next message is fully readable
+		int takeCount = -1;
+		for(int n = pos; n < frames.count(); ++n)
+		{
+			if(!frames[n].more)
+			{
+				takeCount = n - pos + 1;
+				break;
+			}
+		}
+		if(takeCount < 1)
+			break;
+
+		Frame::Type ftype = Frame::Text;
+		BufferList content;
+
+		for(int n = 0; n < takeCount; ++n)
+		{
+			Frame f = frames[pos + n];
+
+			if((n == 0 && f.type == Frame::Continuation) || (n > 0 && f.type != Frame::Continuation))
+			{
+				*ok = false;
+				return QList<WebSocketOverHttp::Event>();
+			}
+
+			if(n == 0)
+			{
+				assert(f.type != Frame::Continuation);
+				ftype = f.type;
+			}
+
+			content += f.data;
+
+			assert(n + 1 < takeCount || !f.more);
+		}
+
+		QByteArray data = content.toByteArray();
+
+		// for compactness, we only include content on ping/pong if non-empty
+		if(ftype == Frame::Text)
+			out += Event("TEXT", data);
+		else if(ftype == Frame::Binary)
+			out += Event("BINARY", data);
+		else if(ftype == Frame::Ping)
+			out += Event("PING", !data.isEmpty() ? data : QByteArray());
+		else if(ftype == Frame::Pong)
+			out += Event("PONG", !data.isEmpty() ? data : QByteArray());
+
+		pos += takeCount;
+		contentSize += content.size();
+	}
+
+	*ok = true;
+	*framesRepresented = pos;
+	*contentRepresented = contentSize;
+
+	return out;
+}
+
+int WebSocketOverHttp::removeContentFromFrames(QList<WebSocket::Frame> *frames, int count)
+{
+	int left = count;
+
+	while(!frames->isEmpty())
+	{
+		WebSocket::Frame &f = frames->first();
+
+		// not allowed
+		if(f.type == WebSocket::Frame::Continuation)
+			break;
+
+		int size = qMin(left, f.data.size());
+		left -= size;
+
+		if(size < f.data.size())
+		{
+			assert(left == 0);
+
+			if(size > 0)
+				f.data = f.data.mid(size);
+
+			break;
+		}
+
+		WebSocket::Frame::Type ftype = f.type;
+		bool more = f.more;
+
+		// only remove frame of a multipart message if we can carry over
+		// the type
+		if(more && frames->count() < 2)
+			break;
+
+		frames->removeFirst();
+
+		// if removed frame was part of a multipart message, carry over
+		// the type
+		if(more)
+		{
+			assert(!frames->isEmpty());
+			frames->first().type = ftype;
+		}
+	}
+
+	return (count - left);
 }
 
 #include "websocketoverhttp.moc"
