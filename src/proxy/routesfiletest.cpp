@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,116 +21,90 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QtTest/QtTest>
-#include "log.h"
+#include "test.h"
 #include "routesfile.h"
 
-class RoutesFileTest : public QObject
+static void lineTests()
 {
-	Q_OBJECT
+	QList<RoutesFile::RouteSection> r;
+	bool ok;
 
-private slots:
-	void initTestCase()
-	{
-		//log_setOutputLevel(LOG_LEVEL_WARNING);
-	}
+	r = RoutesFile::parseLine("apple", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 1);
+	TEST_ASSERT_EQ(r[0].value, QString("apple"));
+	TEST_ASSERT(r[0].props.isEmpty());
 
-	void cleanupTestCase()
-	{
-	}
+	r = RoutesFile::parseLine("apple banana", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 2);
+	TEST_ASSERT_EQ(r[0].value, QString("apple"));
+	TEST_ASSERT(r[0].props.isEmpty());
+	TEST_ASSERT_EQ(r[1].value, QString("banana"));
+	TEST_ASSERT(r[1].props.isEmpty());
 
-	void lineTests()
-	{
-		QList<RoutesFile::RouteSection> r;
-		bool ok;
+	r = RoutesFile::parseLine("  apple   banana  # comment", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 2);
+	TEST_ASSERT_EQ(r[0].value, QString("apple"));
+	TEST_ASSERT(r[0].props.isEmpty());
+	TEST_ASSERT_EQ(r[1].value, QString("banana"));
+	TEST_ASSERT(r[1].props.isEmpty());
 
-		r = RoutesFile::parseLine("apple", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 1);
-		QCOMPARE(r[0].value, QString("apple"));
-		QVERIFY(r[0].props.isEmpty());
+	r = RoutesFile::parseLine("apple,organic,type=gala,from=\"washington, \\\"usa\\\"\"", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 1);
+	TEST_ASSERT_EQ(r[0].value, QString("apple"));
+	TEST_ASSERT_EQ(r[0].props.count(), 3);
+	TEST_ASSERT(r[0].props.contains("organic"));
+	TEST_ASSERT(r[0].props.value("organic").isEmpty());
+	TEST_ASSERT_EQ(r[0].props.value("type"), QString("gala"));
+	TEST_ASSERT_EQ(r[0].props.value("from"), QString("washington, \"usa\""));
 
-		r = RoutesFile::parseLine("apple banana", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 2);
-		QCOMPARE(r[0].value, QString("apple"));
-		QVERIFY(r[0].props.isEmpty());
-		QCOMPARE(r[1].value, QString("banana"));
-		QVERIFY(r[1].props.isEmpty());
+	r = RoutesFile::parseLine("apple,organic banana cherry,type=bing", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 3);
+	TEST_ASSERT_EQ(r[0].value, QString("apple"));
+	TEST_ASSERT_EQ(r[0].props.count(), 1);
+	TEST_ASSERT(r[0].props.contains("organic"));
+	TEST_ASSERT(r[0].props.value("organic").isEmpty());
+	TEST_ASSERT_EQ(r[1].value, QString("banana"));
+	TEST_ASSERT(r[1].props.isEmpty());
+	TEST_ASSERT_EQ(r[2].value, QString("cherry"));
+	TEST_ASSERT_EQ(r[2].props.value("type"), QString("bing"));
 
-		r = RoutesFile::parseLine("  apple   banana  # comment", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 2);
-		QCOMPARE(r[0].value, QString("apple"));
-		QVERIFY(r[0].props.isEmpty());
-		QCOMPARE(r[1].value, QString("banana"));
-		QVERIFY(r[1].props.isEmpty());
+	r = RoutesFile::parseLine(",organic", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 1);
+	TEST_ASSERT_EQ(r[0].value, QString(""));
+	TEST_ASSERT_EQ(r[0].props.count(), 1);
+	TEST_ASSERT(r[0].props.contains("organic"));
+	TEST_ASSERT(r[0].props.value("organic").isEmpty());
 
-		r = RoutesFile::parseLine("apple,organic,type=gala,from=\"washington, \\\"usa\\\"\"", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 1);
-		QCOMPARE(r[0].value, QString("apple"));
-		QCOMPARE(r[0].props.count(), 3);
-		QVERIFY(r[0].props.contains("organic"));
-		QVERIFY(r[0].props.value("organic").isEmpty());
-		QCOMPARE(r[0].props.value("type"), QString("gala"));
-		QCOMPARE(r[0].props.value("from"), QString("washington, \"usa\""));
+	r = RoutesFile::parseLine("type=gala", &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(r.count(), 1);
+	TEST_ASSERT_EQ(r[0].value, QString(""));
+	TEST_ASSERT_EQ(r[0].props.count(), 1);
+	TEST_ASSERT(r[0].props.contains("type"));
+	TEST_ASSERT_EQ(r[0].props.value("type"), QString("gala"));
 
-		r = RoutesFile::parseLine("apple,organic banana cherry,type=bing", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 3);
-		QCOMPARE(r[0].value, QString("apple"));
-		QCOMPARE(r[0].props.count(), 1);
-		QVERIFY(r[0].props.contains("organic"));
-		QVERIFY(r[0].props.value("organic").isEmpty());
-		QCOMPARE(r[1].value, QString("banana"));
-		QVERIFY(r[1].props.isEmpty());
-		QCOMPARE(r[2].value, QString("cherry"));
-		QCOMPARE(r[2].props.value("type"), QString("bing"));
+	// unterminated quote
+	r = RoutesFile::parseLine("apple,organic,type=\"gala", &ok);
+	TEST_ASSERT(!ok);
 
-		r = RoutesFile::parseLine(",organic", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 1);
-		QCOMPARE(r[0].value, QString(""));
-		QCOMPARE(r[0].props.count(), 1);
-		QVERIFY(r[0].props.contains("organic"));
-		QVERIFY(r[0].props.value("organic").isEmpty());
+	// empty prop name
+	r = RoutesFile::parseLine("apple,organic,", &ok);
+	TEST_ASSERT(!ok);
 
-		r = RoutesFile::parseLine("type=gala", &ok);
-		QVERIFY(ok);
-		QCOMPARE(r.count(), 1);
-		QCOMPARE(r[0].value, QString(""));
-		QCOMPARE(r[0].props.count(), 1);
-		QVERIFY(r[0].props.contains("type"));
-		QCOMPARE(r[0].props.value("type"), QString("gala"));
-
-		// unterminated quote
-		r = RoutesFile::parseLine("apple,organic,type=\"gala", &ok);
-		QVERIFY(!ok);
-
-		// empty prop name
-		r = RoutesFile::parseLine("apple,organic,", &ok);
-		QVERIFY(!ok);
-
-		// empty prop name
-		r = RoutesFile::parseLine("apple,organic,=gala", &ok);
-		QVERIFY(!ok);
-	}
-};
-
-namespace {
-namespace Main {
-QTEST_MAIN(RoutesFileTest)
-}
+	// empty prop name
+	r = RoutesFile::parseLine("apple,organic,=gala", &ok);
+	TEST_ASSERT(!ok);
 }
 
-extern "C" {
-
-int routesfile_test(int argc, char **argv)
+extern "C" int routesfile_test(ffi::TestException *out_ex)
 {
-	return Main::main(argc, argv);
-}
+	TEST_CATCH(lineTests());
 
+	return 0;
 }
-
-#include "routesfiletest.moc"

@@ -16,24 +16,23 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::core::qtest;
     use crate::core::test::TestException;
-    use crate::core::{call_c_main, qtest};
     use crate::ffi;
-    use std::ffi::OsStr;
 
     fn websocketoverhttp_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::websocketoverhttp_test(out_ex) == 0 }
     }
 
-    fn routesfile_test(args: &[&OsStr]) -> u8 {
+    fn routesfile_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::routesfile_test, args) as u8 }
+        unsafe { ffi::routesfile_test(out_ex) == 0 }
     }
 
-    fn proxyengine_test(args: &[&OsStr]) -> u8 {
+    fn proxyengine_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::proxyengine_test, args) as u8 }
+        unsafe { ffi::proxyengine_test(out_ex) == 0 }
     }
 
     #[test]
@@ -43,11 +42,11 @@ mod tests {
 
     #[test]
     fn routesfile() {
-        assert!(qtest::run(routesfile_test));
+        qtest::run_no_main(routesfile_test);
     }
 
     #[test]
     fn proxyengine() {
-        assert!(qtest::run(proxyengine_test));
+        qtest::run_no_main(proxyengine_test);
     }
 }
