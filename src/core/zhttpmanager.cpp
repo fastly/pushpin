@@ -1875,6 +1875,7 @@ public:
 							gHttpClientMap.remove(cliId);
 						}
 
+						replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
 						send_http_response_to_client(itemId, cliId, seqNum);
 						log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 					}
