@@ -2910,7 +2910,7 @@ void ZhttpManager::setCacheParameters(
 			}
 		}
 
-		gCacheThread = QtConcurrent::run(cache_thread);
+		//gCacheThread = QtConcurrent::run(cache_thread);
 	}
 }
 
