@@ -1422,7 +1422,7 @@ public:
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		if (timeInterval > 0)
 		{
-			QTimer::singleShot(3000, []() {
+			QTimer::singleShot(timeInterval * 1000, []() {
 				qDebug() << "Lambda executed after 3 seconds!";
 			});
 			//QTimer::singleShot(timeInterval * 1000, [=]() {
