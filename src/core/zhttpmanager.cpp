@@ -1846,7 +1846,7 @@ public:
 				if(jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
-					continue;
+					return 0;
 				}
 				gCacheItemMap[itemId].responsePacket = p;
 				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
