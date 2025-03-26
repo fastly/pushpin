@@ -1388,7 +1388,6 @@ public:
 					log_debug("[_TIMER] reached max retry count");
 					return;
 				}
-				log_debug("aaaaaaaaa %d", gCacheItemMap[itemId].retryCount);
 				gCacheItemMap[itemId].retryCount++;
 
 				urlPath = get_switched_http_backend_url(urlPath);
@@ -1843,9 +1842,11 @@ public:
 			log_debug("[HTTP] %s, %s", qPrintable(msgIdStr), qPrintable(itemIdStr));
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
 				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
-				(msgIdStr == itemIdStr && gCacheItemMap[itemId].cachedFlag == true)))
+				(msgIdStr == itemIdStr)))
 			{
-				if(jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				if (gCacheItemMap[itemId].cachedFlag == false &&
+					jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && 
+					gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
 					return 0;
