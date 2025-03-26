@@ -1856,16 +1856,13 @@ public:
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
 				gCacheItemMap[itemId].msgId = msgIdValue;
 				gCacheItemMap[itemId].newMsgId = msgIdValue;
-				gCacheItemMap[itemId].cachedFlag = true;
 				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
 
 				// set random last refresh time
-				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-				int nextTimeMSeconds = (clock() % 10) * 1000;;
-				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
+				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
-				if (msgIdStr != itemIdStr)
+				if (gCacheItemMap[itemId].cachedFlag == false)
 				{
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
@@ -1884,7 +1881,10 @@ public:
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 				}
-				else
+
+				gCacheItemMap[itemId].cachedFlag = true;
+				
+				if (msgIdStr == itemIdStr)
 				{
 					gCacheItemMap[itemId].msgId = 0;
 					// recover original msgId
