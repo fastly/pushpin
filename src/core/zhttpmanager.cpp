@@ -1413,9 +1413,11 @@ public:
 	{
 		if (!gCacheItemMap.contains(itemId))
 		{
-			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.data());
+			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.toHex().data());
 			return;
 		}
+
+		log_debug("[REFRESH] Registered new cache refresh %s, %s", itemId.toHex().data(), qPrintable(urlPath));
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		if (timeInterval > 0)
@@ -1753,12 +1755,12 @@ public:
 				}				
 			}
 
-			// register cache refresh
-			register_cache_refresh(paramsHash, uriPath);
-
 			// Register new cache item
 			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
+
+			// register cache refresh
+			register_cache_refresh(paramsHash, uriPath);
 		}
 
 		return -1;
