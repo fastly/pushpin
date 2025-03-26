@@ -1423,7 +1423,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, []() {
-				qDebug() << "Lambda executed after 3 seconds!";
+				refresh_cache(itemId, urlPath);
 			});
 			//QTimer::singleShot(timeInterval * 1000, [=]() {
 			//	refresh_cache(itemId, urlPath);
