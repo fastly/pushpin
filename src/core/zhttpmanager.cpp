@@ -1423,7 +1423,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, []() {
-				log_debug("asdfasdfasdfasddf");
+				log_debug("asdfasdfasdfasddf %d", timeInterval);
 			});
 			//QTimer::singleShot(timeInterval * 1000, [=]() {
 			//	refresh_cache(itemId, urlPath);
