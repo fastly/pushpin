@@ -1420,8 +1420,10 @@ public:
 		log_debug("[REFRESH] Registered new cache refresh %s, %s", itemId.toHex().data(), qPrintable(urlPath));
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
+		log_debug("qwerqerqwerqwer %d", timeInterval);
 		if (timeInterval > 0)
 		{
+			log_debug("asdfsddfasdf");
 			QTimer::singleShot(timeInterval * 1000, [=]() {
 				refresh_cache(itemId, urlPath);
 			});
