@@ -1070,7 +1070,7 @@ public:
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
-					int ret = process_http_request(packetId, p);
+					int ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 					if (ret == 0)
 					{
 						resume_cache_thread();
@@ -1684,7 +1684,7 @@ public:
 		write(HttpSession, responsePacket, orgFrom);
 	}
 
-	int process_http_request(QByteArray id, const ZhttpRequestPacket &packet)
+	int process_http_request(QByteArray id, const ZhttpRequestPacket &packet, const QString &urlPath)
 	{
 		QByteArray packetId = id;
 
@@ -1744,11 +1744,10 @@ public:
 				log_debug("[HTTP-REQ] not found in cache");
 			}
 
-			QString uriPath = packet.uri.toString();
 			int backendNo = -1;
 			for (int i = 0; i < gHttpBackendUrlList.count(); i++)
 			{
-				if (uriPath == gHttpBackendUrlList[i])
+				if (urlPath == gHttpBackendUrlList[i])
 				{
 					backendNo = i;
 					break;
@@ -1760,7 +1759,7 @@ public:
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
 
 			// register cache refresh
-			register_cache_refresh(paramsHash, uriPath);
+			register_cache_refresh(paramsHash, urlPath);
 		}
 
 		return -1;
