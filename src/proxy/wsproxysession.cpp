@@ -316,7 +316,6 @@ public:
 	InWSConnections inWSConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		zroutes(_zroutes),
@@ -1162,8 +1161,7 @@ private:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
-	QObject(parent)
+WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager)
 {
 	d = new Private(this, zroutes, connectionManager, logConfig, statsManager, wsControlManager);
 }

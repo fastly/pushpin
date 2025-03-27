@@ -24,7 +24,6 @@
 #ifndef SOCKJSSESSION_H
 #define SOCKJSSESSION_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"

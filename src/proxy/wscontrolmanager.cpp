@@ -80,7 +80,6 @@ public:
 	Connection refreshTimerConnection;
 
 	Private(WsControlManager *_q) :
-		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
 		currentSessionRefreshBucket(0)

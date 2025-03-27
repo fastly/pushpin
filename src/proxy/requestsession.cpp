@@ -203,7 +203,6 @@ public:
 	DeferCall deferCall;
 
 	Private(RequestSession *_q, int _workerId, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
-		QObject(_q),
 		q(_q),
 		workerId(_workerId),
 		state(Stopped),
@@ -1183,8 +1182,7 @@ public:
 	}
 };
 
-RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
-	QObject(parent)
+RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats)
 {
 	d = std::make_shared<Private>(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
 }

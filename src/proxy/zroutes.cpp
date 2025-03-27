@@ -96,7 +96,6 @@ public:
 	Connection cleanupTimerConnection;
 
 	Private(ZRoutes *_q) :
-		QObject(_q),
 		q(_q),
 		defaultItem(0)
 	{
@@ -194,8 +193,7 @@ public:
 	}
 };
 
-ZRoutes::ZRoutes(QObject *parent) :
-	QObject(parent)
+ZRoutes::ZRoutes()
 {
 	d = new Private(this);
 }

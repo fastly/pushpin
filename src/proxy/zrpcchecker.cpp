@@ -69,7 +69,6 @@ public:
 	Connection timerConnection;
 
 	Private(ZrpcChecker *_q) :
-		QObject(_q),
 		q(_q),
 		avail(true)
 	{
@@ -218,8 +217,7 @@ public:
 	}
 };
 
-ZrpcChecker::ZrpcChecker(QObject *parent) :
-	QObject(parent)
+ZrpcChecker::ZrpcChecker()
 {
 	d = new Private(this);
 }

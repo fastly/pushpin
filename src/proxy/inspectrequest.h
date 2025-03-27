@@ -24,7 +24,6 @@
 #ifndef INSPECTREQUEST_H
 #define INSPECTREQUEST_H
 
-#include <QObject>
 #include "zrpcrequest.h"
 
 class HttpRequestData;
