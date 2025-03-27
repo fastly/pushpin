@@ -516,7 +516,7 @@ void replace_id_field(QByteArray &body, QString oldId, QString newId)
 {
 	// new pattern
 	char newPattern[64];
-	qsnprintf(newPattern, 64, "\"id\":\"%s\"", qPrintable(newId));
+	qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
 
 	// find pattern
 	for (int i = 0; i < 20; i++)

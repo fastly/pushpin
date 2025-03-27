@@ -1583,7 +1583,7 @@ public:
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 
-		log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", orgMsgId, qPrintable(methodName), backendNo);
+		log_debug("[HTTP-REQ] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(orgMsgId), qPrintable(methodName), backendNo);
 	}
 
 	int registerWsCacheItem(
@@ -1741,7 +1741,7 @@ public:
 			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\" msgParams=\"%s\"", qPrintable(msgId), qPrintable(msgMethod), qPrintable(msgParams));
+		log_debug("[HTTP-REQ] new req msgId=%s method=%s msgParams=%s", qPrintable(msgId), qPrintable(msgMethod), qPrintable(msgParams));
 
 		// Params hash val
 		QByteArray paramsHash = build_hash_key(jsonMap, "HTTP+");
