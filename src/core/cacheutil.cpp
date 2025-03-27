@@ -56,13 +56,13 @@ extern QStringList gWsBackendUrlList;
 
 unsigned long long numRequestMultiPart = 0;
 
-extern QString gMsgIdAttrName = "id";
-extern QString gMsgMethodAttrName = "method";
-extern QString gMsgParamsAttrName = "params";
-extern QString gResultAttrName = "result";
-extern QString gSubscriptionAttrName = "params>>subscription";
-extern QString gSubscribeBlockAttrName = "params>>result>>block";
-extern QString gSubscribeChangesAttrName = "params>>result>>changes";
+extern QString gMsgIdAttrName;
+extern QString gMsgMethodAttrName;
+extern QString gMsgParamsAttrName;
+extern QString gResultAttrName;
+extern QString gSubscriptionAttrName;
+extern QString gSubscribeBlockAttrName;
+extern QString gSubscribeChangesAttrName;
 
 extern QStringList gCacheMethodList;
 extern QMap<QString, QString> gSubscribeMethodMap;

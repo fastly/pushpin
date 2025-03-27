@@ -124,7 +124,7 @@ struct PacketMsg {
 	QString params;
 	QByteArray paramsHash;
 	QString subscription;
-}
+};
 
 void pause_cache_thread();
 void resume_cache_thread();
