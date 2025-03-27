@@ -480,6 +480,77 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 	return 0;
 }
 
+int parse_packet_msg(SessionType sessionType, const ZhttpRequestPacket& packet, PacketMsg& packetMsg)
+{
+	// Parse json message
+	QVariantMap jsonMap;
+	if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+	{
+		log_debug("[WS] failed to parse json");
+		return -1;
+	}
+
+	for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+	{
+		log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+	}
+
+	if (jsonMap.contains(gMsgIdAttrName))
+	{
+		packetMsg.id = jsonMap[gMsgIdAttrName].toString();
+		if (jsonMap[gMsgIdAttrName].type() == QVariant::String) 
+		{
+			packetMsg.id = QString("\"%1\"").arg(packetMsg.id);
+		}
+	}
+	packetMsg.id = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
+	if (sessionType == HttpSession)
+		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
+	else
+		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
+	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
+
+	return 0;
+}
+
+int parse_packet_msg(SessionType sessionType, const ZhttpResponsePacket& packet, PacketMsg& packetMsg)
+{
+	// Parse json message
+	QVariantMap jsonMap;
+	if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+	{
+		log_debug("[WS] failed to parse json");
+		return -1;
+	}
+
+	for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+	{
+		log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+	}
+
+	if (jsonMap.contains(gMsgIdAttrName))
+	{
+		packetMsg.id = jsonMap[gMsgIdAttrName].toString();
+		if (jsonMap[gMsgIdAttrName].type() == QVariant::String) 
+		{
+			packetMsg.id = QString("\"%1\"").arg(packetMsg.id);
+		}
+	}
+	packetMsg.id = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString().toLower() : NULL;
+	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
+	if (sessionType == HttpSession)
+		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
+	else
+		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
+
+	return 0;
+}
+
 void replace_id_field(QByteArray &body, QString oldId, int newId)
 {
 	// new pattern

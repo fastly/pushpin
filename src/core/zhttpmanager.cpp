@@ -1533,11 +1533,7 @@ public:
 
 	void registerHttpCacheItem(
 		const ZhttpRequestPacket &clientPacket, 
-		QByteArray clientId, 
-		QString orgMsgId, 
-		QString methodName,
-		QString msgParams, 
-		const QByteArray &methodNameParamsHashVal, 
+		const PacketMsg &packetMsg, 
 		int backendNo)
 	{
 		// create new cache item
@@ -1545,22 +1541,22 @@ public:
 		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
 		cacheItem.refreshFlag = 0x00;
-		if (is_never_timeout_method(methodName, msgParams))
+		if (is_never_timeout_method(packetMsg.method, packetMsg.params))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
 			log_debug("[HTTP] added refresh never timeout method");
 		}
-		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
+		if (gRefreshUneraseMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
 			log_debug("[HTTP] added refresh unerase method");
 		}
-		if (gRefreshExcludeMethodList.contains(methodName, Qt::CaseInsensitive))
+		if (gRefreshExcludeMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_EXCLUDE;
 			log_debug("[HTTP] added refresh exclude method");
 		}
-		if (gRefreshPassthroughMethodList.contains(methodName, Qt::CaseInsensitive))
+		if (gRefreshPassthroughMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
 			log_debug("[HTTP] added refresh passthrough method");
@@ -1570,20 +1566,20 @@ public:
 		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.cachedFlag = false;
 
-		cacheItem.methodName = methodName;
+		cacheItem.methodName = packetMsg.method;
 
 		// save the request packet with new id
-		cacheItem.orgMsgId = orgMsgId;
+		cacheItem.orgMsgId = packetMsg.id;
 		cacheItem.requestPacket = clientPacket;
-		cacheItem.clientMap[clientId].msgId = orgMsgId;
+		cacheItem.clientMap[clientId].msgId = packetMsg.id;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
 
-		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+		gCacheItemMap[packetMsg.paramsHash] = cacheItem;
 
-		log_debug("[HTTP-REQ] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(orgMsgId), qPrintable(methodName), backendNo);
+		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
 
 	int registerWsCacheItem(
@@ -1720,59 +1716,46 @@ public:
 		QByteArray packetId = id;
 
 		// parse json body
-		QVariantMap jsonMap;
-		if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[HTTP] failed to parse JSON msg");
-			// make invalid
+		PacketMsg packetMsg;
+		int ret = parse_packet_msg(HttpSession, packet, packetMsg);
+		if (ret < 0)
 			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
 
 		// get method string
-		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
-		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		QString msgParams = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
-		if (msgId.isEmpty() || msgMethod.isEmpty())
+		if (packetMsg.id.isEmpty() || packetMsg.method.isEmpty())
 		{
-			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
+			log_debug("[HTTP] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("[HTTP-REQ] new req msgId=%s method=%s msgParams=%s", qPrintable(msgId), qPrintable(msgMethod), qPrintable(msgParams));
+		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
 
-		// Params hash val
-		QByteArray paramsHash = build_hash_key(jsonMap, "HTTP+");
-
-		if (is_cache_method(msgMethod))
+		if (is_cache_method(packetMsg.method))
 		{
-			if (gCacheItemMap.contains(paramsHash))
+			if (gCacheItemMap.contains(packetMsg.paramsHash))
 			{
-				gCacheItemMap[paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+				gCacheItemMap[packetMsg.paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-				if (gCacheItemMap[paramsHash].cachedFlag == true)
+				if (gCacheItemMap[packetMsg.paramsHash].cachedFlag == true)
 				{
-					reply_http_cached_content(paramsHash, msgId, packetId, packet.from);
+					reply_http_cached_content(packetMsg.paramsHash, packetMsg.id, packetId, packet.from);
 					gHttpClientMap.remove(packetId);
-					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
+					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 					return 0;
 				}
 				else
 				{
-					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(msgMethod));
+					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(packetMsg.method));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgId;
-					gCacheItemMap[paramsHash].clientMap[packetId].from = packet.from;
-					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), packetId.data());
-					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].msgId = packetMsg.id;
+					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].from = packet.from;
+					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
+					gCacheItemMap[packetMsg.paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					return 0;
 				}
 			}
 			else
 			{
-				log_debug("[HTTP-REQ] not found in cache");
+				log_debug("[HTTP] not found in cache");
 			}
 
 			int backendNo = -1;
@@ -1786,7 +1769,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
+			registerHttpCacheItem(packet, packetMsg, backendNo);
 
 			// register cache refresh
 			register_cache_refresh(paramsHash, urlPath);
@@ -1802,38 +1785,19 @@ public:
 		QByteArray packetId = p.ids[0].id;
 
 		// parse json body
-		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[HTTP] failed to parse JSON msg");
+		PacketMsg packetMsg;
+		int ret = parse_packet_msg(HttpSession, packet, packetMsg);
+		if (ret < 0)
 			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
 
-		// read msgIdStr (id)
-		int msgIdValue = -1;
-		QString msgIdStr = "";
-		if (jsonMap[gMsgIdAttrName].type() == QVariant::Int) 
-		{
-			msgIdValue = jsonMap[gMsgIdAttrName].toInt();
-		} 
-		else if (jsonMap[gMsgIdAttrName].type() == QVariant::String) 
-		{
-			msgIdStr = jsonMap[gMsgIdAttrName].toString();
-		}
-
-		QString tmpStr = msgIdStr;
+		// convert to QByteArray
+		QString tmpStr = packetMsg.id;
 		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
 		// result
 		bool isResultNull = false;
-		if (jsonMap.contains(gResultAttrName))
-		{
-			if (jsonMap[gResultAttrName].toString().isEmpty())
-				isResultNull = true;
-		}
+		if (packetMsg.result.isEmpty())
+			isResultNull = true;
 
 		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), isResultNull ? "null" : "...");
 
@@ -1844,7 +1808,7 @@ public:
 			// if not http, return
 			if (gCacheItemMap[itemId].proto != Scheme::http)
 			{
-				log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(msgIdStr));
+				log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(packetMsg.id));
 				return -1;
 			}
 
@@ -1854,21 +1818,15 @@ public:
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
 					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+
+					return 0;
 				}
 				else
 				{
-					gCacheItemMap[itemId].retryCount = 0;
-					gCacheItemMap[itemId].responsePacket = p;
-					gCacheItemMap[itemId].msgId = msgIdValue;
-					gCacheItemMap[itemId].newMsgId = msgIdValue;
-					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-					gCacheItemMap[itemId].cachedFlag = true;
-					log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
-
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
-						replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
+						replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].clientMap[cliId].msgId);
 						send_http_response_to_client(itemId, cliId);
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
@@ -1876,22 +1834,16 @@ public:
 					gCacheItemMap[itemId].clientMap.clear();
 				}
 			}
-			else // if response from auto-refresh
-			{
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].msgId = msgIdValue;
-				gCacheItemMap[itemId].newMsgId = msgIdValue;
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[HTTP] Updated Cache content for method id=%d", msgIdValue);
-			}
 
-			if (gCacheItemMap[itemId].cachedFlag == true)
-			{
-				gCacheItemMap[itemId].msgId = 0;
-				// recover original msgId
-				replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].msgId);
-			}
+			gCacheItemMap[itemId].retryCount = 0;
+			gCacheItemMap[itemId].responsePacket = p;
+			gCacheItemMap[itemId].msgId = 0;
+			gCacheItemMap[itemId].newMsgId = 0;
+			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+			gCacheItemMap[itemId].cachedFlag = true;
+			log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
+			// recover original msgId
+			replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
 
 			return 0;
 		}
@@ -1911,18 +1863,18 @@ public:
 						return 0;
 					}
 					gCacheItemMap[itemId].responsePacket = p;
-					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
+					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, 0);
 					log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-					gCacheItemMap[itemId].msgId = msgIdValue;
-					gCacheItemMap[itemId].newMsgId = msgIdValue;
+					gCacheItemMap[itemId].msgId = 0;
+					gCacheItemMap[itemId].newMsgId = 0;
 					gCacheItemMap[itemId].cachedFlag = true;
 					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-					log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
+					log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
 
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
-						replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
+						replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].clientMap[cliId].msgId);
 						send_http_response_to_client(itemId, cliId);
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
@@ -1961,29 +1913,23 @@ public:
 			return -1;
 
 		// parse json body
-		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse JSON msg");
-			// make invalid
+		PacketMsg packetMsg;
+		int ret = parse_packet_msg(WebSocketSession, p, packetMsg);
+		if (ret < 0)
 			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
 
 		// id
-		int msgIdValue = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
+		int msgIdValue = isConvertibleToInt(packetMsg.id) ? packetMsg.id.toInt() : -1;
 		
 		// result
-		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+		QString msgResultStr = packetMsg.result;
 
 		// if it is curie response without change, ignore			
-		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		QString methodName = packetMsg.method;
 
-		if (jsonMap.contains(gSubscriptionAttrName))
+		if (!packetMsg.subscription.isEmpty())
 		{
-			QString subscriptionStr = jsonMap[gSubscriptionAttrName].toString();
+			QString subscriptionStr = packetMsg.subscription;
 
 			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
@@ -2369,23 +2315,16 @@ public:
 		if (ret < 0)
 			return -1;
 		
-		// Parse json message
-		QVariantMap jsonMap;
-		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse json");
-			return 0;
-		}
-
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
+		// parse json body
+		PacketMsg packetMsg;
+		int ret = parse_packet_msg(WebSocketSession, p, packetMsg);
+		if (ret < 0)
+			return -1;
 
 		// read msgIdStr (id) and methodName (method)
-		QString msgIdStr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
-		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		QString msgParams = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
+		QString msgIdStr = packetMsg.id;
+		QString methodName = packetMsg.method;
+		QString msgParams = packetMsg.params;
 		if (msgIdStr.isEmpty() || methodName.isEmpty())
 		{
 			log_debug("[WS] failed to get gMsgIdAttrName and gMsgMethodAttrName");
@@ -2396,7 +2335,7 @@ public:
 		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName), qPrintable(msgParams));
 
 		// Params hash val
-		QByteArray paramsHash = build_hash_key(jsonMap, "WS+");
+		QByteArray paramsHash = packetMsg.paramsHash;
 
 		if (is_cache_method(methodName) || is_subscribe_method(methodName))
 		{
