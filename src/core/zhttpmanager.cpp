@@ -1711,13 +1711,13 @@ public:
 		write(HttpSession, responsePacket, orgFrom);
 	}
 
-	int process_http_request(QByteArray id, const ZhttpRequestPacket &packet, const QString &urlPath)
+	int process_http_request(QByteArray id, const ZhttpRequestPacket &p, const QString &urlPath)
 	{
 		QByteArray packetId = id;
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::http, packet, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::http, p, packetMsg) < 0)
 			return -1;
 
 		// get method string
@@ -1768,7 +1768,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(packet, packetId, packetMsg, backendNo);
+			registerHttpCacheItem(p, packetId, packetMsg, backendNo);
 
 			// register cache refresh
 			register_cache_refresh(packetMsg.paramsHash, urlPath);
@@ -1785,7 +1785,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::http, packet, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::http, p, packetMsg) < 0)
 			return -1;
 
 		// convert to QByteArray
@@ -1912,7 +1912,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::websocket, packet, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::websocket, p, packetMsg) < 0)
 			return -1;
 
 		// id
@@ -2314,7 +2314,7 @@ public:
 		
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::websocket, packet, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::websocket, p, packetMsg) < 0)
 			return -1;
 
 		// read msgIdStr (id) and methodName (method)
