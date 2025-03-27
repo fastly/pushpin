@@ -834,7 +834,7 @@ int update_response_seq(const QByteArray &clientId)
 }
 
 
-void send_http_post_request(QString backend, QByteArray postData, char *headerVal)
+void send_http_post_request_with_refresh_header(QString backend, QByteArray postData, char *headerVal)
 {
 	// Create the QNetworkAccessManager
 	QNetworkAccessManager *manager = new QNetworkAccessManager();

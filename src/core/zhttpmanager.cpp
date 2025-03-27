@@ -1366,7 +1366,7 @@ public:
 				{
 					QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
 					replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-					send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+					send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 				}
 				else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 				{
@@ -1393,7 +1393,7 @@ public:
 				urlPath = get_switched_http_backend_url(urlPath);
 				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
 				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
-				send_http_post_request(urlPath, reqBody, itemId.toHex().data());
+				send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{
@@ -1863,6 +1863,7 @@ public:
 
 				if (gCacheItemMap[itemId].cachedFlag == false)
 				{
+					gCacheItemMap[itemId].cachedFlag = true;
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
@@ -1882,8 +1883,6 @@ public:
 					gCacheItemMap[itemId].clientMap.clear();
 				}
 
-				gCacheItemMap[itemId].cachedFlag = true;
-				
 				if (msgIdStr == itemIdStr)
 				{
 					gCacheItemMap[itemId].msgId = 0;
@@ -2909,7 +2908,7 @@ void ZhttpManager::setCacheParameters(
 			}
 		}
 
-		//gCacheThread = QtConcurrent::run(cache_thread);
+		gCacheThread = QtConcurrent::run(cache_thread);
 	}
 }
 
