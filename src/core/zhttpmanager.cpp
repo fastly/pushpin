@@ -1651,7 +1651,7 @@ public:
 		return cacheClientNo;
 	}
 
-	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
+	void reply_http_cached_content(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
 	{
 		//// Send cached response
 		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
@@ -1754,7 +1754,7 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					reply_httpCachedContent(paramsHash, msgId, packetId, packet.from);
+					reply_http_cached_content(paramsHash, msgId, packetId, packet.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
 					return 0;
@@ -1895,40 +1895,42 @@ public:
 
 			return 0;
 		}
-
-		// it`s not the response from switch-backend or auto-refresh
-		foreach(QByteArray itemId, gCacheItemMap.keys())
+		else
 		{
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
-				(gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) &&
-				(gCacheItemMap[itemId].cachedFlag == false))
+			// it`s not the response from switch-backend or auto-refresh
+			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
-				if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				if ((gCacheItemMap[itemId].proto == Scheme::http) && 
+					(gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) &&
+					(gCacheItemMap[itemId].cachedFlag == false))
 				{
-					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
-					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+					if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+					{
+						log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+						gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+						return 0;
+					}
+					gCacheItemMap[itemId].responsePacket = p;
+					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
+					log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+					gCacheItemMap[itemId].msgId = msgIdValue;
+					gCacheItemMap[itemId].newMsgId = msgIdValue;
+					gCacheItemMap[itemId].cachedFlag = true;
+					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
+
+					// send response to all clients
+					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+					{
+						replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
+						send_http_response_to_client(itemId, cliId);
+						gHttpClientMap.remove(cliId);
+						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+					}
+					gCacheItemMap[itemId].clientMap.clear();
+
 					return 0;
 				}
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
-				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdValue;
-				gCacheItemMap[itemId].newMsgId = msgIdValue;
-				gCacheItemMap[itemId].cachedFlag = true;
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
-
-				// send response to all clients
-				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
-				{
-					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
-					send_http_response_to_client(itemId, cliId);
-					gHttpClientMap.remove(cliId);
-					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-				}
-				gCacheItemMap[itemId].clientMap.clear();
-
-				return 0;
 			}
 		}
 

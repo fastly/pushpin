@@ -42,7 +42,7 @@
 
 #define HTTP_REFRESH_HEADER		"HTTP_REFRESH_REQUEST"
 
-#define RETRY_RESPONSE_MAX_COUNT	5
+#define RETRY_RESPONSE_MAX_COUNT	0
 
 enum Scheme {
 	none,
