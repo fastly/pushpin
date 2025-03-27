@@ -425,6 +425,11 @@ public:
 		ZhttpResponsePacket::Id tempId;
 
 		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
+		{
+			log_debug("[HTTP] failed to get new response seq %s", clientId.toHex().data());
+			return;
+		}
 		QByteArray newFrom = from;
 
 		switch (packetType)
@@ -1708,7 +1713,13 @@ public:
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
 		responsePacket.ids[0].id = clientId;
-		responsePacket.ids[0].seq = get_client_new_response_seq(clientId);
+		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
+		{
+			log_debug("[HTTP] failed to get new response seq %s", clientId.toHex().data());
+			return;
+		}
+		responsePacket.ids[0].seq = newSeq;
 
 		write(HttpSession, responsePacket, orgFrom);
 	}
