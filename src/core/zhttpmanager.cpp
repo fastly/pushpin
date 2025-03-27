@@ -84,10 +84,13 @@ QMap<QByteArray, ClientItem> gWsClientMap;
 QMap<QByteArray, ClientItem> gHttpClientMap;
 
 QList<CacheKeyItem> gCacheKeyItemList;
-static QString gMsgIdAttrName = "id";
-static QString gMsgMethodAttrName = "method";
-static QString gMsgParamsAttrName = "params";
-static QString gResultAttrName = "result";
+QString gMsgIdAttrName = "id";
+QString gMsgMethodAttrName = "method";
+QString gMsgParamsAttrName = "params";
+QString gResultAttrName = "result";
+QString gSubscriptionAttrName = "params>>subscription";
+QString gSubscribeBlockAttrName = "params>>result>>block";
+QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 30;
@@ -107,10 +110,6 @@ QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
 
 QMap<QByteArray, CacheItem> gCacheItemMap;
-
-QString gSubscriptionAttrName = "params>>subscription";
-QString gSubscribeBlockAttrName = "params>>result>>block";
-QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 // multi packets params
 ZhttpResponsePacket gHttpMultiPartResponsePacket;
