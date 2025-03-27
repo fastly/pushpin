@@ -546,7 +546,7 @@ public:
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 		QByteArray packetId = packet.ids.first().id;
-		int seqNum = packet.ids.first().seq;
+		int packetSeq = packet.ids.first().seq;
 
 		// cache process
 		if (gCacheEnable == true)
@@ -561,7 +561,7 @@ public:
 					// cache client
 					gWsCacheClientList[ccIndex].initFlag = true;
 					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
-					gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+					gWsCacheClientList[ccIndex].lastResponseSeq = packetSeq;
 					gWsCacheClientList[ccIndex].from = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s", ccIndex, gWsCacheClientList[ccIndex].clientId.data());
 					gWsInitResponsePacket = packet;
@@ -638,7 +638,7 @@ public:
 			resume_cache_thread();
 		}
 
-		update_client_response_seq(packetId, seqNum);
+		update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
