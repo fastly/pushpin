@@ -1831,35 +1831,43 @@ public:
 		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
 		// result
-		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
-		foreach(QByteArray itemId, gCacheItemMap.keys())
+		bool isResultNull = false;
+		if (jsonMap.contains(gResultAttrName))
 		{
-			log_debug("[HTTP] msgId=%s, cacheItemId=%s", msgIdByte.toHex().data(), itemId.toHex().data());
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
-				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
-				(itemId == msgIdByte)))
+			if (jsonMap[gResultAttrName].toString().isEmpty())
+				isResultNull = true;
+		}
+
+		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), isResultNull ? "null" : "...");
+
+		if (gCacheItemMap.contains(msgIdByte))
+		{
+			QByteArray itemId = msgIdByte;
+			
+			// if not http, return
+			if (gCacheItemMap[itemId].proto != Scheme::http)
 			{
-				if (gCacheItemMap[itemId].cachedFlag == false &&
-					jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && 
-					gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(msgIdStr));
+				return -1;
+			}
+
+			if (gCacheItemMap[itemId].cachedFlag == false) // if the response for switched backend
+			{				
+				if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
 					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
-					return 0;
 				}
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
-				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdValue;
-				gCacheItemMap[itemId].newMsgId = msgIdValue;
-				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
-
-				// set random last refresh time
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-
-				if (gCacheItemMap[itemId].cachedFlag == false)
+				else
 				{
+					gCacheItemMap[itemId].retryCount = 0;
+					gCacheItemMap[itemId].responsePacket = p;
+					gCacheItemMap[itemId].msgId = msgIdValue;
+					gCacheItemMap[itemId].newMsgId = msgIdValue;
+					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					gCacheItemMap[itemId].cachedFlag = true;
+					log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
+
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
@@ -1878,15 +1886,66 @@ public:
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 				}
+			}
+			else // if response from auto-refresh
+			{
+				gCacheItemMap[itemId].responsePacket = p;
+				gCacheItemMap[itemId].msgId = msgIdValue;
+				gCacheItemMap[itemId].newMsgId = msgIdValue;
+				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				gCacheItemMap[itemId].cachedFlag = true;
+				log_debug("[HTTP] Updated Cache content for method id=%d", msgIdValue);
+			}
 
-				if (itemId == msgIdByte)
+			if (gCacheItemMap[itemId].cachedFlag == true)
+			{
+				gCacheItemMap[itemId].msgId = 0;
+				// recover original msgId
+				replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].msgId);
+			}
+
+			return 0;
+		}
+
+		// it`s not the response from switch-backend or auto-refresh
+		foreach(QByteArray itemId, gCacheItemMap.keys())
+		{
+			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
+				(gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) &&
+				(gCacheItemMap[itemId].cachedFlag == false))
+			{
+				if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
-					gCacheItemMap[itemId].msgId = 0;
-					// recover original msgId
-					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].msgId);
-
-					return -1;
+					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+					return 0;
 				}
+				gCacheItemMap[itemId].responsePacket = p;
+				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
+				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+				gCacheItemMap[itemId].msgId = msgIdValue;
+				gCacheItemMap[itemId].newMsgId = msgIdValue;
+				gCacheItemMap[itemId].cachedFlag = true;
+				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				log_debug("[HTTP] Added Cache content for method id=%d", msgIdValue);
+
+				// send response to all clients
+				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				{
+					// update seq
+					int seqNum = 0;
+					if (gHttpClientMap.contains(cliId))
+					{
+						seqNum = p.ids.first().seq;
+						// delete original item
+						gHttpClientMap.remove(cliId);
+					}
+
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
+					send_http_response_to_client(itemId, cliId, seqNum);
+					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
+				}
+				gCacheItemMap[itemId].clientMap.clear();
 
 				return 0;
 			}
