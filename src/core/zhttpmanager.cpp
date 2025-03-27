@@ -425,7 +425,7 @@ public:
 
 		ZhttpResponsePacket::Id tempId;
 
-		int newSeq = update_response_seq(clientId);
+		int newSeq = get_client_new_response_seq(clientId);
 		QByteArray newFrom = from;
 
 		switch (packetType)
@@ -545,12 +545,14 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
+		QByteArray packetId = packet.ids.first().id;
+		int seqNum = packet.ids.first().seq;
+
 		// cache process
 		if (gCacheEnable == true)
 		{
 			pause_cache_thread();
 
-			QByteArray packetId = packet.ids.first().id;
 			int ccIndex = get_cc_index_from_clientId(packetId);
 			if (packet.code == 101) // ws client init response code
 			{
@@ -559,7 +561,7 @@ public:
 					// cache client
 					gWsCacheClientList[ccIndex].initFlag = true;
 					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
-					gWsCacheClientList[ccIndex].lastResponseSeq = packet.ids.first().seq;
+					gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
 					gWsCacheClientList[ccIndex].from = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s", ccIndex, gWsCacheClientList[ccIndex].clientId.data());
 					gWsInitResponsePacket = packet;
@@ -610,8 +612,7 @@ public:
 
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
-						int seqNum = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
-						gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+						int seqNum = update_request_seq(packetId);
 						tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
@@ -623,10 +624,6 @@ public:
 					}
 					else
 					{
-						if (gHttpClientMap.contains(packetId))
-						{
-							gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
-						}
 						int ret = process_http_response(packet);
 						if (ret == 0)
 						{
@@ -641,6 +638,7 @@ public:
 			resume_cache_thread();
 		}
 
+		update_client_response_seq(packetId, seqNum);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
@@ -1683,12 +1681,12 @@ public:
 		write(HttpSession, responsePacket, from);
 	}
 
-	void send_http_response_to_client(const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	void send_http_response_to_client(const QByteArray &cacheItemId, const QByteArray &clientId)
 	{
 		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
 
-		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
-		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
+		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[clientId].msgId;
+		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[clientId].from;
 
 		// replace messageid
 		if (gCacheItemMap.contains(cacheItemId))
@@ -1711,8 +1709,8 @@ public:
 		responsePacket.headers.removeAll("Content-Length");
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
-		responsePacket.ids[0].id = newCliId;
-		responsePacket.ids[0].seq = seqNum;
+		responsePacket.ids[0].id = clientId;
+		responsePacket.ids[0].seq = get_client_new_response_seq(clientId);
 
 		write(HttpSession, responsePacket, orgFrom);
 	}
@@ -1871,18 +1869,10 @@ public:
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
-						// update seq
-						int seqNum = 0;
-						if (gHttpClientMap.contains(cliId))
-						{
-							seqNum = p.ids.first().seq;
-							// delete original item
-							gHttpClientMap.remove(cliId);
-						}
-
 						replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
-						send_http_response_to_client(itemId, cliId, seqNum);
-						log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
+						send_http_response_to_client(itemId, cliId);
+						gHttpClientMap.remove(cliId);
+						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 				}
@@ -1932,18 +1922,10 @@ public:
 				// send response to all clients
 				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 				{
-					// update seq
-					int seqNum = 0;
-					if (gHttpClientMap.contains(cliId))
-					{
-						seqNum = p.ids.first().seq;
-						// delete original item
-						gHttpClientMap.remove(cliId);
-					}
-
 					replace_id_field(gCacheItemMap[itemId].responsePacket.body, msgIdStr, gCacheItemMap[itemId].clientMap[cliId].msgId);
-					send_http_response_to_client(itemId, cliId, seqNum);
-					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
+					send_http_response_to_client(itemId, cliId);
+					gHttpClientMap.remove(cliId);
+					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				}
 				gCacheItemMap[itemId].clientMap.clear();
 

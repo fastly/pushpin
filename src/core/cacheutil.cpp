@@ -810,27 +810,42 @@ int update_request_seq(const QByteArray &clientId)
 	return ret;
 }
 
-int update_response_seq(const QByteArray &clientId)
+int get_client_new_response_seq(const QByteArray &clientId)
 {
 	int ret = -1;
 	if (gWsClientMap.contains(clientId)) 
 	{
-		gWsClientMap[clientId].lastResponseSeq += 1;
-		ret = gWsClientMap[clientId].lastResponseSeq;
+		ret = gWsClientMap[clientId].lastResponseSeq + 1;
 	}
 	else if (gHttpClientMap.contains(clientId)) 
 	{
-		gHttpClientMap[clientId].lastResponseSeq += 1;
-		ret = gHttpClientMap[clientId].lastResponseSeq;
+		ret = gHttpClientMap[clientId].lastResponseSeq + 1;
 	}
 	else // cache client
 	{
 		int ccIndex = get_cc_index_from_clientId(clientId);
-		gWsCacheClientList[ccIndex].lastResponseSeq += 1;
-		ret = gWsCacheClientList[ccIndex].lastResponseSeq;
+		if (ccIndex >= 0)
+			ret = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
 	}
 	
 	return ret;
+}
+
+void update_client_response_seq(const QByteArray &clientId, int seqNum)
+{
+	if (gWsClientMap.contains(clientId)) 
+	{
+		gWsClientMap[clientId].lastResponseSeq = seqNum;
+	}
+	else if (gHttpClientMap.contains(clientId)) 
+	{
+		gHttpClientMap[clientId].lastResponseSeq = seqNum;
+	}
+	else // cache client
+	{
+		int ccIndex = get_cc_index_from_clientId(clientId);
+		gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+	}
 }
 
 
