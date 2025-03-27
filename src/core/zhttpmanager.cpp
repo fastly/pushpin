@@ -572,36 +572,69 @@ public:
 			}
 			else
 			{
-				if (ccIndex >= 0)
+				switch (packet.type)
 				{
-					// update data receive time
-					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+				case ZhttpResponsePacket::Cancel:
+				case ZhttpResponsePacket::Close:
+				case ZhttpResponsePacket::Error:
+					{
+						// set log level to debug
+						//set_debugLogLevel(true);
 
-					// increase credit
-					int creditSize = static_cast<int>(packet.body.size());
-					int seqNum = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
-					gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
-					tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
+						log_debug("[WS] switching client of error, condition=%s", packet.condition.data());
 
-					int ret = process_ws_cacheclient_response(packet, ccIndex);
-					if (ret == 0)
-					{
-						resume_cache_thread();
-						return;
+						// get error type
+						QString conditionStr = QString(packet.condition);
+						if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
+							conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
+						{
+							log_debug("[WS] Sleeping for 10 seconds");
+							sleep(10);
+						}
+
+						// if cache client0 is ON, start cache client1
+						//switch_cacheClient(packetId, false);
 					}
-				}
-				else
-				{
-					if (gHttpClientMap.contains(packetId))
+					break;
+				case ZhttpResponsePacket::Credit:
+					log_debug("[WS] skipping credit response");
+					break;
+				case ZhttpResponsePacket::Ping:
+					log_debug("[WS] received ping response");
+					break;
+				default:
+					if (ccIndex >= 0)
 					{
-						gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
+						// update data receive time
+						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+
+						// increase credit
+						int creditSize = static_cast<int>(packet.body.size());
+						int seqNum = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
+						gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+						tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
+
+						int ret = process_ws_cacheclient_response(packet, ccIndex);
+						if (ret == 0)
+						{
+							resume_cache_thread();
+							return;
+						}
 					}
-					int ret = process_http_response(packet);
-					if (ret == 0)
+					else
 					{
-						resume_cache_thread();
-						return;
+						if (gHttpClientMap.contains(packetId))
+						{
+							gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
+						}
+						int ret = process_http_response(packet);
+						if (ret == 0)
+						{
+							resume_cache_thread();
+							return;
+						}
 					}
+					break;
 				}
 			}
 
@@ -1771,44 +1804,6 @@ public:
 		QVariantMap jsonMap;
 		QByteArray packetId = p.ids[0].id;
 
-		switch (p.type)
-		{
-		case ZhttpResponsePacket::Cancel:
-		case ZhttpResponsePacket::Close:
-		case ZhttpResponsePacket::Error:
-			{
-				// set log level to debug
-				//set_debugLogLevel(true);
-
-				log_debug("[HTTP] switching client of error, condition=%s", p.condition.data());
-
-				// get error type
-				QString conditionStr = QString(p.condition);
-				if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
-					conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
-				{
-					log_debug("[HTTP] Sleeping for 10 seconds");
-					sleep(10);
-				}
-
-				// if cache client0 is ON, start cache client1
-				//switch_cacheClient(packetId, false);
-			}
-			return -1;
-		case ZhttpResponsePacket::Credit:
-			log_debug("[HTTP] skipping credit response");
-			if (p.credits > 0)
-			{
-				return -1;
-			}
-			break;
-		case ZhttpResponsePacket::Ping:
-			log_debug("[HTTP] received ping response");
-			break;
-		default:
-			break;
-		}
-
 		// parse json body
 		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
@@ -1831,18 +1826,16 @@ public:
 		{
 			msgIdStr = jsonMap[gMsgIdAttrName].toString();
 		}
+		QByteArray msgIdByte = msgIdStr.remove('\"').toUtf8();
 
 		// result
 		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
-			QString itemIdStr = "\""; 
-			itemIdStr += itemId.toHex().data();
-			itemIdStr += "\"";
-			log_debug("[HTTP] %s, %s", qPrintable(msgIdStr), qPrintable(itemIdStr));
+			log_debug("[HTTP] msgId=%s, cacheItemId=%s", msgIdByte.toHex().data(), itemId.toHex().data());
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
 				((gCacheItemMap[itemId].requestPacket.ids[0].id == packetId && gCacheItemMap[itemId].cachedFlag == false) || 
-				(msgIdStr == itemIdStr)))
+				(itemId == msgIdByte)))
 			{
 				if (gCacheItemMap[itemId].cachedFlag == false &&
 					jsonMap.contains(gResultAttrName) && msgResultStr.isEmpty() && 
@@ -1884,7 +1877,7 @@ public:
 					gCacheItemMap[itemId].clientMap.clear();
 				}
 
-				if (msgIdStr == itemIdStr)
+				if (itemId == msgIdByte)
 				{
 					gCacheItemMap[itemId].msgId = 0;
 					// recover original msgId
@@ -1905,43 +1898,6 @@ public:
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
 		QByteArray packetId = p.ids[0].id;
-		switch (p.type)
-		{
-		case ZhttpResponsePacket::Cancel:
-		case ZhttpResponsePacket::Close:
-		case ZhttpResponsePacket::Error:
-			{
-				// set log level to debug
-				//set_debugLogLevel(true);
-
-				log_debug("[WS] switching client of error, condition=%s", p.condition.data());
-
-				// get error type
-				QString conditionStr = QString(p.condition);
-				if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
-					conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
-				{
-					log_debug("[WS] Sleeping for 10 seconds");
-					sleep(10);
-				}
-
-				// if cache client0 is ON, start cache client1
-				//switch_cacheClient(packetId, false);
-			}
-			return -1;
-		case ZhttpResponsePacket::Credit:
-			log_debug("[WS] skipping credit response");
-			if (p.credits > 0)
-			{
-				return -1;
-			}
-			break;
-		case ZhttpResponsePacket::Ping:
-			log_debug("[WS] received ping response");
-			break;
-		default:
-			break;
-		}
 
 		if (p.type != ZhttpResponsePacket::Data)
 		{
