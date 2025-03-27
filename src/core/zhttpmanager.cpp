@@ -1700,8 +1700,7 @@ public:
 		{
 			log_debug("[HTTP] Unknown error for cache item");
 			return;
-		}
-		
+		}		
 
 		// update "Content-Length" field
 		int newContentLength = static_cast<int>(responsePacket.body.size());
@@ -1823,27 +1822,13 @@ public:
 				return -1;
 			}
 
-			if (gCacheItemMap[itemId].cachedFlag == false) // if the response for switched backend
-			{				
-				if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
-				{
-					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
-					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+			if (gCacheItemMap[itemId].cachedFlag == false && isResultNull == true && 
+				gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+			{
+				log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+				gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-					return 0;
-				}
-				else
-				{
-					// send response to all clients
-					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
-					{
-						replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].clientMap[cliId].msgId);
-						send_http_response_to_client(itemId, cliId);
-						gHttpClientMap.remove(cliId);
-						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-					}
-					gCacheItemMap[itemId].clientMap.clear();
-				}
+				return 0;
 			}
 
 			gCacheItemMap[itemId].retryCount = 0;
@@ -1855,6 +1840,15 @@ public:
 			log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
 			// recover original msgId
 			replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
+
+			// send response to all clients
+			foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+			{
+				send_http_response_to_client(itemId, cliId);
+				gHttpClientMap.remove(cliId);
+				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+			}
+			gCacheItemMap[itemId].clientMap.clear();
 
 			return 0;
 		}
@@ -1882,18 +1876,17 @@ public:
 					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
 
+					// recover original msgId
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
+
 					// send response to all clients
 					foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 					{
-						replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].clientMap[cliId].msgId);
 						send_http_response_to_client(itemId, cliId);
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 					}
 					gCacheItemMap[itemId].clientMap.clear();
-
-					// recover original msgId
-					replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
 
 					return 0;
 				}
