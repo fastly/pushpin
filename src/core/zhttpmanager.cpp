@@ -1583,7 +1583,7 @@ public:
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 
-		log_debug("[HTTP-REQ] registered new http cache item for method=%s", qPrintable(methodName));
+		log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", orgMsgId, qPrintable(msgMethod), backendNo);
 	}
 
 	int registerWsCacheItem(
@@ -1787,7 +1787,6 @@ public:
 
 			// Register new cache item
 			registerHttpCacheItem(packet, packetId, msgId, msgMethod, msgParams, paramsHash, backendNo);
-			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
 
 			// register cache refresh
 			register_cache_refresh(paramsHash, urlPath);

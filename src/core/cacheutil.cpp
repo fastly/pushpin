@@ -844,7 +844,8 @@ void update_client_response_seq(const QByteArray &clientId, int seqNum)
 	else // cache client
 	{
 		int ccIndex = get_cc_index_from_clientId(clientId);
-		gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+		if (ccIndex >= 0)
+			gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
 	}
 }
 
