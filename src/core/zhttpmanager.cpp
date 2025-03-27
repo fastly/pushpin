@@ -1583,7 +1583,7 @@ public:
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 
-		log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", orgMsgId, qPrintable(msgMethod), backendNo);
+		log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", orgMsgId, qPrintable(methodName), backendNo);
 	}
 
 	int registerWsCacheItem(
