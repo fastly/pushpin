@@ -109,10 +109,10 @@ public:
 	Configuration config;
 	std::unique_ptr<ZhttpManager> zhttpIn;
 	std::unique_ptr<ZhttpManager> intZhttpIn;
-	ZRoutes *zroutes;
+	std::unique_ptr<ZRoutes> zroutes;
 	std::unique_ptr<ZrpcManager> inspect;
 	std::unique_ptr<WsControlManager> wsControl;
-	ZrpcChecker *inspectChecker;
+	std::unique_ptr<ZrpcChecker> inspectChecker;
 	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<ZrpcManager> command;
 	std::unique_ptr<ZrpcManager> accept;
@@ -122,9 +122,9 @@ public:
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
-	SockJsManager *sockJsManager;
+	std::unique_ptr<SockJsManager> sockJsManager;
 	ConnectionManager connectionManager;
-	Updater *updater;
+	std::unique_ptr<Updater> updater;
 	LogUtil::Config logConfig;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
@@ -140,11 +140,7 @@ public:
 		QObject(_q),
 		q(_q),
 		destroying(false),
-		domainMap(_domainMap),
-		zroutes(0),
-		inspectChecker(0),
-		sockJsManager(0),
-		updater(0)
+		domainMap(_domainMap)
 	{
 	}
 
@@ -155,7 +151,7 @@ public:
 		// need to delete all objects that may have connections before
 		// deleting zhttpmanagers/zroutes
 
-		delete updater;
+		updater.reset();
 
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
@@ -185,14 +181,12 @@ public:
 		requestSessions.clear();
 
 		// may have background connections
-		delete sockJsManager;
-		sockJsManager = 0;
+		sockJsManager.reset();
 
 		WebSocketOverHttp::clearDisconnectManager();
 
 		// need to make sure this is deleted before inspect manager
-		delete inspectChecker;
-		inspectChecker = 0;
+		inspectChecker.reset();
 	}
 
 	bool start(const Configuration &_config)
@@ -226,13 +220,13 @@ public:
 			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
 		}
 
-		zroutes = new ZRoutes(this);
+		zroutes = std::make_unique<ZRoutes>();
 		zroutes->setInstanceId(config.clientId);
 		zroutes->setDefaultOutSpecs(config.clientOutSpecs);
 		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
-		sockJsManager = new SockJsManager(config.sockJsUrl, this);
+		sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
 		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
@@ -248,7 +242,7 @@ public:
 
 			inspect->setTimeout(config.inspectTimeout);
 
-			inspectChecker = new ZrpcChecker(this);
+			inspectChecker = std::make_unique<ZrpcChecker>();
 		}
 
 		if(!config.acceptSpec.isEmpty())
@@ -359,7 +353,7 @@ public:
 
 		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
 		{
-			updater = new Updater(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager(), this);
+			updater = std::make_unique<Updater>(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager());
 		}
 
 		// init zroutes
@@ -405,7 +399,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept.get(), logConfig, stats.get());
+			ps = new ProxySession(zroutes.get(), accept.get(), logConfig, stats.get());
 			// TODO: use callbacks for performance
 			proxySessionConnectionMap[ps] = {
 				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
@@ -451,7 +445,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats.get(), wsControl.get());
+		WsProxySession *ps = new WsProxySession(zroutes.get(), &connectionManager, logConfig, stats.get(), wsControl.get());
 		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -551,7 +545,7 @@ public:
 				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
-		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect.get(), inspectChecker, accept.get(), stats.get());
+		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
 
 		if(passthroughData.isValid() && !preferInternal)
 		{
@@ -903,7 +897,7 @@ private:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect.get(), inspectChecker, accept.get(), stats.get());
+			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
 
 			requestSessions += rs;
 

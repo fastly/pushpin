@@ -234,7 +234,6 @@ public:
 
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
-		si->rs->setParent(this);
 
 		// a retried request already had its received bytes counted earlier
 		if(rs->isRetry())
