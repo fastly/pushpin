@@ -1736,7 +1736,7 @@ public:
 
 				if (gCacheItemMap[packetMsg.paramsHash].cachedFlag == true)
 				{
-					reply_http_cached_content(packetMsg.paramsHash, packetMsg.id, packetId, packet.from);
+					reply_http_cached_content(packetMsg.paramsHash, packetMsg.id, packetId, p.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 					return 0;
@@ -1746,7 +1746,7 @@ public:
 					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(packetMsg.method));
 					// add client to list
 					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].msgId = packetMsg.id;
-					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].from = packet.from;
+					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].from = p.from;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
 					gCacheItemMap[packetMsg.paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					return 0;
