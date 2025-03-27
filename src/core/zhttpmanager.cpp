@@ -1395,7 +1395,8 @@ public:
 				if (gCacheItemMap[itemId].proto == Scheme::http)
 				{
 					QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
-					replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+					QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
+					replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, newMsgId);
 					send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 				}
 				else if (gCacheItemMap[itemId].proto == Scheme::websocket)
@@ -1422,7 +1423,8 @@ public:
 
 				urlPath = get_switched_http_backend_url(urlPath);
 				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
-				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, itemId.toHex().data());
+				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
+				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, newMsgId);
 				send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
