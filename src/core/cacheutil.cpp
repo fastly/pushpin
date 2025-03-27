@@ -495,7 +495,7 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 }
 
 template<typename T>
-int parse_packet_msg(Scheme scheme, const T& ZhttpRequestPacket& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const T& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
 	QVariantMap jsonMap;
