@@ -130,6 +130,7 @@ void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();
 
+bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
 bool is_never_timeout_method(QString methodStr, QString paramsStr);

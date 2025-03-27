@@ -1532,6 +1532,7 @@ public:
 
 	void registerHttpCacheItem(
 		const ZhttpRequestPacket &clientPacket, 
+		QByteArray clientId, 
 		const PacketMsg &packetMsg, 
 		int backendNo)
 	{
@@ -1716,8 +1717,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(Scheme::http, packet, packetMsg);
-		if (ret < 0)
+		if (parse_packet_msg(Scheme::http, packet, packetMsg) < 0)
 			return -1;
 
 		// get method string
@@ -1768,10 +1768,10 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(packet, packetMsg, backendNo);
+			registerHttpCacheItem(packet, packetId, packetMsg, backendNo);
 
 			// register cache refresh
-			register_cache_refresh(paramsHash, urlPath);
+			register_cache_refresh(packetMsg.paramsHash, urlPath);
 		}
 
 		return -1;
@@ -1785,8 +1785,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(Scheme::http, packet, packetMsg);
-		if (ret < 0)
+		if (parse_packet_msg(Scheme::http, packet, packetMsg) < 0)
 			return -1;
 
 		// convert to QByteArray
@@ -1913,12 +1912,11 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(Scheme::websocket, p, packetMsg);
-		if (ret < 0)
+		if (parse_packet_msg(Scheme::websocket, packet, packetMsg) < 0)
 			return -1;
 
 		// id
-		int msgIdValue = isConvertibleToInt(packetMsg.id) ? packetMsg.id.toInt() : -1;
+		int msgIdValue = is_convertible_to_int(packetMsg.id) ? packetMsg.id.toInt() : -1;
 		
 		// result
 		QString msgResultStr = packetMsg.result;
@@ -2316,8 +2314,7 @@ public:
 		
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(Scheme::websocket, p, packetMsg);
-		if (ret < 0)
+		if (parse_packet_msg(Scheme::websocket, packet, packetMsg) < 0)
 			return -1;
 
 		// read msgIdStr (id) and methodName (method)

@@ -227,6 +227,12 @@ void cache_thread()
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Utils
+bool is_convertible_to_int(const QString &str) {
+    bool ok;
+    str.toInt(&ok);  // Attempt conversion to int
+    return ok;
+}
+
 bool is_cache_method(QString methodStr)
 {
 	if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
