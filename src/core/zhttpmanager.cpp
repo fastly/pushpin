@@ -1653,7 +1653,9 @@ public:
 		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
 
 		// replace id str
+		log_debug("asdf %s, %d, %s", responsePacket.body.data(), gCacheItemMap[cacheItemId].msgId, qPrintable(orgMsgId))
 		replace_id_field(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+		log_debug("asdf %s, %d, %s", responsePacket.body.data(), gCacheItemMap[cacheItemId].msgId, qPrintable(orgMsgId))
 
 		// update "Content-Length" field
 		int newContentLength = static_cast<int>(responsePacket.body.size());
