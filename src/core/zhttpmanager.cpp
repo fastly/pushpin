@@ -1881,6 +1881,11 @@ public:
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 
+					// recover original msgId
+					log_debug("asdf %s, %s, %d", gCacheItemMap[itemId].responsePacket.body.data(), qPrintable(packetMsg.id), gCacheItemMap[itemId].msgId);
+					replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
+					log_debug("asdf %s, %s, %d", gCacheItemMap[itemId].responsePacket.body.data(), qPrintable(packetMsg.id), gCacheItemMap[itemId].msgId);
+
 					return 0;
 				}
 			}
