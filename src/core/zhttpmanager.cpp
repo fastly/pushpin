@@ -1717,7 +1717,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(HttpSession, packet, packetMsg);
+		int ret = parse_packet_msg(Scheme::http, packet, packetMsg);
 		if (ret < 0)
 			return -1;
 
@@ -1786,7 +1786,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(HttpSession, packet, packetMsg);
+		int ret = parse_packet_msg(Scheme::http, packet, packetMsg);
 		if (ret < 0)
 			return -1;
 
@@ -1914,7 +1914,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(WebSocketSession, p, packetMsg);
+		int ret = parse_packet_msg(Scheme::websocket, p, packetMsg);
 		if (ret < 0)
 			return -1;
 
@@ -2317,7 +2317,7 @@ public:
 		
 		// parse json body
 		PacketMsg packetMsg;
-		int ret = parse_packet_msg(WebSocketSession, p, packetMsg);
+		int ret = parse_packet_msg(Scheme::websocket, p, packetMsg);
 		if (ret < 0)
 			return -1;
 

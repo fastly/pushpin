@@ -480,7 +480,7 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 	return 0;
 }
 
-int parse_packet_msg(SessionType sessionType, const ZhttpRequestPacket& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
 	QVariantMap jsonMap;
@@ -507,7 +507,7 @@ int parse_packet_msg(SessionType sessionType, const ZhttpRequestPacket& packet, 
 	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
 	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
-	if (sessionType == HttpSession)
+	if (scheme == Scheme::http)
 		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
 	else
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
@@ -516,7 +516,7 @@ int parse_packet_msg(SessionType sessionType, const ZhttpRequestPacket& packet, 
 	return 0;
 }
 
-int parse_packet_msg(SessionType sessionType, const ZhttpResponsePacket& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
 	QVariantMap jsonMap;
@@ -543,7 +543,7 @@ int parse_packet_msg(SessionType sessionType, const ZhttpResponsePacket& packet,
 	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
 	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString().toLower() : NULL;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
-	if (sessionType == HttpSession)
+	if (scheme == Scheme::http)
 		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
 	else
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
