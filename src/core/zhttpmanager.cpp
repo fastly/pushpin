@@ -1826,7 +1826,7 @@ public:
 		{
 			msgIdStr = jsonMap[gMsgIdAttrName].toString();
 		}
-		QByteArray msgIdByte = QByteArray::fromHex(msgIdStr.remove('\"'));
+		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(msgIdStr.remove('\"')));
 
 		// result
 		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
