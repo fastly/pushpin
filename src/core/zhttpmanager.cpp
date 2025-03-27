@@ -1849,6 +1849,7 @@ public:
 					gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 					return 0;
 				}
 				gCacheItemMap[itemId].responsePacket = p;
@@ -2908,7 +2909,7 @@ void ZhttpManager::setCacheParameters(
 			}
 		}
 
-		//gCacheThread = QtConcurrent::run(cache_thread);
+		gCacheThread = QtConcurrent::run(cache_thread);
 	}
 }
 
