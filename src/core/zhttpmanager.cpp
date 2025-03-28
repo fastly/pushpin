@@ -1119,10 +1119,6 @@ public:
 				{
 					log_debug("[WS] received ws request from real client=%s", packetId.data());
 
-					// update seq
-					p.ids[i].seq = update_request_seq(packetId);
-					seqNum = p.ids[i].seq;
-
 					// if cancel/close request, remove client from the subscription client list
 					switch (p.type)
 					{
@@ -1165,22 +1161,13 @@ public:
 						break;
 					}
 				}
-				else
-				{
-					int ccIndex = get_cc_index_from_clientId(packetId);
-					if (ccIndex >= 0)
-					{
-						p.ids[i].seq = update_request_seq(packetId);
-						seqNum = p.ids[i].seq;
-					}
-					else
-					{
-						log_debug("[WS] received request from unknown client=%s", packetId.data());
-					}
-				}
-
+				
 				resume_cache_thread();
 			}
+
+			int newSeq = update_request_seq(packetId);
+			if (newSeq >= 0)
+				p.ids[i].seq = newSeq;
 
 			// is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, packetId));
