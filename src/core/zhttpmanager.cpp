@@ -628,12 +628,15 @@ public:
 						//out.credits = creditSize;
 						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
+						process_ws_cacheclient_response(packet, ccIndex);
+						/*
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
 						{
 							resume_cache_thread();
 							return;
 						}
+						*/
 					}
 					else
 					{
@@ -1901,18 +1904,6 @@ public:
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
 		QByteArray packetId = p.ids[0].id;
-
-		if (p.type != ZhttpResponsePacket::Data)
-		{
-			log_debug("[WS] passed cache client response");
-
-			p.ids[0].seq = gWsCacheClientList[cacheClientNumber].lastResponseSeq + 1; // seq
-			gWsCacheClientList[cacheClientNumber].lastResponseSeq = p.ids[0].seq;
-			gWsCacheClientList[cacheClientNumber].lastResponseTime = time(NULL);
-
-			//tryRespondEtc(WebSocketSession, packetId, p);
-			return -1;
-		}
 
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
