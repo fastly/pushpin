@@ -620,9 +620,14 @@ public:
 						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 
 						// increase credit
-						//int creditSize = static_cast<int>(packet.body.size());
+						int creditSize = static_cast<int>(packet.body.size());
 						//int seqNum = update_request_seq(packetId);
 						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
+
+						ZhttpRequestPacket out;
+						out.type = ZhttpRequestPacket::Credit;
+						out.credits = credits;
+						send_ws_request_over_cacheclient(out, -1, ccIndex);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
@@ -2211,7 +2216,6 @@ public:
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
-		int msgId = cacheClient->msgIdCount + 1;
 
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
@@ -2219,8 +2223,12 @@ public:
 		p.ids.clear();
 		p.ids += tempId;
 
-		replace_id_field(p.body, orgMsgId, msgId);
-		cacheClient->msgIdCount = msgId;
+		if (packet.type == ZhttpRequestPacket::Data)
+		{
+			int msgId = cacheClient->msgIdCount + 1;
+			replace_id_field(p.body, orgMsgId, msgId);
+			cacheClient->msgIdCount = msgId;
+		}
 
 		// log
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
