@@ -902,6 +902,8 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 int update_request_seq(const QByteArray &clientId)
 {
 	int ret = -1;
+
+	/*
 	if (gWsClientMap.contains(clientId)) 
 	{
 		gWsClientMap[clientId].lastRequestSeq += 1;
@@ -919,6 +921,7 @@ int update_request_seq(const QByteArray &clientId)
 		ret = gWsCacheClientList[ccIndex].lastRequestSeq;
 	}
 	log_debug("aaaaaaaa %s %d", clientId.data(), ret);
+	*/
 	
 	return ret;
 }
