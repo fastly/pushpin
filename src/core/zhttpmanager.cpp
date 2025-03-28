@@ -626,7 +626,7 @@ public:
 
 						ZhttpRequestPacket out;
 						out.type = ZhttpRequestPacket::Credit;
-						out.credits = credits;
+						out.credits = creditSize;
 						send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
@@ -2216,6 +2216,7 @@ public:
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
+		int msgId = cacheClient->msgIdCount + 1;
 
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
@@ -2225,7 +2226,6 @@ public:
 
 		if (!orgMsgId.isEmpty())
 		{
-			int msgId = cacheClient->msgIdCount + 1;
 			replace_id_field(p.body, orgMsgId, msgId);
 			cacheClient->msgIdCount = msgId;
 		}
