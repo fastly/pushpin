@@ -184,5 +184,5 @@ void log_debug(const char *fmt, ...)
 
 void log_raw(const char *s)
 {
-	log(s);
+	//log(s);
 }
