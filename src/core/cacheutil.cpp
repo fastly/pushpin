@@ -891,6 +891,7 @@ int update_request_seq(const QByteArray &clientId)
 		gWsCacheClientList[ccIndex].lastRequestSeq += 1;
 		ret = gWsCacheClientList[ccIndex].lastRequestSeq;
 	}
+	log_debug("aaaaaaaa %s %d", clientId.data(), ret);
 	
 	return ret;
 }
@@ -918,7 +919,6 @@ int get_client_new_response_seq(const QByteArray &clientId)
 
 void update_client_response_seq(const QByteArray &clientId, int seqNum)
 {
-	log_debug("aaaaaaaa %s %d", clientId.data(), seqNum);
 	if (gWsClientMap.contains(clientId)) 
 	{
 		gWsClientMap[clientId].lastResponseSeq = seqNum;
