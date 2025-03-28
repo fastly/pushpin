@@ -494,7 +494,6 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 	return 0;
 }
 
-template<typename T>
 int parse_packet_msg(Scheme scheme, const T& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
