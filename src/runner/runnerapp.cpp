@@ -769,7 +769,7 @@ private:
 
 	void service_logLine(const QString &line, Service *s)
 	{
-		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
+		QString out = tryInsertPrefix(s->formatLogLine(line), '[[' + s->name() + "]] ");
 		if(!out.isEmpty()) {
 			log_raw(qPrintable(out));
 		}
