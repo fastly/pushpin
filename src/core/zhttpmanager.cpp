@@ -620,14 +620,13 @@ public:
 						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 
 						// increase credit
-						int creditSize = static_cast<int>(packet.body.size());
+						//int creditSize = static_cast<int>(packet.body.size());
 						//int seqNum = update_request_seq(packetId);
 						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
-
-						ZhttpRequestPacket out;
-						out.type = ZhttpRequestPacket::Credit;
-						out.credits = creditSize;
-						send_ws_request_over_cacheclient(out, NULL, ccIndex);
+						//ZhttpRequestPacket out;
+						//out.type = ZhttpRequestPacket::Credit;
+						//out.credits = creditSize;
+						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
