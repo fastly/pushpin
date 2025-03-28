@@ -1438,6 +1438,7 @@ public:
 			{
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+				urlPath = gWsCacheClientList[ccIndex].urlPath;
 				QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
 				gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
 				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
