@@ -1172,6 +1172,8 @@ public:
 			int newSeq = update_request_seq(packetId);
 			if (newSeq >= 0)
 				p.ids[i].seq = newSeq;
+			else
+				newSeq = p.ids[i].seq;
 
 			// is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, packetId));
