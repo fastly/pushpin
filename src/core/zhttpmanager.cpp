@@ -484,6 +484,8 @@ public:
 			out.ids += tempId;
 			out.type = ZhttpRequestPacket::Credit;
 			out.credits = credits;
+
+			log_debug("[WS] sending credit packets client=%s, credit=%d", id.id.toHex().data(), credits);
 			
 			// is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(from, id.id));
@@ -618,9 +620,9 @@ public:
 						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 
 						// increase credit
-						//int creditSize = static_cast<int>(packet.body.size());
-						//int seqNum = update_request_seq(packetId);
-						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
+						int creditSize = static_cast<int>(packet.body.size());
+						int seqNum = update_request_seq(packetId);
+						tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
@@ -1175,7 +1177,7 @@ public:
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, packetId));
 			if(sock)
 			{
-				sock->handle(packetId, seqNum, p);
+				sock->handle(packetId, newSeq, p);
 				if(self.expired())
 					return;
 
@@ -1186,7 +1188,7 @@ public:
 			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, packetId));
 			if(req)
 			{
-				req->handle(packetId, seqNum, p);
+				req->handle(packetId, newSeq, p);
 				if(self.expired())
 					return;
 
