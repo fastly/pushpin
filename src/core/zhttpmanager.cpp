@@ -1606,9 +1606,11 @@ public:
 		// create new cache item
 		struct CacheItem cacheItem;
 
-		int cacheClientNo = get_main_cc_index();
-		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
-		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
+		int ccIndex = get_main_cc_index();
+		if (ccIndex < 0)
+			return -1;
+		cacheItem.msgId = gWsCacheClientList[ccIndex].msgIdCount;
+		cacheItem.newMsgId = gWsCacheClientList[ccIndex].msgIdCount;
 		cacheItem.refreshFlag = 0x00;
 		if (is_never_timeout_method(methodName, msgParams))
 		{
@@ -1657,7 +1659,7 @@ public:
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 
-		return cacheClientNo;
+		return ccIndex;
 	}
 
 	void reply_http_cached_content(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
@@ -2124,6 +2126,7 @@ public:
 					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 					log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
 					gCacheItemMap[itemId].msgId = msgIdValue;
+					gCacheItemMap[itemId].cachedFlag = true;
 
 					// send response to all clients
 					QString urlPath = "";
@@ -2140,13 +2143,6 @@ public:
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 
-					if (gCacheItemMap[itemId].cachedFlag == false && !urlPath.isEmpty())
-					{
-						// register cache refresh
-						register_cache_refresh(itemId, urlPath);
-					}
-					gCacheItemMap[itemId].cachedFlag = true;
-				
 					// make invalid
 					//config.cacheConfig.cacheMethodList.clear();
 					return -1;
@@ -2375,6 +2371,11 @@ public:
 					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
 						ccIndex = get_main_cc_index();
+						if (ccIndex < 0)
+						{
+							log_warning("[WS] not initialized cache client, ignore");
+							return 0;
+						}
 					}
 
 					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(methodName));
@@ -2422,11 +2423,19 @@ public:
 			{
 				// Register new cache item
 				int ccIndex = registerWsCacheItem(p, packetId, msgIdStr, methodName, msgParams, paramsHash);
+				if (ccIndex < 0)
+				{
+					log_warning("[WS] not initialized cache client, ignore");
+					return 0;
+				}
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
 				// Send new client cache request packet
 				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
 				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+
+				// register cache refresh
+				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 			}
 			
 			return -1;
