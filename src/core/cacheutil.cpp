@@ -923,8 +923,11 @@ int update_request_seq(const QByteArray &clientId)
 	else // cache client
 	{
 		int ccIndex = get_cc_index_from_clientId(clientId);
-		gWsCacheClientList[ccIndex].lastRequestSeq += 1;
-		ret = gWsCacheClientList[ccIndex].lastRequestSeq;
+		if (ccIndex >= 0)
+		{
+			gWsCacheClientList[ccIndex].lastRequestSeq += 1;
+			ret = gWsCacheClientList[ccIndex].lastRequestSeq;
+		}
 	}
 	log_debug("aaaaaaaa %s %d", clientId.data(), ret);
 	

@@ -1101,20 +1101,13 @@ public:
 		{
 			QByteArray packetId = p.ids[i].id;
 
-			log_debug("1");
-
 			// cache process
 			if (gCacheEnable == true)
 			{
-				log_debug("2");
 				pause_cache_thread();
-
-				log_debug("3");
 
 				// complete tasks from cache thread
 				send_unsubscribe_request_over_cacheclient();
-
-				log_debug("4");
 
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
