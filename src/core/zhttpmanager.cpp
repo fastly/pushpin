@@ -618,8 +618,7 @@ public:
 						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 
 						// increase credit
-						int creditSize = static_cast<int>(packet.body.size());
-						log_debug("qqqqqqqqq %d", creditSize);
+						//int creditSize = static_cast<int>(packet.body.size());
 						//int seqNum = update_request_seq(packetId);
 						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
