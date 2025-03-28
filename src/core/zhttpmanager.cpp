@@ -477,7 +477,7 @@ public:
 		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
 		{
 			ZhttpRequestPacket out;
-			out.from = from;
+			out.from = instanceId;
 			ZhttpRequestPacket::Id tempId;
 			tempId.id = id.id; // id
 			tempId.seq = seqNum; // seq
@@ -611,7 +611,7 @@ public:
 				case ZhttpResponsePacket::KeepAlive:
 					log_debug("[WS] received keep-alive response");
 					break;
-				default:
+				case ZhttpResponsePacket::Data:
 					if (ccIndex >= 0)
 					{
 						// update data receive time
@@ -619,6 +619,7 @@ public:
 
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
+						log_debug("qqqqqqqqq %d", creditSize);
 						int seqNum = update_request_seq(packetId);
 						tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
@@ -638,6 +639,8 @@ public:
 							return;
 						}
 					}
+					break;
+				default:
 					break;
 				}
 			}
