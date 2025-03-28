@@ -620,8 +620,8 @@ public:
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
 						log_debug("qqqqqqqqq %d", creditSize);
-						int seqNum = update_request_seq(packetId);
-						tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
+						//int seqNum = update_request_seq(packetId);
+						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
