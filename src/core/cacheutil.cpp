@@ -494,7 +494,7 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 	return 0;
 }
 
-int parse_packet_msg(Scheme scheme, const T& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
 	QVariantMap jsonMap;
@@ -529,7 +529,7 @@ int parse_packet_msg(Scheme scheme, const T& packet, PacketMsg& packetMsg)
 
 	return 0;
 }
-/*
+
 int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg)
 {
 	// Parse json message
@@ -564,7 +564,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 
 	return 0;
 }
-*/
+
 void replace_id_field(QByteArray &body, QString oldId, int newId)
 {
 	// new pattern
