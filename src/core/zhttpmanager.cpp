@@ -1419,16 +1419,15 @@ public:
 		}
 		else
 		{
+			if (gCacheItemMap[itemId].retryCount > RETRY_RESPONSE_MAX_COUNT)
+			{
+				log_debug("[_TIMER] reached max retry count");
+				return;
+			}
+			gCacheItemMap[itemId].retryCount++;
 			// switch backend of the failed response
 			if (gCacheItemMap[itemId].proto == Scheme::http)
 			{
-				if (gCacheItemMap[itemId].retryCount > RETRY_RESPONSE_MAX_COUNT)
-				{
-					log_debug("[_TIMER] reached max retry count");
-					return;
-				}
-				gCacheItemMap[itemId].retryCount++;
-
 				urlPath = get_switched_http_backend_url(urlPath);
 				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
 				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
@@ -1437,7 +1436,11 @@ public:
 			}
 			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
 			{
-
+				// Send client cache request packet for auto-refresh
+				int ccIndex = get_cc_next_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
+				QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
+				gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
+				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
 
@@ -2092,6 +2095,11 @@ public:
 			return -1;
 		}
 
+		// result
+		bool isResultNull = false;
+		if (packetMsg.result.isEmpty())
+			isResultNull = true;
+
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
@@ -2101,6 +2109,16 @@ public:
 				if (gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD)
 				{
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
+
+					if (gCacheItemMap[itemId].cachedFlag == false && isResultNull == true && 
+						gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+					{
+						log_debug("[WS] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
+						gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+						gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
+						return 0;
+					}
 					
 					gCacheItemMap[itemId].responsePacket = p;
 					gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdValue);

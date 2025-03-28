@@ -275,15 +275,42 @@ bool is_never_timeout_method(QString methodStr, QString paramsStr)
 	return false;
 }
 
-int get_cc_index_from_clientId(QByteArray packetId)
+int get_cc_index_from_clientId(QByteArray clientId)
 {
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
-		if (gWsCacheClientList[i].clientId == packetId)
+		if (gWsCacheClientList[i].clientId == clientId)
 		{
 			return i;
 		}			
 	}
+	return -1;
+}
+
+int get_cc_next_index_from_clientId(QByteArray clientId)
+{
+	int ccIndex = get_cc_index_from_clientId(clientId);
+
+	ccIndex += 1;
+	if (ccIndex >= gWsCacheClientList.count())
+		ccIndex = 0;
+
+	for (int i = ccIndex; i < gWsCacheClientList.count(); i++)
+	{
+		if (gWsCacheClientList[i].initFlag == true)
+		{
+			return i;
+		}			
+	}
+
+	for (int i = 0; i < ccIndex; i++)
+	{
+		if (gWsCacheClientList[i].initFlag == true)
+		{
+			return i;
+		}			
+	}
+
 	return -1;
 }
 
