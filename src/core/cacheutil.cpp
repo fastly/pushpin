@@ -557,8 +557,6 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
 
-	log_debug("[JSON] msgId=%s, isResultNull=%s", msgIdByte.toHex().data(), packetMsg.isResultNull == true ? "true" : "false");
-
 	return 0;
 }
 
@@ -597,8 +595,6 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	else
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
-
-	log_debug("[JSON] msgId=%s, isResultNull=%s", msgIdByte.toHex().data(), packetMsg.isResultNull == true ? "true" : "false");
 
 	return 0;
 }
