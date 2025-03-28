@@ -561,6 +561,7 @@ public:
 			return;
 		}
 
+		log_debug("HHHHHH1 %s, %d, %d", id.data(), seq, inSeq);
 		if(seq != -1)
 		{
 			if(seq != inSeq)
@@ -707,6 +708,7 @@ public:
 			return;
 		}
 
+		log_debug("HHHHHH2 %s, %d, %d", id.data(), seq, inSeq);
 		// if non-req mode, check sequencing
 		if(!doReq && seq != inSeq)
 		{
