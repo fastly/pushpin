@@ -546,7 +546,10 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	}
 	packetMsg.id = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
 	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : "";
+	packetMsg.isResultNull = false;
+	if (jsonMap.contains(gResultAttrName) && packetMsg.result.isEmpty())
+		packetMsg.isResultNull = true;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
 		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");

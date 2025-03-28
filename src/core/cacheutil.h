@@ -121,6 +121,7 @@ struct PacketMsg {
 	QString id;
 	QString method;
 	QString result;
+	bool isResultNull;
 	QString params;
 	QByteArray paramsHash;
 	QString subscription;

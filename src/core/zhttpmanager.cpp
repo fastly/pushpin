@@ -1805,12 +1805,7 @@ public:
 		QString tmpStr = packetMsg.id;
 		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
-		// result
-		bool isResultNull = false;
-		if (packetMsg.result.isEmpty())
-			isResultNull = true;
-
-		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), isResultNull ? "null" : "...");
+		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), qString(packetMsg.result));
 
 		if (gCacheItemMap.contains(msgIdByte))
 		{
@@ -1823,7 +1818,7 @@ public:
 				return -1;
 			}
 
-			if (gCacheItemMap[itemId].cachedFlag == false && isResultNull == true && 
+			if (gCacheItemMap[itemId].cachedFlag == false && packetMsg.isResultNull == true && 
 				gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 			{
 				log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
@@ -1862,7 +1857,7 @@ public:
 					(gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) &&
 					(gCacheItemMap[itemId].cachedFlag == false))
 				{
-					if (isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+					if (packetMsg.isResultNull == true && gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 					{
 						log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
 						gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
@@ -2090,11 +2085,6 @@ public:
 			return -1;
 		}
 
-		// result
-		bool isResultNull = false;
-		if (packetMsg.result.isEmpty())
-			isResultNull = true;
-
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
 			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
@@ -2105,7 +2095,7 @@ public:
 				{
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(gCacheItemMap[itemId].methodName));
 
-					if (gCacheItemMap[itemId].cachedFlag == false && isResultNull == true && 
+					if (gCacheItemMap[itemId].cachedFlag == false && packetMsg.isResultNull == true && 
 						gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
 					{
 						log_debug("[WS] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
