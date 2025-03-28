@@ -608,6 +608,9 @@ public:
 				case ZhttpResponsePacket::Ping:
 					log_debug("[WS] received ping response");
 					break;
+				case ZhttpResponsePacket::KeepAlive:
+					log_debug("[WS] received keep-alive response");
+					break;
 				default:
 					if (ccIndex >= 0)
 					{
