@@ -1101,13 +1101,20 @@ public:
 		{
 			QByteArray packetId = p.ids[i].id;
 
+			log_debug("1");
+
 			// cache process
 			if (gCacheEnable == true)
 			{
+				log_debug("2");
 				pause_cache_thread();
+
+				log_debug("3");
 
 				// complete tasks from cache thread
 				send_unsubscribe_request_over_cacheclient();
+
+				log_debug("4");
 
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
@@ -1739,9 +1746,7 @@ public:
 			log_debug("[HTTP] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("asdf");
 		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
-		log_debug("qwer");
 
 		if (is_cache_method(packetMsg.method))
 		{
