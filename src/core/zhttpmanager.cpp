@@ -1373,7 +1373,7 @@ public:
 		log_debug("_[TIMER] cache refresh %s %s", itemId.toHex().data(), qPrintable(urlPath));
 		if (!gCacheItemMap.contains(itemId))
 		{
-			log_debug("_[TIMER] exit refresh %d %s", itemId.toHex().data());
+			log_debug("_[TIMER] exit refresh %s", itemId.toHex().data());
 			return;
 		}
 
