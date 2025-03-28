@@ -1100,7 +1100,7 @@ public:
 		for	(int i=0; i<p.ids.count(); i++)
 		{
 			QByteArray packetId = p.ids[i].id;
-			int seqNum = p.ids[i].seq;
+
 			// cache process
 			if (gCacheEnable == true)
 			{
@@ -1805,7 +1805,7 @@ public:
 		QString tmpStr = packetMsg.id;
 		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
-		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), qString(packetMsg.result));
+		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), qPrintable(packetMsg.result));
 
 		if (gCacheItemMap.contains(msgIdByte))
 		{
