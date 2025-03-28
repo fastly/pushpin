@@ -1739,7 +1739,9 @@ public:
 			log_debug("[HTTP] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
+		log_debug("asdf");
 		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
+		log_debug("qwer");
 
 		if (is_cache_method(packetMsg.method))
 		{
