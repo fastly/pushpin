@@ -1805,8 +1805,6 @@ public:
 		QString tmpStr = packetMsg.id;
 		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
-		log_debug("[HTTP] msgId=%s, result=%s", msgIdByte.toHex().data(), qPrintable(packetMsg.result));
-
 		if (gCacheItemMap.contains(msgIdByte))
 		{
 			QByteArray itemId = msgIdByte;

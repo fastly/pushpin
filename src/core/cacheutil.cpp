@@ -527,7 +527,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	QVariantMap jsonMap;
 	if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 	{
-		log_debug("[WS] failed to parse json");
+		log_debug("[JSON] failed to parse json");
 		return -1;
 	}
 
@@ -557,6 +557,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
 
+	log_debug("[JSON] msgId=%s, isResultNull=%s", msgIdByte.toHex().data(), packetMsg.isResultNull == true ? "true" : "false");
+
 	return 0;
 }
 
@@ -566,7 +568,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	QVariantMap jsonMap;
 	if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 	{
-		log_debug("[WS] failed to parse json");
+		log_debug("[JSON] failed to parse json");
 		return -1;
 	}
 
@@ -585,12 +587,18 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	}
 	packetMsg.id = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
 	packetMsg.method = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString().toLower() : NULL;
+	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : "";
+	packetMsg.isResultNull = false;
+	if (jsonMap.contains(gResultAttrName) && packetMsg.result.isEmpty())
+		packetMsg.isResultNull = true;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
 		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
 	else
 		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
+	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
+
+	log_debug("[JSON] msgId=%s, isResultNull=%s", msgIdByte.toHex().data(), packetMsg.isResultNull == true ? "true" : "false");
 
 	return 0;
 }
