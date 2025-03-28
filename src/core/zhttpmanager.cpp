@@ -1643,7 +1643,7 @@ public:
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
-		cacheItem.cacheClientId = gWsCacheClientList[cacheClientNo].clientId;
+		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
 
 		cacheItem.methodName = methodName;
 
