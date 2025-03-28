@@ -142,10 +142,8 @@ int get_main_cc_index();
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
-template<typename T>
-int parse_packet_msg(Scheme scheme, const T& packet, PacketMsg& packetMsg);
-//int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg);
-//int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg);
+int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg);
+int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg);
 
 void replace_id_field(QByteArray &body, QString oldId, int newId);
 void replace_id_field(QByteArray &body, QString oldId, QString newId);
