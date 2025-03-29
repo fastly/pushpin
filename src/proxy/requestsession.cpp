@@ -976,7 +976,6 @@ public:
 
 	void doResponseUpdate()
 	{
-		printf("qwerwerqwerqwer");
 		pendingResponseUpdate = false;
 
 		if(state == RespondingStart)
