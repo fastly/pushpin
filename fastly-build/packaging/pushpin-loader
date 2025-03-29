@@ -82,7 +82,7 @@ def validate_host(s):
             'host must have a length between 1 and 255 characters')
 
     for c in s:
-        if c not in '._-' and c not in alphanumerics:
+        if c not in '._-:' and c not in alphanumerics:
             raise ValidationError('host cannot contain: {}'.format(repr(c)))
 
     return s
@@ -417,7 +417,13 @@ def make_routes(service, backend, sig_keys_dir):
 
     backend_extensions = service.extensions.get('backends', {}).get(backend_name, {})
 
-    target = '{}:{}'.format(host, backend['port'])
+    if ':' in host:
+        # assume ipv6 address
+        target = '[{}]'.format(host)
+    else:
+        target = host
+
+    target += ':{}'.format(backend['port'])
 
     if int(backend.get('use_ssl', '0')):
         target += ',ssl'
