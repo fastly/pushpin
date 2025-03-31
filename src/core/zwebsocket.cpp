@@ -498,8 +498,6 @@ public:
 			return;
 		}
 
-		log_debug("WWWWWW1 %s, %d, %d", id.data(), seq, inSeq);
-
 		if(seq != inSeq)
 		{
 			log_warning("zws server: error id=%s received message out of sequence, canceling", id.data());
@@ -608,7 +606,6 @@ public:
 		if(!packet.from.isEmpty())
 			toAddress = packet.from;
 
-		log_debug("WWWWWW2 %s, %d, %d", id.data(), seq, inSeq);
 		if(seq != inSeq)
 		{
 			log_warning("zws client: error id=%s received message out of sequence, canceling", id.data());

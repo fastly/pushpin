@@ -159,8 +159,7 @@ static void remove_old_cache_items()
 				
 				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
 				{
-					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", 
-						cacheItem.clientMap.count(), refreshDiff);
+					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
 
 					// add unsubscribe request item for cache thread
 					if (cacheItem.orgMsgId.isEmpty() == false)
@@ -922,7 +921,6 @@ int update_request_seq(const QByteArray &clientId)
 			ret = gWsCacheClientList[ccIndex].lastRequestSeq;
 		}
 	}
-	log_debug("aaaaaaaa %s %d", clientId.data(), ret);
 	
 	return ret;
 }
