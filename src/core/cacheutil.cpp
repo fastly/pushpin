@@ -153,6 +153,7 @@ static void remove_old_cache_items()
 					continue;
 				} 
 			}
+			/*
 			else if (cacheItem.methodType == CacheMethodType::SUBSCRIBE_METHOD && cacheItem.cachedFlag == true)
 			{
 				qint64 refreshDiff = currMTime - cacheItem.lastRefreshTime;
@@ -182,6 +183,7 @@ static void remove_old_cache_items()
 					}
 				}
 			}
+			*/
 
 			++it;  // Move to the next item
 		}
@@ -209,7 +211,7 @@ void cache_thread()
 		}
 		gCacheThreadRunning = true;
 
-		//remove_old_cache_items();
+		remove_old_cache_items();
 
 		gCacheThreadRunning = false;
 
