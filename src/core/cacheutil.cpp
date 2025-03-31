@@ -220,7 +220,7 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
-		remove_old_subscribe_items();
+		//remove_old_subscribe_items();
 
 		gCacheThreadRunning = false;
 
