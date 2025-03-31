@@ -134,7 +134,10 @@ static void remove_old_cache_items()
 		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
 		{
 			if (it.value().methodType != CacheMethodType::CACHE_METHOD)
+			{
+				++it;  // Move to the next item
 				continue;
+			}
 
 			if (it.value().refreshFlag & AUTO_REFRESH_UNERASE)
 			{
@@ -219,10 +222,8 @@ void cache_thread()
 		}
 		gCacheThreadRunning = true;
 
-		//remove_old_cache_items();
-		//remove_old_subscribe_items();
-
-		log_debug("aaaaaaaaaaaaaaaa");
+		remove_old_cache_items();
+		remove_old_subscribe_items();
 
 		gCacheThreadRunning = false;
 
