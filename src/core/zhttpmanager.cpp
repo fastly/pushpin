@@ -1930,6 +1930,7 @@ public:
 
 			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
+				log_debug("[qqq] %s, %s", qPrintable(gCacheItemMap[itemId].subscriptionStr), qPrintable(subscriptionStr));
 				if (gCacheItemMap[itemId].subscriptionStr == subscriptionStr)
 				{
 					if (gCacheItemMap[itemId].cachedFlag == false)
