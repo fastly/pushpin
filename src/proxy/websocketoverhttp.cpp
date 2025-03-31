@@ -215,7 +215,6 @@ public:
 	int outContentSize;
 	int outFramesReplay;
 	int outContentReplay;
-	bool expectProgress;
 	int closeCode;
 	QString closeReason;
 	bool closeSent;
@@ -253,7 +252,6 @@ public:
 		outContentSize(0),
 		outFramesReplay(0),
 		outContentReplay(0),
-		expectProgress(false),
 		closeCode(-1),
 		closeSent(false),
 		peerClosing(false),
@@ -332,11 +330,6 @@ public:
 
 		outFrames += frame;
 		outContentSize += frame.data.size();
-
-		// to avoid replay loops, writing should always result in more data
-		// being represented in the next request
-		if(outContentReplay > 0)
-			expectProgress = true;
 
 		if(needUpdate())
 			update();
@@ -529,15 +522,6 @@ private:
 				return;
 			}
 
-			if(expectProgress && (reqFrames <= outFramesReplay || reqContentSize <= outContentReplay))
-			{
-				updating = false;
-				queueError(ErrorGeneric);
-				return;
-			}
-
-			expectProgress = false;
-
 			if(state == Closing && (maxEvents <= 0 || events.count() < maxEvents))
 			{
 				if(reqFrames < outFrames.count())
@@ -698,18 +682,35 @@ private:
 			}
 		}
 
+		bool reqContainsAllContent = (reqFrames == outFrames.count() && reqContentSize == outContentSize);
+
+		// if we couldn't fit all pending data in the request, then the
+		// server must accept some data otherwise we'll never make progress
+		if(!reqContainsAllContent && contentBytesAccepted == 0)
+		{
+			updating = false;
+			queueError(ErrorGeneric);
+			return;
+		}
+
 		int nonCloseContentBytesAccepted = qMin(contentBytesAccepted, reqContentSize);
 
-		int removed = removeContentFromFrames(&outFrames, nonCloseContentBytesAccepted);
+		int outFramesCountOrig = outFrames.count();
+		int contentRemoved = removeContentFromFrames(&outFrames, nonCloseContentBytesAccepted);
+		int framesRemoved = outFramesCountOrig - outFrames.count();
 
 		// guaranteed to succeed, since reqContentSize represents the initial
 		// data in outFrames and we guard against too large of an input
-		assert(removed == nonCloseContentBytesAccepted);
+		assert(contentRemoved == nonCloseContentBytesAccepted);
 
-		outContentSize -= removed;
+		outContentSize -= contentRemoved;
 
-		outFramesReplay = reqFrames;
-		outContentReplay = reqContentSize - removed;
+		// framesRemoved could exceed reqFrames if any zero-sized frames are
+		// appended to outFrames before acceptance, causing them to be
+		// removed even though they weren't in the request
+		outFramesReplay = qMax(reqFrames - framesRemoved, 0);
+
+		outContentReplay = reqContentSize - contentRemoved;
 
 		if(reqClose)
 		{
@@ -720,13 +721,11 @@ private:
 			}
 			else
 			{
-				int closeContentBytesAccepted = contentBytesAccepted - nonCloseContentBytesAccepted;
-
 				// server accepted all content before close. in that case, we
 				// require the server to also accept the close. partial
 				// acceptance is meant for waiting for more data and from
 				// this point there won't be any more data.
-				if(closeContentBytesAccepted < reqCloseContentSize)
+				if(contentBytesAccepted < reqContentSizeWithClose)
 				{
 					cleanup();
 					q->error();
@@ -740,6 +739,7 @@ private:
 		{
 			outFrames.clear();
 			outContentSize = 0;
+			outFramesReplay = 0;
 			outContentReplay = 0;
 		}
 
