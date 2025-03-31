@@ -160,7 +160,7 @@ static void remove_old_cache_items()
 				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
 				{
 					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
-/*
+
 					// add unsubscribe request item for cache thread
 					if (cacheItem.orgMsgId.isEmpty() == false)
 					{
@@ -171,15 +171,12 @@ static void remove_old_cache_items()
 						reqItem.cacheClientId = cacheItem.cacheClientId;
 						gUnsubscribeRequestList.append(reqItem);
 					}
-*/
-					if (cacheItem.clientMap.count() == 0)
-					{
-						// remove subscription item
-						log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-							qPrintable(cacheItem.orgSubscriptionStr), qPrintable(cacheItem.subscriptionStr));
-						it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
-						continue;
-					}
+
+					// remove subscription item
+					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
+						qPrintable(cacheItem.orgSubscriptionStr), qPrintable(cacheItem.subscriptionStr));
+					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
+					continue;
 				}
 			}
 
