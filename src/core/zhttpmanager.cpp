@@ -1140,37 +1140,27 @@ public:
 					case ZhttpRequestPacket::Cancel:
 						unregister_client(packetId);
 						//send_wsCloseResponse(packetId);
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::Close:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Close, packetId, p.from);
 						unregister_client(packetId);
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::KeepAlive:
 						log_debug("[WS] received KeepAlive, ignoring");
 						//send_pingResponse(packetId);
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::Pong:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, 0);
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::Ping:
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Pong, packetId, p.from);
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::Credit:
-						resume_cache_thread();
-						continue;
+						break;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
 						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
-						if (process_ws_stream_request(packetId, p) < 0)
-						{
-							resume_cache_thread();
-							continue;
-						}
+						process_ws_stream_request(packetId, p);
 						break;
 					default:
 						break;
