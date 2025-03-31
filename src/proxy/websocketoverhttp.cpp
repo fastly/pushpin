@@ -207,6 +207,7 @@ public:
 	int reqPendingBytes;
 	int reqFrames;
 	int reqContentSize;
+	bool reqMaxed;
 	bool reqClose;
 	int reqCloseContentSize;
 	BufferList inBuf;
@@ -247,6 +248,7 @@ public:
 		reqPendingBytes(0),
 		reqFrames(0),
 		reqContentSize(0),
+		reqMaxed(false),
 		reqClose(false),
 		reqCloseContentSize(0),
 		outContentSize(0),
@@ -497,6 +499,7 @@ private:
 
 		reqFrames = 0;
 		reqContentSize = 0;
+		reqMaxed = false;
 		reqClose = false;
 		reqCloseContentSize = 0;
 
@@ -521,6 +524,9 @@ private:
 				queueError(ErrorGeneric);
 				return;
 			}
+
+			// set this if we couldn't fit everything
+			reqMaxed = reqFrames < outFrames.count();
 
 			if(state == Closing && (maxEvents <= 0 || events.count() < maxEvents))
 			{
@@ -682,17 +688,6 @@ private:
 			}
 		}
 
-		bool reqContainsAllContent = (reqFrames == outFrames.count() && reqContentSize == outContentSize);
-
-		// if we couldn't fit all pending data in the request, then the
-		// server must accept some data otherwise we'll never make progress
-		if(!reqContainsAllContent && contentBytesAccepted == 0)
-		{
-			updating = false;
-			queueError(ErrorGeneric);
-			return;
-		}
-
 		int nonCloseContentBytesAccepted = qMin(contentBytesAccepted, reqContentSize);
 
 		int outFramesCountOrig = outFrames.count();
@@ -704,6 +699,15 @@ private:
 		assert(contentRemoved == nonCloseContentBytesAccepted);
 
 		outContentSize -= contentRemoved;
+
+		// if we couldn't fit all pending data in the request, then require
+		// progress to be made
+		if(reqMaxed && framesRemoved == 0 && contentRemoved == 0)
+		{
+			updating = false;
+			queueError(ErrorGeneric);
+			return;
+		}
 
 		// framesRemoved could exceed reqFrames if any zero-sized frames are
 		// appended to outFrames before acceptance, causing them to be
