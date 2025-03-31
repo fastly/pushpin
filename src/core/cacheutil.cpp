@@ -133,6 +133,9 @@ static void remove_old_cache_items()
 		// Remove items where the value is greater than 30
 		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
 		{
+			if (gCacheItemMap[itemId].methodType != CacheMethodType::CACHE_METHOD)
+				continue;
+			
 			if (it.value().refreshFlag & AUTO_REFRESH_UNERASE)
 			{
 				log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(it.value().methodName), it.key().toHex().data());
