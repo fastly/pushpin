@@ -153,7 +153,6 @@ static void remove_old_cache_items()
 					continue;
 				} 
 			}
-			/*
 			else if (cacheItem.methodType == CacheMethodType::SUBSCRIBE_METHOD && cacheItem.cachedFlag == true)
 			{
 				qint64 refreshDiff = currMTime - cacheItem.lastRefreshTime;
@@ -161,7 +160,7 @@ static void remove_old_cache_items()
 				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
 				{
 					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
-
+/*
 					// add unsubscribe request item for cache thread
 					if (cacheItem.orgMsgId.isEmpty() == false)
 					{
@@ -172,7 +171,7 @@ static void remove_old_cache_items()
 						reqItem.cacheClientId = cacheItem.cacheClientId;
 						gUnsubscribeRequestList.append(reqItem);
 					}
-
+*/
 					if (cacheItem.clientMap.count() == 0)
 					{
 						// remove subscription item
@@ -183,7 +182,6 @@ static void remove_old_cache_items()
 					}
 				}
 			}
-			*/
 
 			++it;  // Move to the next item
 		}
