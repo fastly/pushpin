@@ -82,7 +82,7 @@ static void logPacket(int level, const QString &message, const QVariant &data = 
 		out += TnetString::variantToString(QVariant(buf), -1);
 	}
 
-	log(level, "%s", qPrintable(out));
+	//log(level, "%s", qPrintable(out));
 }
 
 static void logPacket(int level, const QVariant &data, const char *fmt, va_list ap)
