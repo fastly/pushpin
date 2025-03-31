@@ -127,7 +127,9 @@ public:
 	{
 		UnknownSession,
 		HttpSession,
-		WebSocketSession
+		WebSocketSession,
+		CacheRequest,
+		CacheResponse
 	};
 
 	class KeepAliveRegistration
@@ -464,7 +466,7 @@ public:
 		}
 
 		out.from = instanceId;
-		write(sessionType, out, newFrom);
+		write(CacheResponse, out, newFrom);
 	}
 
 	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
@@ -555,7 +557,7 @@ public:
 		int packetSeq = packet.ids.first().seq;
 
 		// cache process
-		if (gCacheEnable == true)
+		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
 		{
 			pause_cache_thread();
 
@@ -666,6 +668,8 @@ public:
 		{
 			case HttpSession: return "zhttp";
 			case WebSocketSession: return "zws";
+			case CacheRequest: return "cache-request";
+			case CacheResponse: return "cache-response";
 			default: return "zhttp/zws";
 		}
 	}
@@ -1930,7 +1934,6 @@ public:
 
 			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
-				log_debug("[qqq] %s, %s", qPrintable(gCacheItemMap[itemId].subscriptionStr), qPrintable(subscriptionStr));
 				if (gCacheItemMap[itemId].subscriptionStr == subscriptionStr)
 				{
 					if (gCacheItemMap[itemId].cachedFlag == false)
