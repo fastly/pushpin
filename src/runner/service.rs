@@ -435,6 +435,7 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
+	/*
     // Find the position of the 3rd space (' ') in the string
     let index = msg
         .char_indices()
@@ -455,4 +456,5 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
             ))
             .build(),
     );
+	*/
 }

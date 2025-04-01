@@ -2332,7 +2332,7 @@ public:
 		}
 
 		// get method string			
-		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\" params=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName), qPrintable(msgParams));
+		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 
 		// Params hash val
 		QByteArray paramsHash = packetMsg.paramsHash;
