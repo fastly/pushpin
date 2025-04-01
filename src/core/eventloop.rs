@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::core::event::ReadinessExt;
+use crate::core::event::{self, ReadinessExt};
 use crate::core::list;
 use crate::core::reactor;
 use crate::core::waker;
@@ -27,23 +27,20 @@ use std::rc::{Rc, Weak};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-pub const READABLE: u8 = 0x01;
-pub const WRITABLE: u8 = 0x02;
-
 pub trait Callback {
-    fn call(&mut self, readiness: u8);
+    fn call(&mut self, readiness: event::Readiness);
 }
 
 impl Callback for Box<dyn Callback> {
-    fn call(&mut self, readiness: u8) {
+    fn call(&mut self, readiness: event::Readiness) {
         (**self).call(readiness);
     }
 }
 
 pub struct FnCallback<T>(T);
 
-impl<T: FnMut(u8)> Callback for FnCallback<T> {
-    fn call(&mut self, readiness: u8) {
+impl<T: FnMut(event::Readiness)> Callback for FnCallback<T> {
+    fn call(&mut self, readiness: event::Readiness) {
         self.0(readiness);
     }
 }
@@ -51,6 +48,10 @@ impl<T: FnMut(u8)> Callback for FnCallback<T> {
 enum Evented {
     Fd(reactor::FdEvented),
     Timer(reactor::TimerEvented),
+    Custom {
+        evented: reactor::CustomEvented,
+        _reg: event::Registration,
+    },
 }
 
 impl Evented {
@@ -58,6 +59,7 @@ impl Evented {
         match self {
             Self::Fd(e) => e.registration(),
             Self::Timer(e) => e.registration(),
+            Self::Custom { evented, .. } => evented.registration(),
         }
     }
 }
@@ -193,21 +195,7 @@ impl<C: Callback> Registrations<C> {
                     .take()
                     .expect("registration should have a callback");
 
-                let readiness = {
-                    let readiness = reg.evented.registration().readiness();
-
-                    let mut r = 0;
-
-                    if readiness.contains_any(mio::Interest::READABLE) {
-                        r |= READABLE;
-                    }
-
-                    if readiness.contains_any(mio::Interest::WRITABLE) {
-                        r |= WRITABLE;
-                    }
-
-                    r
-                };
+                let readiness = reg.evented.registration().readiness();
 
                 let nkey = if let Evented::Timer(_) = &reg.evented {
                     // remove timer registrations after activation
@@ -327,20 +315,9 @@ impl<C: Callback> EventLoop<C> {
     pub fn register_fd(
         &self,
         fd: RawFd,
-        interest: u8,
+        interest: mio::Interest,
         callback: C,
     ) -> Result<usize, EventLoopError> {
-        let interest = if interest & READABLE != 0 && interest & WRITABLE != 0 {
-            mio::Interest::READABLE | mio::Interest::WRITABLE
-        } else if interest & READABLE != 0 {
-            mio::Interest::READABLE
-        } else if interest & WRITABLE != 0 {
-            mio::Interest::WRITABLE
-        } else {
-            // must specify at least one of READABLE or WRITABLE
-            return Err(EventLoopError);
-        };
-
         let evented = match reactor::FdEvented::new(fd, interest, &self.reactor) {
             Ok(evented) => evented,
             Err(_) => return Err(EventLoopError),
@@ -387,6 +364,42 @@ impl<C: Callback> EventLoop<C> {
             .expect("slab should have capacity"))
     }
 
+    pub fn register_custom(
+        &self,
+        callback: C,
+    ) -> Result<(usize, event::SetReadiness), EventLoopError> {
+        let (reg, sr) = event::Registration::new();
+
+        let evented = match reactor::CustomEvented::new(
+            &reg,
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+            &self.reactor,
+        ) {
+            Ok(evented) => evented,
+            Err(_) => return Err(EventLoopError),
+        };
+
+        let regs = Rc::downgrade(&self.regs);
+
+        let get_waker = |reg_id| {
+            let activator = Rc::new(Activator { regs, reg_id });
+
+            waker::into_std(activator)
+        };
+
+        let id = self
+            .regs
+            .add(
+                Evented::Custom { evented, _reg: reg },
+                mio::Interest::READABLE | mio::Interest::WRITABLE,
+                get_waker,
+                callback,
+            )
+            .expect("slab should have capacity");
+
+        Ok((id, sr))
+    }
+
     pub fn deregister(&self, id: usize) -> Result<(), EventLoopError> {
         self.regs.remove(id).map_err(|_| EventLoopError)
     }
@@ -430,6 +443,7 @@ impl<C: Callback> Future for Exec<'_, C> {
 
 mod ffi {
     use super::*;
+    use event::ffi::{interest_int_to_mio, READABLE, WRITABLE};
     use std::ops::Deref;
 
     pub struct RawCallback {
@@ -451,7 +465,21 @@ mod ffi {
     }
 
     impl Callback for RawCallback {
-        fn call(&mut self, readiness: u8) {
+        fn call(&mut self, readiness: event::Readiness) {
+            let readiness = {
+                let mut r = 0;
+
+                if readiness.contains_any(mio::Interest::READABLE) {
+                    r |= READABLE;
+                }
+
+                if readiness.contains_any(mio::Interest::WRITABLE) {
+                    r |= WRITABLE;
+                }
+
+                r
+            };
+
             // SAFETY: we are passing the ctx value that was provided
             unsafe {
                 (self.f)(self.ctx, readiness);
@@ -530,6 +558,10 @@ mod ffi {
     ) -> libc::c_int {
         let l = l.as_mut().unwrap();
 
+        let Ok(interest) = interest_int_to_mio(interest) else {
+            return -1;
+        };
+
         // SAFETY: we assume caller guarantees that the callback is safe to
         // call for the lifetime of the registration
         let cb = unsafe { RawCallback::new(cb, ctx) };
@@ -571,6 +603,32 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
+    pub unsafe extern "C" fn event_loop_register_custom(
+        l: *mut EventLoopRaw,
+        cb: unsafe extern "C" fn(*mut libc::c_void, u8),
+        ctx: *mut libc::c_void,
+        out_id: *mut libc::size_t,
+        out_set_readiness: *mut *mut event::ffi::SetReadiness,
+    ) -> libc::c_int {
+        let l = l.as_mut().unwrap();
+
+        // SAFETY: we assume caller guarantees that the callback is safe to
+        // call for the lifetime of the registration
+        let cb = unsafe { RawCallback::new(cb, ctx) };
+
+        let (id, sr) = match l.register_custom(cb) {
+            Ok(id) => id,
+            Err(_) => return -1,
+        };
+
+        out_id.write(id);
+        out_set_readiness.write(Box::into_raw(Box::new(event::ffi::SetReadiness(sr))));
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
     pub unsafe extern "C" fn event_loop_deregister(
         l: *mut EventLoopRaw,
         id: libc::size_t,
@@ -599,7 +657,7 @@ mod tests {
     struct NoopCallback;
 
     impl Callback for NoopCallback {
-        fn call(&mut self, _readiness: u8) {}
+        fn call(&mut self, _readiness: event::Readiness) {}
     }
 
     #[test]
@@ -636,8 +694,8 @@ mod tests {
             let listener = Rc::clone(&listener);
             let count = Rc::clone(&count);
 
-            Box::new(FnCallback(move |readiness| {
-                assert_eq!(readiness, READABLE);
+            Box::new(FnCallback(move |readiness: event::Readiness| {
+                assert!(readiness.contains_any(mio::Interest::READABLE));
 
                 let _stream = listener.accept().unwrap();
 
@@ -651,7 +709,7 @@ mod tests {
             }))
         };
 
-        let id = l.register_fd(fd, READABLE, cb).unwrap();
+        let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
 
         {
             // non-blocking connect attempt to trigger listener
@@ -685,8 +743,8 @@ mod tests {
         let cb = {
             let l = Rc::clone(&l);
 
-            Box::new(FnCallback(move |readiness| {
-                assert_eq!(readiness, READABLE);
+            Box::new(FnCallback(move |readiness: event::Readiness| {
+                assert!(readiness.contains_any(mio::Interest::READABLE));
 
                 l.exit(0);
             }))
@@ -712,6 +770,28 @@ mod tests {
     }
 
     #[test]
+    fn custom() {
+        let l = Rc::new(EventLoop::<Box<dyn Callback>>::new(1));
+
+        let cb = {
+            let l = Rc::clone(&l);
+
+            Box::new(FnCallback(move |readiness: event::Readiness| {
+                assert!(readiness.contains_any(mio::Interest::READABLE));
+
+                l.exit(0);
+            }))
+        };
+
+        let (id, sr) = l.register_custom(cb).unwrap();
+
+        sr.set_readiness(mio::Interest::READABLE).unwrap();
+        assert_eq!(l.exec(), 0);
+
+        l.deregister(id).unwrap();
+    }
+
+    #[test]
     fn deregister_within_callback() {
         let l = Rc::new(EventLoop::<Box<dyn Callback>>::new(1));
 
@@ -728,8 +808,8 @@ mod tests {
             let listener = Rc::clone(&listener);
             let id = Rc::clone(&id);
 
-            Box::new(FnCallback(move |readiness| {
-                assert_eq!(readiness, READABLE);
+            Box::new(FnCallback(move |readiness: event::Readiness| {
+                assert!(readiness.contains_any(mio::Interest::READABLE));
 
                 let _stream = listener.accept().unwrap();
 
@@ -743,7 +823,9 @@ mod tests {
             }))
         };
 
-        id.set(Some(l.register_fd(fd, READABLE, cb).unwrap()));
+        id.set(Some(
+            l.register_fd(fd, mio::Interest::READABLE, cb).unwrap(),
+        ));
 
         // non-blocking connect attempt to trigger listener
         let _stream = mio::net::TcpStream::connect(addr);
@@ -770,15 +852,15 @@ mod tests {
                     let l = Rc::clone(&l);
                     let listener = Rc::clone(&listener);
 
-                    Box::new(FnCallback(move |readiness| {
-                        assert_eq!(readiness, READABLE);
+                    Box::new(FnCallback(move |readiness: event::Readiness| {
+                        assert!(readiness.contains_any(mio::Interest::READABLE));
 
                         let _stream = listener.accept().unwrap();
                         l.exit(0);
                     }))
                 };
 
-                let id = l.register_fd(fd, READABLE, cb).unwrap();
+                let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
 
                 // non-blocking connect attempt to trigger listener
                 let _stream = mio::net::TcpStream::connect(addr);
