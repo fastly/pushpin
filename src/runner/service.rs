@@ -395,7 +395,7 @@ fn start_log_handler(
     name: String,
 ) -> Vec<Option<JoinHandle<()>>> {
     let mut result: Vec<Option<JoinHandle<()>>> = Vec::new();
-/*
+
     let name_str = name.clone();
     result.push(Some(thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -430,10 +430,42 @@ fn start_log_handler(
             }
         }
     })));
-*/
+
     result
 }
 
+fn log_message(name: &str, level: log::Level, msg: &str) {
+    const MAX_MSG_LEN: usize = 100; // Set your desired message length limit
+
+    // Find the position of the 3rd space (' ') in the string
+    let index = msg
+        .char_indices()
+        .filter(|&(_, c)| c == ' ')
+        .nth(2)
+        .map(|(i, _)| i)
+        .unwrap_or_else(|| 0);
+
+    // Truncate the message to MAX_MSG_LEN
+    let truncated_msg = if msg.len() > 512 {
+        format!("{}...", &msg[..512])
+    } else {
+        msg.to_string()
+    };
+
+    log::logger().log(
+        &log::Record::builder()
+            .level(level)
+            .target(name)
+            .args(format_args!(
+                "{} [{}]{}",
+                &truncated_msg[..index.min(truncated_msg.len())], // Prevent out-of-bounds access
+                name,
+                &truncated_msg[index.min(truncated_msg.len())..]
+            ))
+            .build(),
+    );
+}
+/*
 fn log_message(name: &str, level: log::Level, msg: &str) {
     // Find the position of the 3rd space (' ') in the string
     let index = msg
@@ -456,3 +488,4 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
             .build(),
     );
 }
+*/
