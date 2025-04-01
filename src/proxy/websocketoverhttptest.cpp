@@ -387,6 +387,8 @@ static void replay()
 	TEST_ASSERT_EQ(f.type, WebSocket::Frame::Text);
 	TEST_ASSERT_EQ(f.data, "[ok]");
 	TEST_ASSERT(!f.more);
+	TEST_ASSERT_EQ(clientFramesWritten, 2);
+	TEST_ASSERT_EQ(clientContentWritten, 18);
 	TEST_ASSERT_EQ(client.writeBytesAvailable(), maxAvail);
 
 	client.close();
