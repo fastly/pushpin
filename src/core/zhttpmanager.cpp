@@ -607,13 +607,13 @@ public:
 					}
 					break;
 				case ZhttpResponsePacket::Credit:
-					log_debug("[WS] skipping credit response");
+					log_debug("[WS] passing credit response");
 					break;
 				case ZhttpResponsePacket::Ping:
-					log_debug("[WS] received ping response");
+					log_debug("[WS] passing ping response");
 					break;
 				case ZhttpResponsePacket::KeepAlive:
-					log_debug("[WS] received keep-alive response");
+					log_debug("[WS] passing keep-alive response");
 					break;
 				case ZhttpResponsePacket::Data:
 					if (ccIndex >= 0)
@@ -1165,6 +1165,9 @@ public:
 					default:
 						break;
 					}
+
+					resume_cache_thread();
+					continue;
 				}
 				
 				resume_cache_thread();
