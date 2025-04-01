@@ -182,9 +182,11 @@ impl Service {
             let handles = start_log_handler(stdout, stderr, name_str);
 
             // Send the handles back to main thread
+			/*
             handle_sender
                 .send(handles)
                 .expect("failed to send message.");
+			*/
 
             let status = match child.wait() {
                 Ok(x) => x,
@@ -413,7 +415,7 @@ fn start_log_handler(
             }
         }
     })));
-/*
+
     result.push(Some(thread::spawn(move || {
         let reader_err = BufReader::new(stderr);
         for line in reader_err.lines() {
@@ -430,7 +432,7 @@ fn start_log_handler(
             }
         }
     })));
-*/
+
     result
 }
 
