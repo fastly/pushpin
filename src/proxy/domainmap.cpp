@@ -579,17 +579,38 @@ private:
 			}
 			else
 			{
-				target.type = Target::Default;
+				QString host;
+				int portPos = -1;
 
-				int at = val.indexOf(':');
-				if(at == -1)
+				if(val.startsWith("["))
+				{
+					// ipv6 address
+					int at = val.indexOf("]:");
+					if(at >= 0)
+					{
+						host = val.mid(1, at - 1);
+						portPos = at + 2;
+					}
+				}
+				else
+				{
+					// domain or ipv4 address
+					int at = val.indexOf(':');
+					if(at >= 0)
+					{
+						host = val.mid(0, at);
+						portPos = at + 1;
+					}
+				}
+
+				if(portPos < 0)
 				{
 					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
 					ok = false;
 					break;
 				}
 
-				QString sport = val.mid(at + 1);
+				QString sport = val.mid(portPos);
 				int port = sport.toInt(&ok);
 				if(!ok || port < 1 || port > 65535)
 				{
@@ -598,7 +619,8 @@ private:
 					break;
 				}
 
-				target.connectHost = val.mid(0, at);
+				target.type = Target::Default;
+				target.connectHost = host;
 				target.connectPort = port;
 			}
 
