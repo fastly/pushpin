@@ -435,7 +435,7 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
-    const MAX_MSG_LEN: usize = 100; // Set your desired message length limit
+    const MAX_MSG_LEN: usize = 512; // Set your desired message length limit
 
     // Find the position of the 3rd space (' ') in the string
     let index = msg
@@ -446,8 +446,8 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
         .unwrap_or_else(|| 0);
 
     // Truncate the message to MAX_MSG_LEN
-    let truncated_msg = if msg.len() > 512 {
-        format!("{}...", &msg[..512])
+    let truncated_msg = if msg.len() > MAX_MSG_LEN {
+        format!("{}...", &msg[..MAX_MSG_LEN])
     } else {
         msg.to_string()
     };
