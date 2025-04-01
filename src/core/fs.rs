@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,16 @@
  * limitations under the License.
  */
 
+use log::warn;
+use notify::Watcher;
 use std::ffi::CString;
 use std::io;
 use std::mem;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
+use std::sync::{Arc, Mutex};
 
 fn try_with_increasing_buffer<T, U>(starting_size: usize, f: T) -> Result<U, io::Error>
 where
@@ -116,4 +120,226 @@ pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn get_errno() -> libc::c_int {
+    unsafe { *libc::__error() }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_errno() -> libc::c_int {
+    unsafe { *libc::__errno_location() }
+}
+
+fn set_fd_nonblocking(fd: RawFd) -> Result<(), io::Error> {
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    if ret != 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
+}
+
+struct WatchState {
+    _watcher: notify::RecommendedWatcher,
+    changed: bool,
+}
+
+struct WatchData {
+    file: PathBuf,
+    read_fd: RawFd,
+    write_fd: RawFd,
+    state: Mutex<Option<WatchState>>,
+}
+
+pub struct Watch {
+    data: Arc<WatchData>,
+}
+
+#[derive(Debug)]
+pub struct WatchError;
+
+impl Watch {
+    pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, WatchError> {
+        let file = file_path.as_ref();
+
+        let dir = match file.parent() {
+            Some(p) => p,
+            None => return Err(WatchError),
+        };
+
+        let mut fds = [0; 2];
+        let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
+        assert_eq!(ret, 0);
+
+        for fd in &fds {
+            assert!(set_fd_nonblocking(*fd).is_ok());
+        }
+
+        let data = Arc::new(WatchData {
+            file: file.to_owned(),
+            read_fd: fds[0],
+            write_fd: fds[1],
+            state: Mutex::new(None),
+        });
+
+        let mut watcher = {
+            let data = Arc::clone(&data);
+
+            notify::recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(e) => {
+                        warn!("file watcher error: {:?}", e);
+                        return;
+                    }
+                };
+
+                if !event.paths.into_iter().any(|p| p == data.file) {
+                    // skip unrelated events
+                    return;
+                }
+
+                if let Some(state) = data.state.lock().unwrap().as_mut() {
+                    if !state.changed {
+                        state.changed = true;
+
+                        // non-blocking write to wake up the other side
+                        let buf: [u8; 1] = [0; 1];
+                        let ret = unsafe {
+                            libc::write(data.write_fd, buf.as_ptr() as *const libc::c_void, 1)
+                        };
+                        assert!(ret == 1 || get_errno() == libc::EAGAIN);
+                    }
+                }
+            })
+            .expect("failed to create file watcher")
+        };
+
+        // watch the dir instead of the file, so we can detect file creates
+        if let Err(e) = watcher.watch(dir, notify::RecursiveMode::NonRecursive) {
+            warn!("failed to watch {}: {:?}", dir.display(), e);
+        }
+
+        {
+            let mut state = data.state.lock().unwrap();
+
+            *state = Some(WatchState {
+                _watcher: watcher,
+                changed: false,
+            });
+        }
+
+        Ok(Self { data })
+    }
+
+    pub fn changed(&self) -> bool {
+        let mut changed = false;
+
+        if let Some(state) = self.data.state.lock().unwrap().as_mut() {
+            // non-blocking read to clear
+            let mut buf = [0u8; 128];
+            let ret = unsafe {
+                libc::read(
+                    self.data.read_fd,
+                    buf.as_mut_ptr() as *mut libc::c_void,
+                    buf.len(),
+                )
+            };
+            assert!(ret >= 0 || get_errno() == libc::EAGAIN);
+
+            changed = state.changed;
+            state.changed = false;
+        }
+
+        changed
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let mut state = self.data.state.lock().unwrap();
+        *state = None;
+
+        unsafe { libc::close(self.data.write_fd) };
+        unsafe { libc::close(self.data.read_fd) };
+    }
+}
+
+impl AsRawFd for Watch {
+    fn as_raw_fd(&self) -> RawFd {
+        self.data.read_fd
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::event::Poller;
+    use crate::core::test_dir;
+    use std::fs;
+
+    #[test]
+    fn watch() {
+        let file = test_dir().join("watch-file");
+
+        match fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            _ => panic!("failed to remove {}", file.display()),
+        }
+
+        let mut poller = Poller::new(1).unwrap();
+        let token = mio::Token(1);
+
+        let watcher = Watch::new(&file).unwrap();
+        poller
+            .register(
+                &mut mio::unix::SourceFd(&watcher.as_raw_fd()),
+                token,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+        assert_eq!(poller.iter_events().next(), None);
+        assert!(!watcher.changed());
+
+        // detect create
+
+        fs::write(&file, "hello").unwrap();
+        poller.poll(None).unwrap();
+
+        let event = poller.iter_events().next().unwrap();
+        assert_eq!(event.token(), token);
+        assert_eq!(event.is_readable(), true);
+        assert!(watcher.changed());
+        assert!(!watcher.changed());
+
+        // detect modify
+
+        fs::write(&file, "world").unwrap();
+        poller.poll(None).unwrap();
+
+        let event = poller.iter_events().next().unwrap();
+        assert_eq!(event.token(), token);
+        assert_eq!(event.is_readable(), true);
+        assert!(watcher.changed());
+        assert!(!watcher.changed());
+
+        // detect remove
+
+        fs::remove_file(&file).unwrap();
+        poller.poll(None).unwrap();
+
+        let event = poller.iter_events().next().unwrap();
+        assert_eq!(event.token(), token);
+        assert_eq!(event.is_readable(), true);
+        assert!(watcher.changed());
+        assert!(!watcher.changed());
+    }
 }
