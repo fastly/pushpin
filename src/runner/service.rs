@@ -182,11 +182,9 @@ impl Service {
             let handles = start_log_handler(stdout, stderr, name_str);
 
             // Send the handles back to main thread
-			/*
             handle_sender
                 .send(handles)
                 .expect("failed to send message.");
-			*/
 
             let status = match child.wait() {
                 Ok(x) => x,
@@ -397,7 +395,7 @@ fn start_log_handler(
     name: String,
 ) -> Vec<Option<JoinHandle<()>>> {
     let mut result: Vec<Option<JoinHandle<()>>> = Vec::new();
-
+/*
     let name_str = name.clone();
     result.push(Some(thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -432,7 +430,7 @@ fn start_log_handler(
             }
         }
     })));
-
+*/
     result
 }
 
