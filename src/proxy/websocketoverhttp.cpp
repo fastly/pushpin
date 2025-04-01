@@ -207,10 +207,15 @@ public:
 	int reqPendingBytes;
 	int reqFrames;
 	int reqContentSize;
+	bool reqMaxed;
 	bool reqClose;
+	int reqCloseContentSize;
 	BufferList inBuf;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
+	int outContentSize;
+	int outFramesReplay;
+	int outContentReplay;
 	int closeCode;
 	QString closeReason;
 	bool closeSent;
@@ -243,7 +248,12 @@ public:
 		reqPendingBytes(0),
 		reqFrames(0),
 		reqContentSize(0),
+		reqMaxed(false),
 		reqClose(false),
+		reqCloseContentSize(0),
+		outContentSize(0),
+		outFramesReplay(0),
+		outContentReplay(0),
 		closeCode(-1),
 		closeSent(false),
 		peerClosing(false),
@@ -321,6 +331,7 @@ public:
 		assert(state == Connected);
 
 		outFrames += frame;
+		outContentSize += frame.data.size();
 
 		if(needUpdate())
 			update();
@@ -448,8 +459,10 @@ private:
 		if(!canReceive())
 			return false;
 
+		bool newData = outFrames.count() > outFramesReplay || outContentSize > outContentReplay;
+
 		// have message to send or close?
-		if(cscm || (outFrames.isEmpty() && state == Closing && !closeSent))
+		if((cscm && newData) || (outFrames.isEmpty() && state == Closing && !closeSent))
 			return true;
 
 		return false;
@@ -486,7 +499,9 @@ private:
 
 		reqFrames = 0;
 		reqContentSize = 0;
+		reqMaxed = false;
 		reqClose = false;
+		reqCloseContentSize = 0;
 
 		QList<Event> events;
 
@@ -510,18 +525,13 @@ private:
 				return;
 			}
 
-			// guaranteed to succeed since outFrames hasn't been touched
-			// since the content size was calculated
-			assert(removeContentFromFrames(&outFrames, reqContentSize) == reqContentSize);
+			// set this if we couldn't fit everything
+			reqMaxed = reqFrames < outFrames.count();
 
 			if(state == Closing && (maxEvents <= 0 || events.count() < maxEvents))
 			{
-				// if there was a partial message left, throw it away
-				if(!outFrames.isEmpty())
-				{
-					log_warning("woh: dropping partial message before close");
-					outFrames.clear();
-				}
+				if(reqFrames < outFrames.count())
+					log_debug("woh: skipping partial message at close");
 
 				if(closeCode != -1)
 				{
@@ -532,6 +542,8 @@ private:
 					buf[1] = closeCode & 0xff;
 					memcpy(buf.data() + 2, rawReason.data(), rawReason.size());
 					events += Event("CLOSE", buf);
+
+					reqCloseContentSize = buf.size();
 				}
 				else
 					events += Event("CLOSE");
@@ -573,6 +585,9 @@ private:
 		headers += HttpHeader("Connection-Id", cid);
 		headers += HttpHeader("Content-Type", "application/websocket-events");
 		headers += HttpHeader("Content-Length", QByteArray::number(reqBody.size()));
+
+		if(outContentReplay > 0)
+			headers += HttpHeader("Content-Bytes-Replayed", QByteArray::number(outContentReplay));
 
 		foreach(const HttpHeader &h, meta)
 			headers += HttpHeader("Meta-" + h.first, h.second);
@@ -650,6 +665,86 @@ private:
 			}
 			else
 				keepAliveInterval = -1;
+		}
+
+		int reqContentSizeWithClose = reqContentSize + reqCloseContentSize;
+
+		// by default, accept all
+		int contentBytesAccepted = reqContentSizeWithClose;
+
+		if(responseHeaders.contains("Content-Bytes-Accepted"))
+		{
+			bool ok;
+			int x = responseHeaders.get("Content-Bytes-Accepted").toInt(&ok);
+			if(ok && x >= 0)
+				contentBytesAccepted = x;
+
+			// can't accept more than was offered
+			if(contentBytesAccepted > reqContentSizeWithClose)
+			{
+				cleanup();
+				q->error();
+				return;
+			}
+		}
+
+		int nonCloseContentBytesAccepted = qMin(contentBytesAccepted, reqContentSize);
+
+		int outFramesCountOrig = outFrames.count();
+		int contentRemoved = removeContentFromFrames(&outFrames, nonCloseContentBytesAccepted);
+		int framesRemoved = outFramesCountOrig - outFrames.count();
+
+		// guaranteed to succeed, since reqContentSize represents the initial
+		// data in outFrames and we guard against too large of an input
+		assert(contentRemoved == nonCloseContentBytesAccepted);
+
+		outContentSize -= contentRemoved;
+
+		// if we couldn't fit all pending data in the request, then require
+		// progress to be made
+		if(reqMaxed && framesRemoved == 0 && contentRemoved == 0)
+		{
+			updating = false;
+			queueError(ErrorGeneric);
+			return;
+		}
+
+		// framesRemoved could exceed reqFrames if any zero-sized frames are
+		// appended to outFrames before acceptance, causing them to be
+		// removed even though they weren't in the request
+		outFramesReplay = qMax(reqFrames - framesRemoved, 0);
+
+		outContentReplay = reqContentSize - contentRemoved;
+
+		if(reqClose)
+		{
+			if(nonCloseContentBytesAccepted < reqContentSize)
+			{
+				// if server didn't accept all content before close, then don't close yet
+				reqClose = false;
+			}
+			else
+			{
+				// server accepted all content before close. in that case, we
+				// require the server to also accept the close. partial
+				// acceptance is meant for waiting for more data and from
+				// this point there won't be any more data.
+				if(contentBytesAccepted < reqContentSizeWithClose)
+				{
+					cleanup();
+					q->error();
+					return;
+				}
+			}
+		}
+
+		// after close, remove any partial message left
+		if(reqClose)
+		{
+			outFrames.clear();
+			outContentSize = 0;
+			outFramesReplay = 0;
+			outContentReplay = 0;
 		}
 
 		foreach(const HttpHeader &h, responseHeaders)
