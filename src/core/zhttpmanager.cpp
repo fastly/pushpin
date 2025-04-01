@@ -1539,7 +1539,7 @@ public:
 		return;
 	}
 
-	void registerHttpCacheItem(
+	void register_http_cache_item(
 		const ZhttpRequestPacket &clientPacket, 
 		QByteArray clientId, 
 		const PacketMsg &packetMsg, 
@@ -1591,7 +1591,7 @@ public:
 		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
 
-	int registerWsCacheItem(
+	int register_ws_cache_item(
 		const ZhttpRequestPacket &clientPacket, 
 		QByteArray clientId, 
 		QString orgMsgId, 
@@ -1724,7 +1724,7 @@ public:
 		}
 		responsePacket.ids[0].seq = newSeq;
 
-		write(HttpSession, responsePacket, orgFrom);
+		write(CacheResponse, responsePacket, orgFrom);
 	}
 
 	int process_http_request(QByteArray id, const ZhttpRequestPacket &p, const QString &urlPath)
@@ -1784,7 +1784,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(p, packetId, packetMsg, backendNo);
+			register_http_cache_item(p, packetId, packetMsg, backendNo);
 
 			// register cache refresh
 			register_cache_refresh(packetMsg.paramsHash, urlPath);
@@ -1834,7 +1834,7 @@ public:
 			gCacheItemMap[itemId].newMsgId = 0;
 			gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			gCacheItemMap[itemId].cachedFlag = true;
-			log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
+			log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(gCacheItemMap[itemId].methodName));
 			// recover original msgId
 			replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
 
@@ -1871,7 +1871,7 @@ public:
 					gCacheItemMap[itemId].newMsgId = 0;
 					gCacheItemMap[itemId].cachedFlag = true;
 					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-					log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(packetMsg.method));
+					log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(gCacheItemMap[itemId].methodName));
 
 					// recover original msgId
 					replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
@@ -2397,7 +2397,7 @@ public:
 			else
 			{
 				// Register new cache item
-				int ccIndex = registerWsCacheItem(p, packetId, msgIdStr, methodName, msgParams, paramsHash);
+				int ccIndex = register_ws_cache_item(p, packetId, msgIdStr, methodName, msgParams, paramsHash);
 				if (ccIndex < 0)
 				{
 					log_warning("[WS] not initialized cache client, ignore");
