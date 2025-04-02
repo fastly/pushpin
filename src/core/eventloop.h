@@ -17,6 +17,7 @@
 #ifndef EVENTLOOP_H
 #define EVENTLOOP_H
 
+#include <memory>
 #include <optional>
 #include "event.h"
 #include "rust/bindings.h"
