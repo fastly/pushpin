@@ -46,7 +46,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 
-#include <hiredis/hiredis.h>
+#include <hiredis.h>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
