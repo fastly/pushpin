@@ -218,7 +218,7 @@ void testRedis()
 		if (reply->type == REDIS_REPLY_STRING) {
 			qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
 		} else {
-			qDebug() << "Unexpected reply type";
+			qDebug() << "Unexpected reply type" << reply->type;
 		}
 		freeReplyObject(reply);
 	}
