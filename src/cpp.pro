@@ -26,6 +26,8 @@ INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
 INCLUDEPATH += /usr/include/hiredis
 
+LIBS += -lhiredis
+
 include(core/core.pri)
 include(m2adapter/m2adapter.pri)
 include(proxy/proxy.pri)
