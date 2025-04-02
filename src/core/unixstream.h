@@ -32,6 +32,10 @@ public:
 	UnixStream();
 	~UnixStream();
 
+	// disable copying
+	UnixStream(const UnixStream &) = delete;
+	UnixStream & operator=(const UnixStream &) = delete;
+
 	// returns true if connection starting, false on error
 	bool connect(const QString &path);
 

@@ -34,6 +34,10 @@ public:
 	TcpStream();
 	~TcpStream();
 
+	// disable copying
+	TcpStream(const TcpStream &) = delete;
+	TcpStream & operator=(const TcpStream &) = delete;
+
 	// returns true if connection starting, false on error
 	bool connect(const QHostAddress &addr, uint16_t port);
 
