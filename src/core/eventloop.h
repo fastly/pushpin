@@ -32,6 +32,10 @@ public:
 	EventLoop(int capacity);
 	~EventLoop();
 
+	// disable copying
+	EventLoop(const EventLoop &) = delete;
+	EventLoop & operator=(const EventLoop &) = delete;
+
 	std::optional<int> step();
 	int exec();
 	void exit(int code);
