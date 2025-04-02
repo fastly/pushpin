@@ -195,9 +195,9 @@ static void remove_old_cache_items()
 	}
 }
 
-void testValkey()
+void testRedis() 
 {
-	// Connect to Redis
+	// Connect to Redis server
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
 		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
@@ -205,24 +205,25 @@ void testValkey()
 	}
 	qDebug() << "Connected to Redis!";
 
-	// Send PING command
-	redisReply *reply = (redisReply *)redisCommand(context, "PING");
+	// Set a value in Redis
+	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey 'Hello, Redis!'");
 	if (reply) {
-		qDebug() << "PING response:" << reply->str;
+		qDebug() << "SET command executed";
 		freeReplyObject(reply);
 	}
 
-	// Set a value in Redis
-	redisCommand(context, "SET mykey 'Hello, Redis!'");
-
 	// Get the value from Redis
 	reply = (redisReply *)redisCommand(context, "GET mykey");
-	if (reply->type == REDIS_REPLY_STRING) {
-		qDebug() << "GET mykey:" << reply->str;
+	if (reply) {
+		if (reply->type == REDIS_REPLY_STRING) {
+			qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
+		} else {
+			qDebug() << "Unexpected reply type";
+		}
+		freeReplyObject(reply);
 	}
-	freeReplyObject(reply);
 
-	// Clean up
+	// Close the Redis connection
 	redisFree(context);
 }
 
@@ -240,7 +241,7 @@ void cache_thread()
 
 		remove_old_cache_items();
 
-		testValkey();
+		testRedis();
 
 		gCacheThreadRunning = false;
 
