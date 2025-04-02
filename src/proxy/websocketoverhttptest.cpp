@@ -186,6 +186,8 @@ public:
 
 	~TestState()
 	{
+		WebSocketOverHttp::clearDisconnectManager();
+
 		zhttpOut.reset();
 		wohServer.reset();
 
@@ -268,10 +270,10 @@ static void io()
 	});
 
 	int clientFramesWritten = 0;
-	client.framesWritten.connect([&](int framesWritten, int contentSize) {
-		Q_UNUSED(contentSize);
-
-		clientFramesWritten += framesWritten;
+	int clientContentWritten = 0;
+	client.framesWritten.connect([&](int count, int contentBytes) {
+		clientFramesWritten += count;
+		clientContentWritten += contentBytes;
 	});
 
 	bool clientClosed = false;
@@ -300,6 +302,7 @@ static void io()
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientReadyRead);
 	TEST_ASSERT_EQ(clientFramesWritten, 1);
+	TEST_ASSERT_EQ(clientContentWritten, 5);
 
 	WebSocket::Frame f = client.readFrame();
 	TEST_ASSERT_EQ(f.type, WebSocket::Frame::Text);
@@ -332,6 +335,13 @@ static void replay()
 		clientReadyRead = true;
 	});
 
+	int clientFramesWritten = 0;
+	int clientContentWritten = 0;
+	client.framesWritten.connect([&](int count, int contentBytes) {
+		clientFramesWritten += count;
+		clientContentWritten += contentBytes;
+	});
+
 	bool clientWriteBytesChanged = false;
 	client.writeBytesChanged.connect([&] {
 		clientWriteBytesChanged = true;
@@ -355,13 +365,18 @@ static void replay()
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientConnected);
 
+	int maxAvail = client.writeBytesAvailable();
 	client.writeFrame(WebSocket::Frame(WebSocket::Frame::Text, "[foo][hello", false));
+	TEST_ASSERT_EQ(client.writeBytesAvailable(), maxAvail - 11);
 
 	while(!clientWriteBytesChanged && !clientError)
 		QTest::qWait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientWriteBytesChanged);
+	TEST_ASSERT_EQ(clientFramesWritten, 0);
+	TEST_ASSERT_EQ(clientContentWritten, 5);
+	TEST_ASSERT_EQ(client.writeBytesAvailable(), maxAvail - 6);
 
 	client.writeFrame(WebSocket::Frame(WebSocket::Frame::Text, " world]", false));
 
@@ -372,6 +387,9 @@ static void replay()
 	TEST_ASSERT_EQ(f.type, WebSocket::Frame::Text);
 	TEST_ASSERT_EQ(f.data, "[ok]");
 	TEST_ASSERT(!f.more);
+	TEST_ASSERT_EQ(clientFramesWritten, 2);
+	TEST_ASSERT_EQ(clientContentWritten, 18);
+	TEST_ASSERT_EQ(client.writeBytesAvailable(), maxAvail);
 
 	client.close();
 

@@ -53,7 +53,7 @@ public:
 			auto it = wsConnectionMap.begin();
 			WebSocketOverHttp *sock = it->first;
 			wsConnectionMap.erase(it);
-			delete sock;
+			deleteSocket(sock);
 		}
 	}
 
@@ -88,10 +88,12 @@ private:
 
 	map<WebSocketOverHttp *, WSConnections> wsConnectionMap;
 
+	void deleteSocket(WebSocketOverHttp *sock);
+
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
 		wsConnectionMap.erase(sock);
-		delete sock;
+		deleteSocket(sock);
 	}
 
 	void sock_disconnected(WebSocketOverHttp *sock)
@@ -355,19 +357,10 @@ public:
 
 	int writeBytesAvailable() const
 	{
-		if(reqContentSize >= BUFFER_SIZE)
+		if(outContentSize < BUFFER_SIZE)
+			return BUFFER_SIZE - outContentSize;
+		else
 			return 0;
-
-		int avail = BUFFER_SIZE - reqContentSize;
-		foreach(const Frame &f, outFrames)
-		{
-			if(f.data.size() >= avail)
-				return 0;
-
-			avail -= f.data.size();
-		}
-
-		return avail;
 	}
 
 	void sendDisconnect()
@@ -887,19 +880,14 @@ private:
 				return;
 		}
 
-		if(reqFrames > 0)
+		if(framesRemoved > 0 || contentRemoved > 0)
 		{
-			q->framesWritten(reqFrames, reqContentSize);
+			q->framesWritten(framesRemoved, contentRemoved);
 			if(self.expired())
 				return;
 		}
 
-		bool hadContent = reqContentSize > 0;
-
-		reqFrames = 0;
-		reqContentSize = 0;
-
-		if(hadContent)
+		if(contentRemoved > 0)
 		{
 			q->writeBytesChanged();
 			if(self.expired())
@@ -1036,6 +1024,14 @@ private:
 		q->error();
 	}
 };
+
+void WebSocketOverHttp::DisconnectManager::deleteSocket(WebSocketOverHttp *sock)
+{
+	// ensure state is Idle to prevent the destructor from re-adding it to the manager
+	sock->d->cleanup();
+
+	delete sock;
+}
 
 WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager)
 {
