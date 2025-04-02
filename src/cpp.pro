@@ -4,7 +4,6 @@ CONFIG += staticlib c++17
 QT -= gui
 QT += network
 QT += concurrent
-QT += hiredis
 TARGET = pushpin-cpp
 
 cpp_build_dir = $$OUT_PWD
