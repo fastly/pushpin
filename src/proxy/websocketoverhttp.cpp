@@ -177,10 +177,8 @@ static QByteArray encodeEvents(const QList<WebSocketOverHttp::Event> &events)
 	return out;
 }
 
-class WebSocketOverHttp::Private : public QObject
+class WebSocketOverHttp::Private
 {
-	Q_OBJECT
-
 public:
 	struct ReqConnections {
 		Connection readyReadConnection;
@@ -1344,5 +1342,3 @@ int WebSocketOverHttp::removeContentFromFrames(QList<WebSocket::Frame> *frames, 
 
 	return (count - left);
 }
-
-#include "websocketoverhttp.moc"

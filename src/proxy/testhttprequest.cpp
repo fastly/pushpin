@@ -34,10 +34,8 @@
 
 #define MAX_REQUEST_SIZE 100000
 
-class TestHttpRequest::Private : public QObject
+class TestHttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -311,5 +309,3 @@ QByteArray TestHttpRequest::readBody(int size)
 {
 	return d->responseBody.take(size);
 }
-
-#include "testhttprequest.moc"

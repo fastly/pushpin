@@ -128,10 +128,8 @@ static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
 	return rid.first + ':' + rid.second;
 }
 
-class RequestSession::Private : public QObject
+class RequestSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -1414,5 +1412,3 @@ int RequestSession::unregisterConnection()
 	QByteArray cid = ridToString(d->rid);
 	return d->stats->removeConnection(cid, false);
 }
-
-#include "requestsession.moc"

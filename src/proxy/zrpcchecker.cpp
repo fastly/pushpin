@@ -32,10 +32,8 @@
 
 using std::map;
 
-class ZrpcChecker::Private : public QObject
+class ZrpcChecker::Private
 {
-	Q_OBJECT
-
 public:
 	class Item
 	{
@@ -246,5 +244,3 @@ void ZrpcChecker::give(ZrpcRequest *req)
 {
 	d->give(req);
 }
-
-#include "zrpcchecker.moc"

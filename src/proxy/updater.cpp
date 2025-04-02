@@ -67,10 +67,8 @@ static QString getArch()
 	return QString::number(sizeof(void *) * 8);
 }
 
-class Updater::Private : public QObject
+class Updater::Private
 {
-	Q_OBJECT
-
 public:
 	struct ReqConnections {
 		Connection readyReadConnection;
@@ -263,5 +261,3 @@ void Updater::setReport(const Report &report)
 	d->report.messagesSent += report.messagesSent;
 	d->report.ops += report.ops;
 }
-
-#include "updater.moc"

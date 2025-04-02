@@ -57,10 +57,8 @@ using std::map;
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
 
-class ProxySession::Private : public QObject
+class ProxySession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -1544,5 +1542,3 @@ void ProxySession::add(RequestSession *rs)
 {
 	d->add(rs);
 }
-
-#include "proxysession.moc"

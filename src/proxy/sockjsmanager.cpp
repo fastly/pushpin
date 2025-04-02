@@ -72,10 +72,8 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
-class SockJsManager::Private : public QObject
+class SockJsManager::Private
 {
-	Q_OBJECT
-
 public:
 	class Session
 	{
@@ -737,5 +735,3 @@ void SockJsManager::respond(ZhttpRequest *req, int code, const QByteArray &reaso
 {
 	d->respond(req, code, reason, headers, body);
 }
-
-#include "sockjsmanager.moc"
