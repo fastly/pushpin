@@ -31,6 +31,10 @@ public:
 	UnixListener();
 	~UnixListener();
 
+	// disable copying
+	UnixListener(const UnixListener &) = delete;
+	UnixListener & operator=(const UnixListener &) = delete;
+
 	bool bind(const QString &path);
 	std::unique_ptr<UnixStream> accept();
 	int errorCondition() const { return errorCondition_; }

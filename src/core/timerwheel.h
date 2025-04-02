@@ -42,6 +42,10 @@ public:
 	TimerWheel(int capacity);
 	~TimerWheel();
 
+	// disable copying
+	TimerWheel(const TimerWheel &) = delete;
+	TimerWheel & operator=(const TimerWheel &) = delete;
+
 	// returns <0 if no capacity
 	int add(quint64 expires, size_t userData);
 
