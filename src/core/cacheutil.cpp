@@ -46,6 +46,8 @@
 #include <QNetworkReply>
 #include <QUrl>
 
+#include <hiredis/hiredis.h>
+
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
@@ -93,6 +95,33 @@ extern int gCacheItemMaxCount;
 
 void testValkey()
 {
+	// Connect to Redis
+	redisContext *context = redisConnect("127.0.0.1", 6379);
+	if (context == nullptr || context->err) {
+		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
+		return;
+	}
+	qDebug() << "Connected to Redis!";
+
+	// Send PING command
+	redisReply *reply = (redisReply *)redisCommand(context, "PING");
+	if (reply) {
+		qDebug() << "PING response:" << reply->str;
+		freeReplyObject(reply);
+	}
+
+	// Set a value in Redis
+	redisCommand(context, "SET mykey 'Hello, Redis!'");
+
+	// Get the value from Redis
+	reply = (redisReply *)redisCommand(context, "GET mykey");
+	if (reply->type == REDIS_REPLY_STRING) {
+		qDebug() << "GET mykey:" << reply->str;
+	}
+	freeReplyObject(reply);
+
+	// Clean up
+	redisFree(context);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
