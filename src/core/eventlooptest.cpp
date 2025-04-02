@@ -89,10 +89,42 @@ static void timer()
 	delete t1;
 }
 
+static void custom()
+{
+	class State
+	{
+	public:
+		EventLoop loop;
+		uint8_t activatedReadiness;
+
+		State() :
+			loop(EventLoop(1)),
+			activatedReadiness(-1)
+		{
+		}
+	};
+
+	State state;
+
+	auto [id, sr] = state.loop.registerCustom([](void *ctx, uint8_t readiness) {
+		State *state = (State *)ctx;
+		state->activatedReadiness = readiness;
+		state->loop.exit(123);
+	}, (void *)&state);
+
+	TEST_ASSERT(id >= 0);
+	TEST_ASSERT_EQ(sr->setReadiness(Event::Readable), 0);
+	TEST_ASSERT_EQ(state.loop.exec(), 123);
+	TEST_ASSERT_EQ(state.activatedReadiness, Event::Readable);
+
+	state.loop.deregister(id);
+}
+
 extern "C" int eventloop_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(socketNotifier());
 	TEST_CATCH(timer());
+	TEST_CATCH(custom());
 
 	return 0;
 }

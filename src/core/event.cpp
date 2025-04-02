@@ -14,32 +14,23 @@
  * limitations under the License.
  */
 
-#ifndef EVENTLOOP_H
-#define EVENTLOOP_H
-
-#include <optional>
 #include "event.h"
-#include "rust/bindings.h"
 
-class EventLoop
+namespace Event {
+
+SetReadiness::SetReadiness(ffi::SetReadiness *inner) :
+	inner_(inner)
 {
-public:
-	EventLoop(int capacity);
-	~EventLoop();
+}
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
+SetReadiness::~SetReadiness()
+{
+	ffi::set_readiness_destroy(inner_);
+}
 
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	std::tuple<int, std::unique_ptr<Event::SetReadiness>> registerCustom(void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
+int SetReadiness::setReadiness(uint8_t readiness)
+{
+	return ffi::set_readiness_set_readiness(inner_, readiness);
+}
 
-	static EventLoop *instance();
-
-private:
-	ffi::EventLoopRaw *inner_;
-};
-
-#endif
+}

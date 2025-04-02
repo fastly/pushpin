@@ -14,32 +14,41 @@
  * limitations under the License.
  */
 
-#ifndef EVENTLOOP_H
-#define EVENTLOOP_H
+#ifndef EVENT_H
+#define EVENT_H
 
-#include <optional>
-#include "event.h"
 #include "rust/bindings.h"
 
-class EventLoop
+class EventLoop;
+
+namespace Event {
+
+enum Interest
+{
+	Readable = ffi::READABLE,
+	Writable = ffi::WRITABLE,
+};
+
+class SetReadiness
 {
 public:
-	EventLoop(int capacity);
-	~EventLoop();
+	~SetReadiness();
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
+	// disable copying
+	SetReadiness(const SetReadiness &) = delete;
+	SetReadiness & operator=(const SetReadiness &) = delete;
 
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	std::tuple<int, std::unique_ptr<Event::SetReadiness>> registerCustom(void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
-
-	static EventLoop *instance();
+	// pass a non-zero set of Interest flags
+	int setReadiness(uint8_t readiness);
 
 private:
-	ffi::EventLoopRaw *inner_;
+	friend class ::EventLoop;
+
+	SetReadiness(ffi::SetReadiness *inner);
+
+	ffi::SetReadiness *inner_;
 };
+
+}
 
 #endif
