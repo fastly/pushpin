@@ -45,7 +45,8 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QUrl>
-#include <hiredis/hiredis.h>
+#include <QRedisClient/Connection>
+#include <QRedisClient/Command>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -94,27 +95,23 @@ extern int gCacheItemMaxCount;
 
 void testValkey()
 {
-    // Connect to Valkey
-    redisContext *context = redisConnect("127.0.0.1", 6379);
-    if (context == NULL || context->err) {
-        qDebug() << "Connection error:" << (context ? context->errstr : "Can't allocate redis context.");
-        return;
-    }
+	QRedisClient::Connection redis;
+	QObject::connect(&redis, &QRedisClient::Connection::connected, [&]() {
+		qDebug() << "Connected to Valkey!";
 
-    // Store a key-value pair
-    redisReply *reply = (redisReply *)redisCommand(context, "SET mykey %s", "Hello, Valkey!");
-    qDebug() << "SET:" << reply->str;
-    freeReplyObject(reply);
+		// SET key
+		redis.send("SET", QStringList() << "qt_key" << "Hello from Qt!", [](const QRedisClient::Reply &reply) {
+			qDebug() << "SET reply:" << reply.toString();
+		});
 
-    // Retrieve the stored value
-    reply = (redisReply *)redisCommand(context, "GET mykey");
-    if (reply->type == REDIS_REPLY_STRING) {
-        qDebug() << "GET mykey:" << reply->str;
-    }
-    freeReplyObject(reply);
+		// GET key
+		redis.send("GET", QStringList() << "qt_key", [](const QRedisClient::Reply &reply) {
+			qDebug() << "GET reply:" << reply.toString();
+		});
+	});
 
-    // Close connection
-    redisFree(context);
+	// Connect to Valkey server (default: 127.0.0.1:6379)
+	redis.connectToHost(QHostAddress::LocalHost, 6379);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
