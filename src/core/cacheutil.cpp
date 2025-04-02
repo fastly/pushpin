@@ -45,8 +45,6 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QUrl>
-#include <QRedisClient/Connection>
-#include <QRedisClient/Command>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -95,23 +93,6 @@ extern int gCacheItemMaxCount;
 
 void testValkey()
 {
-	QRedisClient::Connection redis;
-	QObject::connect(&redis, &QRedisClient::Connection::connected, [&]() {
-		qDebug() << "Connected to Valkey!";
-
-		// SET key
-		redis.send("SET", QStringList() << "qt_key" << "Hello from Qt!", [](const QRedisClient::Reply &reply) {
-			qDebug() << "SET reply:" << reply.toString();
-		});
-
-		// GET key
-		redis.send("GET", QStringList() << "qt_key", [](const QRedisClient::Reply &reply) {
-			qDebug() << "GET reply:" << reply.toString();
-		});
-	});
-
-	// Connect to Valkey server (default: 127.0.0.1:6379)
-	redis.connectToHost(QHostAddress::LocalHost, 6379);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
