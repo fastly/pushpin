@@ -241,8 +241,6 @@ void cache_thread()
 
 		remove_old_cache_items();
 
-		testRedis();
-
 		gCacheThreadRunning = false;
 
 		QThread::msleep(100);
