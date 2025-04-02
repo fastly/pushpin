@@ -45,7 +45,6 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QUrl>
-
 #include <hiredis.h>
 
 #include "qtcompat.h"
@@ -92,37 +91,6 @@ extern int gCacheItemMaxCount;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-
-void testValkey()
-{
-	// Connect to Redis
-	redisContext *context = redisConnect("127.0.0.1", 6379);
-	if (context == nullptr || context->err) {
-		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
-		return;
-	}
-	qDebug() << "Connected to Redis!";
-
-	// Send PING command
-	redisReply *reply = (redisReply *)redisCommand(context, "PING");
-	if (reply) {
-		qDebug() << "PING response:" << reply->str;
-		freeReplyObject(reply);
-	}
-
-	// Set a value in Redis
-	redisCommand(context, "SET mykey 'Hello, Redis!'");
-
-	// Get the value from Redis
-	reply = (redisReply *)redisCommand(context, "GET mykey");
-	if (reply->type == REDIS_REPLY_STRING) {
-		qDebug() << "GET mykey:" << reply->str;
-	}
-	freeReplyObject(reply);
-
-	// Clean up
-	redisFree(context);
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Thread
@@ -227,6 +195,37 @@ static void remove_old_cache_items()
 	}
 }
 
+void testValkey()
+{
+	// Connect to Redis
+	redisContext *context = redisConnect("127.0.0.1", 6379);
+	if (context == nullptr || context->err) {
+		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
+		return;
+	}
+	qDebug() << "Connected to Redis!";
+
+	// Send PING command
+	redisReply *reply = (redisReply *)redisCommand(context, "PING");
+	if (reply) {
+		qDebug() << "PING response:" << reply->str;
+		freeReplyObject(reply);
+	}
+
+	// Set a value in Redis
+	redisCommand(context, "SET mykey 'Hello, Redis!'");
+
+	// Get the value from Redis
+	reply = (redisReply *)redisCommand(context, "GET mykey");
+	if (reply->type == REDIS_REPLY_STRING) {
+		qDebug() << "GET mykey:" << reply->str;
+	}
+	freeReplyObject(reply);
+
+	// Clean up
+	redisFree(context);
+}
+
 void cache_thread()
 {
 	gCacheThreadAllowFlag = true;
@@ -240,6 +239,8 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
+
+		testValkey();
 
 		gCacheThreadRunning = false;
 
