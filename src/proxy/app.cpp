@@ -354,7 +354,6 @@ public:
 	Connection changedConnection;
 
 	Private(App *_q) :
-		QObject(_q),
 		q(_q)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
@@ -705,8 +704,7 @@ private slots:
 	}
 };
 
-App::App(QObject *parent) :
-	QObject(parent)
+App::App()
 {
 	d = new Private(this);
 }

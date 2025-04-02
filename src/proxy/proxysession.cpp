@@ -173,7 +173,6 @@ public:
 	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
-		QObject(_q),
 		q(_q),
 		state(Stopped),
 		zroutes(_zroutes),
@@ -1480,8 +1479,7 @@ public:
 	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *statsManager, QObject *parent) :
-	QObject(parent)
+ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *statsManager)
 {
 	d = std::make_shared<Private>(this, zroutes, acceptManager, logConfig, statsManager);
 }

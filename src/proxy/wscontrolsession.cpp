@@ -59,7 +59,6 @@ public:
 	Connection requestTimerConnection;
 
 	Private(WsControlSession *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		nextReqId(0),

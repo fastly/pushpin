@@ -137,7 +137,6 @@ public:
 	Connection rrConnection;
 
 	Private(Engine *_q, DomainMap *_domainMap) :
-		QObject(_q),
 		q(_q),
 		destroying(false),
 		domainMap(_domainMap)
@@ -1059,8 +1058,7 @@ private:
 	}
 };
 
-Engine::Engine(DomainMap *domainMap, QObject *parent) :
-	QObject(parent)
+Engine::Engine(DomainMap *domainMap)
 {
 	d = new Private(this, domainMap);
 }

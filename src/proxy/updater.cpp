@@ -91,7 +91,6 @@ public:
 	Connection timerConnection;
 
 	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
-		QObject(_q),
 		q(_q),
 		mode(_mode),
 		quiet(_quiet),
@@ -242,8 +241,7 @@ private:
 	}
 };
 
-Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
-	QObject(parent)
+Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp)
 {
 	d = new Private(this, mode, quiet, currentVersion, org, zhttp);
 }

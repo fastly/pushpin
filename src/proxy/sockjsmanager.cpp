@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -150,7 +150,6 @@ public:
 	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
-		QObject(_q),
 		q(_q)
 	{
 		iframeHtml = QString(iframeHtmlTemplate).arg(sockJsUrl).toUtf8();
@@ -684,8 +683,7 @@ private:
 	}
 };
 
-SockJsManager::SockJsManager(const QString &sockJsUrl, QObject *parent) :
-	QObject(parent)
+SockJsManager::SockJsManager(const QString &sockJsUrl)
 {
 	d = new Private(this, sockJsUrl);
 }
