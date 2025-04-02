@@ -206,7 +206,7 @@ void testRedis()
 	qDebug() << "Connected to Redis!";
 
 	// Set a value in Redis
-	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey 'Hello, Redis!'");
+	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey Redis");
 	if (reply) {
 		qDebug() << "SET command executed";
 		freeReplyObject(reply);
