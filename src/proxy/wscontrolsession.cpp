@@ -35,10 +35,8 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class WsControlSession::Private : public QObject
+class WsControlSession::Private
 {
-	Q_OBJECT
-
 public:
 	WsControlSession *q;
 	WsControlManager *manager;
@@ -375,5 +373,3 @@ void WsControlSession::handle(const QByteArray &from, const WsControlPacket::Ite
 
 	d->handle(from, item);
 }
-
-#include "wscontrolsession.moc"

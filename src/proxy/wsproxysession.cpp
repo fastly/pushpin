@@ -219,10 +219,8 @@ static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QBy
 	return e;
 }
 
-class WsProxySession::Private : public QObject
+class WsProxySession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -1253,5 +1251,3 @@ Callback<std::tuple<WsProxySession *>> & WsProxySession::finishedByPassthroughCa
 {
 	return d->finishedByPassthroughCallback;
 }
-
-#include "wsproxysession.moc"

@@ -60,10 +60,8 @@
 
 #define DEFAULT_HWM 1000
 
-class Engine::Private : public QObject
+class Engine::Private
 {
-	Q_OBJECT
-
 public:
 	class ProxyItem
 	{
@@ -1082,5 +1080,3 @@ void Engine::routesChanged()
 {
 	d->routesChanged();
 }
-
-#include "engine.moc"
