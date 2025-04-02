@@ -45,6 +45,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QUrl>
+#include <hiredis/hiredis.h>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -90,6 +91,31 @@ extern int gCacheItemMaxCount;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+void testValkey()
+{
+    // Connect to Valkey
+    redisContext *context = redisConnect("127.0.0.1", 6379);
+    if (context == NULL || context->err) {
+        qDebug() << "Connection error:" << (context ? context->errstr : "Can't allocate redis context.");
+        return;
+    }
+
+    // Store a key-value pair
+    redisReply *reply = (redisReply *)redisCommand(context, "SET mykey %s", "Hello, Valkey!");
+    qDebug() << "SET:" << reply->str;
+    freeReplyObject(reply);
+
+    // Retrieve the stored value
+    reply = (redisReply *)redisCommand(context, "GET mykey");
+    if (reply->type == REDIS_REPLY_STRING) {
+        qDebug() << "GET mykey:" << reply->str;
+    }
+    freeReplyObject(reply);
+
+    // Close connection
+    redisFree(context);
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Thread
