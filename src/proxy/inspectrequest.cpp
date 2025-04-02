@@ -103,10 +103,8 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 	return out;
 }
 
-class InspectRequest::Private : public QObject
+class InspectRequest::Private
 {
-	Q_OBJECT
-
 public:
 	InspectRequest *q;
 	InspectData idata;
@@ -174,5 +172,3 @@ void InspectRequest::onSuccess()
 		return;
 	}
 }
-
-#include "inspectrequest.moc"

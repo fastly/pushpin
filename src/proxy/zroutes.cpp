@@ -62,10 +62,8 @@ static QStringList baseSpecToSpecs(const QString &baseSpec)
 	}
 }
 
-class ZRoutes::Private : public QObject
+class ZRoutes::Private
 {
-	Q_OBJECT
-
 public:
 	class Item
 	{
@@ -293,5 +291,3 @@ void ZRoutes::removeRef(ZhttpManager *zhttpManager)
 	assert(i->refs > 0);
 	--(i->refs);
 }
-
-#include "zroutes.moc"

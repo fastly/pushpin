@@ -49,10 +49,8 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class WsControlManager::Private : public QObject
+class WsControlManager::Private
 {
-	Q_OBJECT
-
 public:
 	class KeepAliveRegistration
 	{
@@ -483,5 +481,3 @@ void WsControlManager::unregisterKeepAlive(WsControlSession *s)
 {
 	d->unregisterKeepAlive(s);
 }
-
-#include "wscontrolmanager.moc"

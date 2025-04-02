@@ -34,10 +34,8 @@
 
 #define BUFFER_SIZE 200000
 
-class TestWebSocket::Private : public QObject
+class TestWebSocket::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -330,5 +328,3 @@ void TestWebSocket::close(int code, const QString &reason)
 
 	d->deferCall.defer([=] { d->handleClose(); });
 }
-
-#include "testwebsocket.moc"

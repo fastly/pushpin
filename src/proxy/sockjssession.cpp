@@ -44,10 +44,8 @@ using std::map;
 #define KEEPALIVE_TIMEOUT 25
 #define UNCONNECTED_TIMEOUT 5
 
-class SockJsSession::Private : public QObject
+class SockJsSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum Mode
 	{
@@ -1355,5 +1353,3 @@ void SockJsSession::handleRequest(ZhttpRequest *req, const QByteArray &jsonpCall
 {
 	d->handleRequest(req, jsonpCallback, lastPart, body);
 }
-
-#include "sockjssession.moc"

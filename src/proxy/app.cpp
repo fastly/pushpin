@@ -340,10 +340,8 @@ private:
 	}
 };
 
-class App::Private : public QObject
+class App::Private
 {
-	Q_OBJECT
-
 public:
 	App *q;
 	ArgsData args;
@@ -675,7 +673,6 @@ private:
 			t->routesChanged();
 	}
 
-private slots:
 	void reload()
 	{
 		log_info("reloading");
