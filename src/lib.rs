@@ -37,6 +37,7 @@ pub mod runner;
 macro_rules! import_cpp {
     ($($tt:tt)*) => {
         #[link(name = "pushpin-cpp")]
+		#[link(name = "hiredis")]
         #[cfg_attr(
             all(target_os = "macos", qt_lib_prefix = "Qt"),
             link(name = "QtCore", kind = "framework"),
@@ -80,6 +81,7 @@ macro_rules! import_cpptest {
     ($($tt:tt)*) => {
         #[link(name = "pushpin-cpptest")]
         #[link(name = "pushpin-cpp")]
+		#[link(name = "hiredis")]
         #[cfg_attr(
             all(target_os = "macos", qt_lib_prefix = "Qt"),
             link(name = "QtCore", kind = "framework"),
