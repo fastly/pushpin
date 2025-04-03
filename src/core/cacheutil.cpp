@@ -231,7 +231,7 @@ void storeUserData(redisContext *context, const QString &key, const UserData &us
 UserData getUserData(redisContext *context, const QString &key) {
 	redisReply *reply = (redisReply *)redisCommand(context, "GET asdf");
 
-	log_debug("[PPP] %d, %d", reply->type, REDIS_REPLY_STRING);
+	log_debug("[PPP] %d, %d, %d, %d, %d, %d, %d", reply->type, REDIS_REPLY_STATUS, REDIS_REPLY_ERROR, REDIS_REPLY_INTEGER, REDIS_REPLY_NIL, REDIS_REPLY_ARRAY, REDIS_REPLY_STRING);
 
 	if (reply->type == REDIS_REPLY_STRING) 
 	{
