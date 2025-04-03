@@ -198,9 +198,6 @@ static void remove_old_cache_items()
 
 void testRedis() 
 {
-	QElapsedTimer timer;
-	timer.start();  // Start the timer
-
 	// Connect to Redis server
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
@@ -208,6 +205,9 @@ void testRedis()
 		return;
 	}
 	//qDebug() << "Connected to Redis!";
+
+	QElapsedTimer timer;
+	timer.start();  // Start the timer
 
 	// Set a value in Redis
 	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey Redis");
@@ -218,6 +218,7 @@ void testRedis()
 
 	// Get the value from Redis
 	reply = (redisReply *)redisCommand(context, "GET mykey");
+	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
 	if (reply) {
 		if (reply->type == REDIS_REPLY_STRING) {
 			//qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
@@ -229,7 +230,6 @@ void testRedis()
 
 	// Close the Redis connection
 	redisFree(context);
-	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
 	
 	qint64 elapsedTime = timer.nsecsElapsed(); // Nanoseconds
 	log_debug("[PPP] %s, %ld", reply->str, elapsedTime);
