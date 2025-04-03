@@ -11,7 +11,7 @@ final def BUILD_TIMEOUT = 120
 final def NODELABEL = 'docker-build'
 final def RELEASE_BRANCH = 'main'
 
-def buildResources = [resourceRequestMemory: '92Gi', resourceLimitMemory: '92Gi', resourceRequestCpu: '25000m', resourceLimitCpu: '25000m']
+def buildResources = [resourceRequestMemory: '92Gi', resourceLimitMemory: '92Gi', resourceRequestCpu: '20000m', resourceLimitCpu: '20000m']
 def releaseBranches = [RELEASE_BRANCH, 'origin/' + RELEASE_BRANCH]
 def cache = true
 def cleanMergedRefs = false
