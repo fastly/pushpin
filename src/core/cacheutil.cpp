@@ -196,43 +196,68 @@ static void remove_old_cache_items()
 	}
 }
 
-void testRedis() 
-{
-	// Connect to Redis server
+// Define a Qt structure
+struct UserData {
+	QString name;
+	int age;
+	QString country;
+
+	// Serialize to QByteArray
+	QByteArray toByteArray() const {
+		QByteArray data;
+		QDataStream stream(&data, QIODevice::WriteOnly);
+		stream << name << age << country;
+		return data;
+	}
+
+	// Deserialize from QByteArray
+	static UserData fromByteArray(const QByteArray &data) {
+		UserData user;
+		QDataStream stream(data);
+		stream >> user.name >> user.age >> user.country;
+		return user;
+	}
+};
+
+void storeUserData(redisContext *context, const QString &key, const UserData &user) {
+	QByteArray binaryData = user.toByteArray();
+
+	// Store binary data in Redis
+	redisReply *reply = (redisReply *)redisCommand(context, "SET %s %b", key.toUtf8().constData(), binaryData.constData(), binaryData.size());
+	freeReplyObject(reply);
+}
+
+UserData getUserData(redisContext *context, const QString &key) {
+	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
+
+	if (reply->type == REDIS_REPLY_STRING) {
+		QByteArray binaryData(reply->str, reply->len);
+		freeReplyObject(reply);
+		return UserData::fromByteArray(binaryData);
+	}
+
+	freeReplyObject(reply);
+	return {};
+}
+
+void testRedis() {
+	// Connect to Redis
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
-		//qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
+		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
 		return;
 	}
-	//qDebug() << "Connected to Redis!";
+	qDebug() << "Connected to Redis!";
 
-	QElapsedTimer timer;
-	timer.start();  // Start the timer
+	// Create and store user data
+	UserData user = {"Bob", 30, "UK"};
+	storeUserData(context, "user:1002", user);
 
-	// Set a value in Redis
-	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey Redis");
-	if (reply) {
-		//qDebug() << "SET command executed";
-		freeReplyObject(reply);
-	}
+	// Retrieve user data
+	UserData retrievedUser = getUserData(context, "user:1002");
+	qDebug() << "Retrieved user:" << retrievedUser.name << retrievedUser.age << retrievedUser.country;
 
-	// Get the value from Redis
-	reply = (redisReply *)redisCommand(context, "GET mykey");
-	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
-	if (reply) {
-		if (reply->type == REDIS_REPLY_STRING) {
-			//qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
-		} else {
-			//qDebug() << "Unexpected reply type" << reply->type;
-		}
-		freeReplyObject(reply);
-	}
-
-	// Close the Redis connection
 	redisFree(context);
-	
-	qint64 elapsedTime = timer.nsecsElapsed(); // Nanoseconds
-	log_debug("[PPP] %s, %ld", reply->str, elapsedTime);
 }
 
 void cache_thread()
