@@ -20,7 +20,7 @@ INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
 INCLUDEPATH += /usr/include/hiredis
 
-LIBS += -L/usr/lib/x86_64-linux-gnu -lhiredis
+LIBS += -lhiredis
 
 include(core/tests.pri)
 include(proxy/tests.pri)
