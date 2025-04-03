@@ -224,7 +224,7 @@ void storeUserData(redisContext *context, const QString &key, const UserData &us
 	QByteArray binaryData = user.toByteArray();
 
 	// Store binary data in Redis
-	redisReply *reply = (redisReply *)redisCommand(context, "SET asdf %b", binaryData.size());
+	redisReply *reply = (redisReply *)redisCommand(context, "SET asdf %b", byteArray.constData(), binaryData.size());
 	freeReplyObject(reply);
 }
 
