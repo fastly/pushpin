@@ -226,6 +226,8 @@ void storeUser(redisContext *context, const QString &key, const User &user) {
 User getUser(redisContext *context, const QString &key) {
 	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
 
+	log_debug("[PPP] %d", reply->type);
+
 	if (reply->type == REDIS_REPLY_STRING) {
 		QByteArray byteArray(reply->str, reply->len);
 		QDataStream in(&byteArray, QIODevice::ReadOnly);
