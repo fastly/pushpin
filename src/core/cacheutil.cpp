@@ -231,7 +231,8 @@ void storeUserData(redisContext *context, const QString &key, const UserData &us
 UserData getUserData(redisContext *context, const QString &key) {
 	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
 
-	if (reply->type == REDIS_REPLY_STRING) {
+	//if (reply->type == REDIS_REPLY_STRING) 
+	{
 		QByteArray binaryData(reply->str, reply->len);
 		freeReplyObject(reply);
 		return UserData::fromByteArray(binaryData);
