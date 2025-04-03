@@ -158,5 +158,7 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
+    - name: cargo fetch
+      run: cargo +${{ matrix.rust-version }} fetch
     - name: build release
       run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
