@@ -197,18 +197,19 @@ static void remove_old_cache_items()
 
 void testRedis() 
 {
+	qint64 startMTime = QDateTime::currentMSecsSinceEpoch();
 	// Connect to Redis server
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
-		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
+		//qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
 		return;
 	}
-	qDebug() << "Connected to Redis!";
+	//qDebug() << "Connected to Redis!";
 
 	// Set a value in Redis
 	redisReply *reply = (redisReply *)redisCommand(context, "SET mykey Redis");
 	if (reply) {
-		qDebug() << "SET command executed";
+		//qDebug() << "SET command executed";
 		freeReplyObject(reply);
 	}
 
@@ -216,15 +217,18 @@ void testRedis()
 	reply = (redisReply *)redisCommand(context, "GET mykey");
 	if (reply) {
 		if (reply->type == REDIS_REPLY_STRING) {
-			qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
+			//qDebug() << "GET mykey response:" << reply->str;  // Accessing the returned string
 		} else {
-			qDebug() << "Unexpected reply type" << reply->type;
+			//qDebug() << "Unexpected reply type" << reply->type;
 		}
 		freeReplyObject(reply);
 	}
 
 	// Close the Redis connection
 	redisFree(context);
+	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
+	
+	log_debug("[PPP] %s, %d", reply->str, endMTime-startMTime);
 }
 
 void cache_thread()
@@ -240,6 +244,8 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
+
+		testRedis();
 
 		gCacheThreadRunning = false;
 
