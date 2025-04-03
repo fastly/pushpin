@@ -332,10 +332,7 @@ impl<'a> AsyncResolver<'a> {
     }
 
     pub fn resolve(&self, host: &str) -> QueryFuture {
-        let query = match self.resolver.resolve(host) {
-            Ok(q) => Some(q),
-            Err(()) => None,
-        };
+        let query = self.resolver.resolve(host).ok();
 
         QueryFuture {
             evented: None,
