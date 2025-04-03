@@ -228,7 +228,7 @@ void testRedis()
 	redisFree(context);
 	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
 	
-	log_debug("[PPP] %s, %d", reply->str, endMTime-startMTime);
+	log_debug("[PPP] %s, %ld", reply->str, endMTime-startMTime);
 }
 
 void cache_thread()
