@@ -197,47 +197,42 @@ static void remove_old_cache_items()
 	}
 }
 
-// Define a Qt structure
-struct UserData {
+struct User {
 	QString name;
 	int age;
 	QString country;
 
-	// Serialize to QByteArray
-	QByteArray toByteArray() const {
-		QByteArray data;
-		QDataStream dataStream(&data, QIODevice::WriteOnly);
-		dataStream << name << age << country;
-		return data;
+	friend QDataStream &operator<<(QDataStream &out, const User &user) {
+		out << user.name << user.age << user.country;
+		return out;
 	}
 
-	// Deserialize from QByteArray
-	static UserData fromByteArray(const QByteArray &data) {
-		UserData user;
-		QDataStream dataStream(data);
-		dataStream >> user.name >> user.age >> user.country;
-		return user;
+	friend QDataStream &operator>>(QDataStream &in, User &user) {
+		in >> user.name >> user.age >> user.country;
+		return in;
 	}
 };
 
-void storeUserData(redisContext *context, const QString &key, const UserData &user) {
-	QByteArray binaryData = user.toByteArray();
+void storeUser(redisContext *context, const QString &key, const User &user) {
+	QByteArray byteArray;
+	QDataStream out(&byteArray, QIODevice::WriteOnly);
+	out << user;  // Serialize
 
-	// Store binary data in Redis
-	redisReply *reply = (redisReply *)redisCommand(context, "SET asdf %b", binaryData.constData(), binaryData.size());
+	redisReply *reply = (redisReply *)redisCommand(context, "SET %s %b", 
+					key.toUtf8().constData(), byteArray.constData(), byteArray.size());
 	freeReplyObject(reply);
 }
 
-UserData getUserData(redisContext *context, const QString &key) {
-	redisReply *reply = (redisReply *)redisCommand(context, "GET asdf");
+User getUser(redisContext *context, const QString &key) {
+	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
 
-	log_debug("[PPP] %d, %d, %d, %d, %d, %d, %d", reply->type, REDIS_REPLY_STATUS, REDIS_REPLY_ERROR, REDIS_REPLY_INTEGER, REDIS_REPLY_NIL, REDIS_REPLY_ARRAY, REDIS_REPLY_STRING);
-
-	if (reply->type == REDIS_REPLY_STRING) 
-	{
-		QByteArray binaryData(reply->str, reply->len);
+	if (reply->type == REDIS_REPLY_STRING) {
+		QByteArray byteArray(reply->str, reply->len);
+		QDataStream in(&byteArray, QIODevice::ReadOnly);
+		User user;
+		in >> user;  // Deserialize
 		freeReplyObject(reply);
-		return UserData::fromByteArray(binaryData);
+		return user;
 	}
 
 	freeReplyObject(reply);
@@ -245,7 +240,6 @@ UserData getUserData(redisContext *context, const QString &key) {
 }
 
 void testRedis() {
-	// Connect to Redis
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
 		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
@@ -253,13 +247,11 @@ void testRedis() {
 	}
 	qDebug() << "Connected to Redis!";
 
-	// Create and store user data
-	UserData user = {"Bob", 30, "UK"};
-	storeUserData(context, "user:1002", user);
+	User user = {"Charlie", 28, "Germany"};
+	storeUser(context, "user:1003", user);
 
-	// Retrieve user data
-	UserData retrievedUser = getUserData(context, "user:1002");
-	qDebug() << "Retrieved user:" << retrievedUser.name << retrievedUser.age << retrievedUser.country;
+	User retrievedUser = getUser(context, "user:1003");
+	qDebug() << "Retrieved User:" << retrievedUser.name << retrievedUser.age << retrievedUser.country;
 
 	redisFree(context);
 }
