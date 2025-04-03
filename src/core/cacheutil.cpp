@@ -46,6 +46,7 @@
 #include <QNetworkReply>
 #include <QUrl>
 #include <QElapsedTimer>
+#include <QDataStream>
 #include <hiredis.h>
 
 #include "qtcompat.h"

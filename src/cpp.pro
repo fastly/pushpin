@@ -2,6 +2,7 @@ TEMPLATE = lib
 CONFIG -= app_bundle
 CONFIG += staticlib c++17
 QT -= gui
+QT += core
 QT += network
 QT += concurrent
 TARGET = pushpin-cpp
