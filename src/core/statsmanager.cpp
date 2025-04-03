@@ -60,10 +60,8 @@ static qint64 durationToTicksRoundUp(qint64 msec)
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
 
-class StatsManager::Private : public QObject
+class StatsManager::Private
 {
-	Q_OBJECT
-
 public:
 	class TimerBase
 	{
@@ -433,7 +431,7 @@ public:
 	int subscriptionLinger;
 	int reportInterval;
 	std::unique_ptr<QZmq::Socket> sock;
-	SimpleHttpServer *prometheusServer;
+	std::unique_ptr<SimpleHttpServer> prometheusServer;
 	int prometheusConnectionsMax;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
@@ -466,7 +464,6 @@ public:
 	Connection promServerConnection;
 
 	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax, int _prometheusConnectionsMax) :
-		QObject(_q),
 		q(_q),
 		connectionsMax(_connectionsMax),
 		subscriptionsMax(_subscriptionsMax),
@@ -480,7 +477,6 @@ public:
 		subscriptionTtl(60 * 1000),
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
-		prometheusServer(0),
 		prometheusConnectionsMax(_prometheusConnectionsMax),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
@@ -555,7 +551,7 @@ public:
 	{
 		assert(!prometheusServer);
 
-		prometheusServer = new SimpleHttpServer(prometheusConnectionsMax, 8192, 8192, this);
+		prometheusServer = std::make_unique<SimpleHttpServer>(prometheusConnectionsMax, 8192, 8192);
 		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
@@ -563,7 +559,7 @@ public:
 			if(!prometheusServer->listenLocal(portStr.mid(6)))
 			{
 				promServerConnection.disconnect();
-				delete prometheusServer;
+				prometheusServer.reset();
 
 				return false;
 			}
@@ -587,7 +583,7 @@ public:
 			if(!prometheusServer->listen(addr, port))
 			{
 				promServerConnection.disconnect();
-				delete prometheusServer;
+				prometheusServer.reset();
 
 				return false;
 			}
@@ -1675,8 +1671,7 @@ private:
 	}
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax, QObject *parent) :
-	QObject(parent)
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax)
 {
 	d = new Private(this, connectionsMax, subscriptionsMax, prometheusConnectionsMax);
 }
@@ -2236,5 +2231,3 @@ void StatsManager::setRetrySeq(const QByteArray &routeId, int value)
 
 	cm.retrySeq = value;
 }
-
-#include "statsmanager.moc"

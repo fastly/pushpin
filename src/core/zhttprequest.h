@@ -38,8 +38,6 @@ class ZhttpManager;
 
 class ZhttpRequest : public HttpRequest
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
@@ -124,7 +122,7 @@ private:
 	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
-	ZhttpRequest(QObject *parent = 0);
+	ZhttpRequest();
 	void setupClient(ZhttpManager *manager, bool req);
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void setupServer(ZhttpManager *manager, const ServerState &state);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ pub mod reactor;
 pub mod select;
 pub mod shuffle;
 pub mod task;
+pub mod test;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
@@ -107,77 +108,76 @@ pub fn ensure_example_config(dest: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::call_c_main;
+    use crate::core::test::TestException;
     use crate::ffi;
-    use std::ffi::OsStr;
 
-    fn httpheaders_test(args: &[&OsStr]) -> u8 {
+    fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::httpheaders_test, args) as u8 }
+        unsafe { ffi::httpheaders_test(out_ex) == 0 }
     }
 
-    fn jwt_test(args: &[&OsStr]) -> u8 {
+    fn jwt_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::jwt_test, args) as u8 }
+        unsafe { ffi::jwt_test(out_ex) == 0 }
     }
 
-    fn timer_test(args: &[&OsStr]) -> u8 {
+    fn timer_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::timer_test, args) as u8 }
+        unsafe { ffi::timer_test(out_ex) == 0 }
     }
 
-    fn defercall_test(args: &[&OsStr]) -> u8 {
+    fn defercall_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::defercall_test, args) as u8 }
+        unsafe { ffi::defercall_test(out_ex) == 0 }
     }
 
-    fn tcpstream_test(args: &[&OsStr]) -> u8 {
+    fn tcpstream_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::tcpstream_test, args) as u8 }
+        unsafe { ffi::tcpstream_test(out_ex) == 0 }
     }
 
-    fn unixstream_test(args: &[&OsStr]) -> u8 {
+    fn unixstream_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::unixstream_test, args) as u8 }
+        unsafe { ffi::unixstream_test(out_ex) == 0 }
     }
 
-    fn eventloop_test(args: &[&OsStr]) -> u8 {
+    fn eventloop_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
+        unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
 
     #[test]
     fn httpheaders() {
-        assert!(qtest::run(httpheaders_test));
+        qtest::run_no_main(httpheaders_test);
     }
 
     #[test]
     fn jwt() {
-        assert!(qtest::run(jwt_test));
+        qtest::run_no_main(jwt_test);
     }
 
     #[test]
     fn timer() {
-        assert!(qtest::run(timer_test));
+        qtest::run_no_main(timer_test);
     }
 
     #[test]
     fn defercall() {
-        assert!(qtest::run(defercall_test));
+        qtest::run_no_main(defercall_test);
     }
 
     #[test]
     fn tcpstream() {
-        assert!(qtest::run(tcpstream_test));
+        qtest::run_no_main(tcpstream_test);
     }
 
     #[test]
     fn unixstream() {
-        assert!(qtest::run(unixstream_test));
+        qtest::run_no_main(unixstream_test);
     }
 
     #[test]
     fn eventloop() {
-        assert!(qtest::run(eventloop_test));
+        qtest::run_no_main(eventloop_test);
     }
 }

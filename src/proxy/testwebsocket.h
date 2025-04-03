@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,10 +30,8 @@ class ZhttpManager;
 
 class TestWebSocket : public WebSocket
 {
-	Q_OBJECT
-
 public:
-	TestWebSocket(QObject *parent = 0);
+	TestWebSocket();
 	~TestWebSocket();
 
 	// reimplemented

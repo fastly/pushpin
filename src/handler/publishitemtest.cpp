@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,93 +21,78 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QtTest/QtTest>
+#include "test.h"
 #include "publishformat.h"
 #include "publishitem.h"
 
-class PublishItemTest : public QObject
+static void parseItem()
 {
-	Q_OBJECT
+	QVariantHash meta;
+	meta["foo"] = QByteArray("bar");
+	meta["bar"] = QByteArray("baz");
 
-private slots:
-	void parseItem()
-	{
-		QVariantHash meta;
-		meta["foo"] = QByteArray("bar");
-		meta["bar"] = QByteArray("baz");
+	QVariantHash hs;
+	hs["content"] = QByteArray("hello world");
 
-		QVariantHash hs;
-		hs["content"] = QByteArray("hello world");
+	QVariantHash formats;
+	formats["http-stream"] = hs;
 
-		QVariantHash formats;
-		formats["http-stream"] = hs;
+	QVariantHash data;
+	data["channel"] = QByteArray("apple");
+	data["id"] = QByteArray("item1");
+	data["prev-id"] = QByteArray("item0");
+	data["meta"] = meta;
+	data["formats"] = formats;
 
-		QVariantHash data;
-		data["channel"] = QByteArray("apple");
-		data["id"] = QByteArray("item1");
-		data["prev-id"] = QByteArray("item0");
-		data["meta"] = meta;
-		data["formats"] = formats;
-
-		bool ok;
-		PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
-		QVERIFY(ok);
-		QCOMPARE(i.channel, QString("apple"));
-		QCOMPARE(i.id, QString("item1"));
-		QCOMPARE(i.prevId, QString("item0"));
-		QCOMPARE(i.meta.count(), 2);
-		QCOMPARE(i.meta.value("foo"), QString("bar"));
-		QCOMPARE(i.meta.value("bar"), QString("baz"));
-		QVERIFY(i.formats.contains(PublishFormat::HttpStream));
-		QCOMPARE(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
-	}
-
-	void parseItemJsonStyle()
-	{
-		QVariantMap meta;
-		meta["foo"] = QString("bar");
-		meta["bar"] = QString("baz");
-
-		QVariantMap hs;
-		hs["content"] = QString("hello world");
-
-		QVariantMap formats;
-		formats["http-stream"] = hs;
-
-		QVariantMap data;
-		data["channel"] = QString("apple");
-		data["id"] = QString("item1");
-		data["prev-id"] = QString("item0");
-		data["meta"] = meta;
-		data["formats"] = formats;
-
-		bool ok;
-		PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
-		QVERIFY(ok);
-		QCOMPARE(i.channel, QString("apple"));
-		QCOMPARE(i.id, QString("item1"));
-		QCOMPARE(i.prevId, QString("item0"));
-		QCOMPARE(i.meta.count(), 2);
-		QCOMPARE(i.meta.value("foo"), QString("bar"));
-		QCOMPARE(i.meta.value("bar"), QString("baz"));
-		QVERIFY(i.formats.contains(PublishFormat::HttpStream));
-		QCOMPARE(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
-	}
-};
-
-namespace {
-namespace Main {
-QTEST_MAIN(PublishItemTest)
-}
+	bool ok;
+	PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(i.channel, QString("apple"));
+	TEST_ASSERT_EQ(i.id, QString("item1"));
+	TEST_ASSERT_EQ(i.prevId, QString("item0"));
+	TEST_ASSERT_EQ(i.meta.count(), 2);
+	TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
+	TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
+	TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
+	TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
 }
 
-extern "C" {
-
-int publishitem_test(int argc, char **argv)
+static void parseItemJsonStyle()
 {
-	return Main::main(argc, argv);
+	QVariantMap meta;
+	meta["foo"] = QString("bar");
+	meta["bar"] = QString("baz");
+
+	QVariantMap hs;
+	hs["content"] = QString("hello world");
+
+	QVariantMap formats;
+	formats["http-stream"] = hs;
+
+	QVariantMap data;
+	data["channel"] = QString("apple");
+	data["id"] = QString("item1");
+	data["prev-id"] = QString("item0");
+	data["meta"] = meta;
+	data["formats"] = formats;
+
+	bool ok;
+	PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
+	TEST_ASSERT(ok);
+	TEST_ASSERT_EQ(i.channel, QString("apple"));
+	TEST_ASSERT_EQ(i.id, QString("item1"));
+	TEST_ASSERT_EQ(i.prevId, QString("item0"));
+	TEST_ASSERT_EQ(i.meta.count(), 2);
+	TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
+	TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
+	TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
+	TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
 }
 
-}
+extern "C" int publishitem_test(ffi::TestException *out_ex)
+{
+	TEST_CATCH(parseItem());
+	TEST_CATCH(parseItemJsonStyle());
 
-#include "publishitemtest.moc"
+	return 0;
+}

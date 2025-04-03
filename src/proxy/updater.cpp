@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2017 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -67,10 +67,8 @@ static QString getArch()
 	return QString::number(sizeof(void *) * 8);
 }
 
-class Updater::Private : public QObject
+class Updater::Private
 {
-	Q_OBJECT
-
 public:
 	struct ReqConnections {
 		Connection readyReadConnection;
@@ -84,21 +82,19 @@ public:
 	QString org;
 	ZhttpManager *zhttpManager;
 	std::unique_ptr<Timer> timer;
-	ZhttpRequest *req;
+	std::unique_ptr<ZhttpRequest> req;
 	Report report;
 	QDateTime lastLogTime;
 	ReqConnections reqConnections;
 	Connection timerConnection;
 
 	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
-		QObject(_q),
 		q(_q),
 		mode(_mode),
 		quiet(_quiet),
 		currentVersion(_currentVersion),
 		org(_org),
-		zhttpManager(zhttp),
-		req(0)
+		zhttpManager(zhttp)
 	{
 		timer = std::make_unique<Timer>();
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
@@ -111,15 +107,13 @@ public:
 	void cleanupRequest()
 	{
 		reqConnections = ReqConnections();
-		delete req;
-		req = 0;
+		req.reset();
 	}
 
 private:
 	void doRequest()
 	{
-		req = zhttpManager->createRequest();
-		req->setParent(this);
+		req = std::unique_ptr<ZhttpRequest>(zhttpManager->createRequest());
 		reqConnections = {
 			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
 			req->error.connect(boost::bind(&Private::req_error, this))
@@ -245,8 +239,7 @@ private:
 	}
 };
 
-Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
-	QObject(parent)
+Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp)
 {
 	d = new Private(this, mode, quiet, currentVersion, org, zhttp);
 }
@@ -268,5 +261,3 @@ void Updater::setReport(const Report &report)
 	d->report.messagesSent += report.messagesSent;
 	d->report.ops += report.ops;
 }
-
-#include "updater.moc"

@@ -35,8 +35,6 @@ class ZhttpManager;
 
 class ZWebSocket : public WebSocket
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
@@ -84,7 +82,7 @@ private:
 	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
-	ZWebSocket(QObject *parent = 0);
+	ZWebSocket();
 	void setupClient(ZhttpManager *manager);
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void startServer();

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,12 +24,10 @@
 #ifndef CONTROLREQUEST_H
 #define CONTROLREQUEST_H
 
-#include "cidset.h"
 #include <boost/signals2.hpp>
+#include "cidset.h"
 
 using Connection = boost::signals2::scoped_connection;
-
-class QObject;
 
 class ZrpcManager;
 class StatsPacket;
@@ -36,9 +35,9 @@ class Deferred;
 
 namespace ControlRequest {
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0);
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent = 0);
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent = 0);
+Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids);
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid);
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet);
 
 }
 

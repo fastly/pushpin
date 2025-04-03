@@ -692,6 +692,44 @@ impl Iterator for EventsIterator<'_, '_> {
     }
 }
 
+pub mod ffi {
+    pub const READABLE: u8 = 0x01;
+    pub const WRITABLE: u8 = 0x02;
+
+    pub struct InterestError;
+
+    pub fn interest_int_to_mio(interest: u8) -> Result<mio::Interest, InterestError> {
+        let interest = if interest & READABLE != 0 && interest & WRITABLE != 0 {
+            mio::Interest::READABLE | mio::Interest::WRITABLE
+        } else if interest & READABLE != 0 {
+            mio::Interest::READABLE
+        } else if interest & WRITABLE != 0 {
+            mio::Interest::WRITABLE
+        } else {
+            // must specify at least one of READABLE or WRITABLE
+            return Err(InterestError);
+        };
+
+        Ok(interest)
+    }
+
+    pub struct SetReadiness(pub super::SetReadiness);
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn set_readiness(sr: *const SetReadiness, readiness: u8) -> libc::c_int {
+        let sr = sr.as_ref().unwrap();
+
+        if let Ok(readiness) = interest_int_to_mio(readiness) {
+            if sr.0.set_readiness(readiness).is_err() {
+                return -1;
+            }
+        }
+
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

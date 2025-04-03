@@ -25,15 +25,12 @@
 #define WSCONTROLMANAGER_H
 
 #include <memory>
-#include <QObject>
 #include "packet/wscontrolpacket.h"
 
 class WsControlSession;
 
-class WsControlManager : public QObject
+class WsControlManager
 {
-	Q_OBJECT
-
 public:
 	WsControlManager();
 	~WsControlManager();
