@@ -205,16 +205,16 @@ struct UserData {
 	// Serialize to QByteArray
 	QByteArray toByteArray() const {
 		QByteArray data;
-		QDataStream stream(&data, QIODevice::WriteOnly);
-		stream << name << age << country;
+		QDataStream dataStream(&data, QIODevice::WriteOnly);
+		dataStream << name << age << country;
 		return data;
 	}
 
 	// Deserialize from QByteArray
 	static UserData fromByteArray(const QByteArray &data) {
 		UserData user;
-		QDataStream stream(data);
-		stream >> user.name >> user.age >> user.country;
+		QDataStream dataStream(data);
+		dataStream >> user.name >> user.age >> user.country;
 		return user;
 	}
 };
