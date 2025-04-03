@@ -197,7 +197,9 @@ static void remove_old_cache_items()
 
 void testRedis() 
 {
-	qint64 startMTime = QDateTime::currentMSecsSinceEpoch();
+	QElapsedTimer timer;
+	timer.start();  // Start the timer
+
 	// Connect to Redis server
 	redisContext *context = redisConnect("127.0.0.1", 6379);
 	if (context == nullptr || context->err) {
@@ -228,7 +230,8 @@ void testRedis()
 	redisFree(context);
 	qint64 endMTime = QDateTime::currentMSecsSinceEpoch();
 	
-	log_debug("[PPP] %s, %ld", reply->str, endMTime-startMTime);
+	qint64 elapsedTime = timer.nsecsElapsed(); // Nanoseconds
+	log_debug("[PPP] %s, %ld", reply->str, elapsedTime);
 }
 
 void cache_thread()
