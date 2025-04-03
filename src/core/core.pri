@@ -57,6 +57,7 @@ HEADERS += \
 	$$PWD/timer.h \
 	$$PWD/defercall.h \
 	$$PWD/socketnotifier.h \
+	$$PWD/event.h \
 	$$PWD/eventloop.h \
 	$$PWD/readwrite.h \
 	$$PWD/tcplistener.h \
@@ -88,6 +89,7 @@ SOURCES += \
 	$$PWD/timer.cpp \
 	$$PWD/defercall.cpp \
 	$$PWD/socketnotifier.cpp \
+	$$PWD/event.cpp \
 	$$PWD/eventloop.cpp \
 	$$PWD/tcplistener.cpp \
 	$$PWD/tcpstream.cpp \

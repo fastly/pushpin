@@ -78,6 +78,19 @@ int EventLoop::registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx
 	return (int)id;
 }
 
+std::tuple<int, std::unique_ptr<Event::SetReadiness>> EventLoop::registerCustom(void (*cb)(void *, uint8_t), void *ctx)
+{
+	size_t id;
+	ffi::SetReadiness *srRaw = nullptr;
+
+	if(ffi::event_loop_register_custom(inner_, cb, ctx, &id, &srRaw) != 0)
+		return std::tuple<int, std::unique_ptr<Event::SetReadiness>>();
+
+	std::unique_ptr<Event::SetReadiness> sr(new Event::SetReadiness(srRaw));
+
+	return std::tuple<int, std::unique_ptr<Event::SetReadiness>>({(int)id, std::move(sr)});
+}
+
 void EventLoop::deregister(int id)
 {
 	assert(ffi::event_loop_deregister(inner_, id) == 0);

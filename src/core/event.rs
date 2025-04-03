@@ -717,7 +717,18 @@ pub mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
-    pub unsafe extern "C" fn set_readiness(sr: *const SetReadiness, readiness: u8) -> libc::c_int {
+    pub unsafe extern "C" fn set_readiness_destroy(sr: *mut SetReadiness) {
+        if !sr.is_null() {
+            drop(Box::from_raw(sr));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn set_readiness_set_readiness(
+        sr: *const SetReadiness,
+        readiness: u8,
+    ) -> libc::c_int {
         let sr = sr.as_ref().unwrap();
 
         if let Ok(readiness) = interest_int_to_mio(readiness) {
