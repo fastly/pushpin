@@ -224,12 +224,14 @@ void storeUserData(redisContext *context, const QString &key, const UserData &us
 	QByteArray binaryData = user.toByteArray();
 
 	// Store binary data in Redis
-	redisReply *reply = (redisReply *)redisCommand(context, "SET %s %b", key.toUtf8().constData(), binaryData.constData(), binaryData.size());
+	redisReply *reply = (redisReply *)redisCommand(context, "SET asdf %b", binaryData.size());
 	freeReplyObject(reply);
 }
 
 UserData getUserData(redisContext *context, const QString &key) {
-	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
+	redisReply *reply = (redisReply *)redisCommand(context, "GET asdf");
+
+	log_debug("[PPP] %s, %d", reply->str, reply->len);
 
 	//if (reply->type == REDIS_REPLY_STRING) 
 	{
