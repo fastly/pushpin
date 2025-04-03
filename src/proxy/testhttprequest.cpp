@@ -34,10 +34,8 @@
 
 #define MAX_REQUEST_SIZE 100000
 
-class TestHttpRequest::Private : public QObject
+class TestHttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -58,7 +56,6 @@ public:
 	DeferCall deferCall;
 
 	Private(TestHttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		requestBodyFinished(false),
@@ -141,8 +138,7 @@ public:
 	}
 };
 
-TestHttpRequest::TestHttpRequest(QObject *parent) :
-	HttpRequest(parent)
+TestHttpRequest::TestHttpRequest()
 {
 	d = new Private(this);
 }
@@ -313,5 +309,3 @@ QByteArray TestHttpRequest::readBody(int size)
 {
 	return d->responseBody.take(size);
 }
-
-#include "testhttprequest.moc"

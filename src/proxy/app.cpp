@@ -29,6 +29,9 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include <QThread>
+#include <QMutex>
+#include <QWaitCondition>
 #include "rust/log.h"
 #include "rust/security.h"
 #include "rust/backtrace.h"
@@ -194,7 +197,7 @@ public:
 	EngineWorker(const Engine::Configuration &config, DomainMap *domainMap) :
 		QObject(),
 		config_(config),
-		engine_(new Engine(domainMap, this))
+		engine_(std::make_unique<Engine>(domainMap))
 	{
 	}
 
@@ -207,8 +210,7 @@ public slots:
 	{
 		if(!engine_->start(config_))
 		{
-			delete engine_;
-			engine_ = 0;
+			engine_.reset();
 
 			error();
 			return;
@@ -219,8 +221,7 @@ public slots:
 
 	void stop()
 	{
-		delete engine_;
-		engine_ = 0;
+		engine_.reset();
 
 		stopped();
 	}
@@ -233,7 +234,7 @@ public slots:
 
 private:
 	Engine::Configuration config_;
-	Engine *engine_;
+	std::unique_ptr<Engine> engine_;
 };
 
 class EngineThread : public QThread
@@ -342,23 +343,19 @@ private:
 	}
 };
 
-class App::Private : public QObject
+class App::Private
 {
-	Q_OBJECT
-
 public:
 	App *q;
 	ArgsData args;
-	DomainMap *domainMap;
+	std::unique_ptr<DomainMap> domainMap;
 	std::list<EngineThread*> threads;
 	Connection quitConnection;
 	Connection hupConnection;
 	Connection changedConnection;
 
 	Private(App *_q) :
-		QObject(_q),
-		q(_q),
-		domainMap(0)
+		q(_q)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
@@ -563,12 +560,12 @@ public:
 
 		if(!args.routeLines.isEmpty())
 		{
-			domainMap = new DomainMap(this);
+			domainMap = std::make_unique<DomainMap>();
 			foreach(const QString &line, args.routeLines)
 				domainMap->addRouteLine(line);
 		}
 		else
-			domainMap = new DomainMap(routesFile, this);
+			domainMap = std::make_unique<DomainMap>(routesFile);
 
 		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
@@ -658,7 +655,7 @@ public:
 				wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
 			}
 
-			EngineThread *t = new EngineThread(wconfig, domainMap);
+			EngineThread *t = new EngineThread(wconfig, domainMap.get());
 			if(!t->start())
 			{
 				delete t;
@@ -687,7 +684,6 @@ private:
 			t->routesChanged();
 	}
 
-private slots:
 	void reload()
 	{
 		log_info("reloading");
@@ -716,8 +712,7 @@ private slots:
 	}
 };
 
-App::App(QObject *parent) :
-	QObject(parent)
+App::App()
 {
 	d = new Private(this);
 }

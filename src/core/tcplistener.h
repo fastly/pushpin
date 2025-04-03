@@ -31,6 +31,10 @@ public:
 	TcpListener();
 	~TcpListener();
 
+	// disable copying
+	TcpListener(const TcpListener &) = delete;
+	TcpListener & operator=(const TcpListener &) = delete;
+
 	bool bind(const QHostAddress &addr, uint16_t port);
 	std::tuple<QHostAddress, uint16_t> localAddress() const;
 	std::unique_ptr<TcpStream> accept();

@@ -38,10 +38,8 @@
 #define KEEPALIVE_INTERVAL 45000
 #define REQ_BUF_MAX 1000000
 
-class ZhttpRequest::Private : public QObject
+class ZhttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -100,18 +98,14 @@ public:
 	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
-	Timer *expireTimer;
-	Timer *keepAliveTimer;
-	Timer *finishTimer;
+	std::unique_ptr<Timer> expireTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
+	std::unique_ptr<Timer> finishTimer;
 	bool multi;
 	bool quiet;
-	Connection expTimerConnection;
-	Connection keepAliveTimerConnection;
-	Connection finishTimerConnection;
 	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -137,18 +131,15 @@ public:
 		readableChanged(false),
 		writableChanged(false),
 		errored(false),
-		expireTimer(0),
-		keepAliveTimer(0),
-		finishTimer(0),
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new Timer;
-		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+		expireTimer = std::make_unique<Timer>();
+		expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new Timer;
-		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
+		keepAliveTimer = std::make_unique<Timer>();
+		keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
 	~Private()
@@ -165,29 +156,9 @@ public:
 		readableChanged = false;
 		writableChanged = false;
 
-		if(expireTimer)
-		{
-			expTimerConnection.disconnect();
-			expireTimer->setParent(0);
-			DeferCall::deleteLater(expireTimer);
-			expireTimer = 0;
-		}
-
-		if(keepAliveTimer)
-		{
-			keepAliveTimerConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			DeferCall::deleteLater(keepAliveTimer);
-			keepAliveTimer = 0;
-		}
-
-		if(finishTimer)
-		{
-			finishTimerConnection.disconnect();
-			finishTimer->setParent(0);
-			DeferCall::deleteLater(finishTimer);
-			finishTimer = 0;
-		}
+		expireTimer.reset();
+		keepAliveTimer.reset();
+		finishTimer.reset();
 
 		if(manager)
 		{
@@ -296,8 +267,8 @@ public:
 
 		if(timeout > 0)
 		{
-			finishTimer = new Timer;
-			finishTimerConnection = finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+			finishTimer = std::make_unique<Timer>();
+			finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 			finishTimer->setSingleShot(true);
 			finishTimer->start(timeout);
 		}
@@ -1204,8 +1175,7 @@ public:
 	}
 };
 
-ZhttpRequest::ZhttpRequest(QObject *parent) :
-	HttpRequest(parent)
+ZhttpRequest::ZhttpRequest()
 {
 	d = std::make_shared<Private>(this);
 }
@@ -1478,5 +1448,3 @@ void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePack
 
 	d->handle(id, seq, packet);
 }
-
-#include "zhttprequest.moc"

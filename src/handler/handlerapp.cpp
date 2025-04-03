@@ -29,6 +29,7 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 #include "timer.h"
 #include "defercall.h"
 #include "eventloop.h"

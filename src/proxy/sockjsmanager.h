@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +24,6 @@
 #ifndef SOCKJSMANAGER_H
 #define SOCKJSMANAGER_H
 
-#include <QObject>
 #include "domainmap.h"
 #include <boost/signals2.hpp>
 #include <boost/signals2.hpp>
@@ -36,12 +36,10 @@ class ZhttpRequest;
 class ZWebSocket;
 class SockJsSession;
 
-class SockJsManager : public QObject
+class SockJsManager
 {
-	Q_OBJECT
-
 public:
-	SockJsManager(const QString &sockJsUrl, QObject *parent = 0);
+	SockJsManager(const QString &sockJsUrl);
 	~SockJsManager();
 
 	void giveRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath = QByteArray(), const DomainMap::Entry &route = DomainMap::Entry());

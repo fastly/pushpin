@@ -24,7 +24,6 @@
 #ifndef HTTPREQUEST_H
 #define HTTPREQUEST_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
@@ -33,10 +32,8 @@
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
 
-class HttpRequest : public QObject
+class HttpRequest
 {
-	Q_OBJECT
-
 public:
 	enum ErrorCondition
 	{
@@ -52,7 +49,7 @@ public:
 		ErrorRequestTooLarge
 	};
 
-	HttpRequest(QObject *parent = 0) : QObject(parent) {}
+	virtual ~HttpRequest() = default;
 
 	virtual QHostAddress peerAddress() const = 0;
 

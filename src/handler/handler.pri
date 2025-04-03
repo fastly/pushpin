@@ -14,6 +14,7 @@ HEADERS += \
 	$$PWD/instruct.h \
 	$$PWD/format.h \
 	$$PWD/idformat.h \
+	$$PWD/clientsession.h \
 	$$PWD/httpsession.h \
 	$$PWD/httpsessionupdatemanager.h \
 	$$PWD/wssession.h \

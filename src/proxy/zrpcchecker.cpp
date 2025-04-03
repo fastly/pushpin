@@ -32,10 +32,8 @@
 
 using std::map;
 
-class ZrpcChecker::Private : public QObject
+class ZrpcChecker::Private
 {
-	Q_OBJECT
-
 public:
 	class Item
 	{
@@ -69,7 +67,6 @@ public:
 	Connection timerConnection;
 
 	Private(ZrpcChecker *_q) :
-		QObject(_q),
 		q(_q),
 		avail(true)
 	{
@@ -135,7 +132,6 @@ public:
 		if(i)
 		{
 			// take over ownership
-			req->setParent(this);
 			i->owned = true;
 		}
 		else
@@ -219,8 +215,7 @@ public:
 	}
 };
 
-ZrpcChecker::ZrpcChecker(QObject *parent) :
-	QObject(parent)
+ZrpcChecker::ZrpcChecker()
 {
 	d = new Private(this);
 }
@@ -249,5 +244,3 @@ void ZrpcChecker::give(ZrpcRequest *req)
 {
 	d->give(req);
 }
-
-#include "zrpcchecker.moc"

@@ -24,10 +24,9 @@
 #ifndef REQUESTSESSION_H
 #define REQUESTSESSION_H
 
-#include <QObject>
+#include <boost/signals2.hpp>
 #include "zhttprequest.h"
 #include "domainmap.h"
-#include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -49,12 +48,10 @@ class ZrpcChecker;
 class StatsManager;
 class XffRule;
 
-class RequestSession : public QObject
+class RequestSession
 {
-	Q_OBJECT
-
 public:
-	RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, StatsManager *stats, QObject *parent = 0);
+	RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, StatsManager *stats);
 	~RequestSession();
 
 	bool isRetry() const;

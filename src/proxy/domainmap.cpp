@@ -803,7 +803,6 @@ public:
 	Connection changedConnection;
 
 	Private(DomainMap *_q) :
-		QObject(_q),
 		q(_q),
 		thread(0)
 	{
@@ -839,15 +838,13 @@ private slots:
 	}
 };
 
-DomainMap::DomainMap(QObject *parent) :
-	QObject(parent)
+DomainMap::DomainMap()
 {
 	d = new Private(this);
 	d->start();
 }
 
-DomainMap::DomainMap(const QString &fileName, QObject *parent) :
-	QObject(parent)
+DomainMap::DomainMap(const QString &fileName)
 {
 	d = new Private(this);
 	d->start(fileName);

@@ -30,10 +30,8 @@
 
 #define MIN_BATCH_INTERVAL 25
 
-class RateLimiter::Private : public QObject
+class RateLimiter::Private
 {
-	Q_OBJECT
-
 public:
 	class ActionItem
 	{
@@ -81,7 +79,6 @@ public:
 	bool lastBatchEmpty;
 
 	Private(RateLimiter *_q) :
-		QObject(_q),
 		q(_q),
 		rate(-1),
 		hwm(-1),
@@ -332,5 +329,3 @@ RateLimiter::Action *RateLimiter::lastAction(const QString &key) const
 
 	return 0;
 }
-
-#include "ratelimiter.moc"

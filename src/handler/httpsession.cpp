@@ -101,10 +101,8 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 	return body;
 }
 
-class HttpSession::Private : public QObject
+class HttpSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -159,20 +157,20 @@ public:
 
 	HttpSession *q;
 	State state;
-	ZhttpRequest *req;
+	std::unique_ptr<ZhttpRequest> req;
 	AcceptData adata;
 	Instruct instruct;
 	int logLevel;
 	QHash<QString, Instruct::Channel> channels;
-	Timer *timer;
-	Timer *retryTimer;
+	std::unique_ptr<Timer> timer;
+	std::unique_ptr<Timer> retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
 	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
 	RateLimiter *updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
 	PublishLastIds *publishLastIds;
-	HttpSessionUpdateManager *updateManager;
+	std::shared_ptr<HttpSessionUpdateManager> updateManager;
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
 	int sentOutReqData;
@@ -208,8 +206,7 @@ public:
 	Connection messageFiltersFinishedConnection;
 	DeferCall deferCall;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
-		QObject(_q),
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &_updateManager, int _connectionSubscriptionMax) :
 		q(_q),
 		req(_req),
 		logLevel(LOG_LEVEL_DEBUG),
@@ -231,16 +228,15 @@ public:
 	{
 		state = NotStarted;
 
-		req->setParent(this);
 		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
-		timer = new Timer;
-		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+		timer = std::make_unique<Timer>();
+		timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
-		retryTimer = new Timer;
-		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
+		retryTimer = std::make_unique<Timer>();
+		retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -264,14 +260,6 @@ public:
 	~Private()
 	{
 		cleanup();
-
-		timerConnection.disconnect();
-		timer->setParent(0);
-		DeferCall::deleteLater(timer);
-
-		retryTimerConnection.disconnect();
-		retryTimer->setParent(0);
-		DeferCall::deleteLater(retryTimer);
 	}
 
 	void start()
@@ -1152,7 +1140,6 @@ private:
 		sentOutReqData = 0;
 
 		outReq.reset(outZhttp->createRequest());
-		outReq->setParent(this);
 		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
 		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
@@ -1687,8 +1674,7 @@ private:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
-	QObject(parent)
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax)
 {
 	d = std::make_shared<Private>(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
 }
@@ -1780,5 +1766,3 @@ Callback<std::tuple<HttpSession *>> & HttpSession::finishedCallback()
 {
 	return d->finishedCallback;
 }
-
-#include "httpsession.moc"

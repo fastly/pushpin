@@ -34,10 +34,8 @@
 #define DEFAULT_PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
-class Sequencer::Private : public QObject
+class Sequencer::Private
 {
-	Q_OBJECT
-
 public:
 	class PendingItem
 	{
@@ -69,29 +67,24 @@ public:
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
-	Timer *expireTimer;
+	std::unique_ptr<Timer> expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
 	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
 
 	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
-		QObject(_q),
 		q(_q),
 		lastIds(_publishLastIds),
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
-		expireTimer = new Timer;
+		expireTimer = std::make_unique<Timer>();
 		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
 	}
 
 	~Private()
 	{
-		expireTimer->disconnect(this);
-		expireTimer->setParent(0);
-		DeferCall::deleteLater(expireTimer);
-
 		qDeleteAll(idCacheById);
 	}
 
@@ -265,8 +258,7 @@ public:
 	}
 };
 
-Sequencer::Sequencer(PublishLastIds *publishLastIds, QObject *parent) :
-	QObject(parent)
+Sequencer::Sequencer(PublishLastIds *publishLastIds)
 {
 	d = new Private(this, publishLastIds);
 }
@@ -295,5 +287,3 @@ void Sequencer::clearPendingForChannel(const QString &channel)
 {
 	d->clear(channel);
 }
-
-#include "sequencer.moc"
