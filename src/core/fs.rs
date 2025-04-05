@@ -124,20 +124,24 @@ pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
 
 #[cfg(target_os = "macos")]
 fn get_errno() -> libc::c_int {
+    // SAFETY: always safe to call
     unsafe { *libc::__error() }
 }
 
 #[cfg(not(target_os = "macos"))]
 fn get_errno() -> libc::c_int {
+    // SAFETY: always safe to call
     unsafe { *libc::__errno_location() }
 }
 
 fn set_fd_nonblocking(fd: RawFd) -> Result<(), io::Error> {
+    // SAFETY: always safe to call
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
     if flags < 0 {
         return Err(io::Error::last_os_error());
     }
 
+    // SAFETY: always safe to call
     let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
     if ret != 0 {
         return Err(io::Error::last_os_error());
@@ -175,6 +179,8 @@ impl Watch {
         };
 
         let mut fds = [0; 2];
+
+        // SAFETY: fds pointer is valid
         let ret = unsafe { libc::pipe(fds.as_mut_ptr()) };
         assert_eq!(ret, 0);
 
@@ -211,7 +217,10 @@ impl Watch {
                         state.changed = true;
 
                         // non-blocking write to wake up the other side
+
                         let buf: [u8; 1] = [0; 1];
+
+                        // SAFETY: buf pointer and size are valid
                         let ret = unsafe {
                             libc::write(data.write_fd, buf.as_ptr() as *const libc::c_void, 1)
                         };
@@ -244,7 +253,10 @@ impl Watch {
 
         if let Some(state) = self.data.state.lock().unwrap().as_mut() {
             // non-blocking read to clear
+
             let mut buf = [0u8; 128];
+
+            // SAFETY: buf pointer and size are valid
             let ret = unsafe {
                 libc::read(
                     self.data.read_fd,
@@ -267,8 +279,10 @@ impl Drop for Watch {
         let mut state = self.data.state.lock().unwrap();
         *state = None;
 
-        unsafe { libc::close(self.data.write_fd) };
-        unsafe { libc::close(self.data.read_fd) };
+        for fd in [self.data.write_fd, self.data.read_fd] {
+            // SAFETY: always safe to call
+            unsafe { libc::close(fd) };
+        }
     }
 }
 
