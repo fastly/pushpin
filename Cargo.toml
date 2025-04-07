@@ -31,7 +31,7 @@ libc = "0.2"
 log = "0.4"
 miniz_oxide = "0.6"
 mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
-openssl = "=0.10.70"
+openssl = "=0.10.72"
 paste = "1.0"
 rustls = "0.21"
 rustls-native-certs = "0.6"
