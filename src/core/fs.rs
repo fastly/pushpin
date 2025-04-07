@@ -312,6 +312,10 @@ mod tests {
         let event = poller.iter_events().next().unwrap();
         assert_eq!(event.token(), token);
         assert_eq!(event.is_readable(), true);
+
+        // wait for potentially multiple events to get processed for the file
+        // operation, so that file_changed() returns true only once
+        std::thread::sleep(Duration::from_millis(50));
     }
 
     #[test]
