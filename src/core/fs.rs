@@ -305,6 +305,7 @@ mod tests {
     use crate::core::event::Poller;
     use crate::core::test_dir;
     use std::fs;
+    use std::time::Duration;
 
     fn wait_readable(poller: &mut Poller, token: mio::Token) {
         poller.poll(None).unwrap();
@@ -336,6 +337,7 @@ mod tests {
             .unwrap();
 
         // no change yet
+        poller.poll(Some(Duration::from_millis(0))).unwrap();
         assert_eq!(poller.iter_events().next(), None);
         assert!(!watcher.file_changed());
 
