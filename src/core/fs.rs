@@ -185,6 +185,7 @@ impl FileWatcher {
         assert_eq!(ret, 0);
 
         for fd in &fds {
+            // should never fail on a descriptor we own
             set_fd_nonblocking(*fd).unwrap();
         }
 
@@ -212,7 +213,12 @@ impl FileWatcher {
                     return;
                 }
 
-                if let Some(state) = data.state.lock().unwrap().as_mut() {
+                let mut state = data
+                    .state
+                    .lock()
+                    .expect("failed to lock during notify event");
+
+                if let Some(state) = &mut *state {
                     if !state.changed {
                         state.changed = true;
 
@@ -232,7 +238,10 @@ impl FileWatcher {
         };
 
         {
-            let mut state = data.state.lock().unwrap();
+            let mut state = data
+                .state
+                .lock()
+                .expect("failed to lock during initialization");
 
             let state = state.insert(FileWatcherState {
                 watcher,
@@ -254,7 +263,13 @@ impl FileWatcher {
     pub fn file_changed(&self) -> bool {
         let mut changed = false;
 
-        if let Some(state) = self.data.state.lock().unwrap().as_mut() {
+        let mut state = self
+            .data
+            .state
+            .lock()
+            .expect("failed to lock during check for changes");
+
+        if let Some(state) = &mut *state {
             // non-blocking read to clear
 
             let mut buf = [0u8; 128];
@@ -279,7 +294,7 @@ impl FileWatcher {
 
 impl Drop for FileWatcher {
     fn drop(&mut self) {
-        let mut state = self.data.state.lock().unwrap();
+        let mut state = self.data.state.lock().expect("failed to lock during drop");
         *state = None;
 
         for fd in [self.data.write_fd, self.data.read_fd] {
