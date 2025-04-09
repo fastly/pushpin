@@ -32,13 +32,13 @@
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
-#include <QFileSystemWatcher>
 #include "log.h"
 #include "timer.h"
 #include "defercall.h"
+#include "filewatcher.h"
 #include "routesfile.h"
 
-#define WORKER_THREAD_TIMERS 1
+#define WORKER_THREAD_TIMERS 10
 
 class DomainMap::Worker : public QObject
 {
@@ -204,11 +204,10 @@ public:
 	QHash<QString, Rule> rulesById;
 	Timer t;
 	Connection tConnection;
-	QFileSystemWatcher watcher;
+	FileWatcher watcher;
 	DeferCall deferCall;
 
-	Worker() :
-		watcher(this)
+	Worker()
 	{
 		tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
 		t.setSingleShot(true);
@@ -317,8 +316,8 @@ public slots:
 	{
 		if(!fileName.isEmpty())
 		{
-			connect(&watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
-			watcher.addPath(fileName);
+			watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
+			watcher.start(fileName);
 
 			reload();
 		}
@@ -326,10 +325,8 @@ public slots:
 		started();
 	}
 
-	void fileChanged(const QString &path)
+	void fileChanged()
 	{
-		Q_UNUSED(path);
-
 		// inotify tends to give us extra events so let's hang around a
 		//   little bit before reloading
 		if(!t.isActive())
@@ -341,13 +338,6 @@ public slots:
 
 	void doReload()
 	{
-		// in case the file was not changed, but overwritten by a different
-		// file, re-arm watcher.
-		if(!fileName.isEmpty())
-		{
-			watcher.addPath(fileName);
-		}
-
 		reload();
 	}
 

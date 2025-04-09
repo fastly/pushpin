@@ -314,6 +314,53 @@ impl AsRawFd for FileWatcher {
     }
 }
 
+mod ffi {
+    use super::*;
+    use std::ffi::{CStr, OsStr};
+    use std::os::raw::{c_char, c_int};
+
+    #[no_mangle]
+    pub extern "C" fn file_watcher_create(path: *const c_char) -> *mut FileWatcher {
+        let path = unsafe { CStr::from_ptr(path) };
+
+        let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+        let w = match FileWatcher::new(path) {
+            Ok(w) => w,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        Box::into_raw(Box::new(w))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn file_watcher_destroy(w: *mut FileWatcher) {
+        if !w.is_null() {
+            drop(Box::from_raw(w));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn file_watcher_file_changed(w: *const FileWatcher) -> c_int {
+        let w = w.as_ref().unwrap();
+
+        match w.file_changed() {
+            true => 1,
+            false => 0,
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn file_watcher_as_raw_fd(w: *const FileWatcher) -> c_int {
+        let w = w.as_ref().unwrap();
+
+        w.as_raw_fd()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
