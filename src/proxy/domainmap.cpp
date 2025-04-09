@@ -38,7 +38,7 @@
 #include "filewatcher.h"
 #include "routesfile.h"
 
-#define WORKER_THREAD_TIMERS 1
+#define WORKER_THREAD_TIMERS 10
 
 class DomainMap::Worker : public QObject
 {
