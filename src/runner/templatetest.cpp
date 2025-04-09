@@ -24,7 +24,7 @@
 #include "test.h"
 #include "template.h"
 
-void render()
+static void render()
 {
 	QVariantMap context;
 	context["place"] = "world";
