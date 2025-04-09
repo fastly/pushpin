@@ -266,7 +266,7 @@ void testRedis()
 	redisContext *c = connectToRedis();
 	if (c == nullptr) 
 	{
-		return -1;
+		return;
 	}
 
 	QByteArray key = "myKey";
