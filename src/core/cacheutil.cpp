@@ -197,65 +197,85 @@ static void remove_old_cache_items()
 	}
 }
 
-struct User {
-	QString name;
-	int age;
-	QString country;
-
-	friend QDataStream &operator<<(QDataStream &out, const User &user) {
-		out << user.name << user.age << user.country;
-		return out;
-	}
-
-	friend QDataStream &operator>>(QDataStream &in, User &user) {
-		in >> user.name >> user.age >> user.country;
-		return in;
-	}
-};
-
-void storeUser(redisContext *context, const QString &key, const User &user) {
-	QByteArray byteArray;
-	QDataStream out(&byteArray, QIODevice::WriteOnly);
-	out << user;  // Serialize
-
-	redisReply *reply = (redisReply *)redisCommand(context, "SET %s %b", 
-					key.toUtf8().constData(), byteArray.constData(), byteArray.size());
-	freeReplyObject(reply);
-}
-
-User getUser(redisContext *context, const QString &key) {
-	redisReply *reply = (redisReply *)redisCommand(context, "GET %s", key.toUtf8().constData());
-
-	log_debug("[PPP] %d", reply->type);
-
-	if (reply->type == REDIS_REPLY_STRING) {
-		QByteArray byteArray(reply->str, reply->len);
-		QDataStream in(&byteArray, QIODevice::ReadOnly);
-		User user;
-		in >> user;  // Deserialize
-		freeReplyObject(reply);
-		return user;
-	}
-
-	freeReplyObject(reply);
-	return {};
-}
-
-void testRedis() {
-	redisContext *context = redisConnect("127.0.0.1", 6379);
-	if (context == nullptr || context->err) {
-		qDebug() << "Redis connection error:" << (context ? context->errstr : "Can't allocate Redis context");
+void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
+{
+	redisReply *reply = (redisReply *)redisCommand(c, "SET %b %b",
+												key.constData(), (size_t)key.size(),
+												value.constData(), (size_t)value.size());
+	if (reply == nullptr) 
+	{
+		//std::cerr << "SET command failed: " << c->errstr << std::endl;
+		log_debug("SET command failed: ");
 		return;
 	}
-	qDebug() << "Connected to Redis!";
+	//std::cout << "SET command response: " << reply->str << std::endl;
+	log_debug("SET command response: ");
+	freeReplyObject(reply);
+}
 
-	User user = {"Charlie", 28, "Germany"};
-	storeUser(context, "user:1003", user);
+QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key) 
+{
+	redisReply *reply = (redisReply *)redisCommand(c, "GET %b", key.constData(), (size_t)key.size());
+	QByteArray value;
+	if (reply == nullptr) 
+	{
+		//std::cerr << "GET command failed: " << c->errstr << std::endl;
+		log_debug("GET command failed: ");
+	} 
+	else if (reply->type == REDIS_REPLY_STRING) 
+	{
+		value = QByteArray(reply->str, reply->len);
+		//std::cout << "GET command response: " << value.toStdString() << std::endl;
+		log_debug("GET command response: ");
+	} 
+	else 
+	{
+		//std::cerr << "GET command returned unexpected type." << std::endl;
+		log_debug("GET command returned unexpected type.");
+	}
+	freeReplyObject(reply);
+	return value;
+}
 
-	User retrievedUser = getUser(context, "user:1003");
-	qDebug() << "Retrieved User:" << retrievedUser.name << retrievedUser.age << retrievedUser.country;
+redisContext* connectToRedis() 
+{
+	const char *hostname = "127.0.0.1";
+	int port = 6379;
+	struct timeval timeout = {1, 500000}; // 1.5 seconds
+	redisContext *c = redisConnectWithTimeout(hostname, port, timeout);
+	if (c == nullptr || c->err) 
+	{
+		if (c) 
+		{
+			//std::cerr << "Connection error: " << c->errstr << std::endl;
+			log_debug("Connection error: ");
+			redisFree(c);
+		} 
+		else 
+		{
+			//std::cerr << "Connection error: can't allocate redis context" << std::endl;
+			log_debug("Connection error: can't allocate redis context");
+		}
+		return nullptr;
+	}
+	return c;
+}
 
-	redisFree(context);
+void testRedis() 
+{
+	redisContext *c = connectToRedis();
+	if (c == nullptr) 
+	{
+		return -1;
+	}
+
+	QByteArray key = "myKey";
+	QByteArray value = "myValue";
+
+	setQByteArrayToRedis(c, key, value);
+	QByteArray retrievedValue = getQByteArrayFromRedis(c, key);
+
+	redisFree(c);
 }
 
 void cache_thread()
