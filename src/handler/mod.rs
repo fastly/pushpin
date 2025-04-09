@@ -16,8 +16,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::core::qtest;
-    use crate::core::test::TestException;
+    use crate::core::test::{run_serial, TestException};
     use crate::ffi;
 
     fn filter_test(out_ex: &mut TestException) -> bool {
@@ -57,36 +56,36 @@ mod tests {
 
     #[test]
     fn filter() {
-        qtest::run_no_main(filter_test);
+        run_serial(filter_test);
     }
 
     #[test]
     fn jsonpatch() {
-        qtest::run_no_main(jsonpatch_test);
+        run_serial(jsonpatch_test);
     }
 
     #[test]
     fn instruct() {
-        qtest::run_no_main(instruct_test);
+        run_serial(instruct_test);
     }
 
     #[test]
     fn idformat() {
-        qtest::run_no_main(idformat_test);
+        run_serial(idformat_test);
     }
 
     #[test]
     fn publishformat() {
-        qtest::run_no_main(publishformat_test);
+        run_serial(publishformat_test);
     }
 
     #[test]
     fn publishitem() {
-        qtest::run_no_main(publishitem_test);
+        run_serial(publishitem_test);
     }
 
     #[test]
     fn handlerengine() {
-        qtest::run_no_main(handlerengine_test);
+        run_serial(handlerengine_test);
     }
 }
