@@ -205,11 +205,11 @@ void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArr
 	if (reply == nullptr) 
 	{
 		//std::cerr << "SET command failed: " << c->errstr << std::endl;
-		log_debug("SET command failed: ");
+		log_debug("SET command failed: %d", c->errstr);
 		return;
 	}
 	//std::cout << "SET command response: " << reply->str << std::endl;
-	log_debug("SET command response: ");
+	log_debug("SET command response: %s", reply->str);
 	freeReplyObject(reply);
 }
 
@@ -220,18 +220,18 @@ QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key)
 	if (reply == nullptr) 
 	{
 		//std::cerr << "GET command failed: " << c->errstr << std::endl;
-		log_debug("GET command failed: ");
+		log_debug("GET command failed: %d", c->errstr);
 	} 
 	else if (reply->type == REDIS_REPLY_STRING) 
 	{
 		value = QByteArray(reply->str, reply->len);
 		//std::cout << "GET command response: " << value.toStdString() << std::endl;
-		log_debug("GET command response: ");
+		log_debug("GET command response: %s", value.toStdString());
 	} 
 	else 
 	{
 		//std::cerr << "GET command returned unexpected type." << std::endl;
-		log_debug("GET command returned unexpected type.");
+		log_debug("GET command returned unexpected type. %d", reply->type);
 	}
 	freeReplyObject(reply);
 	return value;
@@ -248,7 +248,7 @@ redisContext* connectToRedis()
 		if (c) 
 		{
 			//std::cerr << "Connection error: " << c->errstr << std::endl;
-			log_debug("Connection error: ");
+			log_debug("Connection error: %s", c->errstr);
 			redisFree(c);
 		} 
 		else 
