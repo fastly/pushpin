@@ -226,7 +226,7 @@ QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key)
 	{
 		value = QByteArray(reply->str, reply->len);
 		//std::cout << "GET command response: " << value.toStdString() << std::endl;
-		log_debug("GET command response: %s", value.toStdString());
+		log_debug("GET command response: %s", value.data());
 	} 
 	else 
 	{
