@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -545,11 +545,11 @@ fn parse_log_levels(log_levels: Vec<String>) -> Result<HashMap<String, u8>, Box<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{call_c_main, ensure_example_config, qtest, test_dir};
+    use crate::core::test::TestException;
+    use crate::core::{ensure_example_config, qtest, test_dir};
     use crate::ffi;
     use std::collections::HashMap;
     use std::error::Error;
-    use std::ffi::OsStr;
     use std::net::SocketAddr;
     use std::net::{IpAddr, Ipv4Addr};
     use std::path::PathBuf;
@@ -906,14 +906,14 @@ mod tests {
         }
     }
 
-    fn template_test(args: &[&OsStr]) -> u8 {
+    fn template_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::template_test, args) as u8 }
+        unsafe { ffi::template_test(out_ex) == 0 }
     }
 
     #[test]
     fn template() {
-        assert!(qtest::run(template_test));
+        qtest::run_no_main(template_test);
     }
 }
 
