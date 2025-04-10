@@ -160,7 +160,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 }
 
 template <typename T>
-void updateClientItemField(redisContext* context, const QByteArray& clientId, char *fieldName, const T& value) 
+void updateClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
 {
 	QByteArray key = "client:" + clientId;
 
