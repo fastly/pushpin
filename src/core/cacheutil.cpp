@@ -414,7 +414,7 @@ void testRedis()
 
 	QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
 	QString urlPath = QString::fromUtf8(ret);
-	log_debug("urlPath = ", qPrintable(urlPath));
+	log_debug("urlPath = %s", qPrintable(urlPath));
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
 	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
