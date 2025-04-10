@@ -229,11 +229,15 @@ redisContext* connectToRedis()
 
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
 {
-	QByteArray field = "username";
+	QByteArray field0 = "username";
+	QByteArray field1 = "email";
+	QByteArray value1 = "root@root.com";
 	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b %b %b",
 		key.constData(), (size_t)key.size(),
-		field.constData(), (size_t)field.size(),
-		value.constData(), (size_t)value.size());
+		field0.constData(), (size_t)field0.size(),
+		value.constData(), (size_t)value.size(),
+		field1.constData(), (size_t)field1.size(),
+		value1.constData(), (size_t)value1.size());
 	if (reply == nullptr) 
 	{
 		log_debug("HSET command failed: %d", c->errstr);
@@ -245,7 +249,7 @@ void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArr
 
 QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key) 
 {
-	QByteArray field = "username";
+	QByteArray field = "email";
 	redisReply *reply = (redisReply *)redisCommand(c, "HGET %b %b", 
 		key.constData(), (size_t)key.size(),
 		field.constData(), (size_t)field.size());
