@@ -159,6 +159,48 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 	if (reply) freeReplyObject(reply);
 }
 
+template <typename T>
+void updateClientItemField(redisContext* context, char *fieldName, const QByteArray& clientId, const T& value) 
+{
+	QByteArray key = "client:" + clientId;
+
+	log_debug("TTTTT %s %s", fieldName, typeid(T).name());
+	/*
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"HSET %b "
+		"urlPath %b "
+		"processId %d "
+		"initFlag %d "
+		"resultStr %b "
+		"msgIdCount %d "
+		"lastRequestSeq %d "
+		"lastResponseSeq %d "
+		"lastRequestTime %lld "
+		"lastResponseTime %lld "
+		"receiver %b "
+		"from %b "
+		"clientId %b",
+
+		key.constData(), key.size(),
+
+		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
+		item.processId,
+		item.initFlag ? 1 : 0,
+		item.resultStr.toUtf8().constData(), item.resultStr.toUtf8().size(),
+		item.msgIdCount,
+		item.lastRequestSeq,
+		item.lastResponseSeq,
+		static_cast<long long>(item.lastRequestTime),
+		static_cast<long long>(item.lastResponseTime),
+		item.receiver.constData(), item.receiver.size(),
+		item.from.constData(), item.from.size(),
+		item.clientId.constData(), item.clientId.size()
+	);
+
+	if (reply) freeReplyObject(reply);
+	*/
+}
+
 ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
 {
 	ClientItem item;
@@ -269,6 +311,18 @@ void testRedis()
 	item.from = QByteArray("device42");
 
 	storeClientItem(c, item);
+
+	updateClientItemField(c, item.clientId, "urlPath", "/do/update");
+	updateClientItemField(c, item.clientId, "processId", getpid());
+	updateClientItemField(c, item.clientId, "initFlag", true);
+	updateClientItemField(c, item.clientId, "resultStr", "ok");
+	updateClientItemField(c, item.clientId, "msgIdCount", 42);
+	updateClientItemField(c, item.clientId, "lastRequestSeq", 5);
+	updateClientItemField(c, item.clientId, "lastResponseSeq", 5);
+	updateClientItemField(c, item.clientId, "lastRequestTime", time(nullptr));
+	updateClientItemField(c, item.clientId, "lastResponseTime", time(nullptr));
+	updateClientItemField(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
+	updateClientItemField(c, item.clientId, "from", QByteArray("device42"));
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
