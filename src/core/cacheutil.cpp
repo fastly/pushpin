@@ -173,7 +173,8 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, ch
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
-			fieldName, item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size()
+			fieldName, 
+			value.urlPath.toUtf8().constData(), value.urlPath.toUtf8().size()
 		);
 	}
 	else if constexpr (std::is_same<T, int>::value)
@@ -183,7 +184,8 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, ch
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
-			fieldName, value
+			fieldName, 
+			value
 		);
 	}
 	else if constexpr (std::is_same<T, float>::value)
