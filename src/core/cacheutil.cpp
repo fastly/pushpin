@@ -312,7 +312,8 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	updateClientItemField(c, item.clientId, "urlPath", "/do/update");
+	QString urlPath = "/do/update";
+	updateClientItemField(c, item.clientId, "urlPath", urlPath);
 	updateClientItemField(c, item.clientId, "processId", getpid());
 	updateClientItemField(c, item.clientId, "initFlag", true);
 	updateClientItemField(c, item.clientId, "resultStr", "okk");
