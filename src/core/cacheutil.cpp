@@ -421,7 +421,7 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QString urlPath = loadClientItemField(c, item.clientId, "urlPath");
+	QString urlPath = loadClientItemField<QString>(c, item.clientId, "urlPath");
 	log_debug("urlPath = ", qPrintable(urlPath));
 
 	QString urlPath = "/do/update";
