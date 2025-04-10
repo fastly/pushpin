@@ -229,8 +229,10 @@ redisContext* connectToRedis()
 
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
 {
-	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b username %b",
+	QByteArray field = "username";
+	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b %b %b",
 		key.constData(), (size_t)key.size(),
+		field.constData(), (size_t)field.size(),
 		value.constData(), (size_t)value.size());
 	if (reply == nullptr) 
 	{
@@ -243,7 +245,10 @@ void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArr
 
 QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key) 
 {
-	redisReply *reply = (redisReply *)redisCommand(c, "HGET %b username", key.constData(), (size_t)key.size());
+	QByteArray field = "username";
+	redisReply *reply = (redisReply *)redisCommand(c, "HGET %b %b", 
+		key.constData(), (size_t)key.size(),
+		field.constData(), (size_t)field.size(),);
 	QByteArray value;
 	if (reply == nullptr) 
 	{
@@ -269,14 +274,14 @@ void testRedis()
 	{
 		return;
 	}
-	/*
+
 	QByteArray key = "myKey";
 	QByteArray value = "myValue";
 
 	setQByteArrayToRedis(c, key, value);
 	QByteArray retrievedValue = getQByteArrayFromRedis(c, key);
-	*/
 
+	/*
 	// Set individual fields in a Redis hash
 	redisReply *reply;
 
@@ -291,6 +296,7 @@ void testRedis()
 		log_debug("Email: %s", reply->str);
 	}
 	freeReplyObject(reply);
+	*/
 
 	redisFree(c);
 }
