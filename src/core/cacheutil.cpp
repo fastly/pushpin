@@ -167,7 +167,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
 	{
-		log_debug("QString");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %b",
@@ -178,7 +177,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, int>::value)
 	{
-		log_debug("int");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %d",
@@ -189,7 +187,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, float>::value || std::is_same<T, double>::value)
 	{
-		log_debug("float || double");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %f",
@@ -200,7 +197,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, bool>::value)
 	{
-		log_debug("bool");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %d",
@@ -211,7 +207,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, char*>::value || std::is_same<T, const char*>::value)
 	{
-		log_debug("char* || const char*");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %s",
@@ -222,7 +217,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, long>::value || std::is_same<T, long long>::value)
 	{
-		log_debug("long || long long");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %lld",
@@ -233,7 +227,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	}
 	else if constexpr (std::is_same<T, QByteArray>::value)
 	{
-		log_debug("QByteArray");
 		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %b",
@@ -419,9 +412,9 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
-	QString urlPath = QString::fromUtf8(ret);
-	log_debug("urlPath = ", qPrintable(urlPath));
+	//QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
+	//QString urlPath = QString::fromUtf8(ret);
+	//log_debug("urlPath = ", qPrintable(urlPath));
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
 	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
