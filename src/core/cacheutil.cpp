@@ -286,12 +286,12 @@ void testRedis()
 	// Set individual fields in a Redis hash
 	redisReply *reply;
 
-	reply = redisCommand(c, "HSET user:1001 username %s email %s age %d", 
+	reply = (redisReply *)redisCommand(c, "HSET user:1001 username %s email %s age %d", 
 						"alice", "alice@example.com", 30);
 	freeReplyObject(reply);
 
 	// Get one field (email)
-	reply = redisCommand(c, "HGET user:1001 email");
+	reply = (redisReply *)redisCommand(c, "HGET user:1001 email");
 	if (reply->type == REDIS_REPLY_STRING) {
 		log_debug("Email: %s", reply->str);
 	}
