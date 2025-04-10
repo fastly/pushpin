@@ -248,7 +248,7 @@ QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key)
 	QByteArray field = "username";
 	redisReply *reply = (redisReply *)redisCommand(c, "HGET %b %b", 
 		key.constData(), (size_t)key.size(),
-		field.constData(), (size_t)field.size(),);
+		field.constData(), (size_t)field.size());
 	QByteArray value;
 	if (reply == nullptr) 
 	{
