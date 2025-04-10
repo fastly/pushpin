@@ -197,11 +197,30 @@ static void remove_old_cache_items()
 	}
 }
 
-struct User {
-	const char *username;
-	const char *email;
-	int age;
-};
+void cache_thread()
+{
+	gCacheThreadAllowFlag = true;
+	while (gCacheThreadAllowFlag)
+	{
+		while (gMainThreadRunning)
+		{
+			gCacheThreadRunning = false;
+			QThread::usleep(1);
+		}
+		gCacheThreadRunning = true;
+
+		remove_old_cache_items();
+
+		testRedis();
+
+		gCacheThreadRunning = false;
+
+		QThread::msleep(100);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// HiRedis
 
 redisContext* connectToRedis() 
 {
@@ -225,6 +244,80 @@ redisContext* connectToRedis()
 		return nullptr;
 	}
 	return c;
+}
+
+void storeClientItem(redisContext* context, const ClientItem& item) 
+{
+	QByteArray key = "client:" + item.clientId;
+
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"HSET %b "
+		"urlPath %b "
+		"processId %d "
+		"initFlag %d "
+		"resultStr %b "
+		"msgIdCount %d "
+		"lastRequestSeq %d "
+		"lastResponseSeq %d "
+		"lastRequestTime %lld "
+		"lastResponseTime %lld "
+		"receiver %b "
+		"from %b "
+		"clientId %b",
+
+		key.constData(), key.size(),
+
+		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
+		item.processId,
+		item.initFlag ? 1 : 0,
+		item.resultStr.toUtf8().constData(), item.resultStr.toUtf8().size(),
+		item.msgIdCount,
+		item.lastRequestSeq,
+		item.lastResponseSeq,
+		static_cast<long long>(item.lastRequestTime),
+		static_cast<long long>(item.lastResponseTime),
+		item.receiver.constData(), item.receiver.size(),
+		item.from.constData(), item.from.size(),
+		item.clientId.constData(), item.clientId.size()
+	);
+
+	if (reply) freeReplyObject(reply);
+}
+
+ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
+{
+	ClientItem item;
+	item.clientId = clientId;
+	QByteArray key = "client:" + clientId;
+
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"HGETALL %b", key.constData(), key.size());
+
+	if (!reply || reply->type != REDIS_REPLY_ARRAY) {
+		if (reply) freeReplyObject(reply);
+		return item;
+	}
+
+	for (size_t i = 0; i < reply->elements; i += 2) {
+		QByteArray field(reply->element[i]->str, reply->element[i]->len);
+		QByteArray value(reply->element[i + 1]->str, reply->element[i + 1]->len);
+
+		if (field == "urlPath") item.urlPath = QString::fromUtf8(value);
+		else if (field == "processId") item.processId = value.toInt();
+		else if (field == "initFlag") item.initFlag = (value == "1");
+		else if (field == "resultStr") item.resultStr = QString::fromUtf8(value);
+		else if (field == "msgIdCount") item.msgIdCount = value.toInt();
+		else if (field == "lastRequestSeq") item.lastRequestSeq = value.toInt();
+		else if (field == "lastResponseSeq") item.lastResponseSeq = value.toInt();
+		else if (field == "lastRequestTime") item.lastRequestTime = value.toLongLong();
+		else if (field == "lastResponseTime") item.lastResponseTime = value.toLongLong();
+		else if (field == "receiver") item.receiver = value;
+		else if (field == "from") item.from = value;
+		else if (field == "clientId") item.clientId = value;
+	}
+
+	freeReplyObject(reply);
+	return item;
 }
 
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
@@ -278,53 +371,34 @@ void testRedis()
 	{
 		return;
 	}
-
+	/*
 	QByteArray key = "myKey";
 	QByteArray value = "myValue";
 
 	setQByteArrayToRedis(c, key, value);
 	QByteArray retrievedValue = getQByteArrayFromRedis(c, key);
-
-	/*
-	// Set individual fields in a Redis hash
-	redisReply *reply;
-
-	QByteArray key = "myKey";
-	reply = (redisReply *)redisCommand(c, "HSET myKey username %s email %s age %d", 
-						"alice", "alice@example.com", 30);
-	freeReplyObject(reply);
-
-	// Get one field (email)
-	reply = (redisReply *)redisCommand(c, "HGET myKey email");
-	if (reply->type == REDIS_REPLY_STRING) {
-		log_debug("Email: %s", reply->str);
-	}
-	freeReplyObject(reply);
 	*/
 
+	ClientItem item;
+	item.clientId = "abc123";
+	item.urlPath = "/do/task";
+	item.processId = getpid();
+	item.initFlag = true;
+	item.resultStr = "ok";
+	item.msgIdCount = 42;
+	item.lastRequestSeq = 5;
+	item.lastResponseSeq = 5;
+	item.lastRequestTime = time(nullptr);
+	item.lastResponseTime = time(nullptr);
+	item.receiver = QByteArray::fromHex("deadbeef");
+	item.from = QByteArray("device42");
+
+	storeClientItem(c, item);
+
+	ClientItem loaded = loadClientItem(c, item.clientId);
+	log_debug("Loaded URL:%s", qString(loaded.urlPath))
+
 	redisFree(c);
-}
-
-void cache_thread()
-{
-	gCacheThreadAllowFlag = true;
-	while (gCacheThreadAllowFlag)
-	{
-		while (gMainThreadRunning)
-		{
-			gCacheThreadRunning = false;
-			QThread::usleep(1);
-		}
-		gCacheThreadRunning = true;
-
-		remove_old_cache_items();
-
-		testRedis();
-
-		gCacheThreadRunning = false;
-
-		QThread::msleep(100);
-	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
