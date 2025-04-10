@@ -17,7 +17,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::{mpsc, OnceLock};
 use std::thread;
 
 #[derive(Default)]
@@ -60,9 +60,9 @@ fn run_serial_inner<F>(test_fn: F) -> Option<TestException>
 where
     F: FnOnce(&mut TestException) -> bool + Send + 'static,
 {
-    static SENDER: OnceLock<Mutex<mpsc::Sender<RunSerial>>> = OnceLock::new();
+    static SENDER: OnceLock<mpsc::Sender<RunSerial>> = OnceLock::new();
 
-    let s_run = SENDER.get_or_init(|| {
+    let s_call = SENDER.get_or_init(|| {
         let (s, r) = mpsc::channel::<RunSerial>();
 
         // run in the background forever
@@ -79,21 +79,21 @@ where
             })
             .unwrap();
 
-        Mutex::new(s)
+        s
     });
 
     let (s_ret, r_ret) = mpsc::sync_channel(1);
 
-    s_run
-        .lock()
-        .unwrap()
+    s_call
         .send(RunSerial {
             f: Box::new(test_fn),
             ret: s_ret,
         })
-        .unwrap();
+        .expect("call channel should always be writable");
 
-    r_ret.recv().unwrap()
+    r_ret
+        .recv()
+        .expect("return channel should always be readable")
 }
 
 // this function is meant for running tests that use QCoreApplication. there
