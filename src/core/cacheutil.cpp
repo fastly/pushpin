@@ -241,7 +241,7 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 			"%s %b",
 			key.constData(), key.size(),
 			fieldName, 
-			value.clientId.constData(), value.clientId.size()
+			value.constData(), value.size()
 		);
 	}
 
