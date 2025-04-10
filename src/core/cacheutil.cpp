@@ -127,7 +127,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HSET %b "
-		"urlPath %b "
+		"%s %b "
 		"processId %d "
 		"initFlag %d "
 		"resultStr %b "
@@ -141,7 +141,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 		"clientId %b",
 
 		key.constData(), key.size(),
-
+		"urlPath",
 		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
 		item.processId,
 		item.initFlag ? 1 : 0,
@@ -372,9 +372,9 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
-	QString urlPath = QString::fromUtf8(ret);
-	log_debug("urlPath = %s", qPrintable(urlPath));
+	//QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
+	//QString urlPath = QString::fromUtf8(ret);
+	//log_debug("urlPath = %s", qPrintable(urlPath));
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
 	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
