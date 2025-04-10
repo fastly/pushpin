@@ -264,9 +264,10 @@ T loadClientItemField(redisContext* context, const QByteArray& clientId, const c
 	if (reply == nullptr || reply->str == nullptr)
 		return NULL;
 	
-	QByteArray value(reply->element[i + 1]->str, reply->element[i + 1]->len);
+	QByteArray value(reply->str, reply->len);
 
-	if (fieldName == "urlPath" || fieldName == "resultStr")
+	QString field = QString(fieldName);
+	if (field == "urlPath" || field == "resultStr")
 	{
 		QString ret = QString::fromUtf8(value);
 		freeReplyObject(reply);
