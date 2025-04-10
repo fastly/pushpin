@@ -271,7 +271,7 @@ void testRedis()
 	storeClientItem(c, item);
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
-	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath))
+	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
 
 	redisFree(c);
 }
