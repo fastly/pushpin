@@ -387,7 +387,7 @@ void testRedis()
 	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
 	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray("device42"));
 
-	et = loadClientItemField(c, item.clientId, "urlPath");
+	ret = loadClientItemField(c, item.clientId, "urlPath");
 	urlPath = QString::fromUtf8(ret);
 	log_debug("urlPath1 = %s", qPrintable(urlPath));
 
