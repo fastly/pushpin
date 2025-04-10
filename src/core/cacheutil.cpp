@@ -170,6 +170,10 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, ch
 		log_debug("QString");
 	else if constexpr (std::is_same<T, int>::value)
 		log_debug("int");
+	else if constexpr (std::is_same<T, bool>::value)
+		log_debug("bool");
+	else if constexpr (std::is_same<T, char*>::value)
+		log_debug("char*");
 	else if constexpr (std::is_same<T, long>::value)
 		log_debug("long");
 	else if constexpr (std::is_same<T, QByteArray>::value)
