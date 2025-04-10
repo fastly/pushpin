@@ -166,10 +166,11 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 
 	log_debug("TTTTT %s %s", fieldName, typeid(T).name());
 
+	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
 	{
 		log_debug("QString");
-		redisReply* reply = (redisReply*)redisCommand(context,
+		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
@@ -180,7 +181,7 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 	else if constexpr (std::is_same<T, int>::value)
 	{
 		log_debug("int");
-		redisReply* reply = (redisReply*)redisCommand(context,
+		reply = (redisReply*)redisCommand(context,
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
@@ -188,54 +189,64 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 			value
 		);
 	}
-	else if constexpr (std::is_same<T, float>::value)
-		log_debug("float");
-	else if constexpr (std::is_same<T, double>::value)
-		log_debug("double");
+	else if constexpr (std::is_same<T, float>::value || std::is_same<T, double>::value)
+	{
+		log_debug("float || double");
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %f",
+			key.constData(), key.size(),
+			fieldName, 
+			value
+		);
+	}
 	else if constexpr (std::is_same<T, bool>::value)
+	{
 		log_debug("bool");
-	else if constexpr (std::is_same<T, char*>::value)
-		log_debug("char*");
-	else if constexpr (std::is_same<T, const char*>::value)
-		log_debug("const char*");
-	else if constexpr (std::is_same<T, long>::value)
-		log_debug("long");
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %d",
+			key.constData(), key.size(),
+			fieldName, 
+			value ? 1 : 0
+		);
+	}
+	else if constexpr (std::is_same<T, char*>::value || std::is_same<T, const char*>::value)
+	{
+		log_debug("char* || const char*");
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %s",
+			key.constData(), key.size(),
+			fieldName, 
+			value
+		);
+	}
+	else if constexpr (std::is_same<T, long>::value || std::is_same<T, long long>::value)
+	{
+		log_debug("long || long long");
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %lld",
+			key.constData(), key.size(),
+			fieldName, 
+			value
+		);
+	}
 	else if constexpr (std::is_same<T, QByteArray>::value)
+	{
 		log_debug("QByteArray");
-	/*
-	redisReply* reply = (redisReply*)redisCommand(context,
-		"HSET %b "
-		"urlPath %b "
-		"processId %d "
-		"initFlag %d "
-		"resultStr %b "
-		"msgIdCount %d "
-		"lastRequestSeq %d "
-		"lastResponseSeq %d "
-		"lastRequestTime %lld "
-		"lastResponseTime %lld "
-		"receiver %b "
-		"from %b "
-		"clientId %b",
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %b",
+			key.constData(), key.size(),
+			fieldName, 
+			value.clientId.constData(), value.clientId.size()
+		);
+	}
 
-		key.constData(), key.size(),
-
-		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
-		item.processId,
-		item.initFlag ? 1 : 0,
-		item.resultStr.toUtf8().constData(), item.resultStr.toUtf8().size(),
-		item.msgIdCount,
-		item.lastRequestSeq,
-		item.lastResponseSeq,
-		static_cast<long long>(item.lastRequestTime),
-		static_cast<long long>(item.lastResponseTime),
-		item.receiver.constData(), item.receiver.size(),
-		item.from.constData(), item.from.size(),
-		item.clientId.constData(), item.clientId.size()
-	);
-
-	if (reply) freeReplyObject(reply);
-	*/
+	if (reply != nullptr) 
+		freeReplyObject(reply);
 }
 
 ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
