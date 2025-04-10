@@ -253,7 +253,7 @@ QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId
 	*/
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b urlPath", 
-		key.constData(), key.size(),
+		key.constData(), key.size()
 	);
 
 	if (reply == nullptr)
