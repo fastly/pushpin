@@ -127,7 +127,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HSET %b "
-		"%s %b "
+		"urlPath %b "
 		"processId %d "
 		"initFlag %d "
 		"resultStr %b "
@@ -141,7 +141,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 		"clientId %b",
 
 		key.constData(), key.size(),
-		"urlPath",
+
 		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
 		item.processId,
 		item.initFlag ? 1 : 0,
@@ -243,12 +243,17 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
 {
 	QByteArray key = "client:" + clientId;
-
+	/*
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b ", 
 		"%s",
 		key.constData(), key.size(),
 		fieldName
+	);
+	*/
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"HGET %b urlPath", 
+		key.constData(), key.size(),
 	);
 
 	if (reply == nullptr)
