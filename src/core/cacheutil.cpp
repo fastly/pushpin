@@ -243,16 +243,10 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
 {
 	QByteArray key = "client:" + clientId;
-	/*
+
 	redisReply* reply = (redisReply*)redisCommand(context,
-		"HGET %b ", 
-		"%s",
-		key.constData(), key.size(),
-		fieldName
-	);
-	*/
-	redisReply* reply = (redisReply*)redisCommand(context,
-		"HGET %b %s", 
+		"HGET %b ",
+		"%s", 
 		key.constData(), key.size(),
 		(char *)fieldName
 	);
