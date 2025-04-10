@@ -251,11 +251,10 @@ QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId
 		fieldName
 	);
 	*/
-	char *field = (char *)fieldName;
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b %s", 
 		key.constData(), key.size(),
-		field
+		(char *)fieldName
 	);
 
 	if (reply == nullptr)
