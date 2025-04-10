@@ -421,6 +421,9 @@ void testRedis()
 
 	storeClientItem(c, item);
 
+	QString urlPath = loadClientItemField(c, item.clientId, "urlPath");
+	log_debug("urlPath = ", qPrintable(urlPath));
+
 	QString urlPath = "/do/update";
 	updateClientItemField<QString>(c, item.clientId, "urlPath", urlPath);
 	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
