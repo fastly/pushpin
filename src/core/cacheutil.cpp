@@ -174,7 +174,7 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 			"%s %b",
 			key.constData(), key.size(),
 			fieldName, 
-			value.urlPath.toUtf8().constData(), value.urlPath.toUtf8().size()
+			value.toUtf8().constData(), value.toUtf8().size()
 		);
 	}
 	else if constexpr (std::is_same<T, int>::value)
