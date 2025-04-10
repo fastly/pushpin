@@ -315,7 +315,7 @@ void testRedis()
 	updateClientItemField(c, item.clientId, "urlPath", "/do/update");
 	updateClientItemField(c, item.clientId, "processId", getpid());
 	updateClientItemField(c, item.clientId, "initFlag", true);
-	updateClientItemField(c, item.clientId, "resultStr", "ok");
+	updateClientItemField(c, item.clientId, "resultStr", "okk");
 	updateClientItemField(c, item.clientId, "msgIdCount", 42);
 	updateClientItemField(c, item.clientId, "lastRequestSeq", 5);
 	updateClientItemField(c, item.clientId, "lastResponseSeq", 5);
