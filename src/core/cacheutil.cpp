@@ -332,17 +332,17 @@ void testRedis()
 	storeClientItem(c, item);
 
 	QString urlPath = "/do/update";
-	updateClientItemField(c, item.clientId, "urlPath", urlPath);
-	updateClientItemField(c, item.clientId, "processId", getpid());
-	updateClientItemField(c, item.clientId, "initFlag", true);
-	updateClientItemField(c, item.clientId, "resultStr", "okk");
-	updateClientItemField(c, item.clientId, "msgIdCount", 42);
-	updateClientItemField(c, item.clientId, "lastRequestSeq", 5);
-	updateClientItemField(c, item.clientId, "lastResponseSeq", 5);
-	updateClientItemField(c, item.clientId, "lastRequestTime", time(nullptr));
-	updateClientItemField(c, item.clientId, "lastResponseTime", time(nullptr));
-	updateClientItemField(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
-	updateClientItemField(c, item.clientId, "from", QByteArray("device42"));
+	updateClientItemField<QString>(c, item.clientId, "urlPath", urlPath);
+	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
+	updateClientItemField<bool>(c, item.clientId, "initFlag", true);
+	updateClientItemField<QString>(c, item.clientId, "resultStr", "okk");
+	updateClientItemField<int>(c, item.clientId, "msgIdCount", 42);
+	updateClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
+	updateClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
+	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
+	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
+	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
+	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray("device42"));
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
