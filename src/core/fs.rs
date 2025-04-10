@@ -24,6 +24,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::{Arc, Mutex};
+use thiserror::Error;
 
 fn try_with_increasing_buffer<T, U>(starting_size: usize, f: T) -> Result<U, io::Error>
 where
@@ -150,6 +151,19 @@ fn set_fd_nonblocking(fd: RawFd) -> Result<(), io::Error> {
     Ok(())
 }
 
+fn parent_dir(path: &Path) -> Result<&Path, io::Error> {
+    match path.parent() {
+        Some(p) => {
+            if p.as_os_str().is_empty() {
+                Ok(Path::new(".")) // empty parent, assume current dir
+            } else {
+                Ok(p)
+            }
+        }
+        None => Err(io::Error::from(io::ErrorKind::InvalidInput)),
+    }
+}
+
 struct FileWatcherState {
     watcher: notify::RecommendedWatcher,
     changed: bool,
@@ -166,16 +180,23 @@ pub struct FileWatcher {
     data: Arc<FileWatcherData>,
 }
 
-#[derive(Debug)]
-pub struct FileWatcherError;
+#[derive(Debug, Error)]
+pub enum FileWatcherError {
+    #[error("no parent")]
+    NoParent,
+
+    #[error(transparent)]
+    Notify(#[from] notify::Error),
+}
 
 impl FileWatcher {
+    // `file_path` must be a path to a file, not a directory, and the file's
+    // parent directory must exist
     pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, FileWatcherError> {
         let file = file_path.as_ref();
 
-        let dir = match file.parent() {
-            Some(p) => p,
-            None => return Err(FileWatcherError),
+        let Ok(dir) = parent_dir(file) else {
+            return Err(FileWatcherError::NoParent);
         };
 
         let mut fds = [0; 2];
@@ -249,12 +270,9 @@ impl FileWatcher {
             });
 
             // watch the dir instead of the file, so we can detect file creates
-            if let Err(e) = state
+            state
                 .watcher
-                .watch(dir, notify::RecursiveMode::NonRecursive)
-            {
-                warn!("failed to watch {}: {:?}", dir.display(), e);
-            }
+                .watch(dir, notify::RecursiveMode::NonRecursive)?;
         }
 
         Ok(Self { data })

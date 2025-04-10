@@ -19,6 +19,7 @@
 
 #include <boost/signals2.hpp>
 #include "socketnotifier.h"
+#include "defercall.h"
 #include "rust/bindings.h"
 
 class QString;
@@ -29,13 +30,14 @@ public:
 	FileWatcher();
 	~FileWatcher();
 
-	void start(const QString &filePath);
+	bool start(const QString &filePath);
 
 	boost::signals2::signal<void()> fileChanged;
 
 private:
 	ffi::FileWatcher *inner_;
 	std::unique_ptr<SocketNotifier> sn_;
+	DeferCall deferCall_;
 
 	void sn_activated(int socket, uint8_t readiness);
 };

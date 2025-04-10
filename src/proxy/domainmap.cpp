@@ -317,7 +317,10 @@ public slots:
 		if(!fileName.isEmpty())
 		{
 			watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
-			watcher.start(fileName);
+
+			if(!watcher.start(fileName)) {
+				log_error("failed to watch %s", qPrintable(fileName));
+			}
 
 			reload();
 		}
