@@ -419,7 +419,7 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QByteArray ret = loadClientItemField<QString>(c, item.clientId, "urlPath");
+	QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
 	QString urlPath = QString::fromUtf8(ret);
 	log_debug("urlPath = ", qPrintable(urlPath));
 
