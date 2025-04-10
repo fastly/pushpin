@@ -166,7 +166,13 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, ch
 
 	log_debug("TTTTT %s %s", fieldName, typeid(T).name());
 
-	if constexpr (std::is_same<T, QByteArray>::value)
+	if constexpr (std::is_same<T, QString>::value)
+		log_debug("QString");
+	else if constexpr (std::is_same<T, int>::value)
+		log_debug("int");
+	else if constexpr (std::is_same<T, long>::value)
+		log_debug("long");
+	else if constexpr (std::is_same<T, QByteArray>::value)
 		log_debug("QByteArray");
 	/*
 	redisReply* reply = (redisReply*)redisCommand(context,
