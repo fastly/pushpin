@@ -232,7 +232,7 @@ void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArr
 	QByteArray field0 = "username";
 	QByteArray field1 = "email";
 	QByteArray value1 = "root@root.com";
-	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b %b %b",
+	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b %b %b %b %b",
 		key.constData(), (size_t)key.size(),
 		field0.constData(), (size_t)field0.size(),
 		value.constData(), (size_t)value.size(),
