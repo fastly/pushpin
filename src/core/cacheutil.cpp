@@ -203,46 +203,6 @@ struct User {
 	int age;
 };
 
-void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
-{
-	redisReply *reply = (redisReply *)redisCommand(c, "SET %b %b",
-												key.constData(), (size_t)key.size(),
-												value.constData(), (size_t)value.size());
-	if (reply == nullptr) 
-	{
-		//std::cerr << "SET command failed: " << c->errstr << std::endl;
-		log_debug("SET command failed: %d", c->errstr);
-		return;
-	}
-	//std::cout << "SET command response: " << reply->str << std::endl;
-	log_debug("SET command response: %s", reply->str);
-	freeReplyObject(reply);
-}
-
-QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key) 
-{
-	redisReply *reply = (redisReply *)redisCommand(c, "GET %b", key.constData(), (size_t)key.size());
-	QByteArray value;
-	if (reply == nullptr) 
-	{
-		//std::cerr << "GET command failed: " << c->errstr << std::endl;
-		log_debug("GET command failed: %d", c->errstr);
-	} 
-	else if (reply->type == REDIS_REPLY_STRING) 
-	{
-		value = QByteArray(reply->str, reply->len);
-		//std::cout << "GET command response: " << value.toStdString() << std::endl;
-		log_debug("GET command response: %s", value.data());
-	} 
-	else 
-	{
-		//std::cerr << "GET command returned unexpected type." << std::endl;
-		log_debug("GET command returned unexpected type. %d", reply->type);
-	}
-	freeReplyObject(reply);
-	return value;
-}
-
 redisContext* connectToRedis() 
 {
 	const char *hostname = "127.0.0.1";
@@ -267,6 +227,41 @@ redisContext* connectToRedis()
 	return c;
 }
 
+void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
+{
+	redisReply *reply = (redisReply *)redisCommand(c, "HSET %b username %b",
+		key.constData(), (size_t)key.size(),
+		value.constData(), (size_t)value.size());
+	if (reply == nullptr) 
+	{
+		log_debug("hSET command failed: %d", c->errstr);
+		return;
+	}
+	log_debug("HSET command response: %s", reply->str);
+	freeReplyObject(reply);
+}
+
+QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key) 
+{
+	redisReply *reply = (redisReply *)redisCommand(c, "HGET %b username", key.constData(), (size_t)key.size());
+	QByteArray value;
+	if (reply == nullptr) 
+	{
+		log_debug("HGET command failed: %d", c->errstr);
+	} 
+	else if (reply->type == REDIS_REPLY_STRING) 
+	{
+		value = QByteArray(reply->str, reply->len);
+		log_debug("HGET command response: %s", value.data());
+	} 
+	else 
+	{
+		log_debug("HGET command returned unexpected type. %d", reply->type);
+	}
+	freeReplyObject(reply);
+	return value;
+}
+
 void testRedis() 
 {
 	redisContext *c = connectToRedis();
@@ -275,14 +270,13 @@ void testRedis()
 		return;
 	}
 
-	/*
 	QByteArray key = "myKey";
 	QByteArray value = "myValue";
 
 	setQByteArrayToRedis(c, key, value);
 	QByteArray retrievedValue = getQByteArrayFromRedis(c, key);
-	*/
 
+	/*
 	// Set individual fields in a Redis hash
 	redisReply *reply;
 
@@ -296,6 +290,7 @@ void testRedis()
 		log_debug("Email: %s", reply->str);
 	}
 	freeReplyObject(reply);
+	*/
 
 	redisFree(c);
 }
