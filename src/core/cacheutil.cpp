@@ -242,8 +242,6 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 
 QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
 {
-	ClientItem item;
-	item.clientId = clientId;
 	QByteArray key = "client:" + clientId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
@@ -253,52 +251,14 @@ QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId
 		fieldName
 	);
 
-	if (reply == nullptr || reply->str == nullptr)
+	if (reply == nullptr)
 		return NULL;
+	log_debug("%d %s", reply->type, reply->str);
 	
 	QByteArray ret(reply->str, reply->len);
 
 	freeReplyObject(reply);
 	return ret;
-	/*
-	QString field = QString(fieldName);
-	if (field == "urlPath" || field == "resultStr")
-	{
-		QString ret = QString::fromUtf8(value);
-		freeReplyObject(reply);
-		return ret;
-	}
-	else if (field == "processId")
-	{
-		pid_t ret = value.toInt();
-		freeReplyObject(reply);
-		return ret;
-	}
-	else if (field == "initFlag")
-	{
-		bool ret = (value == "1");
-		freeReplyObject(reply);
-		return ret;
-	}
-	else if (field == "msgIdCount" || field == "lastRequestSeq" || field == "lastResponseSeq")
-	{
-		int ret = value.toInt();
-		freeReplyObject(reply);
-		return ret;
-	}
-	else if (field == "lastRequestTime" || field == "lastResponseTime")
-	{
-		time_t ret = value.toLongLong();
-		freeReplyObject(reply);
-		return ret;
-	}
-	else if (field == "receiver" || field == "from" || field == "clientId")
-	{
-		QByteArray ret = value;
-		freeReplyObject(reply);
-		return ret;
-	}
-	*/
 }
 
 ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
