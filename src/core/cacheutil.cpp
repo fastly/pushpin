@@ -95,131 +95,6 @@ extern int gCacheItemMaxCount;
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Cache Thread
-bool gCacheThreadAllowFlag = true;
-static int gMainThreadRunning = 0;
-static bool gCacheThreadRunning = false;
-
-void pause_cache_thread()
-{
-	if (gMainThreadRunning)
-	{
-		gMainThreadRunning++;
-		return;
-	}
-	
-	while (gCacheThreadRunning)
-	{
-		QThread::usleep(1);
-	}
-	
-	gMainThreadRunning++;
-}
-
-void resume_cache_thread()
-{
-	if (!gMainThreadRunning)
-	{
-		return;
-	}
-	
-	gMainThreadRunning--;
-}
-
-static void remove_old_cache_items()
-{
-	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-	qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
-	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
-
-	while (accessTimeoutMSeconds > 0)
-	{
-		// Remove items where the value is greater than 30
-		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
-		{
-			QByteArray itemKey = it.key();
-			CacheItem cacheItem = it.value();
-			if (cacheItem.methodType == CacheMethodType::CACHE_METHOD)
-			{
-				if (cacheItem.refreshFlag & AUTO_REFRESH_UNERASE)
-				{
-					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(cacheItem.methodName), itemKey.toHex().data());
-					++it;  // Move to the next item
-					continue;
-				}
-				qint64 accessDiff = currMTime - cacheItem.lastAccessTime;
-				if (accessDiff > accessTimeoutMSeconds)
-				{
-					// remove cache item
-					log_debug("[CACHE] deleting cache item for access timeout %s", itemKey.toHex().data());
-					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
-					continue;
-				} 
-			}
-			else if (cacheItem.methodType == CacheMethodType::SUBSCRIBE_METHOD && cacheItem.cachedFlag == true)
-			{
-				qint64 refreshDiff = currMTime - cacheItem.lastRefreshTime;
-				
-				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
-				{
-					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
-
-					// add unsubscribe request item for cache thread
-					if (cacheItem.orgMsgId.isEmpty() == false)
-					{
-						UnsubscribeRequestItem reqItem;
-						reqItem.subscriptionStr = cacheItem.subscriptionStr;
-						reqItem.from = cacheItem.requestPacket.from;
-						reqItem.unsubscribeMethodName = gSubscribeMethodMap[cacheItem.methodName];
-						reqItem.cacheClientId = cacheItem.cacheClientId;
-						gUnsubscribeRequestList.append(reqItem);
-					}
-
-					// remove subscription item
-					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						qPrintable(cacheItem.orgSubscriptionStr), qPrintable(cacheItem.subscriptionStr));
-					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
-					continue;
-				}
-			}
-
-			++it;  // Move to the next item
-		}
-
-		int cacheItemCount = gCacheItemMap.count();
-		if (cacheItemCount < gCacheItemMaxCount)
-		{
-			break;
-		}
-
-		log_debug("[CACHE] detected MAX cache item count %d", cacheItemCount);
-		accessTimeoutMSeconds -= 1000;
-	}
-}
-
-void cache_thread()
-{
-	gCacheThreadAllowFlag = true;
-	while (gCacheThreadAllowFlag)
-	{
-		while (gMainThreadRunning)
-		{
-			gCacheThreadRunning = false;
-			QThread::usleep(1);
-		}
-		gCacheThreadRunning = true;
-
-		remove_old_cache_items();
-
-		testRedis();
-
-		gCacheThreadRunning = false;
-
-		QThread::msleep(100);
-	}
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
 
 redisContext* connectToRedis() 
@@ -364,7 +239,7 @@ QByteArray getQByteArrayFromRedis(redisContext *c, const QByteArray &key)
 	return value;
 }
 
-void testRedis() 
+void testRedis()
 {
 	redisContext *c = connectToRedis();
 	if (c == nullptr) 
@@ -396,9 +271,134 @@ void testRedis()
 	storeClientItem(c, item);
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
-	log_debug("Loaded URL:%s", qString(loaded.urlPath))
+	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath))
 
 	redisFree(c);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cache Thread
+bool gCacheThreadAllowFlag = true;
+static int gMainThreadRunning = 0;
+static bool gCacheThreadRunning = false;
+
+void pause_cache_thread()
+{
+	if (gMainThreadRunning)
+	{
+		gMainThreadRunning++;
+		return;
+	}
+	
+	while (gCacheThreadRunning)
+	{
+		QThread::usleep(1);
+	}
+	
+	gMainThreadRunning++;
+}
+
+void resume_cache_thread()
+{
+	if (!gMainThreadRunning)
+	{
+		return;
+	}
+	
+	gMainThreadRunning--;
+}
+
+static void remove_old_cache_items()
+{
+	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+	qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
+	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
+
+	while (accessTimeoutMSeconds > 0)
+	{
+		// Remove items where the value is greater than 30
+		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
+		{
+			QByteArray itemKey = it.key();
+			CacheItem cacheItem = it.value();
+			if (cacheItem.methodType == CacheMethodType::CACHE_METHOD)
+			{
+				if (cacheItem.refreshFlag & AUTO_REFRESH_UNERASE)
+				{
+					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(cacheItem.methodName), itemKey.toHex().data());
+					++it;  // Move to the next item
+					continue;
+				}
+				qint64 accessDiff = currMTime - cacheItem.lastAccessTime;
+				if (accessDiff > accessTimeoutMSeconds)
+				{
+					// remove cache item
+					log_debug("[CACHE] deleting cache item for access timeout %s", itemKey.toHex().data());
+					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
+					continue;
+				} 
+			}
+			else if (cacheItem.methodType == CacheMethodType::SUBSCRIBE_METHOD && cacheItem.cachedFlag == true)
+			{
+				qint64 refreshDiff = currMTime - cacheItem.lastRefreshTime;
+				
+				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
+				{
+					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
+
+					// add unsubscribe request item for cache thread
+					if (cacheItem.orgMsgId.isEmpty() == false)
+					{
+						UnsubscribeRequestItem reqItem;
+						reqItem.subscriptionStr = cacheItem.subscriptionStr;
+						reqItem.from = cacheItem.requestPacket.from;
+						reqItem.unsubscribeMethodName = gSubscribeMethodMap[cacheItem.methodName];
+						reqItem.cacheClientId = cacheItem.cacheClientId;
+						gUnsubscribeRequestList.append(reqItem);
+					}
+
+					// remove subscription item
+					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
+						qPrintable(cacheItem.orgSubscriptionStr), qPrintable(cacheItem.subscriptionStr));
+					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
+					continue;
+				}
+			}
+
+			++it;  // Move to the next item
+		}
+
+		int cacheItemCount = gCacheItemMap.count();
+		if (cacheItemCount < gCacheItemMaxCount)
+		{
+			break;
+		}
+
+		log_debug("[CACHE] detected MAX cache item count %d", cacheItemCount);
+		accessTimeoutMSeconds -= 1000;
+	}
+}
+
+void cache_thread()
+{
+	gCacheThreadAllowFlag = true;
+	while (gCacheThreadAllowFlag)
+	{
+		while (gMainThreadRunning)
+		{
+			gCacheThreadRunning = false;
+			QThread::usleep(1);
+		}
+		gCacheThreadRunning = true;
+
+		remove_old_cache_items();
+
+		testRedis();
+
+		gCacheThreadRunning = false;
+
+		QThread::msleep(100);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
