@@ -247,8 +247,7 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 		freeReplyObject(reply);
 }
 
-template <typename T>
-T loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
+QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
 {
 	ClientItem item;
 	item.clientId = clientId;
@@ -264,8 +263,11 @@ T loadClientItemField(redisContext* context, const QByteArray& clientId, const c
 	if (reply == nullptr || reply->str == nullptr)
 		return NULL;
 	
-	QByteArray value(reply->str, reply->len);
+	QByteArray ret(reply->str, reply->len);
 
+	freeReplyObject(reply);
+	return ret;
+	/*
 	QString field = QString(fieldName);
 	if (field == "urlPath" || field == "resultStr")
 	{
@@ -303,11 +305,7 @@ T loadClientItemField(redisContext* context, const QByteArray& clientId, const c
 		freeReplyObject(reply);
 		return ret;
 	}
-
-	if (reply != nullptr) 
-		freeReplyObject(reply);
-
-	return NULL;
+	*/
 }
 
 ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
@@ -421,7 +419,8 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QString urlPath = loadClientItemField<QString>(c, item.clientId, "urlPath");
+	QByteArray ret = loadClientItemField<QString>(c, item.clientId, "urlPath");
+	QString urlPath = QString::fromUtf8(ret);
 	log_debug("urlPath = ", qPrintable(urlPath));
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
