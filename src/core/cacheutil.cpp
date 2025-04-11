@@ -401,7 +401,7 @@ void testRedis()
 	storeClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
 	storeClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
 	storeClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdef"));
-	ZhttpRequestPacket packet = new ZhttpRequestPacket();
+	ZhttpRequestPacket packet;
 	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
 
 	ClientItem newItem;
