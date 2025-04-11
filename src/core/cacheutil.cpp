@@ -476,11 +476,11 @@ void testRedis()
 	packet.code = 2222;
 	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
 	QMap<QByteArray, ClientInCacheItem> clientMap;
-	ClientInCacheItem clientItem0;
-	clientItem0.msgId = "1";
-	clientItem0.from = QByteArray::fromHex("abcdef");
-	QByteArray key0 = QByteArray::fromHex("123456");
-	clientMap[key0] = clientItem0;
+	//ClientInCacheItem clientItem0;
+	//clientItem0.msgId = "1";
+	//clientItem0.from = QByteArray::fromHex("abcdef");
+	//QByteArray key0 = QByteArray::fromHex("123456");
+	//clientMap[key0] = clientItem0;
 	ClientInCacheItem clientItem1;
 	clientItem1.msgId = "2";
 	clientItem1.from = QByteArray::fromHex("bcdef");
