@@ -432,7 +432,7 @@ void testRedis()
 	clientItem.from = QByteArray::fromHex("abcdef");
 	QByteArray key = QByteArray::fromHex("123456");
 	clientMap[key] = clientItem;
-	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "clientMap", clientItem);
+	storeClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", clientMap);
 
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
