@@ -396,7 +396,7 @@ void testRedis()
 	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
 	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
 	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
-	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("deadvibeef"));
+	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("vi"));
 
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
