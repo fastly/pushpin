@@ -81,6 +81,11 @@ enum CacheMethodType {
 	SUBSCRIBE_METHOD
 };
 
+struct ClientInCacheItem {
+	QString msgId;
+	QByteArray from;
+};
+
 // Cache Item
 struct CacheItem {
 	QString orgMsgId;
@@ -103,10 +108,6 @@ struct CacheItem {
 	QString orgSubscriptionStr;
 	QString subscriptionStr;
 	ZhttpResponsePacket subscriptionPacket;
-	struct ClientInCacheItem {
-		QString msgId;
-		QByteArray from;
-	};
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 };
 
