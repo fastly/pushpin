@@ -481,6 +481,10 @@ void testRedis()
 	clientItem.from = QByteArray::fromHex("abcdef");
 	QByteArray key = QByteArray::fromHex("123456");
 	clientMap[key] = clientItem;
+	clientItem.msgId = "2";
+	clientItem.from = QByteArray::fromHex("bcdef");
+	key = QByteArray::fromHex("234567");
+	clientMap[key] = clientItem;
 	storeClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", clientMap);
 
 	ClientItem newItem;
