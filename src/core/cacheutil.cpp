@@ -256,7 +256,6 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		return -1;
 
 	QByteArray output(reply->str, reply->len);
-	log_debug("%s = %s, %d", fieldName, QByteArray::fromHex(reply->str).data(), reply->len);
 	
 	if constexpr (std::is_same<T, QString>::value)
 		value = QString::fromUtf8(output);
@@ -390,7 +389,7 @@ void testRedis()
 	item.lastRequestTime = time(nullptr);
 	item.lastResponseTime = time(nullptr);
 	item.receiver = QByteArray::fromHex("deadbeef");
-	item.from = QByteArray::fromHex("device42asdf");
+	item.from = QByteArray::fromHex("device");
 
 	storeClientItem(c, item);
 
