@@ -258,45 +258,25 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 	QByteArray output(reply->str, reply->len);
 	
 	if constexpr (std::is_same<T, QString>::value)
-	{
 		value = QString::fromUtf8(output);
-	}
 	else if constexpr (std::is_same<T, int>::value)
-	{
 		value = output.toInt();
-	}
 	else if constexpr (std::is_same<T, float>::value)
-	{
 		value = output.toFloat();
-	}
 	else if constexpr (std::is_same<T, double>::value)
-	{
 		value = output.toDouble();
-	}
 	else if constexpr (std::is_same<T, bool>::value)
-	{
 		value = (output == "1");
-	}
 	else if constexpr (std::is_same<T, char*>::value)
-	{
 		value = output.data();
-	}
 	else if constexpr (std::is_same<T, const char*>::value)
-	{
 		value = output.constData();
-	}
 	else if constexpr (std::is_same<T, long>::value)
-	{
 		value = output.toLong();
-	}
 	else if constexpr (std::is_same<T, long long>::value)
-	{
 		value = output.toLongLong();
-	}
 	else if constexpr (std::is_same<T, QByteArray>::value)
-	{
 		value = output;
-	}	
 
 	freeReplyObject(reply);
 	return 0;
@@ -409,7 +389,7 @@ void testRedis()
 	item.lastRequestTime = time(nullptr);
 	item.lastResponseTime = time(nullptr);
 	item.receiver = QByteArray::fromHex("deadbeef");
-	item.from = QByteArray::fromHex("device42");
+	item.from = QByteArray::fromHex("device42asdf");
 
 	storeClientItem(c, item);
 
@@ -447,7 +427,7 @@ void testRedis()
 	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
 	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
 	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
-	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray("device42"));
+	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("device42"));
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
