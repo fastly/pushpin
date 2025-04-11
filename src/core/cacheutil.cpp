@@ -241,7 +241,7 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 }
 
 template <typename T>
-int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& output) 
+int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value) 
 {
 	QByteArray key = "client:" + clientId;
 
@@ -254,10 +254,49 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 
 	if (reply == nullptr)
 		return -1;
-	log_debug("%d %s", reply->type, reply->str);
+
+	QByteArray output(reply->str, reply->len);
 	
-	QByteArray ret(reply->str, reply->len);
-	output = QString::fromUtf8(ret);
+	if constexpr (std::is_same<T, QString>::value)
+	{
+		value = QString::fromUtf8(output);
+	}
+	else if constexpr (std::is_same<T, int>::value)
+	{
+		value = output.toInt();
+	}
+	else if constexpr (std::is_same<T, float>::value)
+	{
+		value = output.toFloat();
+	}
+	else if constexpr (std::is_same<T, double>::value)
+	{
+		value = output.toDouble();
+	}
+	else if constexpr (std::is_same<T, bool>::value)
+	{
+		value = (output == "1");
+	}
+	else if constexpr (std::is_same<T, char*>::value)
+	{
+		value = output.data();
+	}
+	else if constexpr (std::is_same<T, const char*>::value)
+	{
+		value = output.constData();
+	}
+	else if constexpr (std::is_same<T, long>::value)
+	{
+		value = output.toLong();
+	}
+	else if constexpr (std::is_same<T, long long>::value)
+	{
+		value = output.toLongLong();
+	}
+	else if constexpr (std::is_same<T, QByteArray>::value)
+	{
+		value = ouutput
+	}	
 
 	freeReplyObject(reply);
 	return 0;
@@ -374,9 +413,29 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QString urlPath = "";
-	loadClientItemField<QString>(c, item.clientId, "urlPath", urlPath);
-	log_debug("urlPath = %s", qPrintable(urlPath));
+	ClientItem newItem;
+	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
+	loadClientItemField<pid_t>(c, item.clientId, "urlPath", newItem.processId);
+	loadClientItemField<bool>(c, item.clientId, "urlPath", newItem.initFlag);
+	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.resultStr);
+	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.msgIdCount);
+	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.lastRequestSeq);
+	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.lastResponseSeq);
+	loadClientItemField<time_t>(c, item.clientId, "urlPath", newItem.lastRequestTime);
+	loadClientItemField<time_t>(c, item.clientId, "urlPath", newItem.lastResponseTime);
+	loadClientItemField<QByteArray>(c, item.clientId, "urlPath", newItem.receiver);
+	loadClientItemField<QByteArray>(c, item.clientId, "urlPath", newItem.from);
+	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
+	log_debug("processId = %d", newItem.processId);
+	log_debug("initFlag = %s", newItem.initFlag ? "true" : "false");
+	log_debug("resultStr = %s", qPrintable(newItem.resultStr));
+	log_debug("msgIdCount = %d", newItem.msgIdCount);
+	log_debug("lastRequestSeq = %d", newItem.lastRequestSeq);
+	log_debug("lastResponseSeq = %d", newItem.lastResponseSeq);
+	log_debug("lastRequestTime = %lld", newItem.lastRequestTime);
+	log_debug("lastResponseTime = %lld", newItem.lastResponseTime);
+	log_debug("receiver = %s", newItem.receiver.toHex().data());
+	log_debug("from = %s", newItem.from.toHex().data());
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
 	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
