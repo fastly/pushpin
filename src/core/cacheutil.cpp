@@ -264,31 +264,14 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
 			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-			reply = (redisReply*)redisCommand(context,
-				"HSET %b "
-				"%b %b",
-				key.constData(), key.size(),
-				mapKey.constData(), mapKey.size(),
-				clientItemVal.toUtf8().constData(), clientItemVal.toUtf8().size()
-			);
-			if (reply != nullptr) 
-				freeReplyObject(reply);
+			storeClientItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
 		}
 
 		log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 		if (!newClientMapVal.isEmpty())
 		{
 			newClientMapVal += originalClientMapVal;
-			reply = (redisReply*)redisCommand(context,
-				"HSET %b "
-				"%s %b",
-				key.constData(), key.size(),
-				fieldName, 
-				newClientMapVal.toUtf8().constData(), newClientMapVal.toUtf8().size()
-			);
-			if (reply != nullptr) 
-				freeReplyObject(reply);
-			reply = nullptr;
+			storeClientItemField<QString>(context, clientId, "clientMap", newClientMapVal);
 		}
 	}
 
@@ -346,35 +329,17 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
 	{
 		QString clientMap = QString::fromUtf8(output);
-		freeReplyObject(reply);
 		log_debug("Load ClientMap=%s", qPrintable(clientMap));
 		QStringList mapList = clientMap.split("\n");
-		for (const QString &map : mapList) 
+		for	(int i=0; i < mapList.length(); i++)
 		{
-			QByteArray mapByte = QByteArray::fromHex(map.toUtf8());
-			reply = (redisReply*)redisCommand(context,
-				"HGET %b "
-				"%b",
-				key.constData(), key.size(),
-				mapByte.constData(), mapByte.size()
-			);
-			if (reply == nullptr)
-				return -1;
-
-			QByteArray mapVal(reply->str, reply->len);
-			QString mapValStr = QString::fromUtf8(mapVal);
-			QStringList mapValList = mapValStr.split("\n");
-			if (mapValList.length() == 2)
+			QString mapKey = mapList[i];
+			if (!mapKey.isEmpty())
 			{
-				ClientInCacheItem clientItem;
-				clientItem.msgId = mapValList[0];
-				clientItem.from = QByteArray::fromHex(mapValList[1].toUtf8());
-				value[mapByte] = clientItem;
+				QString mapValStr = "";
+				loadClientItemField<QString>(context, clientId, qPrintable(mapKey), mapValStr);
+				log_debug("mapValStr = %s", qPrintable(mapValStr));
 			}
-
-			if (reply != nullptr)
-				freeReplyObject(reply);
-			reply = nullptr;
 		}
 	}
 
@@ -525,10 +490,12 @@ void testRedis()
 	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
 	QMap<QByteArray, ClientInCacheItem> newClientMap;
 	loadClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", newClientMap);
+	/*
 	for (const QByteArray &mapKey : newClientMap.keys())
 	{
 		log_debug("TTTTT %s, %s, %s", mapKey.toHex().data(), qPrintable(newClientMap[mapKey].msgId), newClientMap[mapKey].from.toHex().data());
 	}
+	*/
 
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
