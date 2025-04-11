@@ -333,12 +333,21 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		QStringList mapList = clientMap.split("\n");
 		for	(int i=0; i < mapList.length(); i++)
 		{
-			QString mapKey = mapList[i];
-			if (!mapKey.isEmpty())
+			QString mapKeyStr = mapList[i];
+			if (!mapKeyStr.isEmpty())
 			{
 				QString mapValStr = "";
-				loadClientItemField<QString>(context, clientId, qPrintable(mapKey), mapValStr);
+				loadClientItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
 				log_debug("mapValStr = %s", qPrintable(mapValStr));
+				QStringList mapValList = mapValStr.split("\n");
+				if (mapValList.length() == 2)
+				{
+					ClientInCacheItem cacheClientItem;
+					cacheClientItem.msgId = mapValList[0];
+					cacheClientItem.from = QByteArray::fromHex(qPrintable(mapValList[1]));
+					QByteArray mapKeyByte = QByteArray::fromHex(qPrintable(mapKeyStr));
+					value[mapKeyByte] = cacheClientItem;
+				}
 			}
 		}
 	}
@@ -490,12 +499,11 @@ void testRedis()
 	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
 	QMap<QByteArray, ClientInCacheItem> newClientMap;
 	loadClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", newClientMap);
-	/*
+
 	for (const QByteArray &mapKey : newClientMap.keys())
 	{
 		log_debug("TTTTT %s, %s, %s", mapKey.toHex().data(), qPrintable(newClientMap[mapKey].msgId), newClientMap[mapKey].from.toHex().data());
 	}
-	*/
 
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
