@@ -250,27 +250,46 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 	{
 		log_debug("ClientInCacheItemClientInCacheItemClientInCacheItem");
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
-		QString clientMapVal;
-		int ret = loadClientItemField<QString>(context, clientId, "clientMap", clientMapVal);
-		if (ret < 0)
-		{
-			clientMapVal = "";
-		}
+		QString originalClientMapVal = "";
+		QString newClientMapVal = "";
+		loadClientItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
 		for (const QByteArray &mapKey : clientMap.keys()) 
 		{
-			if (clientMapVal == "")
-				clientMapVal = mapKey.toHex().data();
-			else
+			QString keyStr = mapKey.toHex().data() + "\n";
+			if (!originalClientMapVal.contains(keyStr))
 			{
-				clientMapVal = "\n";
-				clientMapVal = mapKey.toHex().data();
+				newClientMapVal += keyStr;
 			}
 			QString clientItemVal = clientMap[mapKey].msgId;
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
 			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
+			reply = (redisReply*)redisCommand(context,
+				"HSET %b "
+				"%b %b",
+				key.constData(), key.size(),
+				mapKey.constData(), mapKey.size(),
+				clientItemVal.toUtf8().constData(), clientItemVal.toUtf8().size()
+			);
+			if (reply != nullptr) 
+				freeReplyObject(reply);
 		}
-		log_debug("Store clientMapVal=%s", qPrintable(clientMapVal));
+
+		log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
+		if (!newClientMapVal.isEmpty())
+		{
+			newClientMapVal += originalClientMapVal;
+			reply = (redisReply*)redisCommand(context,
+				"HSET %b "
+				"%s %b",
+				key.constData(), key.size(),
+				fieldName, 
+				newClientMapVal.toUtf8().constData(), newClientMapVal.toUtf8().size()
+			);
+			if (reply != nullptr) 
+				freeReplyObject(reply);
+			reply = nullptr;
+		}
 	}
 
 	if (reply != nullptr) 
