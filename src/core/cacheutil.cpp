@@ -295,7 +295,7 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 	}
 	else if constexpr (std::is_same<T, QByteArray>::value)
 	{
-		value = ouutput
+		value = output;
 	}	
 
 	freeReplyObject(reply);
