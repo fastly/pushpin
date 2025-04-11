@@ -47,7 +47,6 @@
 #include <QUrl>
 #include <QElapsedTimer>
 #include <QDataStream>
-#include <hiredis.h>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -252,7 +251,7 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 		log_debug("ClientInCacheItemClientInCacheItemClientInCacheItem");
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
 		QString clientMapVal;
-		int ret = loadClientItemField<QString>(c, clientId, "clientMap", clientMapVal);
+		int ret = loadClientItemField<QString>(context, clientId, "clientMap", clientMapVal);
 		if (ret < 0)
 		{
 			clientMapVal = "";

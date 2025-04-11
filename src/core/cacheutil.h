@@ -26,6 +26,7 @@
 
 #include <QHostAddress>
 #include <QObject>
+#include <hiredis.h>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "zwebsocket.h"
@@ -131,6 +132,11 @@ struct PacketMsg {
 void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();
+
+template <typename T>
+void storeClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value);
+template <typename T>
+int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value);
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
