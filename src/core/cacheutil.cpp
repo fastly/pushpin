@@ -393,6 +393,18 @@ void testRedis()
 
 	storeClientItem(c, item);
 
+	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
+	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
+	updateClientItemField<bool>(c, item.clientId, "initFlag", true);
+	updateClientItemField<QString>(c, item.clientId, "resultStr", "okk");
+	updateClientItemField<int>(c, item.clientId, "msgIdCount", 42);
+	updateClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
+	updateClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
+	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
+	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
+	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
+	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("device42"));
+
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
 	loadClientItemField<pid_t>(c, item.clientId, "processId", newItem.processId);
@@ -416,18 +428,6 @@ void testRedis()
 	log_debug("lastResponseTime = %lld", newItem.lastResponseTime);
 	log_debug("receiver = %s", newItem.receiver.toHex().data());
 	log_debug("from = %s", newItem.from.toHex().data());
-
-	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
-	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
-	updateClientItemField<bool>(c, item.clientId, "initFlag", true);
-	updateClientItemField<QString>(c, item.clientId, "resultStr", "okk");
-	updateClientItemField<int>(c, item.clientId, "msgIdCount", 42);
-	updateClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
-	updateClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
-	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
-	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
-	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
-	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("device42"));
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
