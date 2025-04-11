@@ -347,11 +347,11 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 	{
 		QString clientMap = QString::fromUtf8(output);
 		freeReplyObject(reply);
-		log_debug("Load ClientMap=%s", qPrintable(lientMap));
+		log_debug("Load ClientMap=%s", qPrintable(clientMap));
 		QStringList mapList = clientMap.split("\n");
 		for (const QString &map : mapList) 
 		{
-			QByteArray mapByte = QByteArray::fromHex(map);
+			QByteArray mapByte = QByteArray::fromHex(qString(map));
 			reply = (redisReply*)redisCommand(context,
 				"HGET %b "
 				"%b",
@@ -364,11 +364,11 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 			QByteArray mapVal(reply->str, reply->len);
 			QString mapValStr = QString::fromUtf8(mapVal);
 			QStringList mapValList = mapValStr.split("\n");
-			if (mapValList.Length == 2)
+			if (mapValList.length() == 2)
 			{
 				ClientInCacheItem clientItem;
 				clientItem.msgId = mapValList[0];
-				clientItem.from = QByteArray::fromHex(mapValList[1]);
+				clientItem.from = QByteArray::fromHex(qString(mapValList[1]));
 				value[mapByte] = clientItem;
 			}
 
