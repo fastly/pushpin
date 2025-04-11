@@ -255,7 +255,8 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 		loadClientItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
 		for (const QByteArray &mapKey : clientMap.keys()) 
 		{
-			QString keyStr = mapKey.toHex().data() + "\n";
+			QString keyStr = mapKey.toHex().data();
+			keyStr += "\n";
 			if (!originalClientMapVal.contains(keyStr))
 			{
 				newClientMapVal += keyStr;
