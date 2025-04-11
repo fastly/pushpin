@@ -240,24 +240,27 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 		freeReplyObject(reply);
 }
 
-QByteArray loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName) 
+template <typename T>
+int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& output) 
 {
 	QByteArray key = "client:" + clientId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
-		"HGET %b %s",
+		"HGET %b "
+		"%s",
 		key.constData(), key.size(),
 		fieldName
 	);
 
 	if (reply == nullptr)
-		return NULL;
+		return -1;
 	log_debug("%d %s", reply->type, reply->str);
 	
 	QByteArray ret(reply->str, reply->len);
+	output = QString::fromUtf8(ret);
 
 	freeReplyObject(reply);
-	return ret;
+	return 0;
 }
 
 ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
@@ -371,8 +374,8 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	QByteArray ret = loadClientItemField(c, item.clientId, "urlPath");
-	QString urlPath = QString::fromUtf8(ret);
+	QString urlPath = "";
+	loadClientItemField<QString>(c, item.clientId, "urlPath", urlPath);
 	log_debug("urlPath = %s", qPrintable(urlPath));
 
 	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
@@ -386,10 +389,6 @@ void testRedis()
 	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
 	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("deadbeef"));
 	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray("device42"));
-
-	ret = loadClientItemField(c, item.clientId, "urlPath");
-	urlPath = QString::fromUtf8(ret);
-	log_debug("urlPath1 = %s", qPrintable(urlPath));
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
