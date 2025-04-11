@@ -415,16 +415,16 @@ void testRedis()
 
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
-	loadClientItemField<pid_t>(c, item.clientId, "urlPath", newItem.processId);
-	loadClientItemField<bool>(c, item.clientId, "urlPath", newItem.initFlag);
-	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.resultStr);
-	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.msgIdCount);
-	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.lastRequestSeq);
-	loadClientItemField<int>(c, item.clientId, "urlPath", newItem.lastResponseSeq);
-	loadClientItemField<time_t>(c, item.clientId, "urlPath", newItem.lastRequestTime);
-	loadClientItemField<time_t>(c, item.clientId, "urlPath", newItem.lastResponseTime);
-	loadClientItemField<QByteArray>(c, item.clientId, "urlPath", newItem.receiver);
-	loadClientItemField<QByteArray>(c, item.clientId, "urlPath", newItem.from);
+	loadClientItemField<pid_t>(c, item.clientId, "processId", newItem.processId);
+	loadClientItemField<bool>(c, item.clientId, "initFlag", newItem.initFlag);
+	loadClientItemField<QString>(c, item.clientId, "resultStr", newItem.resultStr);
+	loadClientItemField<int>(c, item.clientId, "msgIdCount", newItem.msgIdCount);
+	loadClientItemField<int>(c, item.clientId, "lastRequestSeq", newItem.lastRequestSeq);
+	loadClientItemField<int>(c, item.clientId, "lastResponseSeq", newItem.lastResponseSeq);
+	loadClientItemField<time_t>(c, item.clientId, "lastRequestTime", newItem.lastRequestTime);
+	loadClientItemField<time_t>(c, item.clientId, "lastResponseTime", newItem.lastResponseTime);
+	loadClientItemField<QByteArray>(c, item.clientId, "receiver", newItem.receiver);
+	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
 	log_debug("initFlag = %s", newItem.initFlag ? "true" : "false");
