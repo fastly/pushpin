@@ -409,7 +409,7 @@ void testRedis()
 	item.lastRequestTime = time(nullptr);
 	item.lastResponseTime = time(nullptr);
 	item.receiver = QByteArray::fromHex("deadbeef");
-	item.from = QByteArray("device42");
+	item.from = QByteArray::fromHex("device42");
 
 	storeClientItem(c, item);
 
