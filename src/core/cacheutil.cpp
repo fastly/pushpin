@@ -524,7 +524,7 @@ void testRedis()
 	ZhttpRequestPacket newPacket;
 	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
 	QMap<QByteArray, ClientInCacheItem> newClientMap;
-	loadClientItemField<QByteArray>(c, item.clientId, "clientMap", newClientMap);
+	loadClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", newClientMap);
 	for (const QByteArray &mapKey : newClientMap.keys())
 	{
 		log_debug("TTTTT %s, %s, %s", mapKey.toHex().data(), qPrintable(newClientMap[mapKey].msgId), newClientMap[mapKey].from.toHex().data());
