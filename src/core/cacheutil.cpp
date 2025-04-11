@@ -436,7 +436,7 @@ void testRedis()
 	loadClientItemField<QByteArray>(c, item.clientId, "receiver", newItem.receiver);
 	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
 	ZhttpRequestPacket newPacket;
-	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "from", newPacket);
+	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
 	log_debug("initFlag = %s", newItem.initFlag ? "true" : "false");
