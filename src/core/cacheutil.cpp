@@ -235,9 +235,17 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 			value.constData(), value.size()
 		);
 	}
-	else if constexpr (std::is_same<T, ZhttpRequestPacket>::value)
+	else if constexpr (std::is_same<T, ZhttpRequestPacket>::value || std::is_same<T, ZhttpResponsePacket>::value)
 	{
-		log_debug("ZhttpRequestPacketZhttpRequestPacketZhttpRequestPacketZhttpRequestPacket");
+		QVariant vpacket = value.toVariant();
+		QByteArray buf = TnetString::fromVariant(vpacket);
+		reply = (redisReply*)redisCommand(context,
+			"HSET %b "
+			"%s %b",
+			key.constData(), key.size(),
+			fieldName, 
+			buf.constData(), buf.size()
+		);
 	}
 
 	if (reply != nullptr) 
@@ -281,6 +289,16 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		value = output.toLongLong();
 	else if constexpr (std::is_same<T, QByteArray>::value)
 		value = output;
+	else if constexpr (std::is_same<T, ZhttpRequestPacket>::value)
+	{
+		QVariant data = TnetString::toVariant(output);
+		value.fromVariant(data);
+	}
+	else if constexpr (std::is_same<T, ZhttpResponsePacket>::value)
+	{
+		QVariant data = TnetString::toVariant(output);
+		value.fromVariant(data);
+	}
 
 	freeReplyObject(reply);
 	return 0;
@@ -402,6 +420,7 @@ void testRedis()
 	storeClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
 	storeClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdef"));
 	ZhttpRequestPacket packet;
+	packet.code = 2222;
 	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
 
 	ClientItem newItem;
@@ -416,6 +435,8 @@ void testRedis()
 	loadClientItemField<time_t>(c, item.clientId, "lastResponseTime", newItem.lastResponseTime);
 	loadClientItemField<QByteArray>(c, item.clientId, "receiver", newItem.receiver);
 	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
+	ZhttpRequestPacket newPacket;
+	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "from", newPacket);
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
 	log_debug("initFlag = %s", newItem.initFlag ? "true" : "false");
@@ -427,6 +448,7 @@ void testRedis()
 	log_debug("lastResponseTime = %lld", newItem.lastResponseTime);
 	log_debug("receiver = %s", newItem.receiver.toHex().data());
 	log_debug("from = %s", newItem.from.toHex().data());
+	log_debug("code = %d", newPacket.code);
 
 	ClientItem loaded = loadClientItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
