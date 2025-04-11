@@ -263,6 +263,7 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 			QString clientItemVal = clientMap[mapKey].msgId;
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
+			log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
 			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
 			storeClientItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
 		}
