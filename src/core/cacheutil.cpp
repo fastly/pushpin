@@ -160,7 +160,7 @@ void storeClientItem(redisContext* context, const ClientItem& item)
 }
 
 template <typename T>
-void updateClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
+void storeClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
 {
 	QByteArray key = "client:" + clientId;
 
@@ -234,6 +234,10 @@ void updateClientItemField(redisContext* context, const QByteArray& clientId, co
 			fieldName, 
 			value.constData(), value.size()
 		);
+	}
+	else if constexpr (std::is_same<T, ZhttpRequestPacket>::value)
+	{
+		log_debug("ZhttpRequestPacketZhttpRequestPacketZhttpRequestPacketZhttpRequestPacket");
 	}
 
 	if (reply != nullptr) 
@@ -386,17 +390,19 @@ void testRedis()
 
 	storeClientItem(c, item);
 
-	updateClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
-	updateClientItemField<pid_t>(c, item.clientId, "processId", getpid());
-	updateClientItemField<bool>(c, item.clientId, "initFlag", true);
-	updateClientItemField<QString>(c, item.clientId, "resultStr", "okk");
-	updateClientItemField<int>(c, item.clientId, "msgIdCount", 42);
-	updateClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
-	updateClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
-	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
-	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
-	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
-	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdefghijklmnopqrstuvwxyz"));
+	storeClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
+	storeClientItemField<pid_t>(c, item.clientId, "processId", getpid());
+	storeClientItemField<bool>(c, item.clientId, "initFlag", true);
+	storeClientItemField<QString>(c, item.clientId, "resultStr", "okk");
+	storeClientItemField<int>(c, item.clientId, "msgIdCount", 42);
+	storeClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
+	storeClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
+	storeClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
+	storeClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
+	storeClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
+	storeClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdef"));
+	ZhttpRequestPacket packet = new ZhttpRequestPacket();
+	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
 
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
