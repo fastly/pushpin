@@ -402,7 +402,7 @@ void testRedis()
 	updateClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
 	updateClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
 	updateClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
-	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("device42"));
+	updateClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
 	updateClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("deadbeef"));
 
 	ClientItem newItem;
