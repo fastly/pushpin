@@ -247,6 +247,10 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 			buf.constData(), buf.size()
 		);
 	}
+	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
+	{
+		log_debug("ClientInCacheItemClientInCacheItemClientInCacheItem");
+	}
 
 	if (reply != nullptr) 
 		freeReplyObject(reply);
@@ -422,6 +426,13 @@ void testRedis()
 	ZhttpRequestPacket packet;
 	packet.code = 2222;
 	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
+	QMap<QByteArray, ClientInCacheItem> clientMap;
+	ClientInCacheItem clientItem;
+	clientItem.msgId = "1";
+	clientItem.from = QByteArray::fromHex("abcdef");
+	QByteArray key = QByteArray::fromHex("123456");
+	clientMap[key] = clientItem;
+	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "clientMap", clientItem);
 
 	ClientItem newItem;
 	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
@@ -437,6 +448,7 @@ void testRedis()
 	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
 	ZhttpRequestPacket newPacket;
 	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
+
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
 	log_debug("initFlag = %s", newItem.initFlag ? "true" : "false");
