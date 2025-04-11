@@ -351,7 +351,7 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		QStringList mapList = clientMap.split("\n");
 		for (const QString &map : mapList) 
 		{
-			QByteArray mapByte = QByteArray::fromHex(qPrintable(map));
+			QByteArray mapByte = QByteArray::fromHex(map.toUtf8());
 			reply = (redisReply*)redisCommand(context,
 				"HGET %b "
 				"%b",
@@ -368,7 +368,7 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 			{
 				ClientInCacheItem clientItem;
 				clientItem.msgId = mapValList[0];
-				clientItem.from = QByteArray::fromHex(qPrintable(mapValList[1]));
+				clientItem.from = QByteArray::fromHex(mapValList[1].toUtf8());
 				value[mapByte] = clientItem;
 			}
 
@@ -523,6 +523,12 @@ void testRedis()
 	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
 	ZhttpRequestPacket newPacket;
 	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
+	QMap<QByteArray, ClientInCacheItem> newClientMap;
+	loadClientItemField<QByteArray>(c, item.clientId, "clientMap", newClientMap);
+	for (const QByteArray &mapKey : newClientMap.keys())
+	{
+		log_debug("TTTTT %s, %s, %s", mapKey.toHex().data(), qPrintable(newClientMap[mapKey].msgId), newClientMap[mapKey].from.toHex().data());
+	}
 
 	log_debug("urlPath = %s", qPrintable(newItem.urlPath));
 	log_debug("processId = %d", newItem.processId);
