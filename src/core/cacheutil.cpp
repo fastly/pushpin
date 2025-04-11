@@ -250,6 +250,28 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
 	{
 		log_debug("ClientInCacheItemClientInCacheItemClientInCacheItem");
+		QMap<QByteArray, ClientInCacheItem> clientMap = value;
+		QString clientMapVal;
+		int ret = loadClientItemField<QString>(c, clientId, "clientMap", clientMapVal);
+		if (ret < 0)
+		{
+			clientMapVal = "";
+		}
+		for (const QByteArray &mapKey : clientMap.keys()) 
+		{
+			if (clientMapVal == "")
+				clientMapVal = mapKey.toHex().data();
+			else
+			{
+				clientMapVal = "\n";
+				clientMapVal = mapKey.toHex().data();
+			}
+			QString clientItemVal = clientMap[mapKey].msgId;
+			clientItemVal += "\n";
+			clientItemVal += clientMap[mapKey].from.toHex().data();
+			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
+		}
+		log_debug("Store clientMapVal=%s", qPrintable(clientMapVal));
 	}
 
 	if (reply != nullptr) 
