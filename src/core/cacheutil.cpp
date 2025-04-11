@@ -248,7 +248,6 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 	}
 	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
 	{
-		log_debug("ClientInCacheItemClientInCacheItemClientInCacheItem");
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
 		QString originalClientMapVal = "";
 		QString newClientMapVal = "";
@@ -344,8 +343,43 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		QVariant data = TnetString::toVariant(output);
 		value.fromVariant(data);
 	}
+	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
+	{
+		QString clientMap = QString::fromUtf8(output);
+		freeReplyObject(reply);
+		log_debug("Load ClientMap=%s", qPrintable(lientMap));
+		QStringList mapList = clientMap.split("\n");
+		for (const QString &map : mapList) 
+		{
+			QByteArray mapByte = QByteArray::fromHex(map);
+			reply = (redisReply*)redisCommand(context,
+				"HGET %b "
+				"%b",
+				key.constData(), key.size(),
+				mapByte.constData(), mapByte.size()
+			);
+			if (reply == nullptr)
+				return -1;
 
-	freeReplyObject(reply);
+			QByteArray mapVal(reply->str, reply->len);
+			QString mapValStr = QString::fromUtf8(mapVal);
+			QStringList mapValList = mapValStr.split("\n");
+			if (mapValList.Length == 2)
+			{
+				ClientInCacheItem clientItem;
+				clientItem.msgId = mapValList[0];
+				clientItem.from = QByteArray::fromHex(mapValList[1]);
+				value[mapByte] = clientItem;
+			}
+
+			if (reply != nullptr)
+				freeReplyObject(reply);
+			reply = nullptr;
+		}
+	}
+
+	if (reply != nullptr)
+		freeReplyObject(reply);
 	return 0;
 }
 
