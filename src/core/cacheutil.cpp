@@ -369,13 +369,6 @@ void testRedis()
 	{
 		return;
 	}
-	/*
-	QByteArray key = "myKey";
-	QByteArray value = "myValue";
-
-	setQByteArrayToRedis(c, key, value);
-	QByteArray retrievedValue = getQByteArrayFromRedis(c, key);
-	*/
 
 	ClientItem item;
 	item.clientId = "abc123";
