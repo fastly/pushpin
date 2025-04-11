@@ -256,7 +256,7 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 		return -1;
 
 	QByteArray output(reply->str, reply->len);
-	log_debug("%s = %s, %d", fieldName, reply->str, reply->len);
+	log_debug("%s = %s, %d", fieldName, reply->str.toHex().data(), reply->len);
 	
 	if constexpr (std::is_same<T, QString>::value)
 		value = QString::fromUtf8(output);
