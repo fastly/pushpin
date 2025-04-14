@@ -24,25 +24,16 @@
 #ifndef APP_H
 #define APP_H
 
-#include <boost/signals2.hpp>
-
-using SignalInt = boost::signals2::signal<void(int)>;
-using Connection = boost::signals2::scoped_connection;
-
 class App
 {
 public:
 	App();
 	~App();
 
-	void start();
-
-	SignalInt quit;
+	int run();
 
 private:
 	class Private;
-	friend class Private;
-	Private *d;
 };
 
 #endif
