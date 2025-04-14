@@ -40,10 +40,8 @@
 
 #define WORKER_THREAD_TIMERS 10
 
-class DomainMap::Worker : public QObject
+class DomainMap::Worker
 {
-	Q_OBJECT
-
 public:
 	enum AddRuleResult
 	{
@@ -311,7 +309,6 @@ public:
 	Signal started;
 	Signal changed;
 
-public slots:
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -769,7 +766,7 @@ public:
 		worker = new Worker;
 		worker->fileName = fileName;
 		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
-		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
+		worker->deferCall.defer([=] { worker->start(); });
 		exec();
 		startedConnection.disconnect();
 		delete worker;
@@ -786,14 +783,13 @@ public:
 	}
 };
 
-class DomainMap::Private : public QObject
+class DomainMap::Private
 {
-	Q_OBJECT
-
 public:
 	DomainMap *q;
 	Thread *thread;
 	Connection changedConnection;
+	DeferCall deferCall;
 
 	Private(DomainMap *_q) :
 		q(_q),
@@ -818,13 +814,15 @@ public:
 	}
 
 private:
-	// NOTE: must be thread-safe. called from separate thread
+	// NOTE: called from worker thread
 	void workerChanged()
 	{
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] {
+			// NOTE: called from outer thread
+			doChanged();
+		});
 	}
 
-private slots:
 	void doChanged()
 	{
 		q->changed();
@@ -850,7 +848,12 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
-	QMetaObject::invokeMethod(d->thread->worker, "doReload", Qt::QueuedConnection);
+	Worker *worker = d->thread->worker;
+
+	worker->deferCall.defer([=] {
+		// NOTE: called from worker thread
+		worker->doReload();
+	});
 }
 
 bool DomainMap::isIdShared(const QString &id) const
