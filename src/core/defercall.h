@@ -46,7 +46,7 @@ public:
 	// guaranteed to live long enough.
 	void defer(std::function<void ()> handler);
 
-	int pendingCount() const;
+	int pendingCount() const { return deferredCalls_->size(); }
 
 	static DeferCall *global();
 	static void cleanup();
@@ -63,7 +63,13 @@ private:
 	class CallsList
 	{
 	public:
-		std::mutex mutex;
+		// all methods thread-safe
+		std::list<std::shared_ptr<Call>>::size_type size() const;
+		std::list<std::shared_ptr<Call>>::iterator append(const std::shared_ptr<Call> &c);
+		void erase(std::list<std::shared_ptr<Call>>::iterator position);
+
+	private:
+		mutable std::mutex mutex;
 		std::list<std::shared_ptr<Call>> l;
 	};
 

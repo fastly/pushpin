@@ -136,26 +136,26 @@ public:
 
 	void flush()
 	{
-		while(true)
-		{
-			{
-				std::lock_guard<std::mutex> guard(callsMutex_);
-
-				if(calls_.empty())
-					break;
-			}
-
+		while(!isCallsEmpty())
 			process();
-		}
 	}
 
 private:
 	QThread *thread_;
 	Timer timer_;
+	ThreadWake threadWake_;
 	std::mutex callsMutex_;
 	std::list<std::weak_ptr<Call>> calls_;
-	ThreadWake threadWake_;
 
+	// thread-safe
+	bool isCallsEmpty()
+	{
+		std::lock_guard<std::mutex> guard(callsMutex_);
+
+		return calls_.empty();
+	}
+
+	// thread-safe
 	void process()
 	{
 		std::list<std::weak_ptr<Call>> ready;
@@ -179,11 +179,7 @@ private:
 				// if call is valid then its source will be too
 				assert(source);
 
-				{
-					std::lock_guard<std::mutex> guard(source->mutex);
-
-					source->l.erase(p->sourceElement);
-				}
+				source->erase(p->sourceElement);
 
 				p->handler();
 			}
@@ -204,6 +200,33 @@ private:
 	}
 };
 
+std::list<std::shared_ptr<DeferCall::Call>>::size_type DeferCall::CallsList::size() const
+{
+	std::lock_guard<std::mutex> guard(mutex);
+
+	return l.size();
+}
+
+std::list<std::shared_ptr<DeferCall::Call>>::iterator DeferCall::CallsList::append(const std::shared_ptr<DeferCall::Call> &c)
+{
+	std::lock_guard<std::mutex> guard(mutex);
+
+	l.push_back(c);
+
+	// get an iterator to the element that was pushed
+	auto it = l.end();
+	--it;
+
+	return it;
+}
+
+void DeferCall::CallsList::erase(std::list<std::shared_ptr<DeferCall::Call>>::iterator position)
+{
+	std::lock_guard<std::mutex> guard(mutex);
+
+	l.erase(position);
+}
+
 DeferCall::DeferCall() :
 	thread_(QThread::currentThread()),
 	deferredCalls_(std::make_shared<CallsList>())
@@ -223,19 +246,8 @@ void DeferCall::defer(std::function<void ()> handler)
 {
 	std::shared_ptr<Call> c = std::make_shared<Call>();
 	c->handler = handler;
-
-	{
-		std::lock_guard<std::mutex> guard(deferredCalls_->mutex);
-
-		deferredCalls_->l.push_back(c);
-
-		// get an iterator to the element that was pushed
-		auto it = deferredCalls_->l.end();
-		--it;
-
-		c->source = deferredCalls_;
-		c->sourceElement = it;
-	}
+	c->source = deferredCalls_;
+	c->sourceElement = deferredCalls_->append(c);
 
 	Manager *manager = localManager.get();
 
@@ -251,13 +263,6 @@ void DeferCall::defer(std::function<void ()> handler)
 	// manager keeps a weak pointer, so we can invalidate pending calls by
 	// simply deleting them
 	manager->add(c);
-}
-
-int DeferCall::pendingCount() const
-{
-	std::lock_guard<std::mutex> guard(deferredCalls_->mutex);
-
-	return deferredCalls_->l.size();
 }
 
 DeferCall *DeferCall::global()
