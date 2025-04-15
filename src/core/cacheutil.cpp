@@ -168,7 +168,7 @@ void storeCacheItem(redisContext* context, const QByteArray& itemId, const Cache
 		item.methodName.toUtf8().constData(), item.methodName.toUtf8().size(),
 		requestPacket.constData(), requestPacket.size(),
 		responsePacket.constData(), responsePacket.size(),
-		responseHashVal.constData(), responseHashVal.size(),
+		item.responseHashVal.constData(), item.responseHashVal.size(),
 		item.methodType,
 		item.orgSubscriptionStr.toUtf8().constData(), item.orgSubscriptionStr.toUtf8().size(),
 		item.subscriptionStr.toUtf8().constData(), item.subscriptionStr.toUtf8().size(),
@@ -179,7 +179,7 @@ void storeCacheItem(redisContext* context, const QByteArray& itemId, const Cache
 	QMap<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
 	QString originalClientMapVal = "";
 	QString newClientMapVal = "";
-	loadCacheItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
+	loadCacheItemField<QString>(context, itemId, "clientMap", originalClientMapVal);
 	for (const QByteArray &mapKey : clientMap.keys()) 
 	{
 		QString keyStr = mapKey.toHex().data();
@@ -193,7 +193,7 @@ void storeCacheItem(redisContext* context, const QByteArray& itemId, const Cache
 		clientItemVal += clientMap[mapKey].from.toHex().data();
 		log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
 		log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-		storeCacheItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
+		storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 	}
 
 	log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
@@ -299,7 +299,7 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
 		QString originalClientMapVal = "";
 		QString newClientMapVal = "";
-		loadCacheItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
+		loadCacheItemField<QString>(context, itemId, "clientMap", originalClientMapVal);
 		for (const QByteArray &mapKey : clientMap.keys()) 
 		{
 			QString keyStr = mapKey.toHex().data();
@@ -313,7 +313,7 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 			clientItemVal += clientMap[mapKey].from.toHex().data();
 			log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
 			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-			storeCacheItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
+			storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 		}
 
 		log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
@@ -354,7 +354,7 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 		else if (field == "lastRefreshTime") item.lastRefreshTime = value.toLongLong();
 		else if (field == "lastAccessTime") item.lastAccessTime = value.toLongLong();
 		else if (field == "cachedFlag") item.cachedFlag = (value == "1");
-		else if (field == "proto") item.proto = value.toInt();
+		else if (field == "proto") item.proto = (value == "0") ? Scheme::http : Scheme::websocket;
 		else if (field == "retryCount") item.retryCount = value.toInt();
 		else if (field == "httpBackendNo") item.httpBackendNo = value.toInt();
 		else if (field == "cacheClientId") item.cacheClientId = value;

@@ -46,7 +46,6 @@
 #define RETRY_RESPONSE_MAX_COUNT	5
 
 enum Scheme {
-	none,
 	http,
 	websocket
 };
