@@ -335,9 +335,6 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 
 CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId) 
 {
-	if (context == nullptr)
-		return nullptr;
-
 	CacheItem item;
 	QByteArray key = itemId;
 

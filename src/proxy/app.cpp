@@ -38,6 +38,7 @@
 #include "domainmap.h"
 #include "engine.h"
 #include "config.h"
+#include "cacheutil.h"
 
 extern bool gCacheThreadAllowFlag;
 extern redisContext *gRedisContext;
