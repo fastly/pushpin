@@ -362,7 +362,7 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 		else if (field == "requestPacket") item.requestPacket.fromVariant(TnetString::toVariant(value));
 		else if (field == "responsePacket") item.responsePacket.fromVariant(TnetString::toVariant(value));
 		else if (field == "responseHashVal") item.responseHashVal = value;
-		else if (field == "methodType") item.methodType = value.toInt();
+		else if (field == "methodType") item.methodType = (value == "0") ? CacheMethodType::CACHE_METHOD : CacheMethodType::SUBSCRIBE_METHOD;
 		else if (field == "orgSubscriptionStr") item.orgSubscriptionStr = QString::fromUtf8(value);
 		else if (field == "subscriptionStr") item.subscriptionStr = QString::fromUtf8(value);
 		else if (field == "subscriptionPacket") item.subscriptionPacket.fromVariant(TnetString::toVariant(value));
@@ -377,7 +377,7 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 		if (!mapKeyStr.isEmpty())
 		{
 			QString mapValStr = "";
-			loadCacheItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
+			loadCacheItemField<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
 			log_debug("mapValStr = %s", qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
