@@ -336,7 +336,7 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId) 
 {
 	if (context == nullptr)
-		return;
+		return nullptr;
 
 	CacheItem item;
 	QByteArray key = itemId;
@@ -407,7 +407,7 @@ template <typename T>
 int loadCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, T& value) 
 {
 	if (context == nullptr)
-		return;
+		return -1;
 
 	QByteArray key = itemId;
 
