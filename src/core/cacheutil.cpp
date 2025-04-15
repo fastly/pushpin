@@ -120,9 +120,9 @@ redisContext* connectToRedis()
 	return c;
 }
 
-void storeCacheItem(redisContext* context, const CacheItem& item) 
+void storeCacheItem(redisContext* context, const QByteArray& itemId, const CacheItem& item) 
 {
-	QByteArray key = "client:" + item.clientId;
+	QByteArray key = "cache:" + itemId;
 
 	QByteArray requestPacket = TnetString::fromVariant(item.requestPacket.toVariant());
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
@@ -200,16 +200,16 @@ void storeCacheItem(redisContext* context, const CacheItem& item)
 	if (!newClientMapVal.isEmpty())
 	{
 		newClientMapVal += originalClientMapVal;
-		storeCacheItemField<QString>(context, clientId, "clientMap", newClientMapVal);
+		storeCacheItemField<QString>(context, itemId, "clientMap", newClientMapVal);
 	}
 
 	if (reply) freeReplyObject(reply);
 }
 
 template <typename T>
-void storeCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
+void storeCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, const T& value) 
 {
-	QByteArray key = "client:" + clientId;
+	QByteArray key = "cache:" + itemId;
 
 	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
@@ -320,7 +320,7 @@ void storeCacheItemField(redisContext* context, const QByteArray& clientId, cons
 		if (!newClientMapVal.isEmpty())
 		{
 			newClientMapVal += originalClientMapVal;
-			storeCacheItemField<QString>(context, clientId, "clientMap", newClientMapVal);
+			storeCacheItemField<QString>(context, itemId, "clientMap", newClientMapVal);
 		}
 	}
 
@@ -328,11 +328,10 @@ void storeCacheItemField(redisContext* context, const QByteArray& clientId, cons
 		freeReplyObject(reply);
 }
 
-CacheItem loadCacheItem(redisContext* context, const QByteArray& clientId) 
+CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId) 
 {
 	CacheItem item;
-	item.clientId = clientId;
-	QByteArray key = "client:" + clientId;
+	QByteArray key = "cache:" + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGETALL %b", key.constData(), key.size());
@@ -397,9 +396,9 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& clientId)
 }
 
 template <typename T>
-int loadCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value) 
+int loadCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, T& value) 
 {
-	QByteArray key = "client:" + clientId;
+	QByteArray key = "cache:" + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b "
@@ -454,7 +453,7 @@ int loadCacheItemField(redisContext* context, const QByteArray& clientId, const 
 			if (!mapKeyStr.isEmpty())
 			{
 				QString mapValStr = "";
-				loadCacheItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
+				loadCacheItemField<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
 				log_debug("mapValStr = %s", qPrintable(mapValStr));
 				QStringList mapValList = mapValStr.split("\n");
 				if (mapValList.length() == 2)
@@ -525,7 +524,7 @@ void testRedis()
 	{
 		return;
 	}
-
+/*
 	ClientItem item;
 	item.clientId = "abc123";
 	item.urlPath = "/do/task";
@@ -607,7 +606,7 @@ void testRedis()
 
 	ClientItem loaded = loadCacheItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
-
+*/
 	redisFree(c);
 }
 
