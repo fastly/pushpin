@@ -45,9 +45,64 @@ static std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
 	return {deferCall.pendingCount(), count};
 }
 
+namespace {
+
+class TestThread : public QThread
+{
+	Q_OBJECT
+
+public:
+	TestThread(DeferCall *deferCall, std::function<void ()> handler) :
+		deferCall_(deferCall),
+		handler_(handler)
+	{
+	}
+
+	~TestThread()
+	{
+		wait();
+	}
+
+protected:
+	void run() override
+	{
+		deferCall_->defer(handler_);
+	}
+
+private:
+	DeferCall *deferCall_;
+	std::function<void ()> handler_;
+};
+
+}
+
+// spawns a thread, triggers the deferCall from it, then waits for thread to
+// finish
+static void callNonLocal(DeferCall *deferCall, std::function<void ()> handler)
+{
+	TestThread thread(deferCall, handler);
+	thread.start();
+}
+
+// loop_advance should process enough events to cause the calls to run,
+// without sleeping, in order to prove the calls are run immediately
+static std::tuple<int, int> runNonLocal(std::function<void ()> loop_advance)
+{
+	DeferCall deferCall;
+	int count = 0;
+
+	callNonLocal(&deferCall, [&] {
+		++count;
+	});
+
+	loop_advance();
+
+	return {deferCall.pendingCount(), count};
+}
+
 static void deferCall()
 {
-	EventLoop loop(1);
+	EventLoop loop(2);
 
 	auto [pendingCount, count] = runDeferCall([&] {
 		// run the first call and queue the second
@@ -66,7 +121,7 @@ static void deferCall()
 static void deferCallQt()
 {
 	TestQCoreApplication qapp;
-	Timer::init(1);
+	Timer::init(2);
 
 	auto [pendingCount, count] = runDeferCall([&] {
 		// the underlying timer's qt-based implementation will process
@@ -83,10 +138,42 @@ static void deferCallQt()
 	Timer::deinit();
 }
 
+static void nonLocal()
+{
+	EventLoop loop(2);
+
+	auto [pendingCount, count] = runNonLocal([&] {
+		// run the first call
+		loop.step();
+	});
+
+	TEST_ASSERT_EQ(pendingCount, 0);
+	TEST_ASSERT_EQ(count, 1);
+
+	DeferCall::cleanup();
+}
+
+static void nonLocalQt()
+{
+	TestQCoreApplication qapp;
+	Timer::init(2);
+
+	auto [pendingCount, count] = runNonLocal([&] {
+		// process the underlying invokeMethod
+		QCoreApplication::processEvents(QEventLoop::AllEvents);
+	});
+
+	TEST_ASSERT_EQ(pendingCount, 0);
+	TEST_ASSERT_EQ(count, 1);
+
+	DeferCall::cleanup();
+	Timer::deinit();
+}
+
 static void retract()
 {
 	TestQCoreApplication qapp;
-	Timer::init(1);
+	Timer::init(2);
 
 	bool called = false;
 
@@ -107,7 +194,7 @@ static void retract()
 static void managerCleanup()
 {
 	TestQCoreApplication qapp;
-	Timer::init(1);
+	Timer::init(2);
 
 	int count = 0;
 
@@ -131,8 +218,12 @@ extern "C" int defercall_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(deferCall());
 	TEST_CATCH(deferCallQt());
+	TEST_CATCH(nonLocal());
+	TEST_CATCH(nonLocalQt());
 	TEST_CATCH(retract());
 	TEST_CATCH(managerCleanup());
 
 	return 0;
 }
+
+#include "defercalltest.moc"

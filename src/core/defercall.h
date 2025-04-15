@@ -26,6 +26,10 @@
 #include <functional>
 #include <memory>
 #include <list>
+#include <unordered_map>
+#include <mutex>
+
+class QThread;
 
 // queues calls to be run after returning to the event loop
 class DeferCall
@@ -54,21 +58,40 @@ public:
 	}
 
 private:
+	class Call;
+
+	class CallsList
+	{
+	public:
+		// all methods thread-safe
+		std::list<std::shared_ptr<Call>>::size_type size() const;
+		std::list<std::shared_ptr<Call>>::iterator append(const std::shared_ptr<Call> &c);
+		void erase(std::list<std::shared_ptr<Call>>::iterator position);
+
+	private:
+		mutable std::mutex mutex;
+		std::list<std::shared_ptr<Call>> l;
+	};
+
 	class Call
 	{
 	public:
 		std::function<void ()> handler;
-		std::weak_ptr<std::list<std::shared_ptr<Call>>> source;
+		std::weak_ptr<CallsList> source;
 		std::list<std::shared_ptr<Call>>::iterator sourceElement;
 	};
 
 	class Manager;
 	friend class Manager;
 
-	std::shared_ptr<std::list<std::shared_ptr<Call>>> deferredCalls_;
+	QThread *thread_;
+	std::shared_ptr<CallsList> deferredCalls_;
 
-	static thread_local Manager *manager;
-	static thread_local DeferCall *instance;
+	static thread_local std::shared_ptr<Manager> localManager;
+	static thread_local std::unique_ptr<DeferCall> localInstance;
+
+	static std::unordered_map<QThread*, std::shared_ptr<Manager>> managerByThread;
+	static std::mutex managerByThreadMutex;
 };
 
 #endif
