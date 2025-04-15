@@ -193,12 +193,11 @@ void storeCacheItem(redisContext* context, const QByteArray& itemId, const Cache
 		QString clientItemVal = clientMap[mapKey].msgId;
 		clientItemVal += "\n";
 		clientItemVal += clientMap[mapKey].from.toHex().data();
-		log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
-		log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
+		//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
 		storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 	}
 
-	log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
+	//log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 	if (!newClientMapVal.isEmpty())
 	{
 		newClientMapVal += originalClientMapVal;
@@ -316,12 +315,11 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 			QString clientItemVal = clientMap[mapKey].msgId;
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
-			log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
-			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
+			//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
 			storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 		}
 
-		log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
+		//log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 		if (!newClientMapVal.isEmpty())
 		{
 			newClientMapVal += originalClientMapVal;
@@ -374,7 +372,7 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 		else if (field == "clientMap") clientMap = QString::fromUtf8(value);
 	}
 
-	log_debug("Load ClientMap=%s", qPrintable(clientMap));
+	//log_debug("Load ClientMap=%s", qPrintable(clientMap));
 	QStringList mapList = clientMap.split("\n");
 	for	(int i=0; i < mapList.length(); i++)
 	{
@@ -383,7 +381,7 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 		{
 			QString mapValStr = "";
 			loadCacheItemField<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
-			log_debug("mapValStr = %s", qPrintable(mapValStr));
+			//log_debug("mapValStr = %s", qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
 			{
