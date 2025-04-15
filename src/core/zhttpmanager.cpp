@@ -1597,6 +1597,8 @@ public:
 		// store cache item into redis
 		storeCacheItem(gRedisContext, packetMsg.paramsHash, cacheItem);
 
+		CacheItem newCacheItem = loadCacheItem(gRedisContext, packetMsg.paramsHash);
+
 		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
 
