@@ -1676,7 +1676,24 @@ public:
 			cacheItem.methodType = SUBSCRIBE_METHOD;
 		}
 
+		QElapsedTimer timer;
+		timer.start();
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+		qint64 elapsedNs = timer.nsecsElapsed();  // nanoseconds
+		log_debug("[REDIS] Elapsed time: %lld ns", elapsedNs);
+
+		// store cache item into redis
+		timer.start();
+		storeCacheItem(gRedisContext, methodNameParamsHashVal, cacheItem);
+		elapsedNs = timer.nsecsElapsed();  // nanoseconds
+		log_debug("[REDIS] storeCacheItem() Elapsed time: %lld ns", elapsedNs);
+
+		timer.start();
+		CacheItem newCacheItem = loadCacheItem(gRedisContext, methodNameParamsHashVal);
+		elapsedNs = timer.nsecsElapsed();  // nanoseconds
+		log_debug("[REDIS] loadCacheItem() Elapsed time: %lld ns", elapsedNs);
+
+		log_debug("[REDIS] %s", qPrintable(newCacheItem.methodName));
 
 		return ccIndex;
 	}
