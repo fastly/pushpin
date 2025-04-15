@@ -132,6 +132,7 @@ void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();
 
+redisContext* connectToRedis();
 void storeCacheItem(redisContext* context, const QByteArray& itemId, const CacheItem& item);
 template <typename T>
 void storeCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, const T& value);

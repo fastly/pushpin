@@ -116,6 +116,9 @@ ZhttpResponsePacket gHttpMultiPartResponsePacket;
 QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
+// redis
+redisContext *gRedisContext = nullptr;
+
 /////////////////////////////////////////////////////////////////////////////////////
 
 class ZhttpManager::Private : public QObject
@@ -1591,6 +1594,9 @@ public:
 
 		gCacheItemMap[packetMsg.paramsHash] = cacheItem;
 
+		// store cache item into redis
+		storeCacheItem(gRedisContext, packetMsg.paramsHash, cacheItem);
+
 		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
 
@@ -2863,6 +2869,9 @@ void ZhttpManager::setCacheParameters(
 
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}
+
+	// init redis
+	gRedisContext = connectToRedis();
 }
 
 #include "zhttpmanager.moc"

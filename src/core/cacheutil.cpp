@@ -106,23 +106,25 @@ redisContext* connectToRedis()
 	{
 		if (c) 
 		{
-			//std::cerr << "Connection error: " << c->errstr << std::endl;
 			log_debug("Connection error: %s", c->errstr);
 			redisFree(c);
 		} 
 		else 
 		{
-			//std::cerr << "Connection error: can't allocate redis context" << std::endl;
 			log_debug("Connection error: can't allocate redis context");
 		}
 		return nullptr;
 	}
+	log_debug("[CACHE] Connected to redis server %s:%d", hostname, port);
 	return c;
 }
 
 void storeCacheItem(redisContext* context, const QByteArray& itemId, const CacheItem& item) 
 {
-	QByteArray key = "cache:" + itemId;
+	if (context == nullptr)
+		return;
+
+	QByteArray key = itemId;
 
 	QByteArray requestPacket = TnetString::fromVariant(item.requestPacket.toVariant());
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
@@ -209,7 +211,10 @@ void storeCacheItem(redisContext* context, const QByteArray& itemId, const Cache
 template <typename T>
 void storeCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, const T& value) 
 {
-	QByteArray key = "cache:" + itemId;
+	if (context == nullptr)
+		return;
+
+	QByteArray key = itemId;
 
 	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
@@ -330,8 +335,11 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 
 CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId) 
 {
+	if (context == nullptr)
+		return;
+
 	CacheItem item;
-	QByteArray key = "cache:" + itemId;
+	QByteArray key = itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGETALL %b", key.constData(), key.size());
@@ -398,7 +406,10 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId)
 template <typename T>
 int loadCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, T& value) 
 {
-	QByteArray key = "cache:" + itemId;
+	if (context == nullptr)
+		return;
+
+	QByteArray key = itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b "
@@ -726,8 +737,6 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
-
-		testRedis();
 
 		gCacheThreadRunning = false;
 
