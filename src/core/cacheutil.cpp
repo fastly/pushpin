@@ -120,46 +120,94 @@ redisContext* connectToRedis()
 	return c;
 }
 
-void storeClientItem(redisContext* context, const ClientItem& item) 
+void storeCacheItem(redisContext* context, const CacheItem& item) 
 {
 	QByteArray key = "client:" + item.clientId;
 
+	QByteArray requestPacket = TnetString::fromVariant(item.requestPacket.toVariant());
+	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
+	QByteArray subscriptionPacket = TnetString::fromVariant(item.subscriptionPacket.toVariant());
+
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HSET %b "
-		"urlPath %b "
-		"processId %d "
-		"initFlag %d "
-		"resultStr %b "
-		"msgIdCount %d "
-		"lastRequestSeq %d "
-		"lastResponseSeq %d "
+		"orgMsgId %b "
+		"msgId %d "
+		"newMsgId %d "
+		"refreshFlag %d "
 		"lastRequestTime %lld "
-		"lastResponseTime %lld "
-		"receiver %b "
-		"from %b "
-		"clientId %b",
+		"lastRefreshTime %lld "
+		"lastAccessTime %lld "
+		"cachedFlag %d "
+		"proto %d "
+		"retryCount %d "
+		"httpBackendNo %d "
+		"cacheClientId %b "
+		"methodName %b "
+		"requestPacket %b "
+		"responsePacket %b "
+		"responseHashVal %b "
+		"methodType %d "
+		"orgSubscriptionStr %b "
+		"subscriptionStr %b "
+		"subscriptionPacket %b",
 
 		key.constData(), key.size(),
 
-		item.urlPath.toUtf8().constData(), item.urlPath.toUtf8().size(),
-		item.processId,
-		item.initFlag ? 1 : 0,
-		item.resultStr.toUtf8().constData(), item.resultStr.toUtf8().size(),
-		item.msgIdCount,
-		item.lastRequestSeq,
-		item.lastResponseSeq,
+		item.orgMsgId.toUtf8().constData(), item.orgMsgId.toUtf8().size(),
+		item.msgId,
+		item.newMsgId,
+		(int)item.refreshFlag,
 		static_cast<long long>(item.lastRequestTime),
-		static_cast<long long>(item.lastResponseTime),
-		item.receiver.constData(), item.receiver.size(),
-		item.from.constData(), item.from.size(),
-		item.clientId.constData(), item.clientId.size()
+		static_cast<long long>(item.lastRefreshTime),
+		static_cast<long long>(item.lastAccessTime),
+		item.cachedFlag ? 1 : 0,
+		item.proto,
+		item.retryCount,
+		item.httpBackendNo,
+		item.cacheClientId.constData(), item.cacheClientId.size(),
+		item.methodName.toUtf8().constData(), item.methodName.toUtf8().size(),
+		requestPacket.constData(), requestPacket.size(),
+		responsePacket.constData(), responsePacket.size(),
+		responseHashVal.constData(), responseHashVal.size(),
+		item.methodType,
+		item.orgSubscriptionStr.toUtf8().constData(), item.orgSubscriptionStr.toUtf8().size(),
+		item.subscriptionStr.toUtf8().constData(), item.subscriptionStr.toUtf8().size(),
+		subscriptionPacket.constData(), subscriptionPacket.size()
 	);
+
+	// store client map
+	QMap<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
+	QString originalClientMapVal = "";
+	QString newClientMapVal = "";
+	loadCacheItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
+	for (const QByteArray &mapKey : clientMap.keys()) 
+	{
+		QString keyStr = mapKey.toHex().data();
+		keyStr += "\n";
+		if (!originalClientMapVal.contains(keyStr))
+		{
+			newClientMapVal += keyStr;
+		}
+		QString clientItemVal = clientMap[mapKey].msgId;
+		clientItemVal += "\n";
+		clientItemVal += clientMap[mapKey].from.toHex().data();
+		log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
+		log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
+		storeCacheItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
+	}
+
+	log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
+	if (!newClientMapVal.isEmpty())
+	{
+		newClientMapVal += originalClientMapVal;
+		storeCacheItemField<QString>(context, clientId, "clientMap", newClientMapVal);
+	}
 
 	if (reply) freeReplyObject(reply);
 }
 
 template <typename T>
-void storeClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
+void storeCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value) 
 {
 	QByteArray key = "client:" + clientId;
 
@@ -251,7 +299,7 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
 		QString originalClientMapVal = "";
 		QString newClientMapVal = "";
-		loadClientItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
+		loadCacheItemField<QString>(context, clientId, "clientMap", originalClientMapVal);
 		for (const QByteArray &mapKey : clientMap.keys()) 
 		{
 			QString keyStr = mapKey.toHex().data();
@@ -265,14 +313,14 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 			clientItemVal += clientMap[mapKey].from.toHex().data();
 			log_debug("QQQQQ=%s", clientMap[mapKey].from.toHex().data());
 			log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-			storeClientItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
+			storeCacheItemField<QString>(context, clientId, mapKey.toHex().data(), clientItemVal);
 		}
 
 		log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 		if (!newClientMapVal.isEmpty())
 		{
 			newClientMapVal += originalClientMapVal;
-			storeClientItemField<QString>(context, clientId, "clientMap", newClientMapVal);
+			storeCacheItemField<QString>(context, clientId, "clientMap", newClientMapVal);
 		}
 	}
 
@@ -280,8 +328,76 @@ void storeClientItemField(redisContext* context, const QByteArray& clientId, con
 		freeReplyObject(reply);
 }
 
+CacheItem loadCacheItem(redisContext* context, const QByteArray& clientId) 
+{
+	CacheItem item;
+	item.clientId = clientId;
+	QByteArray key = "client:" + clientId;
+
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"HGETALL %b", key.constData(), key.size());
+
+	if (!reply || reply->type != REDIS_REPLY_ARRAY) {
+		if (reply) freeReplyObject(reply);
+		return item;
+	}
+
+	QString clientMap = "";
+	for (size_t i = 0; i < reply->elements; i += 2) {
+		QByteArray field(reply->element[i]->str, reply->element[i]->len);
+		QByteArray value(reply->element[i + 1]->str, reply->element[i + 1]->len);
+
+		if (field == "orgMsgId") item.orgMsgId = QString::fromUtf8(value);
+		else if (field == "msgId") item.msgId = value.toInt();
+		else if (field == "newMsgId") item.newMsgId = value.toInt();
+		else if (field == "refreshFlag") item.refreshFlag = (char)value.toInt();
+		else if (field == "lastRequestTime") item.lastRequestTime = value.toLongLong();
+		else if (field == "lastRefreshTime") item.lastRefreshTime = value.toLongLong();
+		else if (field == "lastAccessTime") item.lastAccessTime = value.toLongLong();
+		else if (field == "cachedFlag") item.cachedFlag = (value == "1");
+		else if (field == "proto") item.proto = value.toInt();
+		else if (field == "retryCount") item.retryCount = value.toInt();
+		else if (field == "httpBackendNo") item.httpBackendNo = value.toInt();
+		else if (field == "cacheClientId") item.cacheClientId = value;
+		else if (field == "methodName") item.methodName = QString::fromUtf8(value);
+		else if (field == "requestPacket") item.requestPacket.fromVariant(TnetString::toVariant(value));
+		else if (field == "responsePacket") item.responsePacket.fromVariant(TnetString::toVariant(value));
+		else if (field == "responseHashVal") item.responseHashVal = value;
+		else if (field == "methodType") item.methodType = value.toInt();
+		else if (field == "orgSubscriptionStr") item.orgSubscriptionStr = QString::fromUtf8(value);
+		else if (field == "subscriptionStr") item.subscriptionStr = QString::fromUtf8(value);
+		else if (field == "subscriptionPacket") item.subscriptionPacket.fromVariant(TnetString::toVariant(value));
+		else if (field == "clientMap") clientMap = QString::fromUtf8(value);
+	}
+
+	log_debug("Load ClientMap=%s", qPrintable(clientMap));
+	QStringList mapList = clientMap.split("\n");
+	for	(int i=0; i < mapList.length(); i++)
+	{
+		QString mapKeyStr = mapList[i];
+		if (!mapKeyStr.isEmpty())
+		{
+			QString mapValStr = "";
+			loadCacheItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
+			log_debug("mapValStr = %s", qPrintable(mapValStr));
+			QStringList mapValList = mapValStr.split("\n");
+			if (mapValList.length() == 2)
+			{
+				ClientInCacheItem cacheClientItem;
+				cacheClientItem.msgId = mapValList[0];
+				cacheClientItem.from = QByteArray::fromHex(qPrintable(mapValList[1]));
+				QByteArray mapKeyByte = QByteArray::fromHex(qPrintable(mapKeyStr));
+				item.clientMap[mapKeyByte] = cacheClientItem;
+			}
+		}
+	}
+
+	freeReplyObject(reply);
+	return item;
+}
+
 template <typename T>
-int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value) 
+int loadCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value) 
 {
 	QByteArray key = "client:" + clientId;
 
@@ -338,7 +454,7 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 			if (!mapKeyStr.isEmpty())
 			{
 				QString mapValStr = "";
-				loadClientItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
+				loadCacheItemField<QString>(context, clientId, qPrintable(mapKeyStr), mapValStr);
 				log_debug("mapValStr = %s", qPrintable(mapValStr));
 				QStringList mapValList = mapValStr.split("\n");
 				if (mapValList.length() == 2)
@@ -356,42 +472,6 @@ int loadClientItemField(redisContext* context, const QByteArray& clientId, const
 	if (reply != nullptr)
 		freeReplyObject(reply);
 	return 0;
-}
-
-ClientItem loadClientItem(redisContext* context, const QByteArray& clientId) 
-{
-	ClientItem item;
-	item.clientId = clientId;
-	QByteArray key = "client:" + clientId;
-
-	redisReply* reply = (redisReply*)redisCommand(context,
-		"HGETALL %b", key.constData(), key.size());
-
-	if (!reply || reply->type != REDIS_REPLY_ARRAY) {
-		if (reply) freeReplyObject(reply);
-		return item;
-	}
-
-	for (size_t i = 0; i < reply->elements; i += 2) {
-		QByteArray field(reply->element[i]->str, reply->element[i]->len);
-		QByteArray value(reply->element[i + 1]->str, reply->element[i + 1]->len);
-
-		if (field == "urlPath") item.urlPath = QString::fromUtf8(value);
-		else if (field == "processId") item.processId = value.toInt();
-		else if (field == "initFlag") item.initFlag = (value == "1");
-		else if (field == "resultStr") item.resultStr = QString::fromUtf8(value);
-		else if (field == "msgIdCount") item.msgIdCount = value.toInt();
-		else if (field == "lastRequestSeq") item.lastRequestSeq = value.toInt();
-		else if (field == "lastResponseSeq") item.lastResponseSeq = value.toInt();
-		else if (field == "lastRequestTime") item.lastRequestTime = value.toLongLong();
-		else if (field == "lastResponseTime") item.lastResponseTime = value.toLongLong();
-		else if (field == "receiver") item.receiver = value;
-		else if (field == "from") item.from = value;
-		else if (field == "clientId") item.clientId = value;
-	}
-
-	freeReplyObject(reply);
-	return item;
 }
 
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
@@ -460,22 +540,22 @@ void testRedis()
 	item.receiver = QByteArray::fromHex("deadbeef");
 	item.from = QByteArray::fromHex("device");
 
-	storeClientItem(c, item);
+	storeCacheItem(c, item);
 
-	storeClientItemField<QString>(c, item.clientId, "urlPath", "/do/update");
-	storeClientItemField<pid_t>(c, item.clientId, "processId", getpid());
-	storeClientItemField<bool>(c, item.clientId, "initFlag", true);
-	storeClientItemField<QString>(c, item.clientId, "resultStr", "okk");
-	storeClientItemField<int>(c, item.clientId, "msgIdCount", 42);
-	storeClientItemField<int>(c, item.clientId, "lastRequestSeq", 5);
-	storeClientItemField<int>(c, item.clientId, "lastResponseSeq", 5);
-	storeClientItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
-	storeClientItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
-	storeClientItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
-	storeClientItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdef"));
+	storeCacheItemField<QString>(c, item.clientId, "urlPath", "/do/update");
+	storeCacheItemField<pid_t>(c, item.clientId, "processId", getpid());
+	storeCacheItemField<bool>(c, item.clientId, "initFlag", true);
+	storeCacheItemField<QString>(c, item.clientId, "resultStr", "okk");
+	storeCacheItemField<int>(c, item.clientId, "msgIdCount", 42);
+	storeCacheItemField<int>(c, item.clientId, "lastRequestSeq", 5);
+	storeCacheItemField<int>(c, item.clientId, "lastResponseSeq", 5);
+	storeCacheItemField<time_t>(c, item.clientId, "lastRequestTime", time(nullptr));
+	storeCacheItemField<time_t>(c, item.clientId, "lastResponseTime", time(nullptr));
+	storeCacheItemField<QByteArray>(c, item.clientId, "receiver", QByteArray::fromHex("1234567890"));
+	storeCacheItemField<QByteArray>(c, item.clientId, "from", QByteArray::fromHex("abcdef"));
 	ZhttpRequestPacket packet;
 	packet.code = 2222;
-	storeClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
+	storeCacheItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", packet);
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 	ClientInCacheItem clientItem0;
 	clientItem0.msgId = "1";
@@ -488,24 +568,24 @@ void testRedis()
 	log_debug("PPPPP=%s", clientItem1.from.toHex().data());
 	QByteArray key1 = QByteArray::fromHex("234567");
 	clientMap[key1] = clientItem1;
-	storeClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", clientMap);
+	storeCacheItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", clientMap);
 
 	ClientItem newItem;
-	loadClientItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
-	loadClientItemField<pid_t>(c, item.clientId, "processId", newItem.processId);
-	loadClientItemField<bool>(c, item.clientId, "initFlag", newItem.initFlag);
-	loadClientItemField<QString>(c, item.clientId, "resultStr", newItem.resultStr);
-	loadClientItemField<int>(c, item.clientId, "msgIdCount", newItem.msgIdCount);
-	loadClientItemField<int>(c, item.clientId, "lastRequestSeq", newItem.lastRequestSeq);
-	loadClientItemField<int>(c, item.clientId, "lastResponseSeq", newItem.lastResponseSeq);
-	loadClientItemField<time_t>(c, item.clientId, "lastRequestTime", newItem.lastRequestTime);
-	loadClientItemField<time_t>(c, item.clientId, "lastResponseTime", newItem.lastResponseTime);
-	loadClientItemField<QByteArray>(c, item.clientId, "receiver", newItem.receiver);
-	loadClientItemField<QByteArray>(c, item.clientId, "from", newItem.from);
+	loadCacheItemField<QString>(c, item.clientId, "urlPath", newItem.urlPath);
+	loadCacheItemField<pid_t>(c, item.clientId, "processId", newItem.processId);
+	loadCacheItemField<bool>(c, item.clientId, "initFlag", newItem.initFlag);
+	loadCacheItemField<QString>(c, item.clientId, "resultStr", newItem.resultStr);
+	loadCacheItemField<int>(c, item.clientId, "msgIdCount", newItem.msgIdCount);
+	loadCacheItemField<int>(c, item.clientId, "lastRequestSeq", newItem.lastRequestSeq);
+	loadCacheItemField<int>(c, item.clientId, "lastResponseSeq", newItem.lastResponseSeq);
+	loadCacheItemField<time_t>(c, item.clientId, "lastRequestTime", newItem.lastRequestTime);
+	loadCacheItemField<time_t>(c, item.clientId, "lastResponseTime", newItem.lastResponseTime);
+	loadCacheItemField<QByteArray>(c, item.clientId, "receiver", newItem.receiver);
+	loadCacheItemField<QByteArray>(c, item.clientId, "from", newItem.from);
 	ZhttpRequestPacket newPacket;
-	loadClientItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
+	loadCacheItemField<ZhttpRequestPacket>(c, item.clientId, "requestPacket", newPacket);
 	QMap<QByteArray, ClientInCacheItem> newClientMap;
-	loadClientItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", newClientMap);
+	loadCacheItemField<QMap<QByteArray, ClientInCacheItem>>(c, item.clientId, "clientMap", newClientMap);
 
 	for (const QByteArray &mapKey : newClientMap.keys())
 	{
@@ -525,7 +605,7 @@ void testRedis()
 	log_debug("from = %s", newItem.from.toHex().data());
 	log_debug("code = %d", newPacket.code);
 
-	ClientItem loaded = loadClientItem(c, item.clientId);
+	ClientItem loaded = loadCacheItem(c, item.clientId);
 	log_debug("Loaded URL:%s", qPrintable(loaded.urlPath));
 
 	redisFree(c);

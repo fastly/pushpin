@@ -133,10 +133,12 @@ void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();
 
+void storeCacheItem(redisContext* context, const CacheItem& item);
 template <typename T>
-void storeClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value);
+void storeCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, const T& value);
+CacheItem loadCacheItem(redisContext* context, const QByteArray& clientId);
 template <typename T>
-int loadClientItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value);
+int loadCacheItemField(redisContext* context, const QByteArray& clientId, const char *fieldName, T& value);
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
