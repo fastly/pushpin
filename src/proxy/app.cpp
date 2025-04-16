@@ -32,6 +32,7 @@
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
+#include "eventloop.h"
 #include "processquit.h"
 #include "timer.h"
 #include "defercall.h"
@@ -351,22 +352,7 @@ private:
 class App::Private
 {
 public:
-	App *q;
-	ArgsData args;
-	std::unique_ptr<DomainMap> domainMap;
-	std::list<EngineThread*> threads;
-	Connection quitConnection;
-	Connection hupConnection;
-	Connection changedConnection;
-
-	Private(App *_q) :
-		q(_q)
-	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
-	}
-
-	void start()
+	static int run()
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -374,6 +360,7 @@ public:
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Pushpin proxy component.");
 
+		ArgsData args;
 		QString errorMessage;
 		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
@@ -381,13 +368,11 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				q->quit(1);
-				return;
+				return 1;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				q->quit(0);
-				return;
+				return 0;
 			case CommandLineHelpRequested:
 				parser.showHelp();
 				Q_UNREACHABLE();
@@ -403,8 +388,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				q->quit(1);
-				return;
+				return 1;
 			}
 		}
 
@@ -420,8 +404,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				q->quit(0);
-				return;
+				return 1;
 			}
 		}
 
@@ -523,6 +506,7 @@ public:
 		int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
+		bool newEventLoop = settings.value("proxy/new_event_loop", false).toBool();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -536,15 +520,13 @@ public:
 		if(!(!connmgr_in_specs.isEmpty() && !connmgr_in_stream_specs.isEmpty() && !connmgr_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
 		{
 			log_error("must set connmgr_in_specs, connmgr_in_stream_specs, and connmgr_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		if(!(!connmgr_client_out_specs.isEmpty() && !connmgr_client_out_stream_specs.isEmpty() && !connmgr_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
 			log_error("must set connmgr_client_out_specs, connmgr_client_out_stream_specs, and connmgr_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		if(updatesCheck == "true")
@@ -555,17 +537,6 @@ public:
 			sessionsMax = qMin(sessionsMax, clientMaxconn);
 		else
 			sessionsMax = clientMaxconn;
-
-		if(!args.routeLines.isEmpty())
-		{
-			domainMap = std::make_unique<DomainMap>();
-			foreach(const QString &line, args.routeLines)
-				domainMap->addRouteLine(line);
-		}
-		else
-			domainMap = std::make_unique<DomainMap>(routesFile);
-
-		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
@@ -632,96 +603,156 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		for(int n = 0; n < workerCount; ++n)
+		return runLoop(config, args.routeLines, routesFile, workerCount, newEventLoop);
+	}
+
+private:
+	static int runLoop(const Engine::Configuration &config, const QStringList &routeLines, const QString &routesFile, int workerCount, bool newEventLoop)
+	{
+		// plenty for the main thread
+		int timersMax = 100;
+
+		std::unique_ptr<EventLoop> loop;
+
+		if(newEventLoop)
 		{
-			Engine::Configuration wconfig = config;
+			log_debug("using new event loop");
 
-			wconfig.id = n;
+			// for processquit
+			int socketNotifiersMax = 1;
 
-			if(workerCount > 1)
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
+
+		std::unique_ptr<DomainMap> domainMap;
+		std::list<EngineThread*> threads;
+
+		DeferCall deferCall;
+		deferCall.defer([&] {
+			if(!routeLines.isEmpty())
 			{
-				wconfig.clientId += '-' + QByteArray::number(n);
-
-				wconfig.inspectSpec = suffixSpec(wconfig.inspectSpec, n);
-				wconfig.acceptSpec = suffixSpec(wconfig.acceptSpec, n);
-				wconfig.retryInSpec = suffixSpec(wconfig.retryInSpec, n);
-				wconfig.wsControlInitSpecs = suffixSpecs(wconfig.wsControlInitSpecs, n);
-				wconfig.wsControlStreamSpecs = suffixSpecs(wconfig.wsControlStreamSpecs, n);
-				wconfig.statsSpec = suffixSpec(wconfig.statsSpec, n);
-				wconfig.commandSpec = suffixSpec(wconfig.commandSpec, n);
-				wconfig.intServerInSpecs = suffixSpecs(wconfig.intServerInSpecs, n);
-				wconfig.intServerInStreamSpecs = suffixSpecs(wconfig.intServerInStreamSpecs, n);
-				wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
+				domainMap = std::make_unique<DomainMap>();
+				foreach(const QString &line, routeLines)
+					domainMap->addRouteLine(line);
 			}
+			else
+				domainMap = std::make_unique<DomainMap>(routesFile);
 
-			EngineThread *t = new EngineThread(wconfig, domainMap.get());
-			if(!t->start())
-			{
-				delete t;
+			domainMap->changed.connect([&] {
+				for(EngineThread *t : threads)
+					t->routesChanged();
+			});
+
+			ProcessQuit::instance()->quit.connect([&] {
+				log_info("stopping...");
+
+				// remove the handler, so if we get another signal then we crash out
+				ProcessQuit::cleanup();
+
+				for(EngineThread *t : threads)
+					t->stop();
 
 				for(EngineThread *t : threads)
 					delete t;
 
 				threads.clear();
 
-				q->quit(0);
-				return;
+				log_debug("stopped");
+
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					QCoreApplication::exit(0);
+			});
+
+			ProcessQuit::instance()->hup.connect([&] {
+				log_info("reloading");
+				log_rotate();
+				domainMap->reload();
+			});
+
+			for(int n = 0; n < workerCount; ++n)
+			{
+				Engine::Configuration wconfig = config;
+
+				wconfig.id = n;
+
+				if(workerCount > 1)
+				{
+					wconfig.clientId += '-' + QByteArray::number(n);
+
+					wconfig.inspectSpec = suffixSpec(wconfig.inspectSpec, n);
+					wconfig.acceptSpec = suffixSpec(wconfig.acceptSpec, n);
+					wconfig.retryInSpec = suffixSpec(wconfig.retryInSpec, n);
+					wconfig.wsControlInitSpecs = suffixSpecs(wconfig.wsControlInitSpecs, n);
+					wconfig.wsControlStreamSpecs = suffixSpecs(wconfig.wsControlStreamSpecs, n);
+					wconfig.statsSpec = suffixSpec(wconfig.statsSpec, n);
+					wconfig.commandSpec = suffixSpec(wconfig.commandSpec, n);
+					wconfig.intServerInSpecs = suffixSpecs(wconfig.intServerInSpecs, n);
+					wconfig.intServerInStreamSpecs = suffixSpecs(wconfig.intServerInStreamSpecs, n);
+					wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
+				}
+
+				EngineThread *t = new EngineThread(wconfig, domainMap.get());
+				if(!t->start())
+				{
+					delete t;
+
+					for(EngineThread *t : threads)
+						delete t;
+
+					threads.clear();
+
+					if(newEventLoop)
+						loop->exit(1);
+					else
+						QCoreApplication::exit(1);
+
+					return;
+				}
+
+				threads.push_back(t);
 			}
 
-			threads.push_back(t);
+			log_info("started");
+		});
+
+		int ret;
+		if(newEventLoop)
+			ret = loop->exec();
+		else
+			ret = QCoreApplication::exec();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
 		}
 
-		log_info("started");
-	}
+		// deinit here, after all event loop activity has completed
 
-private:
-	void domainMap_changed()
-	{
-		for(EngineThread *t : threads)
-			t->routesChanged();
-	}
+		DeferCall::cleanup();
 
-	void reload()
-	{
-		log_info("reloading");
-		log_rotate();
+		if(!newEventLoop)
+			Timer::deinit();
 
-		domainMap->reload();
-	}
-
-	void doQuit()
-	{
-		log_info("stopping...");
-
-		// remove the handler, so if we get another signal then we crash out
-		ProcessQuit::cleanup();
-
-		for(EngineThread *t : threads)
-			t->stop();
-
-		for(EngineThread *t : threads)
-			delete t;
-
-		threads.clear();
-
-		log_debug("stopped");
-		q->quit(0);
+		return ret;
 	}
 };
 
-App::App()
-{
-	d = new Private(this);
-}
+App::App() = default;
 
-App::~App()
-{
-	delete d;
-}
+App::~App() = default;
 
-void App::start()
+int App::run()
 {
-	d->start();
+	return Private::run();
 }
 
 #include "app.moc"
