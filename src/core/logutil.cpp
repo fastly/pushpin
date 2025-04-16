@@ -29,8 +29,8 @@
 #include "tnetstring.h"
 #include "log.h"
 
-#define MAX_DATA_LENGTH 1000
-#define MAX_CONTENT_LENGTH 1000
+#define MAX_DATA_LENGTH 2000
+#define MAX_CONTENT_LENGTH 2000
 
 namespace LogUtil {
 
