@@ -37,6 +37,7 @@ class ThreadWake : public QObject
 
 public:
 	ThreadWake() :
+		customRegId_(-1),
 		wakeQueued_(false)
 	{
 		EventLoop *loop = EventLoop::instance();
@@ -46,8 +47,15 @@ public:
 			auto [regId, sr] = loop->registerCustom(ThreadWake::cb_ready, this);
 			assert(regId >= 0);
 
+			customRegId_ = regId;
 			sr_ = std::move(sr);
 		}
+	}
+
+	~ThreadWake()
+	{
+		if(customRegId_ >= 0)
+			EventLoop::instance()->deregister(customRegId_);
 	}
 
 	// requests the awake signal to be emitted from the object's event loop
@@ -78,6 +86,7 @@ private slots:
 	}
 
 private:
+	int customRegId_;
 	std::unique_ptr<Event::SetReadiness> sr_;
 	std::mutex mutex_;
 	bool wakeQueued_;
