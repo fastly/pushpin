@@ -186,23 +186,21 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class EngineWorker : public QObject
+class EngineWorker
 {
-	Q_OBJECT
-
 public:
 	EngineWorker(const Engine::Configuration &config, DomainMap *domainMap) :
-		QObject(),
 		config_(config),
 		engine_(std::make_unique<Engine>(domainMap))
 	{
 	}
 
+	DeferCall deferCall;
+
 	Signal started;
 	Signal stopped;
 	Signal error;
 
-public slots:
 	void start()
 	{
 		if(!engine_->start(config_))
@@ -273,7 +271,12 @@ public:
 		QMutexLocker locker(&m);
 
 		if(worker)
-			QMetaObject::invokeMethod(worker, "stop", Qt::QueuedConnection);
+		{
+			worker->deferCall.defer([=] {
+				// NOTE: called from worker thread
+				worker->stop();
+			});
+		}
 	}
 
 	void routesChanged()
@@ -281,7 +284,12 @@ public:
 		QMutexLocker locker(&m);
 
 		if(worker)
-			QMetaObject::invokeMethod(worker, "routesChanged", Qt::QueuedConnection);
+		{
+			worker->deferCall.defer([=] {
+				// NOTE: called from worker thread
+				worker->routesChanged();
+			});
+		}
 	}
 
 	virtual void run()
@@ -296,7 +304,7 @@ public:
 		Connection startedConnection = worker->started.connect(boost::bind(&EngineThread::worker_started, this));
 		Connection stoppedConnection = worker->stopped.connect(boost::bind(&EngineThread::worker_stopped, this));
 		Connection errorConnection = worker->error.connect(boost::bind(&EngineThread::worker_error, this));
-		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
+		worker->deferCall.defer([=] { worker->start(); });
 		exec();
 
 		// ensure deferred deletes are processed
