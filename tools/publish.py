@@ -34,7 +34,7 @@ def ensure_utf8(i):
         for v in i:
             out.append(ensure_utf8(v))
         return out
-    elif isinstance(i, unicode):
+    elif isinstance(i, str):
         return i.encode("utf-8")
     else:
         return i
@@ -63,7 +63,7 @@ headers = []
 if args.header:
     for h in args.header:
         k, v = h.split(":", 1)
-        headers.append([k, v.lstrip()])
+        headers.append([ensure_utf8(k), ensure_utf8(v.lstrip())])
 
 meta = dict()
 formats = dict()
@@ -71,39 +71,39 @@ formats = dict()
 if args.content:
     hr = {}
     if args.patch:
-        hr["body-patch"] = ensure_utf8(json.loads(args.content))
+        hr[b"body-patch"] = ensure_utf8(json.loads(args.content))
     else:
-        hr["body"] = args.content + "\n"
+        hr[b"body"] = ensure_utf8(args.content + "\n")
     if args.code is not None:
-        hr["code"] = args.code
+        hr[b"code"] = args.code
     if headers:
-        hr["headers"] = headers
-    formats["http-response"] = hr
+        hr[b"headers"] = headers
+    formats[b"http-response"] = hr
 
 if args.close:
-    formats["http-stream"] = {"action": "close"}
+    formats[b"http-stream"] = {b"action": b"close"}
 elif args.content and not args.patch:
-    formats["http-stream"] = {"content": args.content + "\n"}
+    formats[b"http-stream"] = {b"content": ensure_utf8(args.content + "\n")}
 
 if args.content and not args.patch:
-    formats["ws-message"] = {"content": args.content}
+    formats[b"ws-message"] = {b"content": ensure_utf8(args.content)}
 
 if not formats:
     print("error: nothing to send")
     sys.exit(1)
 
 if args.sender:
-    meta["sender"] = args.sender
+    meta[b"sender"] = ensure_utf8(args.sender)
 
-item = {"channel": args.channel, "formats": formats}
+item = {b"channel": ensure_utf8(args.channel), b"formats": formats}
 
 if args.id:
-    item["id"] = args.id
+    item[b"id"] = ensure_utf8(args.id)
 if args.prev_id:
-    item["prev-id"] = args.prev_id
+    item[b"prev-id"] = ensure_utf8(args.prev_id)
 
 if meta:
-    item["meta"] = meta
+    item[b"meta"] = meta
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.PUSH)
