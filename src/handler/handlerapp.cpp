@@ -409,9 +409,9 @@ private:
 		{
 			log_debug("using new event loop");
 
-			// enough for control requests and prometheus requests. client
-			// sessions don't use socket notifiers
-			int socketNotifiersMax = SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX);
+			// enough for control requests and prometheus requests, plus an
+			// extra 100 for misc. client sessions don't use socket notifiers
+			int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
 
 			int registrationsMax = timersMax + socketNotifiersMax;
 			loop = std::make_unique<EventLoop>(registrationsMax);

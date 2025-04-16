@@ -32,13 +32,16 @@
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
+#include <QCoreApplication>
 #include "log.h"
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 #include "filewatcher.h"
 #include "routesfile.h"
 
 #define WORKER_THREAD_TIMERS 10
+#define WORKER_THREAD_SOCKETNOTIFIERS 1
 
 class DomainMap::Worker
 {
@@ -739,14 +742,31 @@ class DomainMap::Thread : public QThread
 	Q_OBJECT
 
 public:
+	bool newEventLoop;
 	QString fileName;
-	Worker *worker;
+	std::unique_ptr<EventLoop> loop;
+	std::unique_ptr<Worker> worker;
 	QMutex m;
 	QWaitCondition w;
 
+	Thread() :
+		newEventLoop(false)
+	{
+	}
+
 	~Thread()
 	{
-		quit();
+		if(worker)
+		{
+			worker->deferCall.defer([&] {
+				// NOTE: called from worker thread
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					quit();
+			});
+		}
+
 		wait();
 	}
 
@@ -761,25 +781,55 @@ public:
 
 	virtual void run()
 	{
-		Timer::init(WORKER_THREAD_TIMERS);
+		// will unlock during exec
+		m.lock();
 
-		worker = new Worker;
+		int timersMax = WORKER_THREAD_TIMERS;
+
+		if(newEventLoop)
+		{
+			log_debug("domainmap: using new event loop");
+
+			int socketNotifiersMax = WORKER_THREAD_SOCKETNOTIFIERS;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
+
+		worker = std::make_unique<Worker>();
 		worker->fileName = fileName;
-		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
+
+		worker->started.connect([&] {
+			w.wakeOne();
+			m.unlock();
+		});
+
 		worker->deferCall.defer([=] { worker->start(); });
-		exec();
-		startedConnection.disconnect();
-		delete worker;
+
+		if(newEventLoop)
+			loop->exec();
+		else
+			exec();
+
+		worker.reset();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
+
+		// deinit here, after all event loop activity has completed
 
 		DeferCall::cleanup();
-		Timer::deinit();
-	}
 
-public:
-	void worker_started()
-	{
-		QMutexLocker locker(&m);
-		w.wakeOne();
+		if(!newEventLoop)
+			Timer::deinit();
 	}
 };
 
@@ -803,9 +853,10 @@ public:
 		delete thread;
 	}
 
-	void start(const QString &fileName = QString())
+	void start(bool newEventLoop, const QString &fileName = QString())
 	{
 		thread = new Thread;
+		thread->newEventLoop = newEventLoop;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -829,16 +880,16 @@ private:
 	}
 };
 
-DomainMap::DomainMap()
+DomainMap::DomainMap(bool newEventLoop)
 {
 	d = new Private(this);
-	d->start();
+	d->start(newEventLoop);
 }
 
-DomainMap::DomainMap(const QString &fileName)
+DomainMap::DomainMap(const QString &fileName, bool newEventLoop)
 {
 	d = new Private(this);
-	d->start(fileName);
+	d->start(newEventLoop, fileName);
 }
 
 DomainMap::~DomainMap()
@@ -848,7 +899,7 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
-	Worker *worker = d->thread->worker;
+	Worker *worker = d->thread->worker.get();
 
 	worker->deferCall.defer([=] {
 		// NOTE: called from worker thread
