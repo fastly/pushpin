@@ -2357,13 +2357,14 @@ public:
 
 		if (is_cache_method(methodName) || is_subscribe_method(methodName))
 		{
-			if (gCacheItemMap.contains(paramsHash) && gCacheItemMap[paramsHash].proto == Scheme::websocket)
+			CacheItem* pCacheItem = load_cache_item(paramsHash);
+			if (pCacheItem != NULL)
 			{
-				gCacheItemMap[paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-				if (gCacheItemMap[paramsHash].cachedFlag == true)
+				if (pCacheItem->cachedFlag == true)
 				{
-					int ccIndex = get_cc_index_from_clientId(gCacheItemMap[paramsHash].cacheClientId);
+					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
 					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
 						ccIndex = get_main_cc_index();
@@ -2378,41 +2379,44 @@ public:
 					QString orgMsgId = msgIdStr;
 					QByteArray from = p.from;
 
-					if (gCacheItemMap[paramsHash].methodType == CacheMethodType::CACHE_METHOD)
+					if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 					{
-						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
-						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
+						ZhttpResponsePacket out = pCacheItem->responsePacket;
+						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 					}
-					else if (gCacheItemMap[paramsHash].methodType == CacheMethodType::SUBSCRIBE_METHOD)
+					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
-						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
-						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
-						replace_result_field(out.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
+						ZhttpResponsePacket out = pCacheItem->responsePacket;
+						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
+						replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 
-						ZhttpResponsePacket out1 = gCacheItemMap[paramsHash].subscriptionPacket;
-						replace_id_field(out1.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
-						replace_subscription_field(out1.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
+						ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+						replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+						replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
 
 						// add client to list
-						gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdStr;
-						gCacheItemMap[paramsHash].clientMap[packetId].from = p.from;
+						pCacheItem->clientMap[packetId].msgId = msgIdStr;
+						pCacheItem->clientMap[packetId].from = p.from;
 						log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
-						gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					}
 				}
 				else
 				{
 					log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(methodName));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdStr;
-					gCacheItemMap[paramsHash].clientMap[packetId].from = p.from;
+					pCacheItem->clientMap[packetId].msgId = msgIdStr;
+					pCacheItem->clientMap[packetId].from = p.from;
 					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
-					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 
+				store_cache_item(paramsHash, "lastAccessTime");
+				store_cache_item(paramsHash, "clientMap");
+				store_cache_item(paramsHash, "lastRefreshTime");
 				return -1;
 			}
 			else
@@ -2426,12 +2430,16 @@ public:
 				}
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
+				pCacheItem = load_cache_item(paramsHash);
 				// Send new client cache request packet
-				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
-				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
+				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 				// register cache refresh
 				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
+
+				store_cache_item(paramsHash, "newMsgId");
+				store_cache_item(paramsHash, "lastRequestTime");
 			}
 			
 			return -1;
