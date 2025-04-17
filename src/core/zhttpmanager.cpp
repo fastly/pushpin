@@ -1664,7 +1664,8 @@ public:
 		return ccIndex;
 	}
 
-	void reply_http_cached_content(const ZhttpResponsePacket &cacheItemResponsePacket, int cacheItemMsgId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
+	void reply_http_cached_content(const ZhttpResponsePacket &cacheItemResponsePacket, 
+		int cacheItemMsgId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
 	{
 		//// Send cached response
 		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
@@ -1695,7 +1696,7 @@ public:
 	}
 
 	void send_http_response_to_client(const ZhttpResponsePacket &cacheItemResponsePacket, 
-		int cacheItemMsgId, int cacheItemClientMsgId, 
+		int cacheItemMsgId, QString cacheItemClientMsgId, 
 		const QByteArray &cacheItemClientFrom, const QByteArray &clientId)
 	{
 		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
@@ -1753,8 +1754,8 @@ public:
 
 				if (gCacheItemMap[packetMsg.paramsHash].cachedFlag == true)
 				{
-					reply_http_cached_content(gCacheItemMap[cacheItemId].responsePacket, 
-						gCacheItemMap[cacheItemId].msgId, packetMsg.id, packetId, p.from);
+					reply_http_cached_content(gCacheItemMap[packetMsg.paramsHash].responsePacket, 
+						gCacheItemMap[packetMsg.paramsHash].msgId, packetMsg.id, packetId, p.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 					return 0;
