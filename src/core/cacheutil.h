@@ -142,9 +142,12 @@ int loadCacheItemField(redisContext* context, const QByteArray& itemId, const ch
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-CacheItem load_cache_item(QByteArray itemId);
-void store_cache_item(QByteArray itemId, CacheItem cacheItem);
-void remove_cache_item(QByteArray itemId);
+bool is_cache_item(const QByteArray& itemId);
+CacheItem* load_cache_item(const QByteArray& itemId);
+void store_cache_item(const QByteArray& itemId);
+void save_cache_item(const QByteArray& itemId, CacheItem cacheItem);
+void remove_cache_item(const QByteArray& itemId);
+QList<QByteArray> get_cache_item_keys();
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);

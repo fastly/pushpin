@@ -1369,22 +1369,22 @@ public:
 	void refresh_cache(QByteArray itemId, QString urlPath)
 	{
 		log_debug("_[TIMER] cache refresh %s %s", itemId.toHex().data(), qPrintable(urlPath));
-		CacheItem cacheItem = load_cache_item(itemId);
-		if (cacheItem == NULL)
+		CacheItem *pCacheItem = load_cache_item(itemId);
+		if (pCacheItem == NULL)
 		{
 			log_debug("_[TIMER] exit refresh %s", itemId.toHex().data());
 			return;
 		}
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
-		if (cacheItem.cachedFlag == true)
+		if (pCacheItem->cachedFlag == true)
 		{
 			// delete old cache items if it`s not auto_refresh_unerase
-			if ((cacheItem.refreshFlag & AUTO_REFRESH_UNERASE) == 0)
+			if ((pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE) == 0)
 			{
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 				qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
-				qint64 accessDiff = currMTime - cacheItem.lastAccessTime;
+				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
 				if (accessDiff > accessTimeoutMSeconds)
 				{
 					// remove cache item
@@ -1396,49 +1396,49 @@ public:
 
 			if (timeInterval > 0)
 			{
-				if (cacheItem.proto == Scheme::http)
+				if (pCacheItem->proto == Scheme::http)
 				{
-					QByteArray reqBody = cacheItem.requestPacket.body;
+					QByteArray reqBody = pCacheItem->requestPacket.body;
 					QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-					replace_id_field(reqBody, cacheItem.orgMsgId, newMsgId);
+					replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
 					send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 				}
-				else if (cacheItem.proto == Scheme::websocket)
+				else if (pCacheItem->proto == Scheme::websocket)
 				{
 					// Send client cache request packet for auto-refresh
-					int ccIndex = get_cc_index_from_clientId(cacheItem.cacheClientId);
-					QString orgMsgId = cacheItem.orgMsgId;
-					cacheItem.newMsgId = send_ws_request_over_cacheclient(cacheItem.requestPacket, orgMsgId, ccIndex);
-					cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
+					QString orgMsgId = pCacheItem->orgMsgId;
+					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
 		}
 		else
 		{
-			if (cacheItem.retryCount > RETRY_RESPONSE_MAX_COUNT)
+			if (pCacheItem->retryCount > RETRY_RESPONSE_MAX_COUNT)
 			{
 				log_debug("[_TIMER] reached max retry count");
 				return;
 			}
-			cacheItem.retryCount++;
+			pCacheItem->retryCount++;
 			// switch backend of the failed response
-			if (cacheItem.proto == Scheme::http)
+			if (pCacheItem->proto == Scheme::http)
 			{
 				urlPath = get_switched_http_backend_url(urlPath);
-				QByteArray reqBody = cacheItem.requestPacket.body;
+				QByteArray reqBody = pCacheItem->requestPacket.body;
 				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-				replace_id_field(reqBody, cacheItem.orgMsgId, newMsgId);
+				replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
 				send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 			}
-			else if (cacheItem.proto == Scheme::websocket)
+			else if (pCacheItem->proto == Scheme::websocket)
 			{
 				// Send client cache request packet for auto-refresh
-				int ccIndex = get_cc_next_index_from_clientId(cacheItem.cacheClientId);
-				cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
+				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
+				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
-				QString orgMsgId = cacheItem.orgMsgId;
-				cacheItem.newMsgId = send_ws_request_over_cacheclient(cacheItem.requestPacket, orgMsgId, ccIndex);
-				cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				QString orgMsgId = pCacheItem->orgMsgId;
+				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
 
@@ -1454,7 +1454,7 @@ public:
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
-		if (!gCacheItemMap.contains(itemId))
+		if (!is_cache_item(itemId))
 		{
 			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.toHex().data());
 			return;
@@ -1482,11 +1482,12 @@ public:
 		else
 		{
 			// cache lookup
-			foreach(QByteArray itemId, gCacheItemMap.keys())
+			foreach(QByteArray itemId, get_cache_item_keys())
 			{
-				if (gCacheItemMap[itemId].clientMap.contains(clientId))
+				CacheItem* pCacheItem = load_cache_item(itemId);
+				if (pCacheItem->clientMap.contains(clientId))
 				{
-					gCacheItemMap[itemId].clientMap.remove(clientId);
+					pCacheItem->clientMap.remove(clientId);
 					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", clientId.data(), gCacheItemMap[itemId].msgId, qPrintable(gCacheItemMap[itemId].subscriptionStr.left(16)));
 				}
 			}

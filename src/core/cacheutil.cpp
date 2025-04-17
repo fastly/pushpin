@@ -618,7 +618,12 @@ void testRedis()
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-CacheItem load_cache_item(QByteArray itemId)
+bool is_cache_item(const QByteArray& itemId)
+{
+	return gCacheItemMap.contains(itemId);
+}
+
+CacheItem* load_cache_item(const QByteArray& itemId)
 {
 	if (!gCacheItemMap.contains(itemId))
 	{
@@ -626,15 +631,20 @@ CacheItem load_cache_item(QByteArray itemId)
 		return NULL;
 	}
 
-	return gCacheItemMap[itemId];
+	return &gCacheItemMap[itemId];
 }
 
-void store_cache_item(QByteArray itemId, CacheItem cacheItem)
+void store_cache_item(const QByteArray& itemId)
+{
+	return;
+}
+
+void save_cache_item(const QByteArray& itemId, CacheItem cacheItem)
 {
 	gCacheItemMap[itemId] = cacheItem;
 }
 
-void remove_cache_item(QByteArray itemId)
+void remove_cache_item(const QByteArray& itemId)
 {
 	if (gCacheItemMap.contains(itemId))
 	{
@@ -642,6 +652,11 @@ void remove_cache_item(QByteArray itemId)
 		gCacheItemMap.remove(itemId);
 	}
 	return;
+}
+
+QList<QByteArray> get_cache_item_keys()
+{
+	return gCacheItemMap.keys();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
