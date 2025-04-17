@@ -1748,28 +1748,29 @@ public:
 
 		if (is_cache_method(packetMsg.method))
 		{
-			if (gCacheItemMap.contains(packetMsg.paramsHash))
+			CacheItem *pCacheItem = load_cache_item(packetMsg.paramsHash);
+			if (pCacheItem != NULL)
 			{
-				gCacheItemMap[packetMsg.paramsHash].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-				if (gCacheItemMap[packetMsg.paramsHash].cachedFlag == true)
+				if (pCacheItem->cachedFlag == true)
 				{
-					reply_http_cached_content(gCacheItemMap[packetMsg.paramsHash].responsePacket, 
-						gCacheItemMap[packetMsg.paramsHash].msgId, packetMsg.id, packetId, p.from);
+					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
+						packetMsg.id, packetId, p.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
-					return 0;
 				}
 				else
 				{
 					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(packetMsg.method));
 					// add client to list
-					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].msgId = packetMsg.id;
-					gCacheItemMap[packetMsg.paramsHash].clientMap[packetId].from = p.from;
+					pCacheItem->clientMap[packetId].msgId = packetMsg.id;
+					pCacheItem->clientMap[packetId].from = p.from;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
-					gCacheItemMap[packetMsg.paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-					return 0;
+					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
+				store_cache_item(packetMsg.paramsHash);
+				return 0;
 			}
 			else
 			{
@@ -1814,95 +1815,97 @@ public:
 			QString tmpStr = packetMsg.id;
 			QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
-			if (gCacheItemMap.contains(msgIdByte))
+			CacheItem *pCacheItem = load_cache_item(msgIdByte);
+			if (pCacheItem != NULL)
 			{
-				QByteArray itemId = msgIdByte;
-				
 				// if not http, return
-				if (gCacheItemMap[itemId].proto != Scheme::http)
+				if (pCacheItem->proto != Scheme::http)
 				{
 					log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(packetMsg.id));
 					return -1;
 				}
 
-				if (gCacheItemMap[itemId].cachedFlag == false && packetMsg.isResultNull == true && 
-					gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				if (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true && 
+					pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
-					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
-					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
+					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
 					return 0;
 				}
 
-				gCacheItemMap[itemId].retryCount = 0;
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].msgId = 0;
-				gCacheItemMap[itemId].newMsgId = 0;
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(gCacheItemMap[itemId].methodName));
+				pCacheItem->retryCount = 0;
+				pCacheItem->responsePacket = p;
+				pCacheItem->msgId = 0;
+				pCacheItem->newMsgId = 0;
+				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				pCacheItem->cachedFlag = true;
+				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 				// recover original msgId
-				replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
+				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
 
 				// send response to all clients
-				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
-					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, 
-						gCacheItemMap[itemId].msgId,
-						gCacheItemMap[itemId].clientMap[cliId].msgId, 
-						gCacheItemMap[itemId].clientMap[cliId].from, 
+					send_http_response_to_client(pCacheItem->responsePacket, 
+						pCacheItem->msgId,
+						pCacheItem->clientMap[cliId].msgId, 
+						pCacheItem->clientMap[cliId].from, 
 						cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				}
-				gCacheItemMap[itemId].clientMap.clear();
+				pCacheItem->clientMap.clear();
+
+				store_cache_item(msgIdByte);
 
 				return 0;
 			}
 		}
 		
 		// it`s not the response from switch-backend or auto-refresh
-		foreach(QByteArray itemId, gCacheItemMap.keys())
+		foreach(QByteArray itemId, get_cache_item_keys())
 		{
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && 
-				(gCacheItemMap[itemId].requestPacket.ids[0].id == packetId) &&
-				(gCacheItemMap[itemId].cachedFlag == false))
+			CacheItem* pCacheItem = load_cache_item(itemId);
+			if ((pCacheItem->proto == Scheme::http) && 
+				(pCacheItem->requestPacket.ids[0].id == packetId) &&
+				(pCacheItem->cachedFlag == false))
 			{
-				if ((bodyParseSucceed == false || packetMsg.isResultNull == true) && 
-					gCacheItemMap[itemId].retryCount < RETRY_RESPONSE_MAX_COUNT)
+				if ((bodyParseSucceed == false || packetMsg.isResultNull == true) && pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
-					log_debug("[HTTP] get NULL response, retrying %d", gCacheItemMap[itemId].retryCount);
-					gCacheItemMap[itemId].lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
+					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+					store_cache_item(itemId, "lastAccessTime");
 					return 0;
 				}
 
 				if (bodyParseSucceed == false)
 					return -1;
 
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, 0);
-				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = 0;
-				gCacheItemMap[itemId].newMsgId = 0;
-				gCacheItemMap[itemId].cachedFlag = true;
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(gCacheItemMap[itemId].methodName));
+				pCacheItem->responsePacket = p;
+				pCacheItem->responseHashVal = calculate_response_hash_val(p.body, 0);
+				log_debug("[HTTP] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
+				pCacheItem->msgId = 0;
+				pCacheItem->newMsgId = 0;
+				pCacheItem->cachedFlag = true;
+				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
 				// recover original msgId
-				replace_id_field(gCacheItemMap[itemId].responsePacket.body, packetMsg.id, gCacheItemMap[itemId].msgId);
+				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
 
 				// send response to all clients
-				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
-					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, 
-						gCacheItemMap[itemId].msgId,
-						gCacheItemMap[itemId].clientMap[cliId].msgId, 
-						gCacheItemMap[itemId].clientMap[cliId].from, 
-						cliId);
+					send_http_response_to_client(pCacheItem->responsePacket, 
+						pCacheItem->msgId, pCacheItem->clientMap[cliId].msgId, 
+						pCacheItem->clientMap[cliId].from, cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				}
-				gCacheItemMap[itemId].clientMap.clear();
+				pCacheItem->clientMap.clear();
+
+				store_cache_item(itemId);
 
 				return 0;
 			}
@@ -1940,35 +1943,37 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
-			foreach(QByteArray itemId, gCacheItemMap.keys())
+			foreach(QByteArray itemId, get_cache_item_keys())
 			{
-				if (gCacheItemMap[itemId].subscriptionStr == subscriptionStr)
+				CacheItem* pCacheItem = load_cache_item(itemId);
+				if (pCacheItem->subscriptionStr == subscriptionStr)
 				{
-					if (gCacheItemMap[itemId].cachedFlag == false)
+					if (pCacheItem->cachedFlag == false)
 					{
 						// update subscription packet
-						gCacheItemMap[itemId].subscriptionPacket = p;
+						pCacheItem->subscriptionPacket = p;
 
-						if (gCacheItemMap[itemId].msgId != -1)
+						if (pCacheItem->msgId != -1)
 						{
-							gCacheItemMap[itemId].cachedFlag = true;
-							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", gCacheItemMap[itemId].msgId, qPrintable(subscriptionStr));
+							pCacheItem->cachedFlag = true;
+							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
+								pCacheItem->msgId, qPrintable(subscriptionStr));
 							// send update subscribe to all clients
-							foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+							foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 							{
 								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 
-								QString orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
-								QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
+								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
+								QByteArray from = pCacheItem->clientMap[cliId].from;
 
-								ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
-								replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
-								replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
+								ZhttpResponsePacket out = pCacheItem->responsePacket;
+								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
+								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
-								ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
-								replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
-								replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
+								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 							}
 						}
@@ -1979,7 +1984,7 @@ public:
 						{
 							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
 							QString msgChangesStr = jsonMap[gSubscribeChangesAttrName].toString().toLower();
-							ZhttpResponsePacket tempPacket = gCacheItemMap[itemId].subscriptionPacket;
+							ZhttpResponsePacket tempPacket = pCacheItem->subscriptionPacket;
 
 							QString patternStr("\"block\":\"");
 							qsizetype idxStart = tempPacket.body.indexOf(patternStr);
@@ -2036,31 +2041,32 @@ public:
 								
 							}
 
-							gCacheItemMap[itemId].subscriptionPacket = tempPacket;
+							pCacheItem->subscriptionPacket = tempPacket;
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
-							gCacheItemMap[itemId].subscriptionPacket = p;
+							pCacheItem->subscriptionPacket = p;
 						}
 
 						// update subscription last update time
-						gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 						// send update subscribe to all clients
-						foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+						foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 						{
 							log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
 
-							QString orgMsgId = gCacheItemMap[itemId].clientMap[cliId].msgId;
-							QByteArray from = gCacheItemMap[itemId].clientMap[cliId].from;
+							QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
+							QByteArray from = pCacheItem->clientMap[cliId].from;
 
-							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
-							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
-							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
+							ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
 
+					store_cache_item(itemId);
 					return -1;
 				}
 			}
@@ -2078,7 +2084,7 @@ public:
 			cacheItem.subscriptionPacket = p;
 
 			QByteArray subscriptionBytes = subscriptionStr.toLatin1();
-			gCacheItemMap[subscriptionBytes] = cacheItem;
+			save_cache_item(subscriptionBytes, cacheItem);
 			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(subscriptionStr));
 
 			// make invalild

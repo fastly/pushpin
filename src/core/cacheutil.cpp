@@ -639,6 +639,11 @@ void store_cache_item(const QByteArray& itemId)
 	return;
 }
 
+void store_cache_item(const QByteArray& itemId, QString fieldName)
+{
+	return;
+}
+
 void save_cache_item(const QByteArray& itemId, CacheItem cacheItem)
 {
 	gCacheItemMap[itemId] = cacheItem;
