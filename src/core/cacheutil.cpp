@@ -636,11 +636,13 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 
 void store_cache_item(const QByteArray& itemId)
 {
+	log_debug("[CACHE] store cache item %s", itemId.toHex().data());
 	return;
 }
 
 void store_cache_item(const QByteArray& itemId, QString fieldName)
 {
+	log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
 	return;
 }
 

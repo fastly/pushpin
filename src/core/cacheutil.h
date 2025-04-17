@@ -145,7 +145,7 @@ int loadCacheItemField(redisContext* context, const QByteArray& itemId, const ch
 bool is_cache_item(const QByteArray& itemId);
 CacheItem* load_cache_item(const QByteArray& itemId);
 void store_cache_item(const QByteArray& itemId);
-void store_cache_item(const QByteArray& itemId, QString fieldName)
+void store_cache_item(const QByteArray& itemId, QString fieldName);
 void save_cache_item(const QByteArray& itemId, CacheItem cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_keys();
