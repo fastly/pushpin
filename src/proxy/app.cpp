@@ -37,13 +37,12 @@
 #include "timer.h"
 #include "defercall.h"
 #include "log.h"
+#include "simplehttpserver.h"
 #include "settings.h"
 #include "xffrule.h"
 #include "domainmap.h"
 #include "engine.h"
 #include "config.h"
-
-using Connection = boost::signals2::scoped_connection;
 
 static void trimlist(QStringList *list)
 {
@@ -242,12 +241,13 @@ public:
 	QWaitCondition w;
 	Engine::Configuration config;
 	DomainMap *domainMap;
-	EngineWorker *worker;
+	bool newEventLoop;
+	std::unique_ptr<EngineWorker> worker;
 
-	EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap) :
+	EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap, bool _newEventLoop) :
 		config(_config),
 		domainMap(_domainMap),
-		worker(0)
+		newEventLoop(_newEventLoop)
 	{
 	}
 
@@ -299,53 +299,79 @@ public:
 		m.lock();
 
 		// enough timers for sessions and zroutes, plus an extra 100 for misc
-		Timer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
+		int timersMax = (config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100;
 
-		worker = new EngineWorker(config, domainMap);
-		Connection startedConnection = worker->started.connect(boost::bind(&EngineThread::worker_started, this));
-		Connection stoppedConnection = worker->stopped.connect(boost::bind(&EngineThread::worker_stopped, this));
-		Connection errorConnection = worker->error.connect(boost::bind(&EngineThread::worker_error, this));
+		std::unique_ptr<EventLoop> loop;
+
+		if(newEventLoop)
+		{
+			log_debug("worker %d: using new event loop", config.id);
+
+			// enough for zroutes and prometheus requests, plus an extra 100 for misc
+			int socketNotifiersMax = (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) + (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
+
+		worker = std::make_unique<EngineWorker>(config, domainMap);
+
+		worker->started.connect([&] {
+			log_debug("worker %d: started", config.id);
+
+			// unblock start()
+			w.wakeOne();
+			m.unlock();
+		});
+
+		worker->stopped.connect([&] {
+			worker.reset();
+
+			log_debug("worker %d: stopped", config.id);
+
+			if(newEventLoop)
+				loop->exit(0);
+			else
+				quit();
+		});
+
+		worker->error.connect([&] {
+			worker.reset();
+
+			if(newEventLoop)
+				loop->exit(0);
+			else
+				quit();
+
+			// unblock start()
+			w.wakeOne();
+			m.unlock();
+		});
+
 		worker->deferCall.defer([=] { worker->start(); });
-		exec();
 
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
+		if(newEventLoop)
+			loop->exec();
+		else
+			exec();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
 
 		// deinit here, after all event loop activity has completed
+
 		DeferCall::cleanup();
-		Timer::deinit();
-	}
 
-private:
-	void worker_started()
-	{
-		log_debug("worker %d: started", config.id);
-
-		// unblock start()
-		w.wakeOne();
-		m.unlock();
-	}
-
-	void worker_stopped()
-	{
-		delete worker;
-		worker = 0;
-
-		log_debug("worker %d: stopped", config.id);
-
-		quit();
-	}
-
-	void worker_error()
-	{
-		delete worker;
-		worker = 0;
-
-		quit();
-
-		// unblock start()
-		w.wakeOne();
-		m.unlock();
+		if(!newEventLoop)
+			Timer::deinit();
 	}
 };
 
@@ -637,12 +663,12 @@ private:
 		deferCall.defer([&] {
 			if(!routeLines.isEmpty())
 			{
-				domainMap = std::make_unique<DomainMap>();
+				domainMap = std::make_unique<DomainMap>(newEventLoop);
 				foreach(const QString &line, routeLines)
 					domainMap->addRouteLine(line);
 			}
 			else
-				domainMap = std::make_unique<DomainMap>(routesFile);
+				domainMap = std::make_unique<DomainMap>(routesFile, newEventLoop);
 
 			domainMap->changed.connect([&] {
 				for(EngineThread *t : threads)
@@ -699,7 +725,7 @@ private:
 					wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
 				}
 
-				EngineThread *t = new EngineThread(wconfig, domainMap.get());
+				EngineThread *t = new EngineThread(wconfig, domainMap.get(), newEventLoop);
 				if(!t->start())
 				{
 					delete t;
