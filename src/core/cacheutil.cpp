@@ -706,59 +706,66 @@ static void remove_old_cache_items()
 
 	while (accessTimeoutMSeconds > 0)
 	{
+		QList<QByteArray> cacheItemIdList = get_cache_item_keys();
+		QList<QByteArray> deleteIdList;
+		int itemCount = cacheItemIdList.count();
+
 		// Remove items where the value is greater than 30
-		for (auto it = gCacheItemMap.begin(); it != gCacheItemMap.end();) 
+		for	(int i=0; i < itemCount; i++)
 		{
-			QByteArray itemKey = it.key();
-			CacheItem cacheItem = it.value();
-			if (cacheItem.methodType == CacheMethodType::CACHE_METHOD)
+			QByteArray itemId = cacheItemIdList[i];
+			CacheItem *pCacheItem = load_cache_item(itemId);
+			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 			{
-				if (cacheItem.refreshFlag & AUTO_REFRESH_UNERASE)
+				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE)
 				{
-					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(cacheItem.methodName), itemKey.toHex().data());
-					++it;  // Move to the next item
+					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
 					continue;
 				}
-				qint64 accessDiff = currMTime - cacheItem.lastAccessTime;
+				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
 				if (accessDiff > accessTimeoutMSeconds)
 				{
 					// remove cache item
-					log_debug("[CACHE] deleting cache item for access timeout %s", itemKey.toHex().data());
-					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
+					log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
+					deleteIdList.append(itemId);  // Safely erase and move to the next item
 					continue;
 				} 
 			}
-			else if (cacheItem.methodType == CacheMethodType::SUBSCRIBE_METHOD && cacheItem.cachedFlag == true)
+			else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD && pCacheItem->cachedFlag == true)
 			{
-				qint64 refreshDiff = currMTime - cacheItem.lastRefreshTime;
+				qint64 refreshDiff = currMTime - pCacheItem->lastRefreshTime;
 				
-				if (cacheItem.clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
+				if (pCacheItem->clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
 				{
-					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", cacheItem.clientMap.count(), refreshDiff);
+					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", pCacheItem->clientMap.count(), refreshDiff);
 
 					// add unsubscribe request item for cache thread
-					if (cacheItem.orgMsgId.isEmpty() == false)
+					if (pCacheItem->orgMsgId.isEmpty() == false)
 					{
 						UnsubscribeRequestItem reqItem;
-						reqItem.subscriptionStr = cacheItem.subscriptionStr;
-						reqItem.from = cacheItem.requestPacket.from;
-						reqItem.unsubscribeMethodName = gSubscribeMethodMap[cacheItem.methodName];
-						reqItem.cacheClientId = cacheItem.cacheClientId;
+						reqItem.subscriptionStr = pCacheItem->subscriptionStr;
+						reqItem.from = pCacheItem->requestPacket.from;
+						reqItem.unsubscribeMethodName = gSubscribeMethodMap[pCacheItem->methodName];
+						reqItem.cacheClientId = pCacheItem->cacheClientId;
 						gUnsubscribeRequestList.append(reqItem);
 					}
 
 					// remove subscription item
 					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						qPrintable(cacheItem.orgSubscriptionStr), qPrintable(cacheItem.subscriptionStr));
-					it = gCacheItemMap.erase(it);  // Safely erase and move to the next item
+						qPrintable(pCacheItem->orgSubscriptionStr), qPrintable(pCacheItem->subscriptionStr));
+					deleteIdList.append(itemId);  // Safely erase and move to the next item
 					continue;
 				}
 			}
-
-			++it;  // Move to the next item
 		}
 
-		int cacheItemCount = gCacheItemMap.count();
+		for	(int i=0; i < deleteIdList.count(); i++)
+		{
+			remove_cache_item(deleteIdList[i]);
+		}
+		int deleteCount = deleteIdList.count();
+
+		int cacheItemCount = itemCount - deleteCount;
 		if (cacheItemCount < gCacheItemMaxCount)
 		{
 			break;
@@ -1572,21 +1579,28 @@ int get_next_cache_refresh_interval(const QByteArray &itemId)
 {
 	int timeInterval = 0;
 
-	if (gCacheItemMap[itemId].cachedFlag == true)
+	CacheItem *pCacheItem = load_cache_item(itemId);
+	if (pCacheItem == NULL)
+	{
+		log_debug("[CACHE] not exist cache item %s", itemId.toHex().data());
+		return;
+	}
+
+	if (pCacheItem->cachedFlag == true)
 	{
 		// if it`s websocket and cache method
-		if (gCacheItemMap[itemId].proto == Scheme::http ||
-			(gCacheItemMap[itemId].proto == Scheme::websocket && gCacheItemMap[itemId].methodType == CacheMethodType::CACHE_METHOD))
+		if (pCacheItem->proto == Scheme::http ||
+			(pCacheItem->proto == Scheme::websocket && pCacheItem->methodType == CacheMethodType::CACHE_METHOD))
 		{
-			if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
+			if (pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
 			{
 				timeInterval = 0;
 			}
-			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_SHORTER_TIMEOUT)
+			else if (pCacheItem->refreshFlag & AUTO_REFRESH_SHORTER_TIMEOUT)
 			{
 				timeInterval = gShorterTimeoutSeconds;
 			}
-			else if (gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_LONGER_TIMEOUT)
+			else if (pCacheItem->refreshFlag & AUTO_REFRESH_LONGER_TIMEOUT)
 			{
 				timeInterval = gLongerTimeoutSeconds;
 			}
