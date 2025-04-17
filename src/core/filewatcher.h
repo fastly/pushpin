@@ -1,10 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +12,34 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#ifndef FILEWATCHER_H
+#define FILEWATCHER_H
 
-class App
+#include <boost/signals2.hpp>
+#include "socketnotifier.h"
+#include "defercall.h"
+#include "rust/bindings.h"
+
+class QString;
+
+class FileWatcher
 {
 public:
-	App();
-	~App();
+	FileWatcher();
+	~FileWatcher();
 
-	int run();
+	bool start(const QString &filePath);
+
+	boost::signals2::signal<void()> fileChanged;
 
 private:
-	class Private;
+	ffi::FileWatcher *inner_;
+	std::unique_ptr<SocketNotifier> sn_;
+	DeferCall deferCall_;
+
+	void sn_activated(int socket, uint8_t readiness);
 };
 
 #endif

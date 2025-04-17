@@ -24,6 +24,7 @@
 #include "testhttprequest.h"
 
 #include <assert.h>
+#include <QSet>
 #include <QUrlQuery>
 #include "log.h"
 #include "defercall.h"

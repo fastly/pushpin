@@ -114,6 +114,8 @@ public:
 
 	void sig_activated(int)
 	{
+		sig_notifier->clearReadiness(SocketNotifier::Read);
+
 		unsigned char c;
 		if(::read(sig_pipe[0], &c, 1) == -1)
 		{

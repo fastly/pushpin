@@ -1,10 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +12,25 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#include "event.h"
 
-class App
+namespace Event {
+
+SetReadiness::SetReadiness(ffi::SetReadiness *inner) :
+	inner_(inner)
 {
-public:
-	App();
-	~App();
+}
 
-	int run();
+SetReadiness::~SetReadiness()
+{
+	ffi::set_readiness_destroy(inner_);
+}
 
-private:
-	class Private;
-};
+int SetReadiness::setReadiness(uint8_t readiness)
+{
+	return ffi::set_readiness_set_readiness(inner_, readiness);
+}
 
-#endif
+}

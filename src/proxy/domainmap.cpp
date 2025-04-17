@@ -32,18 +32,19 @@
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
-#include <QFileSystemWatcher>
+#include <QCoreApplication>
 #include "log.h"
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
+#include "filewatcher.h"
 #include "routesfile.h"
 
-#define WORKER_THREAD_TIMERS 1
+#define WORKER_THREAD_TIMERS 10
+#define WORKER_THREAD_SOCKETNOTIFIERS 1
 
-class DomainMap::Worker : public QObject
+class DomainMap::Worker
 {
-	Q_OBJECT
-
 public:
 	enum AddRuleResult
 	{
@@ -204,11 +205,10 @@ public:
 	QHash<QString, Rule> rulesById;
 	Timer t;
 	Connection tConnection;
-	QFileSystemWatcher watcher;
+	FileWatcher watcher;
 	DeferCall deferCall;
 
-	Worker() :
-		watcher(this)
+	Worker()
 	{
 		tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
 		t.setSingleShot(true);
@@ -312,13 +312,15 @@ public:
 	Signal started;
 	Signal changed;
 
-public slots:
 	void start()
 	{
 		if(!fileName.isEmpty())
 		{
-			connect(&watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
-			watcher.addPath(fileName);
+			watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
+
+			if(!watcher.start(fileName)) {
+				log_error("failed to watch %s", qPrintable(fileName));
+			}
 
 			reload();
 		}
@@ -326,10 +328,8 @@ public slots:
 		started();
 	}
 
-	void fileChanged(const QString &path)
+	void fileChanged()
 	{
-		Q_UNUSED(path);
-
 		// inotify tends to give us extra events so let's hang around a
 		//   little bit before reloading
 		if(!t.isActive())
@@ -341,13 +341,6 @@ public slots:
 
 	void doReload()
 	{
-		// in case the file was not changed, but overwritten by a different
-		// file, re-arm watcher.
-		if(!fileName.isEmpty())
-		{
-			watcher.addPath(fileName);
-		}
-
 		reload();
 	}
 
@@ -749,14 +742,31 @@ class DomainMap::Thread : public QThread
 	Q_OBJECT
 
 public:
+	bool newEventLoop;
 	QString fileName;
-	Worker *worker;
+	std::unique_ptr<EventLoop> loop;
+	std::unique_ptr<Worker> worker;
 	QMutex m;
 	QWaitCondition w;
 
+	Thread() :
+		newEventLoop(false)
+	{
+	}
+
 	~Thread()
 	{
-		quit();
+		if(worker)
+		{
+			worker->deferCall.defer([&] {
+				// NOTE: called from worker thread
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					quit();
+			});
+		}
+
 		wait();
 	}
 
@@ -771,36 +781,65 @@ public:
 
 	virtual void run()
 	{
-		Timer::init(WORKER_THREAD_TIMERS);
+		// will unlock during exec
+		m.lock();
 
-		worker = new Worker;
+		int timersMax = WORKER_THREAD_TIMERS;
+
+		if(newEventLoop)
+		{
+			log_debug("domainmap: using new event loop");
+
+			int socketNotifiersMax = WORKER_THREAD_SOCKETNOTIFIERS;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
+
+		worker = std::make_unique<Worker>();
 		worker->fileName = fileName;
-		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
-		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
-		exec();
-		startedConnection.disconnect();
-		delete worker;
+
+		worker->started.connect([&] {
+			w.wakeOne();
+			m.unlock();
+		});
+
+		worker->deferCall.defer([=] { worker->start(); });
+
+		if(newEventLoop)
+			loop->exec();
+		else
+			exec();
+
+		worker.reset();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
+
+		// deinit here, after all event loop activity has completed
 
 		DeferCall::cleanup();
-		Timer::deinit();
-	}
 
-public:
-	void worker_started()
-	{
-		QMutexLocker locker(&m);
-		w.wakeOne();
+		if(!newEventLoop)
+			Timer::deinit();
 	}
 };
 
-class DomainMap::Private : public QObject
+class DomainMap::Private
 {
-	Q_OBJECT
-
 public:
 	DomainMap *q;
 	Thread *thread;
 	Connection changedConnection;
+	DeferCall deferCall;
 
 	Private(DomainMap *_q) :
 		q(_q),
@@ -814,9 +853,10 @@ public:
 		delete thread;
 	}
 
-	void start(const QString &fileName = QString())
+	void start(bool newEventLoop, const QString &fileName = QString())
 	{
 		thread = new Thread;
+		thread->newEventLoop = newEventLoop;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -825,29 +865,31 @@ public:
 	}
 
 private:
-	// NOTE: must be thread-safe. called from separate thread
+	// NOTE: called from worker thread
 	void workerChanged()
 	{
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] {
+			// NOTE: called from outer thread
+			doChanged();
+		});
 	}
 
-private slots:
 	void doChanged()
 	{
 		q->changed();
 	}
 };
 
-DomainMap::DomainMap()
+DomainMap::DomainMap(bool newEventLoop)
 {
 	d = new Private(this);
-	d->start();
+	d->start(newEventLoop);
 }
 
-DomainMap::DomainMap(const QString &fileName)
+DomainMap::DomainMap(const QString &fileName, bool newEventLoop)
 {
 	d = new Private(this);
-	d->start(fileName);
+	d->start(newEventLoop, fileName);
 }
 
 DomainMap::~DomainMap()
@@ -857,7 +899,12 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
-	QMetaObject::invokeMethod(d->thread->worker, "doReload", Qt::QueuedConnection);
+	Worker *worker = d->thread->worker.get();
+
+	worker->deferCall.defer([=] {
+		// NOTE: called from worker thread
+		worker->doReload();
+	});
 }
 
 bool DomainMap::isIdShared(const QString &id) const

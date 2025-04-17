@@ -180,8 +180,8 @@ public:
 		}
 	};
 
-	DomainMap();
-	DomainMap(const QString &fileName);
+	DomainMap(bool newEventLoop);
+	DomainMap(const QString &fileName, bool newEventLoop);
 	~DomainMap();
 
 	// shouldn't really ever need to call this, but it's here in case the
