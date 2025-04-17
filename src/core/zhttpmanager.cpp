@@ -109,8 +109,6 @@ QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
 
-QMap<QByteArray, CacheItem> gCacheItemMap;
-
 // multi packets params
 ZhttpResponsePacket gHttpMultiPartResponsePacket;
 QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
@@ -1449,7 +1447,10 @@ public:
 			});
 		}
 
-		store_cache_item(itemId);
+		store_cache_item(itemId, "newMsgId");
+		store_cache_item(itemId, "cacheClientId");
+		store_cache_item(itemId, "lastRefreshTime");
+		store_cache_item(itemId, "retryCount");
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
@@ -1490,6 +1491,8 @@ public:
 					pCacheItem->clientMap.remove(clientId);
 					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", 
 						clientId.data(), pCacheItem->msgId, qPrintable(pCacheItem->subscriptionStr.left(16)));
+
+					store_cache_item(itemId, "clientMap");
 				}
 			}
 
@@ -1769,7 +1772,8 @@ public:
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
-				store_cache_item(packetMsg.paramsHash);
+				store_cache_item(packetMsg.paramsHash, "clientMap");
+				store_cache_item(packetMsg.paramsHash, "lastRefreshTime");
 				return 0;
 			}
 			else
@@ -1831,6 +1835,7 @@ public:
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
+					store_cache_item(msgIdByte, "lastAccessTime");
 					return 0;
 				}
 

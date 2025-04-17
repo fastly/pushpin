@@ -56,6 +56,8 @@ extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 
+QMap<QByteArray, CacheItem> gCacheItemMap;
+
 unsigned long long numRequestMultiPart = 0;
 
 extern QString gMsgIdAttrName;
@@ -80,8 +82,6 @@ extern QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 extern QList<ClientItem> gWsCacheClientList;
 extern QMap<QByteArray, ClientItem> gWsClientMap;
 extern QMap<QByteArray, ClientItem> gHttpClientMap;
-
-extern QMap<QByteArray, CacheItem> gCacheItemMap;
 
 extern int gAccessTimeoutSeconds;
 extern int gResponseTimeoutSeconds;
