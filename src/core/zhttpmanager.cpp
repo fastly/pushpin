@@ -415,7 +415,6 @@ public:
 	}
 
 	void send_response_to_client(
-		SessionType sessionType, 
 		ZhttpResponsePacket::Type packetType,
 		const QByteArray &clientId, 
 		const QByteArray &from,
@@ -961,7 +960,7 @@ public:
 			{
 				log_warning("zws server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(WebSocketSession, ZhttpResponsePacket::Cancel, id.id, p.from);
+					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
 				return;
 			}
 
@@ -988,7 +987,7 @@ public:
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Cancel, id.id, p.from);
+							send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
 						resume_cache_thread();
 						return;
 					}
@@ -999,7 +998,7 @@ public:
 						// register ws client
 						register_ws_client(id.id, p.from, p.uri.toString());
 						// respond with cached init packet
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
+						send_response_to_client(ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
 						resume_cache_thread();
 						return;
 					}
@@ -1032,7 +1031,7 @@ public:
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(HttpSession, ZhttpResponsePacket::Cancel, id.id, p.from);
+					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
 				return;
 			}
 
@@ -1073,7 +1072,7 @@ public:
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
 			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-				send_response_to_client(UnknownSession, ZhttpResponsePacket::Cancel, id.id, p.from);
+				send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
 			return;
 		}
 	}
@@ -1145,7 +1144,7 @@ public:
 						//send_wsCloseResponse(packetId);
 						break;
 					case ZhttpRequestPacket::Close:
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Close, packetId, p.from);
+						send_response_to_client(ZhttpResponsePacket::Close, packetId, p.from);
 						unregister_client(packetId);
 						break;
 					case ZhttpRequestPacket::KeepAlive:
@@ -1153,16 +1152,16 @@ public:
 						//send_pingResponse(packetId);
 						break;
 					case ZhttpRequestPacket::Pong:
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, 0);
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, 0);
 						break;
 					case ZhttpRequestPacket::Ping:
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Pong, packetId, p.from);
+						send_response_to_client(ZhttpResponsePacket::Pong, packetId, p.from);
 						break;
 					case ZhttpRequestPacket::Credit:
 						break;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 						process_ws_stream_request(packetId, p);
 						break;
 					default:
@@ -1356,11 +1355,7 @@ public:
 		if (gWsClientMap.contains(clientId))
 		{
 			log_debug("_[TIMER] send ping to client %s", clientId.data());
-			send_response_to_client(
-				WebSocketSession, 
-				ZhttpResponsePacket::Ping,
-				clientId,
-				gWsClientMap[clientId].from);
+			send_response_to_client(ZhttpResponsePacket::Ping, clientId, gWsClientMap[clientId].from);
 			QTimer::singleShot(PING_INTERVAL * 1000, [=]() {
 				timer_send_ping_to_client(clientId);
 			});
@@ -1959,12 +1954,12 @@ public:
 								ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
 								replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
 								replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
-								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 								ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 								replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
 								replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
-								send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 							}
 						}
 					}
@@ -2052,7 +2047,7 @@ public:
 							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
 							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
-							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
 
@@ -2124,7 +2119,7 @@ public:
 						QByteArray from = gCacheItemMap[itemId].clientMap[clientId].from;
 						ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
 						replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, clientId, from, 0, &out);
+						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 					gCacheItemMap[itemId].clientMap.clear();
 
@@ -2184,12 +2179,12 @@ public:
 							ZhttpResponsePacket out = gCacheItemMap[itemId].responsePacket;
 							replace_id_field(out.body, gCacheItemMap[itemId].msgId, orgMsgId);
 							replace_result_field(out.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
-							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out);
+							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 							ZhttpResponsePacket out1 = gCacheItemMap[itemId].subscriptionPacket;
 							replace_id_field(out1.body, gCacheItemMap[itemId].msgId, orgMsgId);
 							replace_subscription_field(out1.body, gCacheItemMap[itemId].subscriptionStr, gCacheItemMap[itemId].orgSubscriptionStr);
-							send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
 											
@@ -2374,19 +2369,19 @@ public:
 					{
 						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
 						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 					}
 					else if (gCacheItemMap[paramsHash].methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
 						ZhttpResponsePacket out = gCacheItemMap[paramsHash].responsePacket;
 						replace_id_field(out.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
 						replace_result_field(out.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 
 						ZhttpResponsePacket out1 = gCacheItemMap[paramsHash].subscriptionPacket;
 						replace_id_field(out1.body, gCacheItemMap[paramsHash].msgId, orgMsgId);
 						replace_subscription_field(out1.body, gCacheItemMap[paramsHash].subscriptionStr, gCacheItemMap[paramsHash].orgSubscriptionStr);
-						send_response_to_client(WebSocketSession, ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
 
 						// add client to list
 						gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdStr;

@@ -142,8 +142,8 @@ int loadCacheItemField(redisContext* context, const QByteArray& itemId, const ch
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-CacheItem get_cache_item(QByteArray itemId);
-void remove_cache_item(QByteArray itemId);
+//CacheItem get_cache_item(QByteArray itemId);
+//void remove_cache_item(QByteArray itemId);
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
