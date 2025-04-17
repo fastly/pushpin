@@ -234,6 +234,13 @@ impl FileWatcher {
                     return;
                 }
 
+                match event.kind {
+                    notify::EventKind::Create(_)
+                    | notify::EventKind::Modify(_)
+                    | notify::EventKind::Remove(_) => {}
+                    _ => return, // skip non-change events
+                }
+
                 let mut state = data
                     .state
                     .lock()
