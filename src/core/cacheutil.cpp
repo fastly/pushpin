@@ -1583,7 +1583,7 @@ int get_next_cache_refresh_interval(const QByteArray &itemId)
 	if (pCacheItem == NULL)
 	{
 		log_debug("[CACHE] not exist cache item %s", itemId.toHex().data());
-		return;
+		return -1;
 	}
 
 	if (pCacheItem->cachedFlag == true)
