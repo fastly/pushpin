@@ -1377,14 +1377,14 @@ public:
 		}
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
-		if (gCacheItemMap[itemId].cachedFlag == true)
+		if (pCacheItem->cachedFlag == true)
 		{
 			// delete old cache items if it`s not auto_refresh_unerase
-			if ((gCacheItemMap[itemId].refreshFlag & AUTO_REFRESH_UNERASE) == 0)
+			if ((pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE) == 0)
 			{
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 				qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
-				qint64 accessDiff = currMTime - gCacheItemMap[itemId].lastAccessTime;
+				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
 				if (accessDiff > accessTimeoutMSeconds)
 				{
 					// remove cache item
@@ -1396,49 +1396,49 @@ public:
 
 			if (timeInterval > 0)
 			{
-				if (gCacheItemMap[itemId].proto == Scheme::http)
+				if (pCacheItem->proto == Scheme::http)
 				{
-					QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+					QByteArray reqBody = pCacheItem->requestPacket.body;
 					QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-					replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, newMsgId);
+					replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
 					send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 				}
-				else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+				else if (pCacheItem->proto == Scheme::websocket)
 				{
 					// Send client cache request packet for auto-refresh
-					int ccIndex = get_cc_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
-					QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-					gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-					gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
+					QString orgMsgId = pCacheItem->orgMsgId;
+					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
 		}
 		else
 		{
-			if (gCacheItemMap[itemId].retryCount > RETRY_RESPONSE_MAX_COUNT)
+			if (pCacheItem->retryCount > RETRY_RESPONSE_MAX_COUNT)
 			{
 				log_debug("[_TIMER] reached max retry count");
 				return;
 			}
-			gCacheItemMap[itemId].retryCount++;
+			pCacheItem->retryCount++;
 			// switch backend of the failed response
-			if (gCacheItemMap[itemId].proto == Scheme::http)
+			if (pCacheItem->proto == Scheme::http)
 			{
 				urlPath = get_switched_http_backend_url(urlPath);
-				QByteArray reqBody = gCacheItemMap[itemId].requestPacket.body;
+				QByteArray reqBody = pCacheItem->requestPacket.body;
 				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-				replace_id_field(reqBody, gCacheItemMap[itemId].orgMsgId, newMsgId);
+				replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
 				send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 			}
-			else if (gCacheItemMap[itemId].proto == Scheme::websocket)
+			else if (pCacheItem->proto == Scheme::websocket)
 			{
 				// Send client cache request packet for auto-refresh
-				int ccIndex = get_cc_next_index_from_clientId(gCacheItemMap[itemId].cacheClientId);
-				gCacheItemMap[itemId].cacheClientId = gWsCacheClientList[ccIndex].clientId;
+				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
+				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
-				QString orgMsgId = gCacheItemMap[itemId].orgMsgId;
-				gCacheItemMap[itemId].newMsgId = send_ws_request_over_cacheclient(gCacheItemMap[itemId].requestPacket, orgMsgId, ccIndex);
-				gCacheItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				QString orgMsgId = pCacheItem->orgMsgId;
+				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
 
