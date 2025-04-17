@@ -1664,13 +1664,13 @@ public:
 		return ccIndex;
 	}
 
-	void reply_http_cached_content(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
+	void reply_http_cached_content(const ZhttpResponsePacket &cacheItemResponsePacket, int cacheItemMsgId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
 	{
 		//// Send cached response
-		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
+		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
 
 		// replace id str
-		replace_id_field(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+		replace_id_field(responsePacket.body, cacheItemMsgId, orgMsgId);
 
 		// update "Content-Length" field
 		int newContentLength = static_cast<int>(responsePacket.body.size());
@@ -1694,23 +1694,17 @@ public:
 		write(HttpSession, responsePacket, from);
 	}
 
-	void send_http_response_to_client(const QByteArray &cacheItemId, const QByteArray &clientId)
+	void send_http_response_to_client(const ZhttpResponsePacket &cacheItemResponsePacket, 
+		int cacheItemMsgId, int cacheItemClientMsgId, 
+		const QByteArray &cacheItemClientFrom, const QByteArray &clientId)
 	{
-		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
+		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
 
-		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[clientId].msgId;
-		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[clientId].from;
+		QString orgMsgId = cacheItemClientMsgId;
+		QByteArray orgFrom = cacheItemClientFrom;
 
 		// replace messageid
-		if (gCacheItemMap.contains(cacheItemId))
-		{
-			replace_id_field(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
-		}
-		else
-		{
-			log_debug("[HTTP] Unknown error for cache item");
-			return;
-		}		
+		replace_id_field(responsePacket.body, cacheItemMsgId, orgMsgId);
 
 		// update "Content-Length" field
 		int newContentLength = static_cast<int>(responsePacket.body.size());
@@ -1748,7 +1742,8 @@ public:
 			log_debug("[HTTP] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
+		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", 
+			qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
 
 		if (is_cache_method(packetMsg.method))
 		{
@@ -1758,7 +1753,8 @@ public:
 
 				if (gCacheItemMap[packetMsg.paramsHash].cachedFlag == true)
 				{
-					reply_http_cached_content(packetMsg.paramsHash, packetMsg.id, packetId, p.from);
+					reply_http_cached_content(gCacheItemMap[cacheItemId].responsePacket, 
+						gCacheItemMap[cacheItemId].msgId, packetMsg.id, packetId, p.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 					return 0;
@@ -1850,7 +1846,11 @@ public:
 				// send response to all clients
 				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 				{
-					send_http_response_to_client(itemId, cliId);
+					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, 
+						gCacheItemMap[itemId].msgId,
+						gCacheItemMap[itemId].clientMap[cliId].msgId, 
+						gCacheItemMap[itemId].clientMap[cliId].from, 
+						cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				}
@@ -1893,7 +1893,11 @@ public:
 				// send response to all clients
 				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 				{
-					send_http_response_to_client(itemId, cliId);
+					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, 
+						gCacheItemMap[itemId].msgId,
+						gCacheItemMap[itemId].clientMap[cliId].msgId, 
+						gCacheItemMap[itemId].clientMap[cliId].from, 
+						cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				}
