@@ -1454,7 +1454,7 @@ public:
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
-		if (!gCacheItemMap.contains(itemId))
+		if (!is_cache_item(itemId))
 		{
 			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.toHex().data());
 			return;
@@ -1482,12 +1482,14 @@ public:
 		else
 		{
 			// cache lookup
-			foreach(QByteArray itemId, gCacheItemMap.keys())
+			foreach(QByteArray itemId, get_cache_item_keys())
 			{
-				if (gCacheItemMap[itemId].clientMap.contains(clientId))
+				CacheItem* pCacheItem = load_cache_item(itemId);
+				if (pCacheItem->clientMap.contains(clientId))
 				{
-					gCacheItemMap[itemId].clientMap.remove(clientId);
-					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", clientId.data(), gCacheItemMap[itemId].msgId, qPrintable(gCacheItemMap[itemId].subscriptionStr.left(16)));
+					pCacheItem->clientMap.remove(clientId);
+					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", 
+						clientId.data(), pCacheItem->msgId, qPrintable(pCacheItem->subscriptionStr.left(16)));
 				}
 			}
 
@@ -1590,7 +1592,7 @@ public:
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
 
-		gCacheItemMap[packetMsg.paramsHash] = cacheItem;
+		save_cache_item(packetMsg.paramsHash, cacheItem);
 
 		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
@@ -1657,7 +1659,7 @@ public:
 			cacheItem.methodType = SUBSCRIBE_METHOD;
 		}
 
-		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+		save_cache_item(methodNameParamsHashVal, cacheItem);
 
 		return ccIndex;
 	}
