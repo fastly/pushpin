@@ -580,7 +580,7 @@ public:
 		wrapper = new Wrapper(workDir);
 		wrapper->startHttp();
 
-		domainMap = new DomainMap(configDir.filePath("routes.test"));
+		domainMap = new DomainMap(configDir.filePath("routes.test"), false);
 
 		engine = new Engine(domainMap);
 
