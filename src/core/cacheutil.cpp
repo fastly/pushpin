@@ -618,13 +618,12 @@ void testRedis()
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-/*
 CacheItem load_cache_item(QByteArray itemId)
 {
 	if (!gCacheItemMap.contains(itemId))
 	{
 		log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
-		return null;
+		return NULL;
 	}
 
 	return gCacheItemMap[itemId];
@@ -632,13 +631,7 @@ CacheItem load_cache_item(QByteArray itemId)
 
 void store_cache_item(QByteArray itemId, CacheItem cacheItem)
 {
-	if (!gCacheItemMap.contains(itemId))
-	{
-		log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
-		return null;
-	}
-
-	return gCacheItemMap[itemId];
+	gCacheItemMap[itemId] = cacheItem;
 }
 
 void remove_cache_item(QByteArray itemId)
@@ -650,7 +643,7 @@ void remove_cache_item(QByteArray itemId)
 	}
 	return;
 }
-*/
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Thread
 bool gCacheThreadAllowFlag = true;
