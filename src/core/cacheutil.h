@@ -140,6 +140,11 @@ CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId);
 template <typename T>
 int loadCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, T& value);
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Cache Item
+CacheItem get_cache_item(QByteArray itemId);
+void remove_cache_item(QByteArray itemId);
+
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
