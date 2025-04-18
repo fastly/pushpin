@@ -123,7 +123,29 @@ redisContext* connectToRedis()
 	return c;
 }
 
-void storeCacheItem(redisContext* context, const QByteArray& itemId, const CacheItem& item) 
+bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
+{
+	if (context == nullptr)
+		return false;
+
+	QByteArray key = itemId;
+
+	redisReply *reply = redisCommand(context, "EXISTS %s", key);
+	if (reply == NULL) 
+	{
+		printf("[REDIS] EXISTS Command failed\n");
+		return false;
+	}
+
+	if (reply->type == REDIS_REPLY_INTEGER && reply->integer == 1) 
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+void redis_save_cache_item(redisContext* context, const QByteArray& itemId, const CacheItem& item) 
 {
 	if (context == nullptr)
 		return;
@@ -549,7 +571,7 @@ void testRedis()
 	item.receiver = QByteArray::fromHex("deadbeef");
 	item.from = QByteArray::fromHex("device");
 
-	storeCacheItem(c, item);
+	redis_save_cache_item(c, item);
 
 	storeCacheItemField<QString>(c, item.clientId, "urlPath", "/do/update");
 	storeCacheItemField<pid_t>(c, item.clientId, "processId", getpid());
@@ -632,7 +654,7 @@ bool is_cache_item(const QByteArray& itemId)
 	}
 	else
 	{
-
+		ret = redis_is_cache_item(gRedisContext, itemId);
 	}
 
 	return ret;
@@ -695,7 +717,7 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 	}
 	else
 	{
-
+		redis_save_cache_item(gRedisContext, itemId, cacheItem);
 	}
 	
 	return;
