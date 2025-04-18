@@ -1448,10 +1448,10 @@ public:
 			});
 		}
 
-		store_cache_item_field<int>(itemId, "newMsgId", pCacheItem->newMsgId);
-		store_cache_item_field<QByteArray>(itemId, "cacheClientId", pCacheItem->cacheClientId);
-		store_cache_item_field<qint64>(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
-		store_cache_item_field<int>(itemId, "retryCount", pCacheItem->retryCount);
+		store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
+		store_cache_item_field(itemId, "cacheClientId", pCacheItem->cacheClientId);
+		store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
+		store_cache_item_field(itemId, "retryCount", pCacheItem->retryCount);
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
@@ -1493,7 +1493,7 @@ public:
 					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", 
 						clientId.data(), pCacheItem->msgId, qPrintable(pCacheItem->subscriptionStr.left(16)));
 
-					store_cache_item_field<QMap<QByteArray, ClientInCacheItem>>(itemId, "clientMap", pCacheItem->clientMap);
+					store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 				}
 			}
 
@@ -1785,8 +1785,8 @@ public:
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
-				store_cache_item_field<QMap<QByteArray, ClientInCacheItem>>(packetMsg.paramsHash, "clientMap", pCacheItem->clientMap);
-				store_cache_item_field<qint64>(packetMsg.paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
+				store_cache_item_field(packetMsg.paramsHash, "clientMap", pCacheItem->clientMap);
+				store_cache_item_field(packetMsg.paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
 				return 0;
 			}
 			else
@@ -1848,7 +1848,7 @@ public:
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-					store_cache_item_field<qint64>(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
+					store_cache_item_field(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
 					return 0;
 				}
 
@@ -1893,7 +1893,7 @@ public:
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
-					store_cache_item_field<qint64>(itemId, "lastAccessTime", pCacheItem->lastAccessTime);
+					store_cache_item_field(itemId, "lastAccessTime", pCacheItem->lastAccessTime);
 					return 0;
 				}
 
@@ -2432,9 +2432,9 @@ public:
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 
-				store_cache_item_field<qint64>(paramsHash, "lastAccessTime", pCacheItem->lastAccessTime);
-				store_cache_item_field<QMap<QByteArray, ClientInCacheItem>>(paramsHash, "clientMap", pCacheItem->clientMap);
-				store_cache_item_field<qint64>(paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
+				store_cache_item_field(paramsHash, "lastAccessTime", pCacheItem->lastAccessTime);
+				store_cache_item_field(paramsHash, "clientMap", pCacheItem->clientMap);
+				store_cache_item_field(paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
 				return -1;
 			}
 			else
@@ -2456,8 +2456,8 @@ public:
 				// register cache refresh
 				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 
-				store_cache_item_field<int>(paramsHash, "newMsgId", pCacheItem->newMsgId);
-				store_cache_item_field<qint64>(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
+				store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
+				store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
 			}
 			
 			return -1;

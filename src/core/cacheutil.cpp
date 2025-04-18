@@ -720,8 +720,7 @@ void store_cache_item(const QByteArray& itemId)
 	return;
 }
 
-template <typename T>
-void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value)
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const int& value)
 {
 	if (gRedisEnable == false)
 	{
@@ -734,7 +733,79 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
-			redis_store_cache_item_field<T>(gRedisContext, itemId, fieldName, value);	
+			redis_store_cache_item_field<int>(gRedisContext, itemId, fieldName, value);	
+		}
+		else
+		{
+			log_debug("[REDIS] not loaded cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+		}
+	}
+	
+	return;
+}
+
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QByteArray& value)
+{
+	if (gRedisEnable == false)
+	{
+		// global cache item map
+		log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	}
+	else
+	{
+		// redis
+		if (gCacheItemMap.contains(itemId))
+		{
+			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+			redis_store_cache_item_field<QByteArray>(gRedisContext, itemId, fieldName, value);	
+		}
+		else
+		{
+			log_debug("[REDIS] not loaded cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+		}
+	}
+	
+	return;
+}
+
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const qint64& value)
+{
+	if (gRedisEnable == false)
+	{
+		// global cache item map
+		log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	}
+	else
+	{
+		// redis
+		if (gCacheItemMap.contains(itemId))
+		{
+			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+			redis_store_cache_item_field<qint64>(gRedisContext, itemId, fieldName, value);	
+		}
+		else
+		{
+			log_debug("[REDIS] not loaded cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+		}
+	}
+	
+	return;
+}
+
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QMap<QByteArray, ClientInCacheItem>& value)
+{
+	if (gRedisEnable == false)
+	{
+		// global cache item map
+		log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	}
+	else
+	{
+		// redis
+		if (gCacheItemMap.contains(itemId))
+		{
+			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+			redis_store_cache_item_field<QMap<QByteArray, ClientInCacheItem>>(gRedisContext, itemId, fieldName, value);	
 		}
 		else
 		{
