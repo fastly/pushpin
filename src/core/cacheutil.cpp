@@ -238,7 +238,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 }
 
 template <typename T>
-void redis_store_cache_item_field(redisContext* context, const QByteArray& itemId, const QString& fieldName, const T& value) 
+void redis_store_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, const T& value) 
 {
 	if (context == nullptr)
 		return;
@@ -252,7 +252,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value.toUtf8().constData(), value.toUtf8().size()
 		);
 	}
@@ -262,7 +262,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value
 		);
 	}
@@ -272,7 +272,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %f",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value
 		);
 	}
@@ -282,7 +282,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value ? 1 : 0
 		);
 	}
@@ -292,7 +292,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %s",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value
 		);
 	}
@@ -302,7 +302,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %lld",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value
 		);
 	}
@@ -312,7 +312,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
-			qPrintable(fieldName), 
+			fieldName, 
 			value.constData(), value.size()
 		);
 	}
@@ -721,7 +721,7 @@ void store_cache_item(const QByteArray& itemId)
 }
 
 template <typename T>
-void store_cache_item_field(const QByteArray& itemId, const QString& fieldName, const T& value)
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value)
 {
 	if (gRedisEnable == false)
 	{
@@ -734,7 +734,7 @@ void store_cache_item_field(const QByteArray& itemId, const QString& fieldName, 
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
-			redis_save_cache_item_field(gRedisContext, itemId, fieldName, value);	
+			redis_store_cache_item_field(gRedisContext, itemId, fieldName, value);	
 		}
 		else
 		{
