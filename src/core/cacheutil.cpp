@@ -673,7 +673,7 @@ void store_cache_item(const QByteArray& itemId)
 	return;
 }
 
-void store_cache_item(const QByteArray& itemId, QString fieldName)
+void store_cache_item(const QByteArray& itemId, const QString& fieldName)
 {
 	if (gRedisEnable == false)
 	{
@@ -687,7 +687,7 @@ void store_cache_item(const QByteArray& itemId, QString fieldName)
 	return;
 }
 
-void save_cache_item(const QByteArray& itemId, CacheItem cacheItem)
+void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 {
 	if (gRedisEnable == false)
 	{
@@ -731,7 +731,7 @@ QList<QByteArray> get_cache_item_ids()
 	{
 
 	}
-	
+
 	return ret;
 }
 
