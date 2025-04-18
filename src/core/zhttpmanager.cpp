@@ -1684,7 +1684,7 @@ public:
 		QList<QByteArray> ttt = redis_get_cache_item_ids(gRedisContext);
 		for (int i=0; i < ttt.count(); i++)
 		{
-			log_debug("[REDIS] key %d %s", i, ttt.toHex().data());
+			log_debug("[REDIS] key %d %s", i, ttt[i].toHex().data());
 		}
 
 		return ccIndex;
