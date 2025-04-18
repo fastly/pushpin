@@ -1669,6 +1669,9 @@ public:
 		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
 
+		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
+		log_debug("[REDIS] key %s %s", methodNameParamsHashVal.toHex().data(), qPrintable(tt.methodName));
+
 		return ccIndex;
 	}
 

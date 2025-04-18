@@ -137,7 +137,7 @@ bool redis_is_cache_item(redisContext* context, const QByteArray& itemId);
 void redis_save_cache_item(redisContext* context, const QByteArray& itemId, const CacheItem& item);
 template <typename T>
 void storeCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, const T& value);
-CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId);
+CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId);
 template <typename T>
 int loadCacheItemField(redisContext* context, const QByteArray& itemId, const char *fieldName, T& value);
 

@@ -361,7 +361,7 @@ void storeCacheItemField(redisContext* context, const QByteArray& itemId, const 
 		freeReplyObject(reply);
 }
 
-CacheItem loadCacheItem(redisContext* context, const QByteArray& itemId) 
+CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId) 
 {
 	CacheItem item;
 	QByteArray key = itemId;
@@ -654,10 +654,12 @@ bool is_cache_item(const QByteArray& itemId)
 
 	if (gRedisEnable == false)
 	{
+		// global variable for cache
 		ret = gCacheItemMap.contains(itemId);
 	}
 	else
 	{
+		// redis
 		ret = redis_is_cache_item(gRedisContext, itemId);
 	}
 
@@ -679,7 +681,13 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	}
 	else
 	{
-
+		if (!redis_is_cache_item(itemId))
+		{
+			log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
+			return NULL;
+		}
+		gCacheItemMap[itemId] = redis_load_cache_item(gRedisContext, itemId);
+		ret = &gCacheItemMap[itemId];
 	}
 
 	return ret;
