@@ -164,8 +164,6 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
 	QByteArray subscriptionPacket = TnetString::fromVariant(item.subscriptionPacket.toVariant());
 
-	log_debug("[REDIS] qqq %d", key.size());
-
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HSET %b "
 		"orgMsgId %b "
@@ -567,6 +565,10 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 		int idHeaderLen = strlen(REDIS_CACHE_ID_HEADER);
 		for (size_t i = 0; i < reply->elements; i++) 
 		{
+			QByteArray value(reply->element[i]->str, reply->element[i]->len);
+			ret.append(value);
+
+			/*
 			// remove REDIS_CACHE_ID_HEADER
 			char *keyStr = reply->element[i]->str;
 			if (keyStr != NULL && strlen(keyStr) > idHeaderLen &&
@@ -577,6 +579,7 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 				log_debug("[REDIS] kkk %d %s", i, keyBytes.toHex().data());
 				ret.append(keyBytes);
 			}
+			*/
 		}
 	}
 
