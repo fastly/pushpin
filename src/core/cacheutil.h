@@ -148,7 +148,7 @@ void store_cache_item(const QByteArray& itemId);
 void store_cache_item(const QByteArray& itemId, QString fieldName);
 void save_cache_item(const QByteArray& itemId, CacheItem cacheItem);
 void remove_cache_item(const QByteArray& itemId);
-QList<QByteArray> get_cache_item_keys();
+QList<QByteArray> get_cache_item_ids();
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);
