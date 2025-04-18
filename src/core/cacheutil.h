@@ -146,7 +146,7 @@ bool is_cache_item(const QByteArray& itemId);
 CacheItem* load_cache_item(const QByteArray& itemId);
 void store_cache_item(const QByteArray& itemId);
 void store_cache_item(const QByteArray& itemId, const QString& fieldName);
-void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
+void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_ids();
 
