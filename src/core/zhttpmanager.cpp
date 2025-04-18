@@ -1667,7 +1667,7 @@ public:
 
 		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
 		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
-		log_debug("[REDIS] key %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
+		log_debug("[REDIS] key1 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
 
 		log_debug("[REDIS] old=%ld", cacheItem.lastRefreshTime);
 		qint64 newRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -1676,6 +1676,10 @@ public:
 
 		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key %s %s %ld", methodNameParamsHashVal.toHex().data(), qPrintable(tt.methodName), tt.lastRefreshTime);
+
+		redis_remove_cache_item(gRedisContext, methodNameParamsHashVal);
+		ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
+		log_debug("[REDIS] key2 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
 
 		return ccIndex;
 	}

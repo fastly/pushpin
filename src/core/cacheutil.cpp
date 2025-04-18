@@ -509,6 +509,21 @@ int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId,
 	return 0;
 }
 
+void redis_remove_cache_item(redisContext *context, const QByteArray &itemId) 
+{
+	QByteArray key = itemId;
+
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"DEL %b",
+		key.constData(), key.size()
+	);
+
+	if (reply != nullptr)
+		freeReplyObject(reply);
+
+	return;
+}
+
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
 {
 	QByteArray field0 = "username";
@@ -820,10 +835,12 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 {
 	if (gRedisEnable == false)
 	{
+		// global cache item map
 		gCacheItemMap[itemId] = cacheItem;
 	}
 	else
 	{
+		// redis
 		redis_save_cache_item(gRedisContext, itemId, cacheItem);
 	}
 	
@@ -842,7 +859,7 @@ void remove_cache_item(const QByteArray& itemId)
 	}
 	else
 	{
-
+		redis_remove_cache_item(gRedisContext, itemId);
 	}
 	
 	return;
