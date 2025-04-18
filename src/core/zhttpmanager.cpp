@@ -1448,7 +1448,7 @@ public:
 			});
 		}
 
-		store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
+		store_cache_item_field<int>(itemId, "newMsgId", pCacheItem->newMsgId);
 		store_cache_item_field<QByteArray>(itemId, "cacheClientId", pCacheItem->cacheClientId);
 		store_cache_item_field<qint64>(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 		store_cache_item_field<int>(itemId, "retryCount", pCacheItem->retryCount);

@@ -734,7 +734,7 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
-			redis_store_cache_item_field(gRedisContext, itemId, fieldName, value);	
+			redis_store_cache_item_field<T>(gRedisContext, itemId, fieldName, value);	
 		}
 		else
 		{
