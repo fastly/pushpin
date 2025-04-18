@@ -1893,7 +1893,7 @@ public:
 				{
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
-					store_cache_item_field<qint64>(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
+					store_cache_item_field<qint64>(itemId, "lastAccessTime", pCacheItem->lastAccessTime);
 					return 0;
 				}
 
