@@ -164,7 +164,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
 	QByteArray subscriptionPacket = TnetString::fromVariant(item.subscriptionPacket.toVariant());
 
-	log_debug("[REDIS] qqq %s, %d", key.constData(), key.size());
+	log_debug("[REDIS] qqq %d", key.size());
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HSET %b "
