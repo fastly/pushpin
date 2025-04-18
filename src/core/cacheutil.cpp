@@ -553,7 +553,7 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 
 	freeReplyObject(reply);
 
-	return;
+	return ret;
 }
 
 void setQByteArrayToRedis(redisContext *c, const QByteArray &key, const QByteArray &value) 
