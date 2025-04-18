@@ -551,7 +551,7 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 			// remove REDIS_CACHE_ID_HEADER
 			char *keyStr = reply->element[i]->str;
 			if (keyStr != NULL && strlen(keyStr) > idHeaderLen &&
-				strncmp(keyStr, REDIS_CACHE_ID_HEADER, idHeaderLen))
+				!strncmp(keyStr, REDIS_CACHE_ID_HEADER, idHeaderLen))
 			{
 				keyStr = &keyStr[idHeaderLen];
 				log_debug("[REDIS] kkk %d %s", i, keyStr);
