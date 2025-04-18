@@ -1664,7 +1664,7 @@ public:
 		}
 
 		save_cache_item(methodNameParamsHashVal, cacheItem);
-
+/*
 		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
 		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key1 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
@@ -1688,7 +1688,7 @@ public:
 		log_debug("[REDIS] %d <-> %d", cacheItem.httpBackendNo, tt.httpBackendNo);
 		log_debug("[REDIS] %s <-> %s", cacheItem.cacheClientId.toHex().data(), tt.cacheClientId.toHex().data());
 		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.methodName), qPrintable(tt.methodName));
-
+*/
 		return ccIndex;
 	}
 
