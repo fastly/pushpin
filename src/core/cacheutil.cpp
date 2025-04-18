@@ -238,7 +238,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 }
 
 template <typename T>
-void redis_store_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, const T& value) 
+void redis_store_cache_item_field(redisContext* context, const QByteArray& itemId, char* fieldName, const T& value) 
 {
 	if (context == nullptr)
 		return;
@@ -721,7 +721,7 @@ void store_cache_item(const QByteArray& itemId)
 }
 
 template <typename T>
-void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value)
+void store_cache_item_field(const QByteArray& itemId, char* fieldName, const T& value)
 {
 	if (gRedisEnable == false)
 	{
