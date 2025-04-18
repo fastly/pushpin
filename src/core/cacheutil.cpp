@@ -97,6 +97,8 @@ extern bool gRedisEnable;
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+#define REDIS_CACHE_ID_HEADER	"PUSHPIN : "
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
 
@@ -130,7 +132,7 @@ bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
 	if (context == nullptr)
 		return ret;
 
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply *reply = (redisReply*)redisCommand(context, "EXISTS %b", key.constData(), key.size());
 	if (reply == NULL) 
@@ -154,7 +156,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 	if (context == nullptr)
 		return;
 
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	QByteArray requestPacket = TnetString::fromVariant(item.requestPacket.toVariant());
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
@@ -243,7 +245,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 	if (context == nullptr)
 		return;
 
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
@@ -364,7 +366,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId) 
 {
 	CacheItem item;
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGETALL %b", key.constData(), key.size());
@@ -434,7 +436,7 @@ int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId,
 	if (context == nullptr)
 		return -1;
 
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"HGET %b "
@@ -511,7 +513,7 @@ int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId,
 
 void redis_remove_cache_item(redisContext *context, const QByteArray &itemId) 
 {
-	QByteArray key = itemId;
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(context,
 		"DEL %b",
@@ -520,6 +522,36 @@ void redis_remove_cache_item(redisContext *context, const QByteArray &itemId)
 
 	if (reply != nullptr)
 		freeReplyObject(reply);
+
+	return;
+}
+
+QList<QByteArray> redis_get_cache_item_ids(redisContext *context) 
+{
+	QList<QByteArray> ret;
+
+	QByteArray key = REDIS_CACHE_ID_HEADER + QByteArray("*");
+
+	redisReply* reply = (redisReply*)redisCommand(context,
+		"KEYS %s",
+		key.constData(), key.size()
+	);
+
+	if (reply == nullptr)
+	{
+		log_debug("[REDIS] failed to get id list");
+		return ret;
+	}
+
+	if (reply->type == REDIS_REPLY_ARRAY) 
+	{
+		for (size_t i = 0; i < reply->elements; i++) 
+		{
+			ret.append(QByteArray(reply->element[i]->str));
+		}
+	}
+
+	freeReplyObject(reply);
 
 	return;
 }
@@ -859,6 +891,7 @@ void remove_cache_item(const QByteArray& itemId)
 	}
 	else
 	{
+		// redis
 		redis_remove_cache_item(gRedisContext, itemId);
 	}
 	
@@ -875,7 +908,8 @@ QList<QByteArray> get_cache_item_ids()
 	}
 	else
 	{
-
+		// redis
+		ret = redis_get_cache_item_ids(gRedisContext);
 	}
 
 	return ret;

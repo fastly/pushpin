@@ -141,6 +141,7 @@ CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId)
 template <typename T>
 int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, T& value);
 void redis_remove_cache_item(redisContext *context, const QByteArray &itemId);
+QList<QByteArray> redis_get_cache_item_ids(redisContext *context);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
