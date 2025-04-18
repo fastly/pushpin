@@ -1677,10 +1677,6 @@ public:
 		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key %s %s %ld", methodNameParamsHashVal.toHex().data(), qPrintable(tt.methodName), tt.lastRefreshTime);
 
-		redis_remove_cache_item(gRedisContext, methodNameParamsHashVal);
-		ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
-		log_debug("[REDIS] key2 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
-
 		QList<QByteArray> ttt = redis_get_cache_item_ids(gRedisContext);
 		for (int i=0; i < ttt.count(); i++)
 		{
