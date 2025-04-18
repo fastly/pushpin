@@ -122,6 +122,8 @@ redisContext* connectToRedis()
 		return nullptr;
 	}
 	log_debug("[CACHE] Connected to redis server %s:%d", hostname, port);
+
+	redis_removeall_cache_item(c);
 	return c;
 }
 
@@ -519,6 +521,21 @@ void redis_remove_cache_item(redisContext *context, const QByteArray &itemId)
 		"DEL %b",
 		key.constData(), key.size()
 	);
+
+	if (reply != nullptr)
+		freeReplyObject(reply);
+
+	return;
+}
+
+void redis_removeall_cache_item(redisContext *context) 
+{
+	redisReply* reply = (redisReply*)redisCommand(context, "FLUSHDB");
+
+	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
+	{
+		log_debug("[REDIS] Database cleared successfully.");
+	}
 
 	if (reply != nullptr)
 		freeReplyObject(reply);
