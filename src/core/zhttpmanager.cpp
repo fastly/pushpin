@@ -1681,6 +1681,12 @@ public:
 		ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key2 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
 
+		QList<QByteArray> ttt = redis_get_cache_item_ids(gRedisContext);
+		for (int i=0; i < ttt.count(); i++)
+		{
+			log_debug("[REDIS] key %d %s", i, ttt.toHex().data());
+		}
+
 		return ccIndex;
 	}
 
