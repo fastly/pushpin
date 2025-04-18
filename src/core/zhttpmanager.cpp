@@ -2901,7 +2901,7 @@ void ZhttpManager::setCacheParameters(
 	}
 
 	// init redis
-	if (gRedisEnable == true)
+	//if (gRedisEnable == true)
 		gRedisContext = connectToRedis();
 }
 
