@@ -116,6 +116,7 @@ QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
+bool gRedisEnable = false;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -1483,7 +1484,7 @@ public:
 		else
 		{
 			// cache lookup
-			foreach(QByteArray itemId, get_cache_item_keys())
+			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
 				if (pCacheItem->clientMap.contains(clientId))
@@ -1869,7 +1870,7 @@ public:
 		}
 		
 		// it`s not the response from switch-backend or auto-refresh
-		foreach(QByteArray itemId, get_cache_item_keys())
+		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
 			if ((pCacheItem->proto == Scheme::http) && 
@@ -1948,7 +1949,7 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
-			foreach(QByteArray itemId, get_cache_item_keys())
+			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
 				if (pCacheItem->subscriptionStr == subscriptionStr)
@@ -2103,7 +2104,7 @@ public:
 			return -1;
 		}
 
-		foreach(QByteArray itemId, get_cache_item_keys())
+		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
 			if ((pCacheItem->proto == Scheme::websocket) && 
@@ -2896,7 +2897,8 @@ void ZhttpManager::setCacheParameters(
 	}
 
 	// init redis
-	gRedisContext = connectToRedis();
+	if (gRedisEnable == true)
+		gRedisContext = connectToRedis();
 }
 
 #include "zhttpmanager.moc"

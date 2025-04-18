@@ -90,6 +90,10 @@ extern int gShorterTimeoutSeconds;
 extern int gLongerTimeoutSeconds;
 extern int gCacheItemMaxCount;
 
+// redis
+extern redisContext *gRedisContext;
+extern bool gRedisEnable;
+
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -620,50 +624,115 @@ void testRedis()
 // Cache Item
 bool is_cache_item(const QByteArray& itemId)
 {
-	return gCacheItemMap.contains(itemId);
+	bool ret = false;
+
+	if (gRedisEnable == false)
+	{
+		ret = gCacheItemMap.contains(itemId);
+	}
+	else
+	{
+
+	}
+
+	return ret;
 }
 
 CacheItem* load_cache_item(const QByteArray& itemId)
 {
-	if (!gCacheItemMap.contains(itemId))
+	CacheItem* ret = NULL;
+
+	if (gRedisEnable == false)
 	{
-		log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
-		return NULL;
+		if (!is_cache_item(itemId))
+		{
+			log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
+			return NULL;
+		}
+		ret = &gCacheItemMap[itemId];
+	}
+	else
+	{
+
 	}
 
-	return &gCacheItemMap[itemId];
+	return ret;
 }
 
 void store_cache_item(const QByteArray& itemId)
 {
-	log_debug("[CACHE] store cache item %s", itemId.toHex().data());
+	if (gRedisEnable == false)
+	{
+		log_debug("[CACHE] store cache item %s", itemId.toHex().data());
+	}
+	else
+	{
+
+	}
+	
 	return;
 }
 
 void store_cache_item(const QByteArray& itemId, QString fieldName)
 {
-	log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	if (gRedisEnable == false)
+	{
+		log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	}
+	else
+	{
+
+	}
+	
 	return;
 }
 
 void save_cache_item(const QByteArray& itemId, CacheItem cacheItem)
 {
-	gCacheItemMap[itemId] = cacheItem;
+	if (gRedisEnable == false)
+	{
+		gCacheItemMap[itemId] = cacheItem;
+	}
+	else
+	{
+
+	}
+	
+	return;
 }
 
 void remove_cache_item(const QByteArray& itemId)
 {
-	if (gCacheItemMap.contains(itemId))
+	if (gRedisEnable == false)
 	{
-		log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
-		gCacheItemMap.remove(itemId);
+		if (is_cache_item(itemId))
+		{
+			log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
+			gCacheItemMap.remove(itemId);
+		}
 	}
+	else
+	{
+
+	}
+	
 	return;
 }
 
-QList<QByteArray> get_cache_item_keys()
+QList<QByteArray> get_cache_item_ids()
 {
-	return gCacheItemMap.keys();
+	QList<QByteArray> ret;
+
+	if (gRedisEnable == false)
+	{
+		ret = gCacheItemMap.keys();
+	}
+	else
+	{
+
+	}
+	
+	return ret;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -706,7 +775,7 @@ static void remove_old_cache_items()
 
 	while (accessTimeoutMSeconds > 0)
 	{
-		QList<QByteArray> cacheItemIdList = get_cache_item_keys();
+		QList<QByteArray> cacheItemIdList = get_cache_item_ids();
 		QList<QByteArray> deleteIdList;
 		int itemCount = cacheItemIdList.count();
 
