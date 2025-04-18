@@ -410,7 +410,7 @@ CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId)
 		if (!mapKeyStr.isEmpty())
 		{
 			QString mapValStr = "";
-			loadCacheItemField<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
+			redis_load_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
 			//log_debug("mapValStr = %s", qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
@@ -489,7 +489,7 @@ int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId,
 			if (!mapKeyStr.isEmpty())
 			{
 				QString mapValStr = "";
-				loadCacheItemField<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
+				redis_load_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
 				log_debug("mapValStr = %s", qPrintable(mapValStr));
 				QStringList mapValList = mapValStr.split("\n");
 				if (mapValList.length() == 2)
