@@ -132,7 +132,7 @@ bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
 
 	QByteArray key = itemId;
 
-	redisReply *reply = (redisReply*)redisCommand(context, "EXISTS %s", key);
+	redisReply *reply = (redisReply*)redisCommand(context, "EXISTS %b", key.constData(), key.size());
 	if (reply == NULL) 
 	{
 		log_debug("[REDIS] EXISTS Command failed\n");
