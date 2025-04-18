@@ -566,6 +566,7 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 		for (size_t i = 0; i < reply->elements; i++) 
 		{
 			QByteArray value(reply->element[i]->str, reply->element[i]->len);
+			value.replace(QByteArray("REDIS_CACHE_ID_HEADER"), QByteArray(""));
 			ret.append(value);
 
 			/*
