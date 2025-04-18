@@ -1675,13 +1675,19 @@ public:
 		redis_store_cache_item_field(gRedisContext, methodNameParamsHashVal, "lastRefreshTime", newRefreshTime);
 
 		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
-		log_debug("[REDIS] key %s %s %ld", methodNameParamsHashVal.toHex().data(), qPrintable(tt.methodName), tt.lastRefreshTime);
-
-		QList<QByteArray> ttt = redis_get_cache_item_ids(gRedisContext);
-		for (int i=0; i < ttt.count(); i++)
-		{
-			log_debug("[REDIS] key %d %s", i, ttt[i].toHex().data());
-		}
+		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.orgMsgId), qPrintable(tt.orgMsgId));
+		log_debug("[REDIS] %d <-> %d", cacheItem.msgId, tt.msgId);
+		log_debug("[REDIS] %d <-> %d", cacheItem.newMsgId, tt.newMsgId);
+		log_debug("[REDIS] %d <-> %d", (int)cacheItem.refreshFlag, (int)tt.refreshFlag);
+		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastRequestTime, tt.lastRequestTime);
+		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastRefreshTime, tt.lastRefreshTime);
+		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastAccessTime, tt.lastAccessTime);
+		log_debug("[REDIS] %d <-> %d", (int)cacheItem.cachedFlag, (int)tt.cachedFlag);
+		log_debug("[REDIS] %d <-> %d", (int)cacheItem.proto, (int)tt.proto);
+		log_debug("[REDIS] %d <-> %d", cacheItem.retryCount, tt.retryCount);
+		log_debug("[REDIS] %d <-> %d", cacheItem.httpBackendNo, tt.httpBackendNo);
+		log_debug("[REDIS] %s <-> %s", cacheItem.cacheClientId.toHex().data(), tt.cacheClientId.toHex().data());
+		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.methodName), qPrintable(tt.methodName));
 
 		return ccIndex;
 	}
