@@ -681,7 +681,7 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	}
 	else
 	{
-		if (!redis_is_cache_item(itemId))
+		if (!redis_is_cache_item(gRedisContext, itemId))
 		{
 			log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
 			return NULL;
