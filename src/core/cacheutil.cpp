@@ -565,22 +565,14 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 		int idHeaderLen = strlen(REDIS_CACHE_ID_HEADER);
 		for (size_t i = 0; i < reply->elements; i++) 
 		{
-			QByteArray value(reply->element[i]->str, reply->element[i]->len);
-			value.replace(QByteArray(REDIS_CACHE_ID_HEADER), QByteArray(""));
-			ret.append(value);
-
-			/*
 			// remove REDIS_CACHE_ID_HEADER
-			char *keyStr = reply->element[i]->str;
-			if (keyStr != NULL && strlen(keyStr) > idHeaderLen &&
-				!strncmp(keyStr, REDIS_CACHE_ID_HEADER, idHeaderLen))
+			int eleLen = reply->element[i]->len;
+			if (eleLen > idHeaderLen)
 			{
-				keyStr = &keyStr[idHeaderLen];
-				QByteArray keyBytes = QByteArray(keyStr);
-				log_debug("[REDIS] kkk %d %s", i, keyBytes.toHex().data());
-				ret.append(keyBytes);
+				QByteArray value(reply->element[i]->str, eleLen);
+				value.remove(0, idHeaderLen);
+				ret.append(value);
 			}
-			*/
 		}
 	}
 
