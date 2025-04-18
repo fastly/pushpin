@@ -548,13 +548,10 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 		for (size_t i = 0; i < reply->elements; i++) 
 		{
 			std::string keyStr = reply->element[i]->str;
-			if (keyStr != NULL && keyStr.length() > REDIS_CACHE_ID_HEADER.length())
-			{
-				// remove REDIS_CACHE_ID_HEADER
-				keyStr.replace(0, REDIS_CACHE_ID_HEADER.length(), "")
-				log_debug("[REDIS] kkk %d %s", i, keyStr);
-				ret.append(QByteArray(keyStr));
-			}
+			// remove REDIS_CACHE_ID_HEADER
+			keyStr.replace(0, REDIS_CACHE_ID_HEADER.length(), "")
+			log_debug("[REDIS] kkk %d %s", i, keyStr);
+			ret.append(QByteArray(keyStr));
 		}
 	}
 
