@@ -211,7 +211,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 	QMap<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
 	QString originalClientMapVal = "";
 	QString newClientMapVal = "";
-	loadCacheItemField<QString>(context, itemId, "clientMap", originalClientMapVal);
+	redis_load_cache_item_field<QString>(context, itemId, "clientMap", originalClientMapVal);
 	for (const QByteArray &mapKey : clientMap.keys()) 
 	{
 		QString keyStr = mapKey.toHex().data();
@@ -224,14 +224,14 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 		clientItemVal += "\n";
 		clientItemVal += clientMap[mapKey].from.toHex().data();
 		//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-		storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
+		redis_store_cache_item_field<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 	}
 
 	//log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 	if (!newClientMapVal.isEmpty())
 	{
 		newClientMapVal += originalClientMapVal;
-		storeCacheItemField<QString>(context, itemId, "clientMap", newClientMapVal);
+		redis_store_cache_item_field<QString>(context, itemId, "clientMap", newClientMapVal);
 	}
 
 	if (reply) freeReplyObject(reply);
@@ -333,7 +333,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 		QMap<QByteArray, ClientInCacheItem> clientMap = value;
 		QString originalClientMapVal = "";
 		QString newClientMapVal = "";
-		loadCacheItemField<QString>(context, itemId, "clientMap", originalClientMapVal);
+		redis_load_cache_item_field<QString>(context, itemId, "clientMap", originalClientMapVal);
 		for (const QByteArray &mapKey : clientMap.keys()) 
 		{
 			QString keyStr = mapKey.toHex().data();
@@ -346,14 +346,14 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
 			//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
-			storeCacheItemField<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
+			redis_store_cache_item_field<QString>(context, itemId, mapKey.toHex().data(), clientItemVal);
 		}
 
 		//log_debug("Store newClientMapVal=%s", qPrintable(newClientMapVal));
 		if (!newClientMapVal.isEmpty())
 		{
 			newClientMapVal += originalClientMapVal;
-			storeCacheItemField<QString>(context, itemId, "clientMap", newClientMapVal);
+			redis_store_cache_item_field<QString>(context, itemId, "clientMap", newClientMapVal);
 		}
 	}
 
