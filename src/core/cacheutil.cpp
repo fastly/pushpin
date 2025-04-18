@@ -533,7 +533,7 @@ QList<QByteArray> redis_get_cache_item_ids(redisContext *context)
 	QByteArray key = REDIS_CACHE_ID_HEADER + QByteArray("*");
 
 	redisReply* reply = (redisReply*)redisCommand(context,
-		"KEYS %s",
+		"KEYS %b",
 		key.constData(), key.size()
 	);
 
