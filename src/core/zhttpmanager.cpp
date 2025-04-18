@@ -1666,8 +1666,8 @@ public:
 		save_cache_item(methodNameParamsHashVal, cacheItem);
 
 		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
-		bool ret = redis_is_cache_item(gRedisContext, itemId);
-		log_debug("[REDIS] key %s %s", itemId.toHex().data(), ret ? "TRUE" : "FALSE");
+		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
+		log_debug("[REDIS] key %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
 
 		return ccIndex;
 	}

@@ -125,24 +125,28 @@ redisContext* connectToRedis()
 
 bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
 {
+	bool ret = false;
+
 	if (context == nullptr)
-		return false;
+		return ret;
 
 	QByteArray key = itemId;
 
-	redisReply *reply = redisCommand(context, "EXISTS %s", key);
+	redisReply *reply = (redisReply*)redisCommand(context, "EXISTS %s", key);
 	if (reply == NULL) 
 	{
-		printf("[REDIS] EXISTS Command failed\n");
-		return false;
+		log_debug("[REDIS] EXISTS Command failed\n");
+		return ret;
 	}
 
 	if (reply->type == REDIS_REPLY_INTEGER && reply->integer == 1) 
 	{
-		return true;
+		ret = true;
 	}
+
+	if (reply) freeReplyObject(reply);
 	
-	return false;
+	return ret;
 }
 
 void redis_save_cache_item(redisContext* context, const QByteArray& itemId, const CacheItem& item) 
