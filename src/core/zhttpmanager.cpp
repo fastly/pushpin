@@ -116,7 +116,7 @@ QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
-bool gRedisEnable = false;
+bool gRedisEnable = true;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -1646,7 +1646,7 @@ public:
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
-		cacheItem.clientMap[clientId].from = methodNameParamsHashVal;//clientPacket.from;
+		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
@@ -1664,7 +1664,7 @@ public:
 		}
 
 		save_cache_item(methodNameParamsHashVal, cacheItem);
-
+		/*
 		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
 		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key1 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
@@ -1673,8 +1673,6 @@ public:
 		qint64 newRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		log_debug("[REDIS] new=%ld", newRefreshTime);
 		redis_store_cache_item_field(gRedisContext, methodNameParamsHashVal, "lastRefreshTime", newRefreshTime);
-
-		redis_remove_cache_item_field(gRedisContext, methodNameParamsHashVal, "clientMap");
 
 		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.orgMsgId), qPrintable(tt.orgMsgId));
@@ -1700,6 +1698,7 @@ public:
 			log_debug("[REDIS] client msgId=%s", qPrintable(tt.clientMap[mapKey].msgId));
 			log_debug("[REDIS] client from=%s", tt.clientMap[mapKey].from.toHex().data());
 		}
+		*/
 
 		return ccIndex;
 	}
