@@ -226,7 +226,7 @@ void redis_save_cache_item(redisContext* context, const QByteArray& itemId, cons
 		QString mapKeyStr = mapList[i];
 		if (!mapKeyStr.isEmpty())
 		{
-			redis_remove_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr));
+			redis_remove_cache_item_field(context, itemId, qPrintable(mapKeyStr));
 		}
 	}
 
@@ -352,7 +352,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 			QString mapKeyStr = mapList[i];
 			if (!mapKeyStr.isEmpty())
 			{
-				redis_remove_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr));
+				redis_remove_cache_item_field(context, itemId, qPrintable(mapKeyStr));
 			}
 		}
 
