@@ -1646,7 +1646,7 @@ public:
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
-		cacheItem.clientMap[clientId].from = clientPacket.from;
+		cacheItem.clientMap[clientId].from = methodNameParamsHashVal;//clientPacket.from;
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
