@@ -140,6 +140,7 @@ void redis_store_cache_item_field(redisContext* context, const QByteArray& itemI
 CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId);
 template <typename T>
 int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, T& value);
+void redis_remove_cache_item_field(redisContext *context, const QByteArray &itemId, const char* fieldName);
 void redis_remove_cache_item(redisContext *context, const QByteArray &itemId);
 void redis_removeall_cache_item(redisContext *context);
 QList<QByteArray> redis_get_cache_item_ids(redisContext *context);

@@ -116,7 +116,7 @@ QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
-bool gRedisEnable = true;
+bool gRedisEnable = false;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -1664,7 +1664,7 @@ public:
 		}
 
 		save_cache_item(methodNameParamsHashVal, cacheItem);
-/*
+
 		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
 		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] key1 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
@@ -1688,7 +1688,17 @@ public:
 		log_debug("[REDIS] %d <-> %d", cacheItem.httpBackendNo, tt.httpBackendNo);
 		log_debug("[REDIS] %s <-> %s", cacheItem.cacheClientId.toHex().data(), tt.cacheClientId.toHex().data());
 		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.methodName), qPrintable(tt.methodName));
-*/
+		for (const QByteArray &mapKey : cacheItem.clientMap.keys())
+		{
+			log_debug("[REDIS] client msgId=%s", qPrintable(cacheItem.clientMap[mapKey].msgId));
+			log_debug("[REDIS] client from=%s", cacheItem.clientMap[mapKey].from.toHex().data());
+		}
+		for (const QByteArray &mapKey : tt.clientMap.keys())
+		{
+			log_debug("[REDIS] client msgId=%s", qPrintable(tt.clientMap[mapKey].msgId));
+			log_debug("[REDIS] client from=%s", tt.clientMap[mapKey].from.toHex().data());
+		}
+
 		return ccIndex;
 	}
 
