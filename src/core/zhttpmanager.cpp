@@ -1674,6 +1674,8 @@ public:
 		log_debug("[REDIS] new=%ld", newRefreshTime);
 		redis_store_cache_item_field(gRedisContext, methodNameParamsHashVal, "lastRefreshTime", newRefreshTime);
 
+		redis_remove_cache_item_field(gRedisContext, methodNameParamsHashVal, "clientMap");
+
 		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
 		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.orgMsgId), qPrintable(tt.orgMsgId));
 		log_debug("[REDIS] %d <-> %d", cacheItem.msgId, tt.msgId);
