@@ -2479,7 +2479,7 @@ public:
 				// register cache refresh
 				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 
-				log_debug("[WWWWWWW] newMsgId = %d", pCacheItem->newMsgId)
+				log_debug("[WWWWWWW] newMsgId = %d", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
 			}
