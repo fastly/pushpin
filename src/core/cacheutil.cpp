@@ -429,7 +429,7 @@ CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId)
 		{
 			QString mapValStr = "";
 			redis_load_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
-			//log_debug("mapValStr = %s", qPrintable(mapValStr));
+			log_debug("mapValStr = %s", qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
 			{
