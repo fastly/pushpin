@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include "defercall.h"
+#include "event.h"
 #include "eventloop.h"
 
 SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
@@ -42,10 +43,10 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 		uint8_t einterest = 0;
 
 		if(interest & Read)
-			einterest |= EventLoop::Readable;
+			einterest |= Event::Readable;
 
 		if(interest & Write)
-			einterest |= EventLoop::Writable;
+			einterest |= Event::Writable;
 
 		regId_ = loop_->registerFd(socket_, einterest, SocketNotifier::cb_fd_activated, this);
 		assert(regId_ >= 0);
@@ -165,10 +166,10 @@ void SocketNotifier::fd_activated(uint8_t ereadiness)
 {
 	uint8_t readiness = 0;
 
-	if(ereadiness & EventLoop::Readable)
+	if(ereadiness & Event::Readable)
 		readiness |= Read;
 
-	if(ereadiness & EventLoop::Writable)
+	if(ereadiness & Event::Writable)
 		readiness |= Write;
 
 	if(readiness)

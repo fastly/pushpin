@@ -24,8 +24,6 @@
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
 
-#include <memory>
-
 class HandlerApp
 {
 public:

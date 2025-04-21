@@ -46,9 +46,6 @@ pub mod zmq;
 #[cfg(target_os = "linux")]
 pub mod seccomp;
 
-#[cfg(test)]
-pub mod qtest;
-
 use std::env;
 use std::ffi::{CString, OsStr};
 use std::os::unix::ffi::OsStrExt;
@@ -107,8 +104,7 @@ pub fn ensure_example_config(dest: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::test::TestException;
+    use crate::core::test::{run_serial, TestException};
     use crate::ffi;
 
     fn httpheaders_test(out_ex: &mut TestException) -> bool {
@@ -148,36 +144,36 @@ mod tests {
 
     #[test]
     fn httpheaders() {
-        qtest::run_no_main(httpheaders_test);
+        run_serial(httpheaders_test);
     }
 
     #[test]
     fn jwt() {
-        qtest::run_no_main(jwt_test);
+        run_serial(jwt_test);
     }
 
     #[test]
     fn timer() {
-        qtest::run_no_main(timer_test);
+        run_serial(timer_test);
     }
 
     #[test]
     fn defercall() {
-        qtest::run_no_main(defercall_test);
+        run_serial(defercall_test);
     }
 
     #[test]
     fn tcpstream() {
-        qtest::run_no_main(tcpstream_test);
+        run_serial(tcpstream_test);
     }
 
     #[test]
     fn unixstream() {
-        qtest::run_no_main(unixstream_test);
+        run_serial(unixstream_test);
     }
 
     #[test]
     fn eventloop() {
-        qtest::run_no_main(eventloop_test);
+        run_serial(eventloop_test);
     }
 }

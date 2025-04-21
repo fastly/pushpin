@@ -42,6 +42,9 @@
 // each zroute has a zhttpmanager, which has up to 8 timers
 #define TIMERS_PER_ZROUTE 10
 
+// each zroute has a zhttpmanager, which has up to 8 socket notifiers
+#define SOCKETNOTIFIERS_PER_ZROUTE 10
+
 #define PROMETHEUS_CONNECTIONS_MAX 16
 #define ZROUTES_MAX 100
 
