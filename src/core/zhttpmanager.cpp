@@ -2479,12 +2479,11 @@ public:
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 				log_debug("[WWWWWWW] newMsgId2 = %d", pCacheItem->newMsgId);
 
-				// register cache refresh
-				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
-
-				log_debug("[WWWWWWW] newMsgId3 = %d", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
+
+				// register cache refresh
+				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 			}
 			
 			return -1;
