@@ -2475,12 +2475,14 @@ public:
 				pCacheItem = load_cache_item(paramsHash);
 				// Send new client cache request packet
 				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
+				log_debug("[WWWWWWW] newMsgId1 = %d", pCacheItem->newMsgId);
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+				log_debug("[WWWWWWW] newMsgId2 = %d", pCacheItem->newMsgId);
 
 				// register cache refresh
 				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 
-				log_debug("[WWWWWWW] newMsgId = %d", pCacheItem->newMsgId);
+				log_debug("[WWWWWWW] newMsgId3 = %d", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
 			}
