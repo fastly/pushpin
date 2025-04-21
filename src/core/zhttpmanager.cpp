@@ -2307,7 +2307,6 @@ public:
 				continue;
 			}
 		}
-		log_debug("[WWWWWWW] msgId = %d", msgId);
 		return msgId;
 	}
 
@@ -2475,9 +2474,7 @@ public:
 				pCacheItem = load_cache_item(paramsHash);
 				// Send new client cache request packet
 				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
-				log_debug("[WWWWWWW] newMsgId1 = %d", pCacheItem->newMsgId);
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
-				log_debug("[WWWWWWW] newMsgId2 = %d", pCacheItem->newMsgId);
 
 				store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
