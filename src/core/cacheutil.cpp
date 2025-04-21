@@ -429,7 +429,7 @@ CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId)
 		{
 			QString mapValStr = "";
 			redis_load_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
-			log_debug("itemId = %s, mapValStr = %s", itemId.toHex().data(), qPrintable(mapValStr));
+			log_debug("itemId=%s, newMsgId=%d, mapValStr = %s", itemId.toHex().data(), item.newMsgId, qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
 			{
@@ -742,7 +742,7 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 		// redis
 		if (gCacheItemMap.contains(itemId))
 		{
-			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+			log_debug("[REDIS] save cache item field %s, %s=%d", itemId.toHex().data(), qPrintable(fieldName), value);
 			redis_store_cache_item_field<int>(gRedisContext, itemId, fieldName, value);	
 		}
 		else
