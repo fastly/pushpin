@@ -834,7 +834,6 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 	if (gRedisEnable == true)
 	{
 		// redis
-		gCacheItemMap[itemId] = cacheItem;
 		redis_save_cache_item(gRedisContext, itemId, cacheItem);
 	}
 	
@@ -843,15 +842,13 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 
 void remove_cache_item(const QByteArray& itemId)
 {
-	if (gRedisEnable == false)
+	if (is_cache_item(itemId))
 	{
-		if (is_cache_item(itemId))
-		{
-			log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
-			gCacheItemMap.remove(itemId);
-		}
+		log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
+		gCacheItemMap.remove(itemId);
 	}
-	else
+
+	if (gRedisEnable == true)
 	{
 		// redis
 		redis_remove_cache_item(gRedisContext, itemId);

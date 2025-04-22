@@ -1664,41 +1664,6 @@ public:
 		}
 
 		save_cache_item(methodNameParamsHashVal, cacheItem);
-		/*
-		redis_save_cache_item(gRedisContext, methodNameParamsHashVal, cacheItem);
-		bool ret = redis_is_cache_item(gRedisContext, methodNameParamsHashVal);
-		log_debug("[REDIS] key1 %s %s", methodNameParamsHashVal.toHex().data(), ret ? "TRUE" : "FALSE");
-
-		log_debug("[REDIS] old=%ld", cacheItem.lastRefreshTime);
-		qint64 newRefreshTime = QDateTime::currentMSecsSinceEpoch();
-		log_debug("[REDIS] new=%ld", newRefreshTime);
-		redis_store_cache_item_field(gRedisContext, methodNameParamsHashVal, "lastRefreshTime", newRefreshTime);
-
-		CacheItem tt = redis_load_cache_item(gRedisContext, methodNameParamsHashVal);
-		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.orgMsgId), qPrintable(tt.orgMsgId));
-		log_debug("[REDIS] %d <-> %d", cacheItem.msgId, tt.msgId);
-		log_debug("[REDIS] %d <-> %d", cacheItem.newMsgId, tt.newMsgId);
-		log_debug("[REDIS] %d <-> %d", (int)cacheItem.refreshFlag, (int)tt.refreshFlag);
-		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastRequestTime, tt.lastRequestTime);
-		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastRefreshTime, tt.lastRefreshTime);
-		log_debug("[REDIS] %ld <-> %ld", cacheItem.lastAccessTime, tt.lastAccessTime);
-		log_debug("[REDIS] %d <-> %d", (int)cacheItem.cachedFlag, (int)tt.cachedFlag);
-		log_debug("[REDIS] %d <-> %d", (int)cacheItem.proto, (int)tt.proto);
-		log_debug("[REDIS] %d <-> %d", cacheItem.retryCount, tt.retryCount);
-		log_debug("[REDIS] %d <-> %d", cacheItem.httpBackendNo, tt.httpBackendNo);
-		log_debug("[REDIS] %s <-> %s", cacheItem.cacheClientId.toHex().data(), tt.cacheClientId.toHex().data());
-		log_debug("[REDIS] %s <-> %s", qPrintable(cacheItem.methodName), qPrintable(tt.methodName));
-		for (const QByteArray &mapKey : cacheItem.clientMap.keys())
-		{
-			log_debug("[REDIS] client msgId=%s", qPrintable(cacheItem.clientMap[mapKey].msgId));
-			log_debug("[REDIS] client from=%s", cacheItem.clientMap[mapKey].from.toHex().data());
-		}
-		for (const QByteArray &mapKey : tt.clientMap.keys())
-		{
-			log_debug("[REDIS] client msgId=%s", qPrintable(tt.clientMap[mapKey].msgId));
-			log_debug("[REDIS] client from=%s", tt.clientMap[mapKey].from.toHex().data());
-		}
-		*/
 
 		return ccIndex;
 	}
