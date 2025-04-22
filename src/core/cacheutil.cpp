@@ -1000,7 +1000,7 @@ void cache_thread()
 
 		gCacheThreadRunning = false;
 
-		QThread::msleep(100);
+		QThread::msleep(2000);
 	}
 }
 
