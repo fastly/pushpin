@@ -116,7 +116,7 @@ QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
-bool gRedisEnable = true;
+bool gRedisEnable = false;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
