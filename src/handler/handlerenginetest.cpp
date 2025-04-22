@@ -35,6 +35,7 @@
 #include "packet/httpresponsedata.h"
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 #include "handlerengine.h"
 
 namespace {
@@ -264,15 +265,13 @@ public:
 	HandlerEngine *engine;
 	Wrapper *wrapper;
 
-	TestState()
+	TestState(std::function<void (int)> loop_wait)
 	{
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-
-		Timer::init(100);
 
 		wrapper = new Wrapper(workDir);
 		wrapper->startHttp();
@@ -295,13 +294,54 @@ public:
 
 		wrapper->startPublish();
 
-		QTest::qWait(500);
+		loop_wait(500);
 	}
 
 	~TestState()
 	{
 		delete engine;
 		delete wrapper;
+	}
+};
+
+}
+
+static void runWithEventLoops(std::function<void (Wrapper *, std::function<void (int)>)> f)
+{
+	{
+		EventLoop loop(100);
+
+		auto loop_wait = [&](int ms) {
+			for(int i = ms; i > 0; i -= 10)
+			{
+				QThread::msleep(10);
+				loop.step();
+			}
+		};
+
+		{
+			TestState state(loop_wait);
+
+			f(state.wrapper, loop_wait);
+		}
+
+		DeferCall::cleanup();
+	}
+
+	{
+		TestQCoreApplication qapp;
+
+		Timer::init(100);
+
+		auto loop_wait = [](int ms) {
+			QTest::qWait(ms);
+		};
+
+		{
+			TestState state(loop_wait);
+
+			f(state.wrapper, loop_wait);
+		}
 
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
@@ -309,16 +349,10 @@ public:
 		DeferCall::cleanup();
 		Timer::deinit();
 	}
-};
-
 }
 
-static void acceptNoHold()
+static void acceptNoHold(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "1";
@@ -362,18 +396,14 @@ static void acceptNoHold()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!wrapper->acceptValue.value("accepted").toBool());
 	TEST_ASSERT_EQ(wrapper->acceptValue["response"].toHash()["body"].toByteArray(), QByteArray("hello world\n"));
 }
 
-static void acceptNoHoldResponseSent()
+static void acceptNoHoldResponseSent(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "2";
@@ -418,18 +448,14 @@ static void acceptNoHoldResponseSent()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!wrapper->acceptValue.value("accepted").toBool());
 	TEST_ASSERT(!wrapper->acceptValue.contains("response"));
 }
 
-static void acceptNoHoldNext()
+static void acceptNoHoldNext(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "3";
@@ -474,23 +500,19 @@ static void acceptNoHoldNext()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->acceptValue.value("accepted").toBool());
 
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->responses.contains(id));
 	TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("hello world\nthis is what's next\n"));
 }
 
-static void acceptNoHoldNextResponseSent()
+static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "4";
@@ -537,23 +559,19 @@ static void acceptNoHoldNextResponseSent()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->acceptValue.value("accepted").toBool());
 
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->responses.contains(id));
 	TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("this is what's next\n"));
 }
 
-static void publishResponse()
+static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "5";
@@ -599,7 +617,7 @@ static void publishResponse()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	data.clear();
 
@@ -615,18 +633,14 @@ static void publishResponse()
 	buf = TnetString::fromVariant(data);
 	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->responses.contains(id));
 	TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("hello world\n"));
 }
 
-static void publishStream()
+static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "6";
@@ -672,7 +686,7 @@ static void publishStream()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	data.clear();
 
@@ -707,18 +721,14 @@ static void publishStream()
 	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
 
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->responses.contains(id));
 	TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("stream open\nhello world\n"));
 }
 
-static void publishStreamReorder()
+static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
-	Wrapper *wrapper = state.wrapper;
-
 	wrapper->reset();
 
 	QByteArray id = "7";
@@ -764,7 +774,7 @@ static void publishStreamReorder()
 	QByteArray buf = TnetString::fromVariant(data);
 	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
 	while(!wrapper->acceptSuccess)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	data.clear();
 
@@ -856,7 +866,7 @@ static void publishStreamReorder()
 	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
 
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->responses.contains(id));
 	TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("stream open\none\ntwo\nthree\nfour\n"));
@@ -864,13 +874,13 @@ static void publishStreamReorder()
 
 extern "C" int handlerengine_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(acceptNoHold());
-	TEST_CATCH(acceptNoHoldResponseSent());
-	TEST_CATCH(acceptNoHoldNext());
-	TEST_CATCH(acceptNoHoldNextResponseSent());
-	TEST_CATCH(publishResponse());
-	TEST_CATCH(publishStream());
-	TEST_CATCH(publishStreamReorder());
+	TEST_CATCH(runWithEventLoops(acceptNoHold));
+	TEST_CATCH(runWithEventLoops(acceptNoHoldResponseSent));
+	TEST_CATCH(runWithEventLoops(acceptNoHoldNext));
+	TEST_CATCH(runWithEventLoops(acceptNoHoldNextResponseSent));
+	TEST_CATCH(runWithEventLoops(publishResponse));
+	TEST_CATCH(runWithEventLoops(publishStream));
+	TEST_CATCH(runWithEventLoops(publishStreamReorder));
 
 	return 0;
 }

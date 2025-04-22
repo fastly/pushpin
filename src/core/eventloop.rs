@@ -164,26 +164,14 @@ impl<C: Callback> Registrations<C> {
     }
 
     fn dispatch_activated(&self) {
-        // move the current list aside so we only process registrations that
-        // have been activated up to this point, and not registrations that
-        // might get activated during the course of calling callbacks
-        let mut activated = {
-            let data = &mut *self.data.borrow_mut();
-
-            let mut l = list::List::default();
-            l.concat(&mut data.nodes, &mut data.activated);
-
-            l
-        };
-
         // call the callback of each activated registration, ensuring we
         // release borrows before each call. this way, callbacks can access
-        // the eventloop, for example to add registrations
+        // the eventloop, for example to add or remove registrations
         loop {
             let (nkey, mut callback, readiness) = {
                 let data = &mut *self.data.borrow_mut();
 
-                let nkey = match activated.pop_front(&mut data.nodes) {
+                let nkey = match data.activated.pop_front(&mut data.nodes) {
                     Some(nkey) => nkey,
                     None => break,
                 };
