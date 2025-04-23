@@ -914,7 +914,7 @@ static void remove_old_cache_items()
 
 	while (accessTimeoutMSeconds > 0)
 	{
-		QList<QByteArray> cacheItemIdList = get_cache_item_ids();
+		QList<QByteArray> cacheItemIdList = gCacheItemMap.keys();//get_cache_item_ids();
 		QList<QByteArray> deleteIdList;
 		int itemCount = cacheItemIdList.count();
 
@@ -922,7 +922,7 @@ static void remove_old_cache_items()
 		for	(int i=0; i < itemCount; i++)
 		{
 			QByteArray itemId = cacheItemIdList[i];
-			CacheItem *pCacheItem = load_cache_item(itemId);
+			CacheItem *pCacheItem = &gCacheItemMap[itemId];//load_cache_item(itemId);
 			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 			{
 				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE)
