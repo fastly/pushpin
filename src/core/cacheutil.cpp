@@ -126,7 +126,7 @@ redisContext* connectToRedis()
 	}
 	log_debug("[CACHE] Connected to redis server %s:%d", hostname, port);
 
-	redis_removeall_cache_item(c);
+	redis_removeall_cache_item();
 	return c;
 }
 
