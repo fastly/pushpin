@@ -74,7 +74,7 @@
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
-bool gCacheEnable = false;
+bool gCacheEnable = true;
 QStringList gHttpBackendUrlList;
 QStringList gWsBackendUrlList;
 
@@ -116,7 +116,9 @@ QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
-bool gRedisEnable = true;
+bool gRedisEnable = false;
+QString gRedisHostAddr = "127.0.0.1";
+int gRedisPort = 6379;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -2747,7 +2749,7 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 }
 
 void ZhttpManager::setCacheParameters(
-	bool enable,
+	bool cacheEnable,
 	const QStringList &httpBackendUrlList,
 	const QStringList &wsBackendUrlList,
 	const QStringList &cacheMethodList,
@@ -2759,10 +2761,13 @@ void ZhttpManager::setCacheParameters(
 	const QStringList &cacheKeyItemList,
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
-	const QString &msgParamsFieldName
+	const QString &msgParamsFieldName,
+	bool redisEnable,
+	const QString &redisHostAddr,
+	const int redisPort
 	)
 {
-	gCacheEnable = enable;
+	gCacheEnable = cacheEnable;
 	gHttpBackendUrlList = httpBackendUrlList;
 	gWsBackendUrlList = wsBackendUrlList;
 
@@ -2825,6 +2830,8 @@ void ZhttpManager::setCacheParameters(
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
+
+	log_debug("[CONFIG] cache %s", gCacheEnable ? "enabled" : "disabled");
 
 	log_debug("[CONFIG] gHttpBackendUrlList");
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
@@ -2897,7 +2904,12 @@ void ZhttpManager::setCacheParameters(
 	}
 
 	// init redis
-	//if (gRedisEnable == true)
+	gRedisEnable = redisEnable;
+	gRedisHostAddr = redisHostAddr;
+	gRedisPort = redisPort;
+	log_debug("[CONFIG] redis %s, host=%s, port=%d", gCacheEnable ? "enabled" : "disabled",
+		qPrintable(gRedisHostAddr), gRedisPort);
+	if (gRedisEnable == true)
 		gRedisContext = connectToRedis();
 }
 

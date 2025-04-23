@@ -108,6 +108,9 @@ public:
 		QString msgIdFieldName;
 		QString msgMethodFieldName;
 		QString msgParamsFieldName;
+		bool redisEnable;
+		QString redisHostAddr;
+		int redisPort;
 
 		Configuration() :
 			id(0),
@@ -129,7 +132,10 @@ public:
 			statsConnectionTtl(-1),
 			statsConnectionsMaxTtl(-1),
 			statsReportInterval(-1),
-			cacheEnable(false)
+			cacheEnable(false),
+			redisEnable(false),
+			redisHostAddr("127.0.0.1"),
+			redisPort(6379)
 		{
 		}
 	};

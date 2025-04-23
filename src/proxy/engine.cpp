@@ -246,7 +246,10 @@ public:
 			config.cacheKeyItemList,
 			config.msgIdFieldName,
 			config.msgMethodFieldName,
-			config.msgParamsFieldName);
+			config.msgParamsFieldName,
+			config.redisEnable,
+			config.redisRedisAddr,
+			config.redisPort);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{

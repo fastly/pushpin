@@ -93,6 +93,8 @@ extern int gCacheItemMaxCount;
 // redis
 extern redisContext *gRedisContext;
 extern bool gRedisEnable;
+extern QString gRedisHostAddr;
+extern int gRedisPort;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -104,8 +106,9 @@ extern bool gRedisEnable;
 
 redisContext* connectToRedis() 
 {
-	const char *hostname = "127.0.0.1";
-	int port = 6379;
+	QByteArray hostAddrBytes = gRedisHostAddr.toUtf8();
+	const char *hostname = hostAddrBytes.constData();
+	int port = gRedisPort;
 	struct timeval timeout = {1, 500000}; // 1.5 seconds
 	redisContext *c = redisConnectWithTimeout(hostname, port, timeout);
 	if (c == nullptr || c->err) 
@@ -429,7 +432,6 @@ CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId)
 		{
 			QString mapValStr = "";
 			redis_load_cache_item_field<QString>(context, itemId, qPrintable(mapKeyStr), mapValStr);
-			log_debug("itemId=%s, newMsgId=%d, mapValStr = %s", itemId.toHex().data(), item.newMsgId, qPrintable(mapValStr));
 			QStringList mapValList = mapValStr.split("\n");
 			if (mapValList.length() == 2)
 			{

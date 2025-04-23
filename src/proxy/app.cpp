@@ -689,11 +689,14 @@ public:
 				cacheKeyItemList.append(keyPart);
 			}
 		}
-
 		// message iden attribute and cache check attribute
 		QString msgIdFieldName = settings.value("cache/message_id_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
+		// redis
+		bool redisEnable = settings.value("cache/redis_enable").toBool();
+		QString redisHostAddr = settings.value("cache/redis_host_addr").toString();
+		int redisPort = settings.value("cache/redis_port", 6379).toInt();
 
 		config.cacheEnable = cacheEnable;
 		config.httpBackendUrlList = httpBackendUrlList;
@@ -708,6 +711,9 @@ public:
 		config.msgIdFieldName = msgIdFieldName;
 		config.msgMethodFieldName = msgMethodFieldName;
 		config.msgParamsFieldName = msgParamsFieldName;
+		config.redisEnable = redisEnable;
+		config.redisHostAddr = redisHostAddr;
+		config.redisPort = redisPort;
 
 		for(int n = 0; n < workerCount; ++n)
 		{

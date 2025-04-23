@@ -63,7 +63,7 @@ public:
 	bool setServerOutSpecs(const QStringList &specs);
 
 	void setCacheParameters(
-		bool enable,
+		bool cacheEnable,
 		const QStringList &httpBackendUrlList,
 		const QStringList &wsBackendUrlList,
 		const QStringList &cacheMethodList,
@@ -75,7 +75,10 @@ public:
 		const QStringList &cacheKeyItemList,
 		const QString &msgIdFieldName,
 		const QString &msgMethodFieldName,
-		const QString &msgParamsFieldName);
+		const QString &msgParamsFieldName,
+		bool redisEnable,
+		const QString &redisHostAddr,
+		const int redisPort);
 	
 	int create_wsCacheClientProcesses();
 
