@@ -248,7 +248,7 @@ public:
 			config.msgMethodFieldName,
 			config.msgParamsFieldName,
 			config.redisEnable,
-			config.redisRedisAddr,
+			config.redisHostAddr,
 			config.redisPort);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
