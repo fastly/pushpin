@@ -144,7 +144,7 @@ private:
 	RedisPoolSingleton& operator=(const RedisPoolSingleton&) = delete;
 };
 
-bool redis_is_cache_item(const QByteArray& itemId)
+bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
 {
 	bool ret = false;
 
