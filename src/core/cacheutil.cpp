@@ -130,29 +130,47 @@ redisContext* connectToRedis()
 	return c;
 }
 
-bool redis_is_cache_item(redisContext* context, const QByteArray& itemId)
+class RedisPoolSingleton {
+public:
+	static RedisPool& instance() {
+		static RedisPool pool(10, gRedisHostAddr.toUtf8().constData(), gRedisPort);
+		return pool;
+	}
+
+private:
+	RedisPoolSingleton() = default;
+	~RedisPoolSingleton() = default;
+	RedisPoolSingleton(const RedisPoolSingleton&) = delete;
+	RedisPoolSingleton& operator=(const RedisPoolSingleton&) = delete;
+};
+
+bool redis_is_cache_item(const QByteArray& itemId)
 {
 	bool ret = false;
 
-	if (context == nullptr)
-		return ret;
+	RedisPool& pool = RedisPoolSingleton::instance();
 
-	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
-
-	redisReply *reply = (redisReply*)redisCommand(context, "EXISTS %b", key.constData(), key.size());
-	if (reply == NULL) 
+	RedisConnection* conn = pool.acquire();
+	if (conn) 
 	{
-		log_debug("[REDIS] EXISTS Command failed\n");
-		return ret;
+		QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
+
+		redisReply *reply = (redisReply*)redisCommand(conn->context(), "EXISTS %b", key.constData(), key.size());
+		if (reply == NULL) 
+		{
+			log_debug("[REDIS] EXISTS Command failed\n");
+			return ret;
+		}
+
+		if (reply->type == REDIS_REPLY_INTEGER && reply->integer == 1) 
+		{
+			ret = true;
+		}
+
+		if (reply) freeReplyObject(reply);
+		pool.release(conn);
 	}
 
-	if (reply->type == REDIS_REPLY_INTEGER && reply->integer == 1) 
-	{
-		ret = true;
-	}
-
-	if (reply) freeReplyObject(reply);
-	
 	return ret;
 }
 

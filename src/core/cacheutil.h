@@ -132,6 +132,60 @@ void pause_cache_thread();
 void resume_cache_thread();
 void cache_thread();
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Redis
+class RedisConnection {
+public:
+	RedisConnection(const QString& host, int port) {
+		ctx = redisConnect(host.toStdString().c_str(), port);
+		if (!ctx || ctx->err) {
+			throw std::runtime_error("Failed to connect to Redis");
+		}
+	}
+
+	~RedisConnection() {
+		if (ctx) redisFree(ctx);
+	}
+
+	redisContext* context() const { return ctx; }
+
+private:
+	redisContext* ctx;
+};
+
+class RedisPool {
+public:
+	RedisPool(int poolSize = 10, const QString& host = "127.0.0.1", int port = 6379) {
+		for (int i = 0; i < poolSize; ++i) {
+			pool.enqueue(new RedisConnection(host, port));
+		}
+	}
+
+	~RedisPool() {
+		while (!pool.isEmpty()) {
+			delete pool.dequeue();
+		}
+	}
+
+	RedisConnection* acquire() {
+		QMutexLocker locker(&mutex);
+		if (pool.isEmpty())
+			cond.wait(&mutex);
+		return pool.dequeue();
+	}
+
+	void release(RedisConnection* conn) {
+		QMutexLocker locker(&mutex);
+		pool.enqueue(conn);
+		cond.wakeOne();
+	}
+
+private:
+	QQueue<RedisConnection*> pool;
+	QMutex mutex;
+	QWaitCondition cond;
+};
+
 redisContext* connectToRedis();
 bool redis_is_cache_item(redisContext* context, const QByteArray& itemId);
 void redis_save_cache_item(redisContext* context, const QByteArray& itemId, const CacheItem& item);
