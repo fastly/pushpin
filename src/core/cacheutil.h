@@ -192,17 +192,17 @@ private:
 };
 
 redisContext* connectToRedis();
-bool redis_is_cache_item(redisContext* context, const QByteArray& itemId);
-void redis_save_cache_item(redisContext* context, const QByteArray& itemId, const CacheItem& item);
+bool redis_is_cache_item(const QByteArray& itemId);
+void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item);
 template <typename T>
-void redis_store_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, const T& value);
-CacheItem redis_load_cache_item(redisContext* context, const QByteArray& itemId);
+void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value);
+CacheItem redis_load_cache_item(const QByteArray& itemId);
 template <typename T>
-int redis_load_cache_item_field(redisContext* context, const QByteArray& itemId, const char* fieldName, T& value);
-void redis_remove_cache_item_field(redisContext *context, const QByteArray &itemId, const char* fieldName);
-void redis_remove_cache_item(redisContext *context, const QByteArray &itemId);
-void redis_removeall_cache_item(redisContext *context);
-QList<QByteArray> redis_get_cache_item_ids(redisContext *context);
+int redis_load_cache_item_field(const QByteArray& itemId, const char* fieldName, T& value);
+void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldName);
+void redis_remove_cache_item(const QByteArray &itemId);
+void redis_removeall_cache_item();
+QList<QByteArray> redis_get_cache_item_ids();
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
