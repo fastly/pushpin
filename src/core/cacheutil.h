@@ -27,6 +27,11 @@
 #include <QHostAddress>
 #include <QObject>
 #include <hiredis.h>
+#include <stdexcept>
+#include <QQueue>
+#include <QMutex>
+#include <QWaitCondition>
+
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "zwebsocket.h"
