@@ -1600,6 +1600,11 @@ public:
 
 		save_cache_item(packetMsg.paramsHash, cacheItem);
 
+		redis_save_cache_item(packetMsg.paramsHash, cacheItem);
+		CacheItem tt = redis_load_cache_item(packetMsg.paramsHash);
+
+		log_debug("[TTT] methodName=%s", qPrintable(tt.methodName));
+
 		log_debug("[HTTP] Registered New Cache Item for id=%s method=\"%s\" backend=%d", qPrintable(packetMsg.id), qPrintable(packetMsg.method), backendNo);
 	}
 
