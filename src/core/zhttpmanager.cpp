@@ -1667,10 +1667,11 @@ public:
 
 		save_cache_item(methodNameParamsHashVal, cacheItem);
 
+		/*
 		redis_save_cache_item(methodNameParamsHashVal, cacheItem);
 		CacheItem tt = redis_load_cache_item(methodNameParamsHashVal);
-
 		log_debug("[TTT] methodName=%s", qPrintable(tt.methodName));
+		*/
 
 		return ccIndex;
 	}
