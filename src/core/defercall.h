@@ -27,9 +27,8 @@
 #include <memory>
 #include <list>
 #include <unordered_map>
+#include <thread>
 #include <mutex>
-
-class QThread;
 
 // queues calls to be run after returning to the event loop
 class DeferCall
@@ -84,13 +83,13 @@ private:
 	class Manager;
 	friend class Manager;
 
-	QThread *thread_;
+	std::thread::id thread_;
 	std::shared_ptr<CallsList> deferredCalls_;
 
 	static thread_local std::shared_ptr<Manager> localManager;
 	static thread_local std::unique_ptr<DeferCall> localInstance;
 
-	static std::unordered_map<QThread*, std::shared_ptr<Manager>> managerByThread;
+	static std::unordered_map<std::thread::id, std::shared_ptr<Manager>> managerByThread;
 	static std::mutex managerByThreadMutex;
 };
 

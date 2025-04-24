@@ -21,6 +21,8 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include <chrono>
+#include <thread>
 #include <QDir>
 #include "test.h"
 #include "qzmqsocket.h"
@@ -36,6 +38,8 @@
 #include "defercall.h"
 #include "eventloop.h"
 #include "handlerengine.h"
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -313,7 +317,7 @@ static void runWithEventLoops(std::function<void (Wrapper *, std::function<void 
 		auto loop_wait = [&](int ms) {
 			for(int i = ms; i > 0; i -= 10)
 			{
-				QThread::msleep(10);
+				std::this_thread::sleep_for(10ms);
 				loop.step();
 			}
 		};
