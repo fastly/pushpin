@@ -22,7 +22,7 @@
 
 #include "defercall.h"
 
-#include <QThread>
+#include <QObject>
 #include <QMetaObject>
 #include <boost/signals2.hpp>
 #include "timer.h"
@@ -118,7 +118,7 @@ class DeferCall::Manager
 {
 public:
 	Manager() :
-		thread_(QThread::currentThread())
+		thread_(std::this_thread::get_id())
 	{
 		timer_.setSingleShot(true);
 		timer_.timeout.connect(boost::bind(&Manager::timer_timeout, this));
@@ -132,7 +132,7 @@ public:
 
 		calls_.push_back(c);
 
-		if(QThread::currentThread() == thread_)
+		if(std::this_thread::get_id() == thread_)
 		{
 			if(!timer_.isActive())
 				timer_.start(0);
@@ -150,7 +150,7 @@ public:
 	}
 
 private:
-	QThread *thread_;
+	std::thread::id thread_;
 	Timer timer_;
 	ThreadWake threadWake_;
 	std::mutex callsMutex_;
@@ -237,7 +237,7 @@ void DeferCall::CallsList::erase(std::list<std::shared_ptr<DeferCall::Call>>::it
 }
 
 DeferCall::DeferCall() :
-	thread_(QThread::currentThread()),
+	thread_(std::this_thread::get_id()),
 	deferredCalls_(std::make_shared<CallsList>())
 {
 	if(!localManager)
@@ -260,7 +260,7 @@ void DeferCall::defer(std::function<void ()> handler)
 
 	Manager *manager = localManager.get();
 
-	if(QThread::currentThread() != thread_)
+	if(std::this_thread::get_id() != thread_)
 	{
 		std::lock_guard<std::mutex> guard(managerByThreadMutex);
 		auto it = managerByThread.find(thread_);
@@ -292,7 +292,7 @@ void DeferCall::cleanup()
 	if(localManager)
 	{
 		std::lock_guard<std::mutex> guard(managerByThreadMutex);
-		managerByThread.erase(QThread::currentThread());
+		managerByThread.erase(std::this_thread::get_id());
 
 		localManager.reset();
 	}
@@ -301,7 +301,7 @@ void DeferCall::cleanup()
 thread_local std::shared_ptr<DeferCall::Manager> DeferCall::localManager = std::shared_ptr<DeferCall::Manager>();
 thread_local std::unique_ptr<DeferCall> DeferCall::localInstance = std::unique_ptr<DeferCall>();
 
-std::unordered_map<QThread*, std::shared_ptr<DeferCall::Manager>> DeferCall::managerByThread = std::unordered_map<QThread*, std::shared_ptr<DeferCall::Manager>>();
+std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>> DeferCall::managerByThread = std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>>();
 std::mutex DeferCall::managerByThreadMutex = std::mutex();
 
 #include "defercall.moc"

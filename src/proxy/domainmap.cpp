@@ -24,9 +24,10 @@
 #include "domainmap.h"
 
 #include <assert.h>
+#include <thread>
+#include <pthread.h>
 #include <QStringList>
 #include <QHash>
-#include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QFile>
@@ -737,14 +738,14 @@ private:
 	}
 };
 
-class DomainMap::Thread : public QThread
+class DomainMap::Thread
 {
-	Q_OBJECT
-
 public:
 	bool newEventLoop;
 	QString fileName;
+	std::thread thread;
 	std::unique_ptr<EventLoop> loop;
+	std::unique_ptr<QEventLoop> qloop;
 	std::unique_ptr<Worker> worker;
 	QMutex m;
 	QWaitCondition w;
@@ -763,23 +764,31 @@ public:
 				if(newEventLoop)
 					loop->exit(0);
 				else
-					quit();
+					qloop->quit();
 			});
 		}
 
-		wait();
+		thread.join();
 	}
 
 	void start()
 	{
-		setObjectName("domainmap");
-
 		QMutexLocker locker(&m);
-		QThread::start();
+
+		thread = std::thread([=] {
+#ifdef Q_OS_MAC
+			pthread_setname_np("domainmap");
+#else
+			pthread_setname_np(pthread_self(), "domainmap");
+#endif
+
+			run();
+		});
+
 		w.wait(&m);
 	}
 
-	virtual void run()
+	void run()
 	{
 		// will unlock during exec
 		m.lock();
@@ -799,6 +808,8 @@ public:
 		{
 			// for qt event loop, timer subsystem must be explicitly initialized
 			Timer::init(timersMax);
+
+			qloop = std::make_unique<QEventLoop>();
 		}
 
 		worker = std::make_unique<Worker>();
@@ -814,7 +825,7 @@ public:
 		if(newEventLoop)
 			loop->exec();
 		else
-			exec();
+			qloop->exec();
 
 		worker.reset();
 
@@ -830,6 +841,11 @@ public:
 
 		if(!newEventLoop)
 			Timer::deinit();
+
+		if(newEventLoop)
+			loop.reset();
+		else
+			qloop.reset();
 	}
 };
 
@@ -988,5 +1004,3 @@ bool DomainMap::addRouteLine(const QString &line)
 	QMutexLocker locker(&d->thread->worker->m);
 	return d->thread->worker->addRouteLine(line);
 }
-
-#include "domainmap.moc"

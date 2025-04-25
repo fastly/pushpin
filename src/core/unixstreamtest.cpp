@@ -20,6 +20,8 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include <chrono>
+#include <thread>
 #include <QHostAddress>
 #include "test.h"
 #include "timer.h"
@@ -27,6 +29,8 @@
 #include "eventloop.h"
 #include "unixlistener.h"
 #include "unixstream.h"
+
+using namespace std::chrono_literals;
 
 static void runAccept(std::function<void ()> loop_wait)
 {
@@ -275,7 +279,7 @@ static void accept()
 	EventLoop loop(100);
 
 	runAccept([&] {
-		QThread::msleep(10);
+		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
 
@@ -298,7 +302,7 @@ static void io()
 	EventLoop loop(100);
 
 	runIo([&] {
-		QThread::msleep(10);
+		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
 
