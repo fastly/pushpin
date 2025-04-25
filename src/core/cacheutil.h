@@ -176,7 +176,7 @@ public:
 		QMutexLocker locker(&mutex);
 		if (pool.isEmpty())
 			cond.wait(&mutex);
-		log_debug("[REDIS] pool count = %", pool.count());
+		log_debug("[REDIS] pool count = %d", pool.count());
 		return pool.dequeue();
 	}
 
