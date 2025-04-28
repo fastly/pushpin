@@ -1994,6 +1994,7 @@ public:
 					}
 					else
 					{
+						/*
 						if (jsonMap.contains(gSubscribeBlockAttrName) || jsonMap.contains(gSubscribeChangesAttrName))
 						{
 							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
@@ -2061,6 +2062,8 @@ public:
 						{
 							pCacheItem->subscriptionPacket = p;
 						}
+						*/
+						pCacheItem->subscriptionPacket = p;
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
