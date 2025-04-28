@@ -2223,6 +2223,7 @@ public:
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 						}
 					}
+					remove_cache_item(itemId);
 				}
 
 				store_cache_item(itemId);
