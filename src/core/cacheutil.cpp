@@ -1371,13 +1371,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		else if (is_subscribe_method(packetMsg.method))
 		{
 			log_debug("[TTT] subscribe 1 method %s", qPrintable(packetMsg.method));
-			if (
-				(packetMsg.method == "")
-			//	|| (packetMsg.method == "state_subscriberuntimeversion")
-			//	|| (packetMsg.method == "chain_subscribenewhead")
-				|| (packetMsg.method == "state_subscribestorage")
-			//	|| (packetMsg.method == "chain_subscribefinalizedheads")
-			)
+			if (packetMsg.method == "state_subscribestorage")
 			{
 				log_debug("[TTT] subscribe 2 method %s", qPrintable(packetMsg.method));
 				subKey += packet.ids[0].id.toHex().data();
