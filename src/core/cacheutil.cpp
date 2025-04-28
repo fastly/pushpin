@@ -1374,8 +1374,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 			if (
 				(packetMsg.method == "")
 			//	|| (packetMsg.method == "state_subscriberuntimeversion")
-				|| (packetMsg.method == "chain_subscribenewhead")
-			//	|| (packetMsg.method == "state_subscribestorage")
+			//	|| (packetMsg.method == "chain_subscribenewhead")
+				|| (packetMsg.method == "state_subscribestorage")
 			//	|| (packetMsg.method == "chain_subscribefinalizedheads")
 			)
 			{
