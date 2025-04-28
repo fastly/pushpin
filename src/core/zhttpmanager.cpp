@@ -94,9 +94,9 @@ QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 90;
-int gCacheTimeoutSeconds = 5;
-int gShorterTimeoutSeconds = 3;
-int gLongerTimeoutSeconds = 10;
+int gCacheTimeoutSeconds = 15;
+int gShorterTimeoutSeconds = 5;
+int gLongerTimeoutSeconds = 60;
 int gCacheItemMaxCount = 3000;
 
 QFuture<void> gCacheThread;
@@ -2152,6 +2152,8 @@ public:
 						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 					pCacheItem->clientMap.clear();
+
+					gCacheItemMap.remove(itemId);
 
 					// delete cache item once sent response if cache-less one connection is enabled.
 					if (pCacheItem->refreshFlag & AUTO_REFRESH_PASSTHROUGH)
