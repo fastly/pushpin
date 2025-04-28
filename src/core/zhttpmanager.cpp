@@ -2153,7 +2153,7 @@ public:
 					}
 					pCacheItem->clientMap.clear();
 
-					gCacheItemMap.remove(itemId);
+					remove_cache_item(itemId);
 
 					// delete cache item once sent response if cache-less one connection is enabled.
 					if (pCacheItem->refreshFlag & AUTO_REFRESH_PASSTHROUGH)
