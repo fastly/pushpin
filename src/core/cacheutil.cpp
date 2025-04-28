@@ -1362,11 +1362,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		if (is_cache_method(packetMsg.method))
 		{
 			log_debug("[TTT] cache method");
-			subKey += packet.ids[0].id.toHex().data();
 		}
 		else if (is_subscribe_method(packetMsg.method))
 		{
-			log_debug("[TTT] subscribe method");
+			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
+			subKey += packet.ids[0].id.toHex().data();
 		}
 		else
 		{
@@ -1380,11 +1380,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		if (is_cache_method(packetMsg.method))
 		{
 			log_debug("[TTT] cache method");
-			subKey += packet.ids[0].id.toHex().data();
 		}
 		else if (is_subscribe_method(packetMsg.method))
 		{
-			log_debug("[TTT] subscribe method");
+			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
+			subKey += packet.ids[0].id.toHex().data();
 		}
 		else
 		{
@@ -1433,11 +1433,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 		if (is_cache_method(packetMsg.method))
 		{
 			log_debug("[TTT] cache method");
-			subKey += packet.ids[0].id.toHex().data();
 		}
 		else if (is_subscribe_method(packetMsg.method))
 		{
-			log_debug("[TTT] subscribe method");
+			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
+			subKey += packet.ids[0].id.toHex().data();
 		}
 		else
 		{
@@ -1451,11 +1451,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 		if (is_cache_method(packetMsg.method))
 		{
 			log_debug("[TTT] cache method");
-			subKey += packet.ids[0].id.toHex().data();
 		}
 		else if (is_subscribe_method(packetMsg.method))
 		{
-			log_debug("[TTT] subscribe method");
+			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
+			subKey += packet.ids[0].id.toHex().data();
 		}
 		else
 		{
