@@ -1359,19 +1359,6 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	if (scheme == Scheme::http)
 	{
 		QString subKey = QString("HTTP+");
-		if (is_cache_method(packetMsg.method))
-		{
-			log_debug("[TTT] cache method");
-		}
-		else if (is_subscribe_method(packetMsg.method))
-		{
-			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
-			subKey += packet.ids[0].id.toHex().data();
-		}
-		else
-		{
-			log_debug("[TTT] unknown method");
-		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	else
@@ -1430,37 +1417,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	if (scheme == Scheme::http)
 	{
 		QString subKey = QString("HTTP+");
-		if (is_cache_method(packetMsg.method))
-		{
-			log_debug("[TTT] cache method");
-		}
-		else if (is_subscribe_method(packetMsg.method))
-		{
-			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
-			subKey += packet.ids[0].id.toHex().data();
-		}
-		else
-		{
-			log_debug("[TTT] unknown method");
-		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	else
 	{
 		QString subKey = QString("WS+");
-		if (is_cache_method(packetMsg.method))
-		{
-			log_debug("[TTT] cache method");
-		}
-		else if (is_subscribe_method(packetMsg.method))
-		{
-			log_debug("[TTT] subscribe method %s", qPrintable(packetMsg.method));
-			subKey += packet.ids[0].id.toHex().data();
-		}
-		else
-		{
-			log_debug("[TTT] unknown method");
-		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
