@@ -94,10 +94,10 @@ QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 90;
-int gCacheTimeoutSeconds = 30;
-int gShorterTimeoutSeconds = 25;
-int gLongerTimeoutSeconds = 60;
-int gCacheItemMaxCount = 1000;
+int gCacheTimeoutSeconds = 5;
+int gShorterTimeoutSeconds = 3;
+int gLongerTimeoutSeconds = 10;
+int gCacheItemMaxCount = 3000;
 
 QFuture<void> gCacheThread;
 
