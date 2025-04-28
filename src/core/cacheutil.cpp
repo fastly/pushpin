@@ -1357,9 +1357,17 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		packetMsg.isResultNull = true;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
-		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
+	{
+		QString subKey = QString("HTTP+");
+		subKey += packet.ids[0].id.toHex().data();
+		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
+	}
 	else
-		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
+	{
+		QString subKey = QString("WS+");
+		subKey += packet.ids[0].id.toHex().data();
+		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
+	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
 
 	return 0;
@@ -1396,9 +1404,17 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 		packetMsg.isResultNull = true;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
-		packetMsg.paramsHash = build_hash_key(jsonMap, "HTTP+");
+	{
+		QString subKey = QString("HTTP+");
+		subKey += packet.ids[0].id.toHex().data();
+		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
+	}
 	else
-		packetMsg.paramsHash = build_hash_key(jsonMap, "WS+");
+	{
+		QString subKey = QString("WS+");
+		subKey += packet.ids[0].id.toHex().data();
+		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
+	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
 
 	return 0;
