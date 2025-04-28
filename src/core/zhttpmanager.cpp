@@ -999,9 +999,9 @@ public:
 						// register ws client
 						register_ws_client(id.id, p.from, p.uri.toString());
 						// respond with cached init packet
-						//send_response_to_client(ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
-						//resume_cache_thread();
-						//return;
+						send_response_to_client(ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
+						resume_cache_thread();
+						return;
 					}
 				}
 
@@ -1159,7 +1159,7 @@ public:
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
 						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
-						ret = process_ws_stream_request(packetId, p);
+						process_ws_stream_request(packetId, p);
 						break;
 					default:
 						break;
