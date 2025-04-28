@@ -1994,9 +1994,9 @@ public:
 					}
 					else
 					{
-						/*
 						if (jsonMap.contains(gSubscribeBlockAttrName) || jsonMap.contains(gSubscribeChangesAttrName))
 						{
+							log_debug("QQQQQ");
 							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
 							QString msgChangesStr = jsonMap[gSubscribeChangesAttrName].toString().toLower();
 							ZhttpResponsePacket tempPacket = pCacheItem->subscriptionPacket;
@@ -2062,8 +2062,6 @@ public:
 						{
 							pCacheItem->subscriptionPacket = p;
 						}
-						*/
-						pCacheItem->subscriptionPacket = p;
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
