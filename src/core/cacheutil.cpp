@@ -1045,7 +1045,7 @@ bool is_cache_method(QString methodStr)
 		return true;
 	}
 	else if (gCacheMethodList.contains("*") && 
-		!gSubscribeMethodMap.contains(methodStr, Qt::CaseInsensitive))
+		!gSubscribeMethodMap.contains(methodStr.toLower()))
 	{
 		foreach(QString subKey, gSubscribeMethodMap.keys())
 		{
@@ -1061,7 +1061,7 @@ bool is_cache_method(QString methodStr)
 
 bool is_subscribe_method(QString methodStr)
 {
-	if (gSubscribeMethodMap.contains(methodStr, Qt::CaseInsensitive))
+	if (gSubscribeMethodMap.contains(methodStr.toLower()))
 	{
 		return true;
 	}
