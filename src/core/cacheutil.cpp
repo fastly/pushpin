@@ -1045,11 +1045,11 @@ bool is_cache_method(QString methodStr)
 		return true;
 	}
 	else if (gCacheMethodList.contains("*") && 
-		!gSubscribeMethodMap.contains(methodStr))
+		!gSubscribeMethodMap.contains(methodStr, Qt::CaseInsensitive))
 	{
 		foreach(QString subKey, gSubscribeMethodMap.keys())
 		{
-			if (gSubscribeMethodMap[subKey].toLower() == methodStr)
+			if (gSubscribeMethodMap[subKey].toLower() == methodStr.toLower())
 			{
 				return false;
 			}
@@ -1061,7 +1061,7 @@ bool is_cache_method(QString methodStr)
 
 bool is_subscribe_method(QString methodStr)
 {
-	if (gSubscribeMethodMap.contains(methodStr.toLower()))
+	if (gSubscribeMethodMap.contains(methodStr, Qt::CaseInsensitive))
 	{
 		return true;
 	}
