@@ -1113,7 +1113,6 @@ public:
 
 		for	(int i=0; i<p.ids.count(); i++)
 		{
-			int ret = 0;
 			QByteArray packetId = p.ids[i].id;
 
 			// cache process
@@ -1127,7 +1126,12 @@ public:
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
-					ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
+					int ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
+					if (ret == 0)
+					{
+						resume_cache_thread();
+						continue;
+					}
 				}
 				else if (gWsClientMap.contains(packetId))
 				{
@@ -1164,11 +1168,12 @@ public:
 					default:
 						break;
 					}
+
+					resume_cache_thread();
+					continue;
 				}
 				
 				resume_cache_thread();
-				if (ret == 0)
-					continue;
 			}
 
 			int newSeq = update_request_seq(packetId);
@@ -2147,13 +2152,6 @@ public:
 						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 					pCacheItem->clientMap.clear();
-
-					// delete cache item once sent response if cache-less one connection is enabled.
-					if (pCacheItem->refreshFlag & AUTO_REFRESH_PASSTHROUGH)
-					{
-						log_debug("[WS] Delete cache item because no auto-refresh");
-						remove_cache_item(itemId);
-					}
 				}
 				else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 				{
@@ -2348,7 +2346,7 @@ public:
 	{
 		int ret = check_multi_packets_for_ws_request(p);
 		if (ret < 0)
-			return 0;
+			return -1;
 		
 		// parse json body
 		PacketMsg packetMsg;
@@ -2362,7 +2360,7 @@ public:
 		if (msgIdStr.isEmpty() || methodName.isEmpty())
 		{
 			log_debug("[WS] failed to get gMsgIdAttrName and gMsgMethodAttrName");
-			return -1;
+			return 0;
 		}
 
 		// get method string			
@@ -2387,7 +2385,7 @@ public:
 						if (ccIndex < 0)
 						{
 							log_warning("[WS] not initialized cache client, ignore");
-							return -1;
+							return 0;
 						}
 					}
 
@@ -2433,7 +2431,7 @@ public:
 				store_cache_item_field(paramsHash, "lastAccessTime", pCacheItem->lastAccessTime);
 				store_cache_item_field(paramsHash, "clientMap", pCacheItem->clientMap);
 				store_cache_item_field(paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
-				return 0;
+				return -1;
 			}
 			else
 			{
@@ -2442,7 +2440,7 @@ public:
 				if (ccIndex < 0)
 				{
 					log_warning("[WS] not initialized cache client, ignore");
-					return -1;
+					return 0;
 				}
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
@@ -2458,13 +2456,13 @@ public:
 				register_cache_refresh(paramsHash, gWsCacheClientList[ccIndex].urlPath);
 			}
 			
-			return 0;
+			return -1;
 		}
 
 		// log unhitted method
 		log_debug("[CACHE ITME] not hit method = %s", qPrintable(methodName));
 
-		return -1;
+		return 0;
 	}
 };
 
