@@ -2152,6 +2152,13 @@ public:
 						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
 					}
 					pCacheItem->clientMap.clear();
+
+					// delete cache item once sent response if cache-less one connection is enabled.
+					if (pCacheItem->refreshFlag & AUTO_REFRESH_PASSTHROUGH)
+					{
+						log_debug("[WS] Delete cache item because no auto-refresh");
+						remove_cache_item(itemId);
+					}
 				}
 				else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 				{
