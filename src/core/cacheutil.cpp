@@ -1367,6 +1367,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
+	packetMsg.resultBlock = jsonMap.contains(gSubscribeBlockAttrName) ? jsonMap[gSubscribeBlockAttrName].toString() : "";
+	packetMsg.resultChanges = jsonMap.contains(gSubscribeChangesAttrName) ? jsonMap[gSubscribeChangesAttrName].toString() : "";
 
 	return 0;
 }
@@ -1412,6 +1414,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
+	packetMsg.resultBlock = jsonMap.contains(gSubscribeBlockAttrName) ? jsonMap[gSubscribeBlockAttrName].toString() : "";
+	packetMsg.resultChanges = jsonMap.contains(gSubscribeChangesAttrName) ? jsonMap[gSubscribeChangesAttrName].toString() : "";
 
 	return 0;
 }

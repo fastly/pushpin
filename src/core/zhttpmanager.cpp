@@ -1813,7 +1813,6 @@ public:
 	int process_http_response(const ZhttpResponsePacket &response)
 	{
 		ZhttpResponsePacket p = response;
-		QVariantMap jsonMap;
 		QByteArray packetId = p.ids[0].id;
 		bool bodyParseSucceed = true;
 
@@ -1931,7 +1930,6 @@ public:
 	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber)
 	{
 		ZhttpResponsePacket p = response;
-		QVariantMap jsonMap;
 		QByteArray packetId = p.ids[0].id;
 
 		// check multi-part response
@@ -1994,11 +1992,11 @@ public:
 					}
 					else
 					{
-						if (jsonMap.contains(gSubscribeBlockAttrName) || jsonMap.contains(gSubscribeChangesAttrName))
+						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
 							log_debug("QQQQQ");
-							QString msgBlockStr = jsonMap[gSubscribeBlockAttrName].toString().toLower();
-							QString msgChangesStr = jsonMap[gSubscribeChangesAttrName].toString().toLower();
+							QString msgBlockStr = packetMsg.resultBlock.toLower();
+							QString msgChangesStr = packetMsg.resultChanges.toLower();
 							ZhttpResponsePacket tempPacket = pCacheItem->subscriptionPacket;
 
 							QString patternStr("\"block\":\"");

@@ -131,6 +131,8 @@ struct PacketMsg {
 	QString params;
 	QByteArray paramsHash;
 	QString subscription;
+	QString resultBlock;
+	QString resultChanges;
 };
 
 void pause_cache_thread();
