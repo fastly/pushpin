@@ -1376,6 +1376,7 @@ public:
 			log_debug("_[TIMER] exit refresh %s", itemId.toHex().data());
 			return;
 		}
+		return;
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		if (pCacheItem->cachedFlag == true)
