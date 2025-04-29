@@ -2316,7 +2316,8 @@ private:
 	
 	void sub_subscribed(Subscription *sub)
 	{
-		updateSessions(sub->channel());
+		if(config.updateOnFirstSubscription)
+			updateSessions(sub->channel());
 	}
 
 	void acceptWorker_sessionsReady(AcceptWorker *w)
