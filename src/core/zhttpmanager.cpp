@@ -94,7 +94,7 @@ QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 90;
-int gCacheTimeoutSeconds = 15;
+int gCacheTimeoutSeconds = 10;
 int gShorterTimeoutSeconds = 5;
 int gLongerTimeoutSeconds = 60;
 int gCacheItemMaxCount = 3000;
@@ -1994,7 +1994,6 @@ public:
 					{
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
-							log_debug("QQQQQ");
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 							ZhttpResponsePacket tempPacket = pCacheItem->subscriptionPacket;
