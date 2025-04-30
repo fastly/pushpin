@@ -1192,13 +1192,13 @@ void check_cache_clients()
 		int diff = (int)(currTime - gWsCacheClientList[i].lastResponseTime);
 		if (diff > gResponseTimeoutSeconds)
 		{
-			log_debug("[WS] detected cache client response timeout %d", gWsCacheClientList[i].processId);
+			log_debug("[WS] detected cache client %d response timeout %d", i, gWsCacheClientList[i].processId);
 			gWsCacheClientList[i].initFlag = false;
 		}
 
 		if (gWsCacheClientList[i].initFlag == false)
 		{
-			log_debug("[WS] killing cache client process %d", gWsCacheClientList[i].processId);
+			log_debug("[WS] killing cache client %d process %d", i, gWsCacheClientList[i].processId);
 			kill(gWsCacheClientList[i].processId, SIGTERM);
 			gWsCacheClientList[i].processId = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
 			gWsCacheClientList[i].lastResponseTime = time(NULL);
