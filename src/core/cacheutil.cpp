@@ -1201,7 +1201,8 @@ void check_cache_clients()
 			// Remove all items where value with client id
 			foreach(QByteArray itemId, gCacheItemMap.keys())
 			{
-				if (gCacheItemMap[itemId].cacheClientId == clientId && gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD)) 
+				if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD && 
+					gCacheItemMap[itemId].cacheClientId == gWsCacheClientList[i].clientId) 
 				{
 					log_debug("[WS] Remove subscription cache item %s", gSubscriptionItemMap[itemId].subscriptionStr);
 					remove_cache_item(itemID);
