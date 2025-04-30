@@ -24,12 +24,13 @@
 #include "app.h"
 
 #include <assert.h>
+#include <thread>
+#include <pthread.h>
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
-#include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
 #include "rust/log.h"
@@ -235,11 +236,10 @@ private:
 	std::unique_ptr<Engine> engine_;
 };
 
-class EngineThread : public QThread
+class EngineThread
 {
-	Q_OBJECT
-
 public:
+	std::thread thread;
 	QMutex m;
 	QWaitCondition w;
 	Engine::Configuration config;
@@ -257,15 +257,25 @@ public:
 	~EngineThread()
 	{
 		stop();
-		wait();
+		thread.join();
 	}
 
 	bool start()
 	{
-		setObjectName("proxy-worker-" + QString::number(config.id));
+		QString name = "proxy-worker-" + QString::number(config.id);
 
 		QMutexLocker locker(&m);
-		QThread::start();
+
+		thread = std::thread([=] {
+#ifdef Q_OS_MAC
+			pthread_setname_np(name.toUtf8().data());
+#else
+			pthread_setname_np(pthread_self(), name.toUtf8().data());
+#endif
+
+			run();
+		});
+
 		w.wait(&m);
 		return (bool)worker;
 	}
@@ -296,7 +306,7 @@ public:
 		}
 	}
 
-	virtual void run()
+	void run()
 	{
 		// will unlock during exec
 		m.lock();
@@ -305,6 +315,7 @@ public:
 		int timersMax = (config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100;
 
 		std::unique_ptr<EventLoop> loop;
+		std::unique_ptr<QEventLoop> qloop;
 
 		if(newEventLoop)
 		{
@@ -320,6 +331,8 @@ public:
 		{
 			// for qt event loop, timer subsystem must be explicitly initialized
 			Timer::init(timersMax);
+
+			qloop = std::make_unique<QEventLoop>();
 		}
 
 		worker = std::make_unique<EngineWorker>(config, domainMap);
@@ -340,7 +353,7 @@ public:
 			if(newEventLoop)
 				loop->exit(0);
 			else
-				quit();
+				qloop->quit();
 		});
 
 		worker->error.connect([&] {
@@ -349,7 +362,7 @@ public:
 			if(newEventLoop)
 				loop->exit(0);
 			else
-				quit();
+				qloop->quit();
 
 			// unblock start()
 			w.wakeOne();
@@ -361,7 +374,7 @@ public:
 		if(newEventLoop)
 			loop->exec();
 		else
-			exec();
+			qloop->exec();
 
 		if(!newEventLoop)
 		{
@@ -792,5 +805,3 @@ int App::run()
 {
 	return Private::run();
 }
-
-#include "app.moc"
