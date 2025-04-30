@@ -1198,6 +1198,16 @@ void check_cache_clients()
 
 		if (gWsCacheClientList[i].initFlag == false)
 		{
+			// Remove all items where value with client id
+			foreach(QByteArray itemId, gCacheItemMap.keys())
+			{
+				if (gCacheItemMap[itemId].cacheClientId == clientId && gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD)) 
+				{
+					log_debug("[WS] Remove subscription cache item %s", gSubscriptionItemMap[itemId].subscriptionStr);
+					remove_cache_item(itemID);
+				}
+			}
+
 			log_debug("[WS] killing cache client %d process %d", i, gWsCacheClientList[i].processId);
 			kill(gWsCacheClientList[i].processId, SIGTERM);
 			gWsCacheClientList[i].processId = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
