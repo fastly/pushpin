@@ -1183,6 +1183,97 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	return processId;
 }
 
+void check_cache_clients()
+{
+	log_debug("[QQQQQ] checking cache clients");
+	
+	QTimer::singleShot(30 * 1000, [=]() {
+		check_cache_clients();
+	});
+}
+/*
+int restart_cache_client(QByteArray clientId)
+{
+	int id = -1;
+
+	for (int i = 0; i < gWsCacheClientList.count(); i++)
+	{
+		if (gWsCacheClientList[i].clientId == clientId)
+		{
+			id = i;
+			break;
+		}
+	}
+	if (id == -1)
+		return -1;
+
+	char socketHeaderStr[64];
+	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", id);
+
+	pid_t pid = fork();		
+
+	// store killed cache client id
+	gWsKilledCacheClientMap[clientId] = gWsCacheClientList[id].requestSeqCount;
+
+	// terminate the prior process
+	kill(gWsCacheClientList[id].processId, SIGTERM);
+	gWsCacheClientList[id].initFlag = false;
+	log_debug("[WS] killed cache client=%s pid=%d clientid=%s", clientId.data(), gWsCacheClientList[id].processId, (const char *)clientId);
+
+	QString connectPath = gWsCacheClientList[id].connectPath;
+	
+	// create new process
+	if (pid == -1)
+	{
+		// pid == -1 means error occurred
+		log_debug("can't fork to start wscat");
+		return -1;
+	}
+	else if (pid == 0) // child process
+	{
+		char *bin = (char*)"/usr/bin/wscat";
+		if (config.cacheConfig.jwtAuthEnableFlag == false)
+		{
+			// create wscat
+			char * argv_list[] = {
+				bin, 
+				(char*)"-H", socketHeaderStr, 
+				(char*)"-c", (char*)qPrintable(connectPath), 
+				NULL
+			};
+			execve(bin, argv_list, NULL);
+		}
+		else
+		{
+			QString authHeaderStr = "Authorization: " + config.cacheConfig.jwtAuthKey;
+			// create wscat
+			char * argv_list[] = {
+				bin, 
+				(char*)"-H", socketHeaderStr, 
+				(char*)"-H", (char*)qPrintable(authHeaderStr), 
+				(char*)"-c", (char*)qPrintable(connectPath), 
+				NULL
+			};
+			execve(bin, argv_list, NULL);
+		}
+		
+		//set_debugLogLevel(true);
+		log_debug("failed to start wscat error=%d", errno);
+
+		exit(0);
+	}
+	else	// parent process
+	{
+		log_debug("[WS] created new cache client%d parent=%d pid=%d", clientId, getpid(), pid);
+
+		gWsCacheClientList[id].initFlag = false;
+		gWsCacheClientList[id].processId = pid;
+		gWsCacheClientList[id].lastDataReceivedTime = time(NULL);
+	}
+
+	return 0;
+}
+*/
 int get_main_cc_index()
 {
 	for (int i=0; i<gWsCacheClientList.count(); i++)

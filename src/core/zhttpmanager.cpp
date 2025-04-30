@@ -79,6 +79,9 @@ QStringList gHttpBackendUrlList;
 QStringList gWsBackendUrlList;
 
 QList<ClientItem> gWsCacheClientList;
+QMap<QByteArray, int> gWsKilledCacheClientMap;
+QMap<QByteArray, time_t> gRestartCacheClientMap;
+
 ZhttpResponsePacket gWsInitResponsePacket;
 QMap<QByteArray, ClientItem> gWsClientMap;
 QMap<QByteArray, ClientItem> gHttpClientMap;
@@ -2910,6 +2913,10 @@ void ZhttpManager::setCacheParameters(
 				gWsCacheClientList.append(cacheClient);
 			}
 		}
+
+		QTimer::singleShot(30 * 1000, [=]() {
+			check_cache_clients();
+		});
 
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}

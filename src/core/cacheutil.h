@@ -262,4 +262,6 @@ int get_next_cache_refresh_interval(const QByteArray &itemId);
 QString get_switched_http_backend_url(QString currUrl);
 QString get_switched_ws_backend_url(QString currUrl);
 
+void check_cache_clients();
+
 #endif
