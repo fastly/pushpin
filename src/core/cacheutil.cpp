@@ -1186,7 +1186,15 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 void check_cache_clients()
 {
-	log_debug("[QQQQQ] checking cache clients");
+	for (int i = 0; i < gWsCacheClientList.count(); i++)
+	{
+		if (gWsCacheClientList[i].initFlag == false)
+		{
+			log_debug("[WS] killing cache client process %d", gWsCacheClientList[i].processId);
+			kill(gWsCacheClientList[i].processId, SIGTERM);
+			create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
+		}			
+	}
 
 	QTimer::singleShot(30 * 1000, [=]() {
 		check_cache_clients();

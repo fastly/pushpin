@@ -594,9 +594,6 @@ public:
 				case ZhttpResponsePacket::Close:
 				case ZhttpResponsePacket::Error:
 					{
-						// set log level to debug
-						//set_debugLogLevel(true);
-
 						log_debug("[WS] switching client of error, condition=%s", packet.condition.data());
 
 						// get error type
@@ -609,7 +606,12 @@ public:
 						}
 
 						// if cache client0 is ON, start cache client1
-						//switch_cacheClient(packetId, false);
+						int ccIndex = get_cc_index_from_clientId(packetId);
+						if (ccIndex >= 0)
+						{
+							log_debug("[WS] disabled cache client %d", ccIndex);
+							gWsCacheClientList[ccIndex].initFlag = false;
+						}
 					}
 					break;
 				case ZhttpResponsePacket::Credit:
