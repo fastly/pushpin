@@ -568,6 +568,12 @@ public:
 			pause_cache_thread();
 
 			int ccIndex = get_cc_index_from_clientId(packetId);
+			// update data receive time
+			if (ccIndex >= 0)
+			{
+				gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+			}
+
 			if (packet.code == 101) // ws client init response code
 			{
 				if (ccIndex >= 0)
@@ -626,9 +632,6 @@ public:
 				case ZhttpResponsePacket::Data:
 					if (ccIndex >= 0)
 					{
-						// update data receive time
-						gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
-
 						// increase credit
 						//int creditSize = static_cast<int>(packet.body.size());
 						//int seqNum = update_request_seq(packetId);
