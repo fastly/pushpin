@@ -47,6 +47,7 @@
 #include <QUrl>
 #include <QElapsedTimer>
 #include <QDataStream>
+#include <QTimer>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
@@ -1186,7 +1187,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 void check_cache_clients()
 {
 	log_debug("[QQQQQ] checking cache clients");
-	
+
 	QTimer::singleShot(30 * 1000, [=]() {
 		check_cache_clients();
 	});
