@@ -1189,7 +1189,7 @@ void check_cache_clients()
 	time_t currTime = time(NULL);
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
-		int diff = (int)(currTime - gWsCacheClientList[i].lastDataReceivedTime);
+		int diff = (int)(currTime - gWsCacheClientList[i].lastResponseTime);
 		if (diff > gResponseTimeoutSeconds)
 		{
 			log_debug("[WS] detected cache client response timeout %d", gWsCacheClientList[i].processId);
