@@ -1204,8 +1204,8 @@ void check_cache_clients()
 				if (gCacheItemMap[itemId].methodType == CacheMethodType::SUBSCRIBE_METHOD && 
 					gCacheItemMap[itemId].cacheClientId == gWsCacheClientList[i].clientId) 
 				{
-					log_debug("[WS] Remove subscription cache item %s", gSubscriptionItemMap[itemId].subscriptionStr);
-					remove_cache_item(itemID);
+					log_debug("[WS] Remove subscription cache item %s", gCacheItemMap[itemId].subscriptionStr);
+					remove_cache_item(itemId);
 				}
 			}
 
