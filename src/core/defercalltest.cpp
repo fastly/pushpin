@@ -20,6 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include <thread>
 #include "test.h"
 #include "timer.h"
 #include "defercall.h"
@@ -45,43 +46,14 @@ static std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
 	return {deferCall.pendingCount(), count};
 }
 
-namespace {
-
-class TestThread : public QThread
-{
-	Q_OBJECT
-
-public:
-	TestThread(DeferCall *deferCall, std::function<void ()> handler) :
-		deferCall_(deferCall),
-		handler_(handler)
-	{
-	}
-
-	~TestThread()
-	{
-		wait();
-	}
-
-protected:
-	void run() override
-	{
-		deferCall_->defer(handler_);
-	}
-
-private:
-	DeferCall *deferCall_;
-	std::function<void ()> handler_;
-};
-
-}
-
 // spawns a thread, triggers the deferCall from it, then waits for thread to
 // finish
 static void callNonLocal(DeferCall *deferCall, std::function<void ()> handler)
 {
-	TestThread thread(deferCall, handler);
-	thread.start();
+	std::thread thread([=] {
+		deferCall->defer(handler);
+	});
+	thread.join();
 }
 
 // loop_advance should process enough events to cause the calls to run,
@@ -225,5 +197,3 @@ extern "C" int defercall_test(ffi::TestException *out_ex)
 
 	return 0;
 }
-
-#include "defercalltest.moc"
