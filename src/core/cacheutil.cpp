@@ -1186,8 +1186,16 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 void check_cache_clients()
 {
+	time_t currTime = time(NULL);
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
+		int diff = (int)(currTime - gWsCacheClientList[i].lastDataReceivedTime);
+		if (diff > gResponseTimeoutSeconds)
+		{
+			log_debug("[WS] detected cache client response timeout %d", gWsCacheClientList[i].processId);
+			gWsCacheClientList[i].initFlag = false;
+		}
+
 		if (gWsCacheClientList[i].initFlag == false)
 		{
 			log_debug("[WS] killing cache client process %d", gWsCacheClientList[i].processId);
