@@ -263,4 +263,6 @@ QString get_switched_ws_backend_url(QString currUrl);
 
 void check_cache_clients();
 
+static void count_methods();
+
 #endif
