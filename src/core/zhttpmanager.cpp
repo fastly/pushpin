@@ -123,6 +123,8 @@ bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
 
+QList<QString> gCacheMethodCountList;
+
 /////////////////////////////////////////////////////////////////////////////////////
 
 class ZhttpManager::Private : public QObject
@@ -1766,6 +1768,9 @@ public:
 		log_debug("[HTTP] new req msgId=%s method=%s msgParams=%s", 
 			qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
 
+		// update the counter for prometheus
+		gCacheMethodCountList.append(packetMsg.method);
+
 		if (is_cache_method(packetMsg.method))
 		{
 			CacheItem *pCacheItem = load_cache_item(packetMsg.paramsHash);
@@ -2378,6 +2383,9 @@ public:
 
 		// get method string			
 		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
+
+		// update the counter for prometheus
+		gCacheMethodCountList.append(methodName);
 
 		// Params hash val
 		QByteArray paramsHash = packetMsg.paramsHash;

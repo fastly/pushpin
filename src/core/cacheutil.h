@@ -232,7 +232,6 @@ int get_cc_index_from_clientId(QByteArray clientId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
 int get_cc_next_index_from_clientId(QByteArray clientId);
 
-void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
 int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg);
 int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg);

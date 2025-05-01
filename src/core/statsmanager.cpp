@@ -50,6 +50,8 @@
 
 #define TICK_DURATION_MS 10
 
+extern quint32 numRequestReceived;
+
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
 	return msec / TICK_DURATION_MS;
