@@ -113,7 +113,7 @@ QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
 
 // multi packets params
-QMap<QByteArray, ZhttpRequestPacket> gHttpMultiPartResponseItemMap;
+QMap<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
 QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 

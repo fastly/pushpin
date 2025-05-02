@@ -76,7 +76,7 @@ extern QStringList gNeverTimeoutMethodList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
 // multi packets params
-extern QMap<QByteArray, ZhttpRequestPacket> gHttpMultiPartResponseItemMap;
+extern QMap<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
 extern QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 extern QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
