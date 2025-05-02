@@ -987,7 +987,7 @@ static void remove_old_cache_items()
 			CacheItem *pCacheItem = &gCacheItemMap[itemId];//load_cache_item(itemId);
 			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 			{
-				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE)
+				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
 				{
 					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
 					continue;
