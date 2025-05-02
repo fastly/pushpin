@@ -981,11 +981,28 @@ static void remove_old_cache_items()
 		QList<QByteArray> deleteIdList;
 		int itemCount = cacheItemIdList.count();
 
+		int cacheItemCount = 0;
+		int subscribeItemCount = 0;
+		int neverTimeoutCacheItemCount = 0;
+
 		// Remove items where the value is greater than 30
 		for	(int i=0; i < itemCount; i++)
 		{
 			QByteArray itemId = cacheItemIdList[i];
 			CacheItem *pCacheItem = &gCacheItemMap[itemId];//load_cache_item(itemId);
+			// prometheus status
+			if (pCacheItem->methodType == CACHE_METHOD)
+			{
+				if ((pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
+					neverTimeoutCacheItemCount++;
+				else
+					cacheItemCount++;
+			}
+			else if (pCacheItem->methodType == SUBSCRIBE_METHOD)
+			{
+				subscribeItemCount++;
+			}
+
 			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 			{
 				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
@@ -2172,7 +2189,7 @@ void count_methods()
 
 void update_prometheus_hit_count(const CacheItem &cacheItem)
 {
-	// save prometheus
+	// prometheus status
 	if (cacheItem.methodType == CACHE_METHOD)
 	{
 		if ((cacheItem.refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
