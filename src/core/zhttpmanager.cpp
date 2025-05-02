@@ -1860,9 +1860,9 @@ public:
 		QByteArray packetId = p.ids[0].id;
 
 		// check multi-part response
-		//int ret = check_multi_packets_for_http_response(p);
-		//if (ret < 0)
-		//	return 0;
+		int ret = check_multi_packets_for_http_response(p);
+		if (ret < 0)
+			return 0;
 
 		bool bodyParseSucceed = true;
 
