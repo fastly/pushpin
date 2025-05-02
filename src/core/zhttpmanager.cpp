@@ -1636,7 +1636,7 @@ public:
 		{
 			cacheItem.methodType = CACHE_METHOD;
 		}
-		else if (is_subscribe_method(methodName))
+		else if (is_subscribe_method(packetMsg.method))
 		{
 			cacheItem.methodType = SUBSCRIBE_METHOD;
 		}
