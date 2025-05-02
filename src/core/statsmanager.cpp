@@ -51,6 +51,7 @@
 #define TICK_DURATION_MS 10
 
 extern quint32 numRequestReceived, numMessageSent, numWsConnect;
+extern quint32 numClientCount, numHttpClientCount, numWsClientCount;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -374,7 +375,10 @@ public:
 			MessageSent,
 			numRequestReceived,
 			numMessageSent,
-			numWsConnect
+			numWsConnect,
+			numClientCount,
+			numHttpClientCount,
+			numWsClientCount,
 		};
 
 		Type mtype;
@@ -483,6 +487,9 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRequestReceived, "number_of_ws_request_received", "counter", "Number of ws requests received");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numMessageSent, "number_of_ws_message_sent", "counter", "Number of ws message sent");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numWsConnect, "number_of_ws_connection_received", "counter", "Number of ws sconcurrent connections");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numClientCount, "number_of_client_count", "counter", "Number of connecting clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numHttpClientCount, "number_of_client_count_http", "counter", "Number of http connecting clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numWsClientCount, "number_of_client_count_ws", "counter", "Number of ws connecting clients");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1557,7 +1564,10 @@ private:
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
 				case PrometheusMetric::numRequestReceived: value = QVariant(numRequestReceived); break;
 				case PrometheusMetric::numMessageSent: value = QVariant(numMessageSent); break;
-				case PrometheusMetric::numWsConnect: value = QVariant((unsigned long long)numWsConnect); break;
+				case PrometheusMetric::numWsConnect: value = QVariant(numWsConnect); break;
+				case PrometheusMetric::numHttpClientCount: value = QVariant(numHttpClientCount); break;
+				case PrometheusMetric::numWsClientCount: value = QVariant(numWsClientCount); break;
+				case PrometheusMetric::numHealthClientCount: value = QVariant(numHealthClientCount); break;
 			}
 
 			if(value.isNull())

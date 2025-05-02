@@ -127,6 +127,7 @@ int gRedisPort = 6379;
 QList<QString> gCacheMethodRequestCountList;
 QList<QString> gCacheMethodResponseCountList;
 quint32 numRequestReceived, numMessageSent, numWsConnect;
+quint32 numClientCount, numHttpClientCount, numWsClientCount;
 
 /////////////////////////////////////////////////////////////////////////////////////
 

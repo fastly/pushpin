@@ -106,6 +106,7 @@ extern int gRedisPort;
 extern QList<QString> gCacheMethodRequestCountList;
 extern QList<QString> gCacheMethodResponseCountList;
 extern quint32 numRequestReceived, numMessageSent, numWsConnect;
+extern quint32 numClientCount, numHttpClientCount, numWsClientCount;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
@@ -1974,6 +1975,7 @@ QString get_switched_ws_backend_url(QString currUrl)
 
 static void count_methods()
 {
+	// request count
 	if (gCacheMethodRequestCountList.count() > 0)
 	{
 		QString methodName = gCacheMethodRequestCountList[0];
@@ -1983,6 +1985,7 @@ static void count_methods()
 		numRequestReceived++;
 	}
 
+	// response count
 	if (gCacheMethodResponseCountList.count() > 0)
 	{
 		QString methodName = gCacheMethodResponseCountList[0];
@@ -1994,4 +1997,9 @@ static void count_methods()
 		else if (methodName == "WS_INIT")
 			numWsConnect++;
 	}
+
+	// client count
+	numHttpClientCount = gHttpClientMap.count();
+	numWsClientCount = gWsClientMap.count();
+	numClientCount = numHttpClientCount + numWsClientCount;
 }
