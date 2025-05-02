@@ -893,6 +893,17 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 
 void remove_cache_item(const QByteArray& itemId)
 {
+	// prometheus status
+	if (gCacheItemMap[itemId].methodType == CACHE_METHOD)
+	{
+		numCacheExpiry++;
+	}
+	else if (gCacheItemMap[itemId].methodType == SUBSCRIBE_METHOD)
+	{
+		if (gCacheItemMap[itemId].msgId != -1)
+			numSubscriptionExpiry++;
+	}
+
 	if (is_cache_item(itemId))
 	{
 		log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
@@ -905,17 +916,6 @@ void remove_cache_item(const QByteArray& itemId)
 		redis_remove_cache_item(itemId);
 	}
 
-	// prometheus status
-	if (cacheItem.methodType == CACHE_METHOD)
-	{
-		numCacheExpiry++;
-	}
-	else if (cacheItem.methodType == SUBSCRIBE_METHOD)
-	{
-		if (pResultCacheItem->msgId != -1)
-			numSubscriptionExpiry++;
-	}
-	
 	return;
 }
 
