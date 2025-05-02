@@ -1057,13 +1057,13 @@ static void remove_old_cache_items()
 		}
 		int deleteCount = deleteIdList.count();
 
-		int cacheItemCount = itemCount - deleteCount;
-		if (cacheItemCount < gCacheItemMaxCount)
+		int totalItemCount = itemCount - deleteCount;
+		if (totalItemCount < gCacheItemMaxCount)
 		{
 			break;
 		}
 
-		log_debug("[CACHE] detected MAX cache item count %d", cacheItemCount);
+		log_debug("[CACHE] detected MAX cache item count %d", totalItemCount);
 		accessTimeoutMSeconds -= 1000;
 	}
 }
