@@ -904,6 +904,17 @@ void remove_cache_item(const QByteArray& itemId)
 		// redis
 		redis_remove_cache_item(itemId);
 	}
+
+	// prometheus status
+	if (cacheItem.methodType == CACHE_METHOD)
+	{
+		numCacheExpiry++;
+	}
+	else if (cacheItem.methodType == SUBSCRIBE_METHOD)
+	{
+		if (pResultCacheItem->msgId != -1)
+			numSubscriptionExpiry++;
+	}
 	
 	return;
 }
