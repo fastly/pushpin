@@ -59,6 +59,7 @@ extern quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubs
 extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeoutCacheHit;
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
+extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -417,7 +418,12 @@ public:
 			numSubscriptionHit, 	// 40
 			numSubscriptionLookup,
 			numSubscriptionExpiry,
-			numResponseMultiPart
+			numResponseMultiPart,
+			numCacheItem,			
+			numSubscriptionItem,
+			numNeverTimeoutCacheItem,
+			numAutoRefreshItem,
+			numAREItemCount			// 48
 		};
 
 		Type mtype;
@@ -561,6 +567,11 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionLookup, "number_of_subscription_lookup", "counter", "Number of ws Subscripion lookup event");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionExpiry, "number_of_subscription_expiry", "counter", "Number of ws Subscripion expiry event");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numResponseMultiPart, "number_of_cache_response_multi_part", "counter", "Number of ws Subscripion multi-part response");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numCacheItem, "number_of_cache_item", "counter", "Number of ws Cache items");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionItem, "number_of_subscription_item", "counter", "Number of ws Subscription items");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numNeverTimeoutCacheItem, "number_of_never_timeout_cache_item", "counter", "Number of ws Never Timeout Cache items");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numAutoRefreshItem, "number_of_cache_auto_refresh_item", "counter", "Number of ws Auto-Refresh items");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numAREItemCount, "number_of_cache_auto_refresh_exception_item", "counter", "Number of ws Auto-Refresh Exception items");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1639,38 +1650,43 @@ private:
 				case PrometheusMetric::numClientCount: value = QVariant(numClientCount); break;
 				case PrometheusMetric::numHttpClientCount: value = QVariant(numHttpClientCount); break;
 				case PrometheusMetric::numWsClientCount: value = QVariant(numWsClientCount); break;
-				case PrometheusMetric::numRpcAuthor: value = QVariant((unsigned long long)numRpcAuthor); break;
-				case PrometheusMetric::numRpcBabe: value = QVariant((unsigned long long)numRpcBabe); break;
-				case PrometheusMetric::numRpcBeefy: value = QVariant((unsigned long long)numRpcBeefy); break;
-				case PrometheusMetric::numRpcChain: value = QVariant((unsigned long long)numRpcChain); break;
-				case PrometheusMetric::numRpcChildState: value = QVariant((unsigned long long)numRpcChildState); break;
-				case PrometheusMetric::numRpcContracts: value = QVariant((unsigned long long)numRpcContracts); break;
-				case PrometheusMetric::numRpcDev: value = QVariant((unsigned long long)numRpcDev); break;
-				case PrometheusMetric::numRpcEngine: value = QVariant((unsigned long long)numRpcEngine); break;
-				case PrometheusMetric::numRpcEth: value = QVariant((unsigned long long)numRpcEth); break;
-				case PrometheusMetric::numRpcNet: value = QVariant((unsigned long long)numRpcNet); break;
-				case PrometheusMetric::numRpcWeb3: value = QVariant((unsigned long long)numRpcWeb3); break;
-				case PrometheusMetric::numRpcGrandpa: value = QVariant((unsigned long long)numRpcGrandpa); break;
-				case PrometheusMetric::numRpcMmr: value = QVariant((unsigned long long)numRpcMmr); break;
-				case PrometheusMetric::numRpcOffchain: value = QVariant((unsigned long long)numRpcOffchain); break;
-				case PrometheusMetric::numRpcPayment: value = QVariant((unsigned long long)numRpcPayment); break;
-				case PrometheusMetric::numRpcRpc: value = QVariant((unsigned long long)numRpcRpc); break;
-				case PrometheusMetric::numRpcState: value = QVariant((unsigned long long)numRpcState); break;
-				case PrometheusMetric::numRpcSyncstate: value = QVariant((unsigned long long)numRpcSyncstate); break;
-				case PrometheusMetric::numRpcSystem: value = QVariant((unsigned long long)numRpcSystem); break;
-				case PrometheusMetric::numRpcSubscribe: value = QVariant((unsigned long long)numRpcSubscribe); break;
-				case PrometheusMetric::numCacheInsert: value = QVariant((unsigned long long)numCacheInsert); break;
-				case PrometheusMetric::numCacheHit: value = QVariant((unsigned long long)numCacheHit); break;
-				case PrometheusMetric::numNeverTimeoutCacheInsert: value = QVariant((unsigned long long)numNeverTimeoutCacheInsert); break;
-				case PrometheusMetric::numNeverTimeoutCacheHit: value = QVariant((unsigned long long)numNeverTimeoutCacheHit); break;
-				case PrometheusMetric::numCacheLookup: value = QVariant((unsigned long long)numCacheLookup); break;
-				case PrometheusMetric::numCacheExpiry: value = QVariant((unsigned long long)numCacheExpiry); break;
-				case PrometheusMetric::numRequestMultiPart: value = QVariant((unsigned long long)numRequestMultiPart); break;
-				case PrometheusMetric::numSubscriptionInsert: value = QVariant((unsigned long long)numSubscriptionInsert); break;
-				case PrometheusMetric::numSubscriptionHit: value = QVariant((unsigned long long)numSubscriptionHit); break;
-				case PrometheusMetric::numSubscriptionLookup: value = QVariant((unsigned long long)numSubscriptionLookup); break;
-				case PrometheusMetric::numSubscriptionExpiry: value = QVariant((unsigned long long)numSubscriptionExpiry); break;
-				case PrometheusMetric::numResponseMultiPart: value = QVariant((unsigned long long)numResponseMultiPart); break;
+				case PrometheusMetric::numRpcAuthor: value = QVariant(numRpcAuthor); break;
+				case PrometheusMetric::numRpcBabe: value = QVariant(numRpcBabe); break;
+				case PrometheusMetric::numRpcBeefy: value = QVariant(numRpcBeefy); break;
+				case PrometheusMetric::numRpcChain: value = QVariant(numRpcChain); break;
+				case PrometheusMetric::numRpcChildState: value = QVariant(numRpcChildState); break;
+				case PrometheusMetric::numRpcContracts: value = QVariant(numRpcContracts); break;
+				case PrometheusMetric::numRpcDev: value = QVariant(numRpcDev); break;
+				case PrometheusMetric::numRpcEngine: value = QVariant(numRpcEngine); break;
+				case PrometheusMetric::numRpcEth: value = QVariant(numRpcEth); break;
+				case PrometheusMetric::numRpcNet: value = QVariant(numRpcNet); break;
+				case PrometheusMetric::numRpcWeb3: value = QVariant(numRpcWeb3); break;
+				case PrometheusMetric::numRpcGrandpa: value = QVariant(numRpcGrandpa); break;
+				case PrometheusMetric::numRpcMmr: value = QVariant(numRpcMmr); break;
+				case PrometheusMetric::numRpcOffchain: value = QVariant(numRpcOffchain); break;
+				case PrometheusMetric::numRpcPayment: value = QVariant(numRpcPayment); break;
+				case PrometheusMetric::numRpcRpc: value = QVariant(numRpcRpc); break;
+				case PrometheusMetric::numRpcState: value = QVariant(numRpcState); break;
+				case PrometheusMetric::numRpcSyncstate: value = QVariant(numRpcSyncstate); break;
+				case PrometheusMetric::numRpcSystem: value = QVariant(numRpcSystem); break;
+				case PrometheusMetric::numRpcSubscribe: value = QVariant(numRpcSubscribe); break;
+				case PrometheusMetric::numCacheInsert: value = QVariant(numCacheInsert); break;
+				case PrometheusMetric::numCacheHit: value = QVariant(numCacheHit); break;
+				case PrometheusMetric::numNeverTimeoutCacheInsert: value = QVariant(numNeverTimeoutCacheInsert); break;
+				case PrometheusMetric::numNeverTimeoutCacheHit: value = QVariant(numNeverTimeoutCacheHit); break;
+				case PrometheusMetric::numCacheLookup: value = QVariant(numCacheLookup); break;
+				case PrometheusMetric::numCacheExpiry: value = QVariant(numCacheExpiry); break;
+				case PrometheusMetric::numRequestMultiPart: value = QVariant(numRequestMultiPart); break;
+				case PrometheusMetric::numSubscriptionInsert: value = QVariant(numSubscriptionInsert); break;
+				case PrometheusMetric::numSubscriptionHit: value = QVariant(numSubscriptionHit); break;
+				case PrometheusMetric::numSubscriptionLookup: value = QVariant(numSubscriptionLookup); break;
+				case PrometheusMetric::numSubscriptionExpiry: value = QVariant(numSubscriptionExpiry); break;
+				case PrometheusMetric::numResponseMultiPart: value = QVariant(numResponseMultiPart); break;
+				case PrometheusMetric::numCacheItem: value = QVariant(numCacheItem); break;
+				case PrometheusMetric::numSubscriptionItem: value = QVariant(numSubscriptionItem); break;
+				case PrometheusMetric::numNeverTimeoutCacheItem: value = QVariant(numNeverTimeoutCacheItem); break;
+				case PrometheusMetric::numAutoRefreshItem: value = QVariant(numAutoRefreshItem); break;
+				case PrometheusMetric::numAREItemCount: value = QVariant(numAREItemCount); break;
 			}
 
 			if(value.isNull())

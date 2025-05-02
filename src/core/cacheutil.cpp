@@ -112,6 +112,7 @@ extern quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubs
 extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeoutCacheHit;
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
+extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
