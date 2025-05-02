@@ -2124,7 +2124,7 @@ void count_methods()
 		{
 			numCacheLookup++;
 		}
-		else if (is_subscribe_method(packetMsg.method))
+		else if (is_subscribe_method(methodName))
 		{
 			numSubscriptionLookup++;
 		}
