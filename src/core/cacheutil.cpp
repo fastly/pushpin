@@ -1989,7 +1989,7 @@ static void count_methods()
 		gCacheMethodResponseCountList.removeAt(0);
 
 		// count methods
-		if (methodName == "HTTP" && methodName == "WS")
+		if (methodName == "HTTP" || methodName == "WS")
 			numMessageSent++;
 	}
 }
