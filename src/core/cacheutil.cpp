@@ -59,8 +59,6 @@ extern QStringList gWsBackendUrlList;
 
 QMap<QByteArray, CacheItem> gCacheItemMap;
 
-unsigned long long numRequestMultiPart = 0;
-
 extern QString gMsgIdAttrName;
 extern QString gMsgMethodAttrName;
 extern QString gMsgParamsAttrName;
@@ -2033,7 +2031,7 @@ QString get_switched_ws_backend_url(QString currUrl)
 	return gWsBackendUrlList[index];
 }
 
-static void count_methods()
+void count_methods()
 {
 	// request count
 	if (gCacheMethodRequestCountList.count() > 0)
