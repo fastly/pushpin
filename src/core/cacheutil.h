@@ -266,4 +266,6 @@ void check_cache_clients();
 
 void count_methods();
 
+void update_prometheus_hit_count(const CacheItem &cacheItem);
+
 #endif

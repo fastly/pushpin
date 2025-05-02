@@ -1826,6 +1826,9 @@ public:
 			{
 				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
+				// prometheus staus
+				update_prometheus_hit_count(*pCacheItem);
+
 				if (pCacheItem->cachedFlag == true)
 				{
 					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
@@ -2450,6 +2453,9 @@ public:
 			if (pCacheItem != NULL)
 			{
 				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+
+				// prometheus staus
+				update_prometheus_hit_count(*pCacheItem);
 
 				if (pCacheItem->cachedFlag == true)
 				{

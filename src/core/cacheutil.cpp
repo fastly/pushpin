@@ -2138,3 +2138,19 @@ void count_methods()
 	numWsClientCount = gWsClientMap.count();
 	numClientCount = numHttpClientCount + numWsClientCount;
 }
+
+void update_prometheus_hit_count(const CacheItem &cacheItem)
+{
+	// save prometheus
+	if (cacheItem.methodType == CACHE_METHOD)
+	{
+		if ((cacheItem.refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
+			numNeverTimeoutCacheHit++;
+		else
+			numCacheHit++;
+	}
+	else if (cacheItem.methodType == SUBSCRIBE_METHOD)
+	{
+		numSubscriptionHit++;
+	}
+}
