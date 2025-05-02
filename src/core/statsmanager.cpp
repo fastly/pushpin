@@ -1565,9 +1565,9 @@ private:
 				case PrometheusMetric::numRequestReceived: value = QVariant(numRequestReceived); break;
 				case PrometheusMetric::numMessageSent: value = QVariant(numMessageSent); break;
 				case PrometheusMetric::numWsConnect: value = QVariant(numWsConnect); break;
+				case PrometheusMetric::numClientCount: value = QVariant(numClientCount); break;
 				case PrometheusMetric::numHttpClientCount: value = QVariant(numHttpClientCount); break;
 				case PrometheusMetric::numWsClientCount: value = QVariant(numWsClientCount); break;
-				case PrometheusMetric::numHealthClientCount: value = QVariant(numHealthClientCount); break;
 			}
 
 			if(value.isNull())
