@@ -1754,6 +1754,9 @@ int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
 
 			// register new multi-request item
 			gWsMultiPartRequestItemMap[pId] = p;
+
+			// prometheus status
+			numRequestMultiPart++;
 			
 			return -1;
 		}
@@ -1794,6 +1797,9 @@ int check_multi_packets_for_http_response(ZhttpResponsePacket &p)
 
 			// register new multi-response item
 			gHttpMultiPartResponseItemMap[pId] = p;
+
+			// prometheus status
+			numResponseMultiPart++;
 			
 			return -1;
 		}
@@ -1834,6 +1840,9 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 
 			// register new multi-response item
 			gWsMultiPartResponseItemMap[pId] = p;
+
+			// prometheus status
+			numResponseMultiPart++;
 			
 			return -1;
 		}
