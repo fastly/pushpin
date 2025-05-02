@@ -1733,6 +1733,46 @@ int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
 	return 0;
 }
 
+int check_multi_packets_for_http_response(ZhttpResponsePacket &p)
+{
+	QByteArray pId = p.ids.first().id;
+	// Check if multi-parts response
+	if (gHttpMultiPartResponseItemMap.contains(pId))
+	{
+		// this is middle packet of multi-response
+		if (p.more == true)
+		{
+			log_debug("[HTTP] Detected middle of multi-parts response");
+			gHttpMultiPartResponseItemMap[pId].body.append(p.body);
+
+			return -1;
+		}
+		else // this is end packet of multi-response
+		{
+			log_debug("[HTTP] Detected end of multi-parts response");
+			gHttpMultiPartResponseItemMap[pId].body.append(p.body);
+			p.body = gHttpMultiPartResponseItemMap[pId].body;
+
+			gHttpMultiPartResponseItemMap.remove(pId);
+		}
+	}
+	else
+	{
+		// this is first packet of multi-response
+		if (p.more == true)
+		{
+			log_debug("[HTTP] Detected start of multi-parts response");
+
+			// register new multi-response item
+			gHttpMultiPartResponseItemMap[pId] = p;
+			
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 {
 	QByteArray pId = p.ids.first().id;

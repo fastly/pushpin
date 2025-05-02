@@ -1143,11 +1143,28 @@ public:
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
-					int ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
-					if (ret == 0)
+					log_debug("[HTTP] received ws request from real client=%s", packetId.data());
+
+					// if cancel/close request, remove client from the subscription client list
+					switch (p.type)
 					{
-						resume_cache_thread();
-						continue;
+					case ZhttpRequestPacket::Cancel:
+						unregister_client(packetId);
+						//send_wsCloseResponse(packetId);
+						break;
+					case ZhttpRequestPacket::Close:
+						unregister_client(packetId);
+						break;
+					case ZhttpRequestPacket::Data:
+						int ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
+						if (ret == 0)
+						{
+							resume_cache_thread();
+							continue;
+						}
+						break;
+					default:
+						break;
 					}
 				}
 				else if (gWsClientMap.contains(packetId))
@@ -1840,6 +1857,12 @@ public:
 	{
 		ZhttpResponsePacket p = response;
 		QByteArray packetId = p.ids[0].id;
+
+		// check multi-part response
+		//int ret = check_multi_packets_for_http_response(p);
+		//if (ret < 0)
+		//	return 0;
+
 		bool bodyParseSucceed = true;
 
 		// parse json body
