@@ -2118,6 +2118,16 @@ void count_methods()
 			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 7)
 				numRpcSubscribe++;
 		}
+
+		// add ws Cache lookup count
+		if (is_cache_method(methodName))
+		{
+			numCacheLookup++;
+		}
+		else if (is_subscribe_method(packetMsg.method))
+		{
+			numSubscriptionLookup++;
+		}
 	}
 
 	// response count
