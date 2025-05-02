@@ -113,7 +113,7 @@ QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
 
 // multi packets params
-ZhttpResponsePacket gHttpMultiPartResponsePacket;
+QMap<QByteArray, ZhttpRequestPacket> gHttpMultiPartResponseItemMap;
 QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
@@ -1146,6 +1146,7 @@ public:
 					log_debug("[HTTP] received ws request from real client=%s", packetId.data());
 
 					// if cancel/close request, remove client from the subscription client list
+					int ret;
 					switch (p.type)
 					{
 					case ZhttpRequestPacket::Cancel:
@@ -1156,7 +1157,7 @@ public:
 						unregister_client(packetId);
 						break;
 					case ZhttpRequestPacket::Data:
-						int ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
+						ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 						if (ret == 0)
 						{
 							resume_cache_thread();
