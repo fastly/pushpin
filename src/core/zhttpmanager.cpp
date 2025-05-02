@@ -1632,7 +1632,7 @@ public:
 		cacheItem.methodName = packetMsg.method;
 
 		// check cache/subscribe method
-		if (is_cache_method(methodName))
+		if (is_cache_method(packetMsg.method))
 		{
 			cacheItem.methodType = CACHE_METHOD;
 		}
