@@ -1513,7 +1513,7 @@ impl Worker {
                     }
                     // stream_handle.recv
                     Select8::R8(result) => match result {
-                        Ok(msg) => {
+                        Ok((msg, _from_router)) => {
                             let msg_data = &msg.get()[..];
 
                             let (addr, offset) = match get_addr_and_offset(msg_data) {
