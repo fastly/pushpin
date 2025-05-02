@@ -1047,6 +1047,10 @@ static void remove_old_cache_items()
 			}
 		}
 
+		numCacheItem = cacheItemCount;
+		numSubscriptionItem = subscribeItemCount;
+		numNeverTimeoutCacheItem = neverTimeoutCacheItemCount;
+
 		for	(int i=0; i < deleteIdList.count(); i++)
 		{
 			remove_cache_item(deleteIdList[i]);
