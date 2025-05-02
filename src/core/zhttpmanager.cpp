@@ -440,7 +440,7 @@ public:
 		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
 		{
-			log_debug("[HTTP] failed to get new response seq %s", clientId.toHex().data());
+			log_debug("[WS] failed to get new response seq %s", clientId.toHex().data());
 			return;
 		}
 		QByteArray newFrom = from;
@@ -458,6 +458,9 @@ public:
 					out.headers.removeAll("sec-websocket-accept");
 					out.headers += HttpHeader("sec-websocket-accept", responseKey);
 				}
+
+				// update the counter for prometheus
+				gCacheMethodResponseCountList.append(responseKey != NULL ? "WS_INIT" : "WS");
 				break;
 			}
 			return;
@@ -1718,6 +1721,9 @@ public:
 		responsePacket.from = instanceId;
 		
 		write(HttpSession, responsePacket, from);
+
+		// update the counter for prometheus
+		gCacheMethodResponseCountList.append("HTTP");
 	}
 
 	void send_http_response_to_client(const ZhttpResponsePacket &cacheItemResponsePacket, 
@@ -1751,6 +1757,9 @@ public:
 		responsePacket.ids[0].seq = newSeq;
 
 		write(CacheResponse, responsePacket, orgFrom);
+
+		// update the counter for prometheus
+		gCacheMethodResponseCountList.append("HTTP");
 	}
 
 	int process_http_request(QByteArray id, const ZhttpRequestPacket &p, const QString &urlPath)
@@ -1883,9 +1892,6 @@ public:
 						cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-
-					// update the counter for prometheus
-					gCacheMethodResponseCountList.append("HTTP");
 				}
 				pCacheItem->clientMap.clear();
 
@@ -2006,9 +2012,6 @@ public:
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-
-								// update the counter for prometheus
-								gCacheMethodResponseCountList.append("SUBSCRIBE");
 							}
 						}
 					}
@@ -2097,9 +2100,6 @@ public:
 							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-
-							// update the counter for prometheus
-							gCacheMethodResponseCountList.append("SUBSCRIBE");
 						}
 					}
 
@@ -2173,9 +2173,6 @@ public:
 						ZhttpResponsePacket out = pCacheItem->responsePacket;
 						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
-
-						// update the counter for prometheus
-						gCacheMethodResponseCountList.append("WS");
 					}
 					pCacheItem->clientMap.clear();
 
@@ -2245,9 +2242,6 @@ public:
 							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-
-							// update the counter for prometheus
-							gCacheMethodResponseCountList.append("SUBSCRIBE");
 						}
 					}
 				}
