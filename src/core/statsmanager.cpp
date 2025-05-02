@@ -56,6 +56,9 @@ extern quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildSt
 extern quint32 numRpcContracts, numRpcDev, numRpcEngine, numRpcEth, numRpcNet;
 extern quint32 numRpcWeb3, numRpcGrandpa, numRpcMmr, numRpcOffchain, numRpcPayment;
 extern quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubscribe;
+extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeoutCacheHit;
+extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
+extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -402,7 +405,19 @@ public:
 			numRpcState, 
 			numRpcSyncstate, 
 			numRpcSystem,			// 30
-			numRpcSubscribe
+			numRpcSubscribe,
+			numCacheInsert,
+			numCacheHit, 
+			numNeverTimeoutCacheInsert,
+			numNeverTimeoutCacheHit, 
+			numCacheLookup,
+			numCacheExpiry,
+			numRequestMultiPart,
+			numSubscriptionInsert, 
+			numSubscriptionHit, 	// 40
+			numSubscriptionLookup,
+			numSubscriptionExpiry,
+			numResponseMultiPart
 		};
 
 		Type mtype;
@@ -534,6 +549,18 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSyncstate, "number_of_group_syncstate", "counter", "Number of ws JSON-RPC syncstate method group");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSystem, "number_of_group_system", "counter", "Number of ws JSON-RPC system method group");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSubscribe, "number_of_group_subscribe", "counter", "Number of ws JSON-RPC subscribe method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numCacheInsert, "number_of_cache_insert", "counter", "Number of ws Cache insert event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numCacheHit, "number_of_cache_hit", "counter", "Number of ws Cache hit event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numNeverTimeoutCacheInsert, "number_of_never_timeout_cache_insert", "counter", "Number of ws Never Timeout Cache insert event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numNeverTimeoutCacheHit, "number_of_never_timeout_cache_hit", "counter", "Number of ws Never Timeout Cache hit event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numCacheLookup, "number_of_cache_lookup", "counter", "Number of ws Cache lookup event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numCacheExpiry, "number_of_cache_expiry", "counter", "Number of ws Cache expiry event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRequestMultiPart, "number_of_cache_request_multi_part", "counter", "Number of ws Cache multi-part request");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionInsert, "number_of_subscription_insert", "counter", "Number of ws Subscripion insert event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionHit, "number_of_subscription_hit", "counter", "Number of ws Subscripion hit event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionLookup, "number_of_subscription_lookup", "counter", "Number of ws Subscripion lookup event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numSubscriptionExpiry, "number_of_subscription_expiry", "counter", "Number of ws Subscripion expiry event");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numResponseMultiPart, "number_of_cache_response_multi_part", "counter", "Number of ws Subscripion multi-part response");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1632,6 +1659,18 @@ private:
 				case PrometheusMetric::numRpcSyncstate: value = QVariant((unsigned long long)numRpcSyncstate); break;
 				case PrometheusMetric::numRpcSystem: value = QVariant((unsigned long long)numRpcSystem); break;
 				case PrometheusMetric::numRpcSubscribe: value = QVariant((unsigned long long)numRpcSubscribe); break;
+				case PrometheusMetric::numCacheInsert: value = QVariant((unsigned long long)numCacheInsert); break;
+				case PrometheusMetric::numCacheHit: value = QVariant((unsigned long long)numCacheHit); break;
+				case PrometheusMetric::numNeverTimeoutCacheInsert: value = QVariant((unsigned long long)numNeverTimeoutCacheInsert); break;
+				case PrometheusMetric::numNeverTimeoutCacheHit: value = QVariant((unsigned long long)numNeverTimeoutCacheHit); break;
+				case PrometheusMetric::numCacheLookup: value = QVariant((unsigned long long)numCacheLookup); break;
+				case PrometheusMetric::numCacheExpiry: value = QVariant((unsigned long long)numCacheExpiry); break;
+				case PrometheusMetric::numRequestMultiPart: value = QVariant((unsigned long long)numRequestMultiPart); break;
+				case PrometheusMetric::numSubscriptionInsert: value = QVariant((unsigned long long)numSubscriptionInsert); break;
+				case PrometheusMetric::numSubscriptionHit: value = QVariant((unsigned long long)numSubscriptionHit); break;
+				case PrometheusMetric::numSubscriptionLookup: value = QVariant((unsigned long long)numSubscriptionLookup); break;
+				case PrometheusMetric::numSubscriptionExpiry: value = QVariant((unsigned long long)numSubscriptionExpiry); break;
+				case PrometheusMetric::numResponseMultiPart: value = QVariant((unsigned long long)numResponseMultiPart); break;
 			}
 
 			if(value.isNull())

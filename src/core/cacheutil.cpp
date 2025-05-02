@@ -111,6 +111,9 @@ extern quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildSt
 extern quint32 numRpcContracts, numRpcDev, numRpcEngine, numRpcEth, numRpcNet;
 extern quint32 numRpcWeb3, numRpcGrandpa, numRpcMmr, numRpcOffchain, numRpcPayment;
 extern quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubscribe;
+extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeoutCacheHit;
+extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
+extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
@@ -872,6 +875,19 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 	{
 		// redis
 		redis_save_cache_item(itemId, cacheItem);
+	}
+
+	// save prometheus
+	if (cacheItem.methodType == CACHE_METHOD)
+	{
+		if ((cacheItem.refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
+			numNeverTimeoutCacheInsert++;
+		else
+			numCacheInsert++;
+	}
+	else if (cacheItem.methodType == SUBSCRIBE_METHOD)
+	{
+		numSubscriptionInsert++;
 	}
 	
 	return;
