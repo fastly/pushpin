@@ -50,7 +50,7 @@
 
 #define TICK_DURATION_MS 10
 
-extern quint32 numRequestReceived;
+extern quint32 numRequestReceived, numMessageSent;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -373,6 +373,7 @@ public:
 			MessageReceived,
 			MessageSent,
 			numRequestReceived,
+			numMessageSent
 		};
 
 		Type mtype;
@@ -479,6 +480,8 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRequestReceived, "number_of_ws_request_received", "counter", "Number of ws requests received");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numMessageSent, "number_of_ws_message_sent", "counter", "Number of ws message sent");
+
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1552,6 +1555,7 @@ private:
 				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
 				case PrometheusMetric::numRequestReceived: value = QVariant(numRequestReceived); break;
+				case PrometheusMetric::numMessageSent: value = QVariant(numMessageSent); break;
 			}
 
 			if(value.isNull())

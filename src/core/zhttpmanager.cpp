@@ -123,7 +123,10 @@ bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
 
-QList<QString> gCacheMethodCountList;
+// prometheus status
+QList<QString> gCacheMethodRequestCountList;
+QList<QString> gCacheMethodResponseCountList;
+quint32 numRequestReceived, numMessageSent;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -1769,7 +1772,7 @@ public:
 			qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
 
 		// update the counter for prometheus
-		gCacheMethodCountList.append(packetMsg.method);
+		gCacheMethodRequestCountList.append(packetMsg.method);
 
 		if (is_cache_method(packetMsg.method))
 		{
@@ -1880,6 +1883,9 @@ public:
 						cliId);
 					gHttpClientMap.remove(cliId);
 					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+
+					// update the counter for prometheus
+					gCacheMethodResponseCountList.append("HTTP");
 				}
 				pCacheItem->clientMap.clear();
 
@@ -2000,6 +2006,9 @@ public:
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+
+								// update the counter for prometheus
+								gCacheMethodResponseCountList.append("SUBSCRIBE");
 							}
 						}
 					}
@@ -2088,6 +2097,9 @@ public:
 							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+
+							// update the counter for prometheus
+							gCacheMethodResponseCountList.append("SUBSCRIBE");
 						}
 					}
 
@@ -2161,6 +2173,9 @@ public:
 						ZhttpResponsePacket out = pCacheItem->responsePacket;
 						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
+
+						// update the counter for prometheus
+						gCacheMethodResponseCountList.append("WS");
 					}
 					pCacheItem->clientMap.clear();
 
@@ -2230,6 +2245,9 @@ public:
 							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+
+							// update the counter for prometheus
+							gCacheMethodResponseCountList.append("SUBSCRIBE");
 						}
 					}
 				}
@@ -2385,7 +2403,7 @@ public:
 		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 
 		// update the counter for prometheus
-		gCacheMethodCountList.append(methodName);
+		gCacheMethodRequestCountList.append(methodName);
 
 		// Params hash val
 		QByteArray paramsHash = packetMsg.paramsHash;

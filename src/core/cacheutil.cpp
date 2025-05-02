@@ -97,15 +97,15 @@ extern bool gRedisEnable;
 extern QString gRedisHostAddr;
 extern int gRedisPort;
 
-extern QList<QString> gCacheMethodCountList;
-
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 #define REDIS_CACHE_ID_HEADER	"PUSHPIN : "
 
 // prometheus status
-quint32 numRequestReceived = 0;
+extern QList<QString> gCacheMethodRequestCountList;
+extern QList<QString> gCacheMethodResponseCountList;
+extern quint32 numRequestReceived, numMessageSent;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
@@ -1974,12 +1974,21 @@ QString get_switched_ws_backend_url(QString currUrl)
 
 static void count_methods()
 {
-	if (gCacheMethodCountList.count() > 0)
+	if (gCacheMethodRequestCountList.count() > 0)
 	{
-		QString methodName = gCacheMethodCountList[0];
-		gCacheMethodCountList.removeAt(0);
+		QString methodName = gCacheMethodRequestCountList[0];
+		gCacheMethodRequestCountList.removeAt(0);
 
 		// count methods
 		numRequestReceived++;
+	}
+
+	if (gCacheMethodResponseCountList.count() > 0)
+	{
+		QString methodName = gCacheMethodResponseCountList[0];
+		gCacheMethodResponseCountList.removeAt(0);
+
+		// count methods
+		numMessageSent++;
 	}
 }
