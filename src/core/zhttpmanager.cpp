@@ -1631,6 +1631,16 @@ public:
 
 		cacheItem.methodName = packetMsg.method;
 
+		// check cache/subscribe method
+		if (is_cache_method(methodName))
+		{
+			cacheItem.methodType = CACHE_METHOD;
+		}
+		else if (is_subscribe_method(methodName))
+		{
+			cacheItem.methodType = SUBSCRIBE_METHOD;
+		}
+
 		// save the request packet with new id
 		cacheItem.orgMsgId = packetMsg.id;
 		cacheItem.requestPacket = clientPacket;
