@@ -50,7 +50,7 @@
 
 #define TICK_DURATION_MS 10
 
-extern quint32 numRequestReceived, numMessageSent;
+extern quint32 numRequestReceived, numMessageSent, numWsConnect;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -373,7 +373,8 @@ public:
 			MessageReceived,
 			MessageSent,
 			numRequestReceived,
-			numMessageSent
+			numMessageSent,
+			numWsConnect
 		};
 
 		Type mtype;
@@ -481,7 +482,7 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRequestReceived, "number_of_ws_request_received", "counter", "Number of ws requests received");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numMessageSent, "number_of_ws_message_sent", "counter", "Number of ws message sent");
-
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numWsConnect, "number_of_ws_connection_received", "counter", "Number of ws sconcurrent connections");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1556,6 +1557,7 @@ private:
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
 				case PrometheusMetric::numRequestReceived: value = QVariant(numRequestReceived); break;
 				case PrometheusMetric::numMessageSent: value = QVariant(numMessageSent); break;
+				case PrometheusMetric::numWsConnect: value = QVariant((unsigned long long)numWsConnect); break;
 			}
 
 			if(value.isNull())

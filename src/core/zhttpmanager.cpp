@@ -126,7 +126,7 @@ int gRedisPort = 6379;
 // prometheus status
 QList<QString> gCacheMethodRequestCountList;
 QList<QString> gCacheMethodResponseCountList;
-quint32 numRequestReceived, numMessageSent;
+quint32 numRequestReceived, numMessageSent, numWsConnect;
 
 /////////////////////////////////////////////////////////////////////////////////////
 

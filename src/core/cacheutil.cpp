@@ -105,7 +105,7 @@ extern int gRedisPort;
 // prometheus status
 extern QList<QString> gCacheMethodRequestCountList;
 extern QList<QString> gCacheMethodResponseCountList;
-extern quint32 numRequestReceived, numMessageSent;
+extern quint32 numRequestReceived, numMessageSent, numWsConnect;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
@@ -1991,5 +1991,7 @@ static void count_methods()
 		// count methods
 		if (methodName == "HTTP" || methodName == "WS")
 			numMessageSent++;
+		else if (methodName == "WS_INIT")
+			numWsConnect++;
 	}
 }
