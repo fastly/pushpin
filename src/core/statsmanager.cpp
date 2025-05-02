@@ -52,6 +52,10 @@
 
 extern quint32 numRequestReceived, numMessageSent, numWsConnect;
 extern quint32 numClientCount, numHttpClientCount, numWsClientCount;
+extern quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildState;
+extern quint32 numRpcContracts, numRpcDev, numRpcEngine, numRpcEth, numRpcNet;
+extern quint32 numRpcWeb3, numRpcGrandpa, numRpcMmr, numRpcOffchain, numRpcPayment;
+extern quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubscribe;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -379,6 +383,26 @@ public:
 			numClientCount,
 			numHttpClientCount,
 			numWsClientCount,
+			numRpcAuthor,
+			numRpcBabe, 
+			numRpcBeefy, 
+			numRpcChain, 
+			numRpcChildState,
+			numRpcContracts, 
+			numRpcDev, 
+			numRpcEngine, 
+			numRpcEth,				// 20 
+			numRpcNet,
+			numRpcWeb3,
+			numRpcGrandpa, 
+			numRpcMmr, 
+			numRpcOffchain, 
+			numRpcPayment,
+			numRpcRpc, 
+			numRpcState, 
+			numRpcSyncstate, 
+			numRpcSystem,			// 30
+			numRpcSubscribe
 		};
 
 		Type mtype;
@@ -490,6 +514,26 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numClientCount, "number_of_client_count", "counter", "Number of connecting clients");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numHttpClientCount, "number_of_client_count_http", "counter", "Number of http connecting clients");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numWsClientCount, "number_of_client_count_ws", "counter", "Number of ws connecting clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcAuthor, "number_of_group_author", "counter", "Number of ws JSON-RPC author method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcBabe, "number_of_group_babe", "counter", "Number of ws JSON-RPC babe method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcBeefy, "number_of_group_beefy", "counter", "Number of ws JSON-RPC beefy method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcChain, "number_of_group_chain", "counter", "Number of ws JSON-RPC chain method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcChildState, "number_of_group_childstate", "counter", "Number of ws JSON-RPC childstate method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcContracts, "number_of_group_contracts", "counter", "Number of ws JSON-RPC contracts method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcDev, "number_of_group_dev", "counter", "Number of ws JSON-RPC dev method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcEngine, "number_of_group_engine", "counter", "Number of ws JSON-RPC engine method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcEth, "number_of_group_eth", "counter", "Number of ws JSON-RPC eth method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcNet, "number_of_group_net_eth", "counter", "Number of ws JSON-RPC net_eth method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcWeb3, "number_of_group_web3_eth", "counter", "Number of ws JSON-RPC web3_eth method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcGrandpa, "number_of_group_grandpa", "counter", "Number of ws JSON-RPC grandpa method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcMmr, "number_of_group_mmr", "counter", "Number of ws JSON-RPC mmr method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcOffchain, "number_of_group_offchain", "counter", "Number of ws JSON-RPC offchain method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcPayment, "number_of_group_paymenet", "counter", "Number of ws JSON-RPC payment method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcRpc, "number_of_group_rpc", "counter", "Number of ws JSON-RPC rpc method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcState, "number_of_group_state", "counter", "Number of ws JSON-RPC state method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSyncstate, "number_of_group_syncstate", "counter", "Number of ws JSON-RPC syncstate method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSystem, "number_of_group_system", "counter", "Number of ws JSON-RPC system method group");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::numRpcSubscribe, "number_of_group_subscribe", "counter", "Number of ws JSON-RPC subscribe method group");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1568,6 +1612,26 @@ private:
 				case PrometheusMetric::numClientCount: value = QVariant(numClientCount); break;
 				case PrometheusMetric::numHttpClientCount: value = QVariant(numHttpClientCount); break;
 				case PrometheusMetric::numWsClientCount: value = QVariant(numWsClientCount); break;
+				case PrometheusMetric::numRpcAuthor: value = QVariant((unsigned long long)numRpcAuthor); break;
+				case PrometheusMetric::numRpcBabe: value = QVariant((unsigned long long)numRpcBabe); break;
+				case PrometheusMetric::numRpcBeefy: value = QVariant((unsigned long long)numRpcBeefy); break;
+				case PrometheusMetric::numRpcChain: value = QVariant((unsigned long long)numRpcChain); break;
+				case PrometheusMetric::numRpcChildState: value = QVariant((unsigned long long)numRpcChildState); break;
+				case PrometheusMetric::numRpcContracts: value = QVariant((unsigned long long)numRpcContracts); break;
+				case PrometheusMetric::numRpcDev: value = QVariant((unsigned long long)numRpcDev); break;
+				case PrometheusMetric::numRpcEngine: value = QVariant((unsigned long long)numRpcEngine); break;
+				case PrometheusMetric::numRpcEth: value = QVariant((unsigned long long)numRpcEth); break;
+				case PrometheusMetric::numRpcNet: value = QVariant((unsigned long long)numRpcNet); break;
+				case PrometheusMetric::numRpcWeb3: value = QVariant((unsigned long long)numRpcWeb3); break;
+				case PrometheusMetric::numRpcGrandpa: value = QVariant((unsigned long long)numRpcGrandpa); break;
+				case PrometheusMetric::numRpcMmr: value = QVariant((unsigned long long)numRpcMmr); break;
+				case PrometheusMetric::numRpcOffchain: value = QVariant((unsigned long long)numRpcOffchain); break;
+				case PrometheusMetric::numRpcPayment: value = QVariant((unsigned long long)numRpcPayment); break;
+				case PrometheusMetric::numRpcRpc: value = QVariant((unsigned long long)numRpcRpc); break;
+				case PrometheusMetric::numRpcState: value = QVariant((unsigned long long)numRpcState); break;
+				case PrometheusMetric::numRpcSyncstate: value = QVariant((unsigned long long)numRpcSyncstate); break;
+				case PrometheusMetric::numRpcSystem: value = QVariant((unsigned long long)numRpcSystem); break;
+				case PrometheusMetric::numRpcSubscribe: value = QVariant((unsigned long long)numRpcSubscribe); break;
 			}
 
 			if(value.isNull())

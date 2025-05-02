@@ -128,6 +128,10 @@ QList<QString> gCacheMethodRequestCountList;
 QList<QString> gCacheMethodResponseCountList;
 quint32 numRequestReceived, numMessageSent, numWsConnect;
 quint32 numClientCount, numHttpClientCount, numWsClientCount;
+quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildState;
+quint32 numRpcContracts, numRpcDev, numRpcEngine, numRpcEth, numRpcNet;
+quint32 numRpcWeb3, numRpcGrandpa, numRpcMmr, numRpcOffchain, numRpcPayment;
+quint32 numRpcRpc, numRpcState, numRpcSyncstate, numRpcSystem, numRpcSubscribe;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
