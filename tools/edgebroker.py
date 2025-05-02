@@ -2,7 +2,7 @@ import sys
 import zmq
 
 if len(sys.argv) < 3:
-    print("usage: {} [pub_spec] [sub_spec,sub_spec,...]".format(sys.argv[0]))
+    print(f"usage: {sys.argv[0]} [pub_spec] [sub_spec,sub_spec,...]")
     sys.exit(1)
 
 pub_spec = sys.argv[1]
@@ -30,9 +30,10 @@ while True:
         m = pub_sock.recv()
         mtype = m[0]
         topic = m[1:]
+        topicstr = topic.decode("utf-8")
         if mtype == 1:
-            print("subscribing [{}]".format(topic.decode("utf-8")))
+            print(f"subscribing [{topic}]")
             sub_sock.setsockopt(zmq.SUBSCRIBE, topic)
         elif mtype == 0:
-            print("unsubscribing [{}]".format(topic.decode("utf-8")))
+            print(f"unsubscribing [{topic}]")
             sub_sock.setsockopt(zmq.UNSUBSCRIBE, topic)
