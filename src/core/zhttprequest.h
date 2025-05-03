@@ -55,13 +55,15 @@ public:
 		int inSeq;
 		int outSeq;
 		int outCredits;
+		bool routerResp;
 		QVariant userData;
 
 		ServerState() :
 			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
-			outCredits(-1)
+			outCredits(-1),
+			routerResp(false)
 		{
 		}
 	};
@@ -129,6 +131,7 @@ private:
 	void startServer();
 	bool isServer() const;
 	QByteArray toAddress() const;
+	bool routerResp() const;
 	int outSeqInc();
 	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);

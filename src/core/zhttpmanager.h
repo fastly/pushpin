@@ -88,10 +88,10 @@ private:
 	bool canWriteImmediately() const;
 	void writeHttp(const ZhttpRequestPacket &packet);
 	void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
 	void writeWs(const ZhttpRequestPacket &packet);
 	void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
 
 	void registerKeepAlive(ZhttpRequest *req);
 	void unregisterKeepAlive(ZhttpRequest *req);

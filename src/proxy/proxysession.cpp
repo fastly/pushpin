@@ -1300,6 +1300,7 @@ public:
 				areq.inSeq = ss.inSeq;
 				areq.outSeq = ss.outSeq;
 				areq.outCredits = ss.outCredits;
+				areq.routerResp = ss.routerResp;
 				areq.userData = ss.userData;
 				adata.requests += areq;
 			}
