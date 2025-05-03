@@ -2656,10 +2656,10 @@ impl AsyncClientStreamHandle {
     }
 
     pub async fn recv(&self) -> Result<(arena::Arc<zmq::Message>, bool), io::Error> {
-        match self.receiver.recv().await {
-            Ok(ret) => Ok(ret),
-            Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
-        }
+        self.receiver
+            .recv()
+            .await
+            .map_err(|_| io::Error::from(io::ErrorKind::BrokenPipe))
     }
 
     pub async fn send_to_any(&self, msg: zmq::Message) -> Result<(), io::Error> {
