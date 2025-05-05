@@ -249,7 +249,9 @@ public:
 			config.msgParamsFieldName,
 			config.redisEnable,
 			config.redisHostAddr,
-			config.redisPort);
+			config.redisPort,
+			config.countMethodGroups,
+			config.countMethodGroupMap);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{

@@ -113,6 +113,7 @@ extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNever
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
+extern QMap<QString, int> groupMethodCountMap;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
@@ -2173,6 +2174,17 @@ void count_methods()
 		else if (is_subscribe_method(methodName))
 		{
 			numSubscriptionLookup++;
+		}
+
+		// user-defined method group count
+		foreach(QString groupKey, gCountMethodGroupMap.keys())
+		{
+			QStringList groupStrList = gCountMethodGroupMap[groupKey];
+
+			if (groupStrList.contains(methodName, Qt::CaseInsensitive))
+			{
+				groupMethodCountMap[groupKey]++;
+			}
 		}
 	}
 

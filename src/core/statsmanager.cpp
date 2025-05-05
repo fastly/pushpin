@@ -60,6 +60,7 @@ extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNever
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
+extern QMap<QString, int> groupMethodCountMap;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {
@@ -376,7 +377,7 @@ public:
 	public:
 		enum Type
 		{
-			RequestReceived,
+			RequestReceived,		// 0
 			ConnectionConnected,
 			ConnectionMinute,
 			MessageReceived,
@@ -386,7 +387,7 @@ public:
 			numWsConnect,
 			numClientCount,
 			numHttpClientCount,
-			numWsClientCount,
+			numWsClientCount,		// 10
 			numRpcAuthor,
 			numRpcBabe, 
 			numRpcBeefy, 
@@ -395,8 +396,8 @@ public:
 			numRpcContracts, 
 			numRpcDev, 
 			numRpcEngine, 
-			numRpcEth,				// 20 
-			numRpcNet,
+			numRpcEth, 
+			numRpcNet,				// 20
 			numRpcWeb3,
 			numRpcGrandpa, 
 			numRpcMmr, 
@@ -405,8 +406,8 @@ public:
 			numRpcRpc, 
 			numRpcState, 
 			numRpcSyncstate, 
-			numRpcSystem,			// 30
-			numRpcSubscribe,
+			numRpcSystem,
+			numRpcSubscribe,		// 30
 			numCacheInsert,
 			numCacheHit, 
 			numNeverTimeoutCacheInsert,
@@ -415,15 +416,15 @@ public:
 			numCacheExpiry,
 			numRequestMultiPart,
 			numSubscriptionInsert, 
-			numSubscriptionHit, 	// 40
-			numSubscriptionLookup,
+			numSubscriptionHit,
+			numSubscriptionLookup,	// 40
 			numSubscriptionExpiry,
 			numResponseMultiPart,
 			numCacheItem,			
 			numSubscriptionItem,
 			numNeverTimeoutCacheItem,
 			numAutoRefreshItem,
-			numAREItemCount			// 48
+			numAREItemCount			// 47
 		};
 
 		Type mtype;
@@ -572,6 +573,14 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numNeverTimeoutCacheItem, "number_of_never_timeout_cache_item", "counter", "Number of ws Never Timeout Cache items");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numAutoRefreshItem, "number_of_cache_auto_refresh_item", "counter", "Number of ws Auto-Refresh items");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::numAREItemCount, "number_of_cache_auto_refresh_exception_item", "counter", "Number of ws Auto-Refresh Exception items");
+
+		// user-defined method group count
+		int mapCnt = 48;
+		foreach(QString groupKey, groupMethodCountMap.keys())
+		{
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_" + groupKey, "counter", "Number of ws "+groupKey);
+			mapCnt++;
+		}
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1687,6 +1696,14 @@ private:
 				case PrometheusMetric::numNeverTimeoutCacheItem: value = QVariant(numNeverTimeoutCacheItem); break;
 				case PrometheusMetric::numAutoRefreshItem: value = QVariant(numAutoRefreshItem); break;
 				case PrometheusMetric::numAREItemCount: value = QVariant(numAREItemCount); break;
+				default:
+					int currCnt = 48;
+					if (m.mtype >= currCnt && m.mtype < (currCnt+groupMethodCountMap.size()))
+					{
+						int typeNum = m.mtype - currCnt;
+						value = QVariant(groupMethodCountMap.values()[typeNum]); 
+					}
+					break;
 			}
 
 			if(value.isNull())

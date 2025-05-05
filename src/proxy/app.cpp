@@ -697,6 +697,15 @@ public:
 		bool redisEnable = settings.value("cache/redis_enable").toBool();
 		QString redisHostAddr = settings.value("cache/redis_host_addr").toString();
 		int redisPort = settings.value("cache/redis_port", 6379).toInt();
+		// count method group
+		QStringList countMethodGroups = settings.value("Cache/ws_count_groups").toStringList();
+		QMap<QString, QStringList> countMethodGroupMap;
+		for (int i = 0; i < countMethodGroups.count(); i++)
+		{
+			QString groupKey = countMethodGroups[i];
+			QStringList groupValue = settings.value("Cache/" + groupKey).toStringList();
+			countMethodGroupMap[groupKey] = groupValue;
+		}
 
 		config.cacheEnable = cacheEnable;
 		config.httpBackendUrlList = httpBackendUrlList;
@@ -714,6 +723,8 @@ public:
 		config.redisEnable = redisEnable;
 		config.redisHostAddr = redisHostAddr;
 		config.redisPort = redisPort;
+		config.countMethodGroups = countMethodGroups;
+		config.countMethodGroupMap = countMethodGroupMap;
 
 		for(int n = 0; n < workerCount; ++n)
 		{

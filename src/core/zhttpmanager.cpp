@@ -123,6 +123,9 @@ bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
 
+// count method group
+QMap<QString, QStringList> gCountMethodGroupMap;
+
 // prometheus status
 QList<QString> gCacheMethodRequestCountList;
 QList<QString> gCacheMethodResponseCountList;
@@ -136,6 +139,7 @@ quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeout
 quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
+QMap<QString, int> groupMethodCountMap;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -2852,7 +2856,9 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgParamsFieldName,
 	bool redisEnable,
 	const QString &redisHostAddr,
-	const int redisPort
+	const int redisPort,
+	QStringList countMethodGroups,
+	QMap<QString, QStringList> countMethodGroupMap
 	)
 {
 	gCacheEnable = cacheEnable;
@@ -3003,6 +3009,18 @@ void ZhttpManager::setCacheParameters(
 		qPrintable(gRedisHostAddr), gRedisPort);
 	if (gRedisEnable == true)
 		gRedisContext = connectToRedis();
+
+	// count method group
+	foreach(QString groupKey, countMethodGroupMap.keys())
+	{
+		QString groupTotalStr = groupKey;
+		groupMethodCountMap[groupKey] = 0;
+		QStringList groupStrList = countMethodGroupMap[groupKey];
+		groupTotalStr += " : ";
+		for (int i = 0; i < groupStrList.count(); i++)
+			groupTotalStr += groupStrList[i]+",";
+		gCountMethodGroupMap[groupKey] = groupStrList;
+	}
 }
 
 #include "zhttpmanager.moc"
