@@ -3019,6 +3019,8 @@ void ZhttpManager::setCacheParameters(
 		groupTotalStr += " : ";
 		for (int i = 0; i < groupStrList.count(); i++)
 			groupTotalStr += groupStrList[i]+",";
+		log_debug("[CONFIG] count method group");
+		log_debug("%s", qPrintable(groupTotalStr));
 		gCountMethodGroupMap[groupKey] = groupStrList;
 	}
 }
