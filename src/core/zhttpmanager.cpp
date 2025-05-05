@@ -1429,13 +1429,13 @@ public:
 		}
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
+		qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+		qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
 		if (pCacheItem->cachedFlag == true)
 		{
 			// delete old cache items if it`s not auto_refresh_unerase
 			if ((pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE) == 0)
 			{
-				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-				qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
 				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
 				if (accessDiff > accessTimeoutMSeconds)
 				{
@@ -1476,9 +1476,13 @@ public:
 			// switch backend of the failed response
 			if (pCacheItem->proto == Scheme::http)
 			{
-				// prometheus status
-				if (httpCacheClientConnectFailedCountMap.contains(urlPath))
-					httpCacheClientConnectFailedCountMap[urlPath]++;
+				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
+				if (accessDiff > accessTimeoutMSeconds)
+				{
+					// prometheus status
+					if (httpCacheClientConnectFailedCountMap.contains(urlPath))
+						httpCacheClientConnectFailedCountMap[urlPath]++;
+				}
 
 				urlPath = get_switched_http_backend_url(urlPath);
 				for (int i=0; i<gHttpBackendUrlList.count(); i++)
@@ -1498,9 +1502,14 @@ public:
 			}
 			else if (pCacheItem->proto == Scheme::websocket)
 			{
-				// prometheus status
-				if (wsCacheClientConnectFailedCountMap.contains(urlPath))
-					wsCacheClientConnectFailedCountMap[urlPath]++;
+				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
+				if (accessDiff > accessTimeoutMSeconds)
+				{
+					// prometheus status
+					if (wsCacheClientConnectFailedCountMap.contains(urlPath))
+						wsCacheClientConnectFailedCountMap[urlPath]++;
+				}
+
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
