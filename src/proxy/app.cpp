@@ -725,16 +725,6 @@ public:
 		config.redisPort = redisPort;
 		config.countMethodGroupMap = countMethodGroupMap;
 
-		foreach(QString groupKey, countMethodGroupMap.keys())
-		{
-			QString groupTotalStr = groupKey;
-			QStringList groupStrList = countMethodGroupMap[groupKey];
-			groupTotalStr += " : ";
-			for (int i = 0; i < groupStrList.count(); i++)
-				groupTotalStr += groupStrList[i]+",";
-			log_debug("%s", qPrintable(groupTotalStr));
-		}
-
 		for(int n = 0; n < workerCount; ++n)
 		{
 			Engine::Configuration wconfig = config;

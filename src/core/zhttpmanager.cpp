@@ -3016,7 +3016,7 @@ void ZhttpManager::setCacheParameters(
 		QString groupTotalStr = groupKey;
 		groupMethodCountMap[groupKey] = 0;
 		QStringList groupStrList = countMethodGroupMap[groupKey];
-		groupTotalStr += " : ";
+		groupTotalStr += ":";
 		for (int i = 0; i < groupStrList.count(); i++)
 			groupTotalStr += groupStrList[i]+",";
 		log_debug("%s", qPrintable(groupTotalStr));
