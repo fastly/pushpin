@@ -734,7 +734,6 @@ public:
 			for (int i = 0; i < groupStrList.count(); i++)
 				groupTotalStr += groupStrList[i]+",";
 			log_debug("%s", qPrintable(groupTotalStr));
-			gCountMethodGroupMap[groupKey] = groupStrList;
 		}
 
 		for(int n = 0; n < workerCount; ++n)
