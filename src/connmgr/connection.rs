@@ -286,6 +286,10 @@ fn make_zhttp_request(
         data.stream = true;
     }
 
+    if mode == Mode::HttpStream || mode == Mode::WebSocket {
+        data.router_resp = true;
+    }
+
     data.credits = credits;
 
     let mut addr = [0; 128];
@@ -7684,10 +7688,10 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T201:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
             "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
-            "am,4:true!}",
+            "am,4:true!11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -7812,10 +7816,11 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T220:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T242:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,4:POST,3:uri,23:http://example.com/path,7:he",
             "aders,52:22:4:Host,11:example.com,]22:14:Content-Length,1:",
-            "6,]]7:credits,4:1024#4:more,4:true!6:stream,4:true!}",
+            "6,]]7:credits,4:1024#4:more,4:true!6:stream,4:true!11:rout",
+            "er-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -7967,10 +7972,10 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T201:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
             "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
-            "am,4:true!}",
+            "am,4:true!11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8114,10 +8119,11 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T220:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T242:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,4:POST,3:uri,23:http://example.com/path,7:he",
             "aders,52:22:4:Host,11:example.com,]22:14:Content-Length,1:",
-            "6,]]7:credits,4:1024#4:more,4:true!6:stream,4:true!}",
+            "6,]]7:credits,4:1024#4:more,4:true!6:stream,4:true!11:rout",
+            "er-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8214,10 +8220,10 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T201:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
             "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
-            "am,4:true!}",
+            "am,4:true!11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8381,10 +8387,10 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T201:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
             "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
-            "am,4:true!}",
+            "am,4:true!11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8497,11 +8503,11 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T255:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T277:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,119:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
-            ",5:abcde,]]7:credits,4:1024#}",
+            ",5:abcde,]]7:credits,4:1024#11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8669,12 +8675,12 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T309:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T331:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,173:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
             ",5:abcde,]50:24:Sec-WebSocket-Extensions,18:permessage-def",
-            "late,]]7:credits,4:1024#}",
+            "late,]]7:credits,4:1024#11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -8862,11 +8868,11 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T255:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T277:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,119:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
-            ",5:abcde,]]7:credits,4:1024#}",
+            ",5:abcde,]]7:credits,4:1024#11:router-resp,4:true!}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);

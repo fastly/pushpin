@@ -1513,21 +1513,27 @@ impl Worker {
                     }
                     // stream_handle.recv
                     Select8::R8(result) => match result {
-                        Ok((msg, _from_router)) => {
+                        Ok((msg, from_router)) => {
                             let msg_data = &msg.get()[..];
 
-                            let (addr, offset) = match get_addr_and_offset(msg_data) {
-                                Ok(ret) => ret,
-                                Err(_) => {
-                                    warn!("server-worker {}: packet has unexpected format", id);
+                            let offset = if from_router {
+                                0
+                            } else {
+                                let (addr, offset) = match get_addr_and_offset(msg_data) {
+                                    Ok(ret) => ret,
+                                    Err(_) => {
+                                        warn!("server-worker {}: packet has unexpected format", id);
+                                        continue;
+                                    }
+                                };
+
+                                if addr != *instance_id {
+                                    warn!("server-worker {}: packet not for us", id);
                                     continue;
                                 }
-                            };
 
-                            if addr != *instance_id {
-                                warn!("server-worker {}: packet not for us", id);
-                                continue;
-                            }
+                                offset
+                            };
 
                             let scratch = arena::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -2368,12 +2374,16 @@ impl TestServer {
         Ok(zmq::Message::from(&dest[..size]))
     }
 
-    fn respond_stream(id: &[u8]) -> Result<zmq::Message, io::Error> {
+    fn respond_stream(prefix_addr: bool, id: &[u8]) -> Result<zmq::Message, io::Error> {
         let mut dest = [0; 1024];
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
 
-        cursor.write_all(b"test T")?;
+        if prefix_addr {
+            cursor.write_all(b"test ")?;
+        }
+
+        cursor.write_all(b"T")?;
 
         let mut w = tnetstring::Writer::new(&mut cursor);
 
@@ -2397,6 +2407,13 @@ impl TestServer {
         w.write_string(b"headers")?;
 
         w.start_array()?;
+
+        if !prefix_addr {
+            w.start_array()?;
+            w.write_string(b"Response-Path")?;
+            w.write_string(b"router")?;
+            w.end_array()?;
+        }
 
         w.start_array()?;
         w.write_string(b"Content-Length")?;
@@ -2634,6 +2651,7 @@ impl TestServer {
                 let mut id = "";
                 let mut method = "";
                 let mut uri = "";
+                let mut router_resp = false;
 
                 for f in tnetstring::parse_map(&msg[1..]).unwrap() {
                     let f = f.unwrap();
@@ -2651,8 +2669,15 @@ impl TestServer {
                             let s = tnetstring::parse_string(f.data).unwrap();
                             uri = str::from_utf8(s).unwrap();
                         }
+                        "router-resp" => {
+                            router_resp = tnetstring::parse_bool(f.data).unwrap();
+                        }
                         _ => {}
                     }
+                }
+
+                if !uri.contains("router-resp") {
+                    router_resp = false;
                 }
 
                 assert_eq!(method, "GET");
@@ -2661,8 +2686,15 @@ impl TestServer {
                     let msg = Self::respond_ws(id.as_bytes()).unwrap();
                     out_sock.send(msg, 0).unwrap();
                 } else {
-                    let msg = Self::respond_stream(id.as_bytes()).unwrap();
-                    out_sock.send(msg, 0).unwrap();
+                    let msg = Self::respond_stream(!router_resp, id.as_bytes()).unwrap();
+
+                    if router_resp {
+                        in_stream_sock
+                            .send_multipart([b"test".as_slice(), &[], &msg], 0)
+                            .unwrap();
+                    } else {
+                        out_sock.send(msg, 0).unwrap();
+                    }
                 }
             }
 
@@ -2861,6 +2893,21 @@ pub mod tests {
         assert_eq!(
             str::from_utf8(&buf).unwrap(),
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
+        );
+
+        // stream (http) with responses via router
+
+        let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
+        client
+            .write(b"GET /hello?router-resp HTTP/1.0\r\nHost: example.com\r\n\r\n")
+            .unwrap();
+
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).unwrap();
+
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            "HTTP/1.0 200 OK\r\nResponse-Path: router\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
         // stream (ws)
