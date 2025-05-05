@@ -3011,6 +3011,7 @@ void ZhttpManager::setCacheParameters(
 		gRedisContext = connectToRedis();
 
 	// count method group
+	log_debug("[CONFIG] count method group");
 	foreach(QString groupKey, countMethodGroupMap.keys())
 	{
 		QString groupTotalStr = groupKey;
@@ -3019,7 +3020,6 @@ void ZhttpManager::setCacheParameters(
 		groupTotalStr += " : ";
 		for (int i = 0; i < groupStrList.count(); i++)
 			groupTotalStr += groupStrList[i]+",";
-		log_debug("[CONFIG] count method group");
 		log_debug("%s", qPrintable(groupTotalStr));
 		gCountMethodGroupMap[groupKey] = groupStrList;
 	}
