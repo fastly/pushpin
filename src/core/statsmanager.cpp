@@ -585,35 +585,26 @@ public:
 			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_" + groupKey, "counter", "Number of ws "+groupKey);
 			mapCnt++;
 		}
-		currCnt += groupMethodCountMap.size();
-		if (m.mtype >= currCnt && m.mtype < (currCnt+httpCacheClientConnectFailedCountMap.size()))
+		for (int i=0; i<gHttpCacheClientConnect.count(); i++)
 		{
-			int typeNum = m.mtype - currCnt;
-			QString key = gHttpCacheClientConnect[typeNum];
-			value = QVariant((unsigned long long)httpCacheClientConnectFailedCountMap[key]); 
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_http"+QString::number(i+1), "counter", gHttpCacheClientConnect[i]);
+			mapCnt++;
 		}
-		currCnt += httpCacheClientConnectFailedCountMap.size();
-		if (m.mtype >= currCnt && m.mtype < (currCnt+httpCacheClientInvalidResponseCountMap.size()))
+		for (int i=0; i<gHttpCacheClientConnect.count(); i++)
 		{
-			int typeNum = m.mtype - currCnt;
-			QString key = gHttpCacheClientConnect[typeNum];
-			value = QVariant((unsigned long long)httpCacheClientInvalidResponseCountMap[key]); 
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_http"+QString::number(i+1), "counter", gHttpCacheClientConnect[i]);
+			mapCnt++;
 		}
-		currCnt += httpCacheClientInvalidResponseCountMap.size();
-		if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientConnectFailedCountMap.size()))
+		for (int i=0; i<gWsCacheClientConnect.count(); i++)
 		{
-			int typeNum = m.mtype - currCnt;
-			QString key = gWsCacheClientConnect[typeNum];
-			value = QVariant((unsigned long long)wsCacheClientConnectFailedCountMap[key]); 
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_ws"+QString::number(i+1), "counter", gWsCacheClientConnect[i]);
+			mapCnt++;
 		}
-		currCnt += wsCacheClientConnectFailedCountMap.size();
-		if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientInvalidResponseCountMap.size()))
+		for (int i=0; i<gWsCacheClientConnect.count(); i++)
 		{
-			int typeNum = m.mtype - currCnt;
-			QString key = gWsCacheClientConnect[typeNum];
-			value = QVariant((unsigned long long)wsCacheClientInvalidResponseCountMap[key]); 
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_ws"+QString::number(i+1), "counter", gWsCacheClientConnect[i]);
+			mapCnt++;
 		}
-		currCnt += wsCacheClientInvalidResponseCountMap.size();
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1741,28 +1732,28 @@ private:
 					{
 						int typeNum = m.mtype - currCnt;
 						QString key = gHttpCacheClientConnect[typeNum];
-						value = QVariant((unsigned long long)httpCacheClientConnectFailedCountMap[key]); 
+						value = QVariant(httpCacheClientConnectFailedCountMap[key]); 
 					}
 					currCnt += httpCacheClientConnectFailedCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+httpCacheClientInvalidResponseCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
 						QString key = gHttpCacheClientConnect[typeNum];
-						value = QVariant((unsigned long long)httpCacheClientInvalidResponseCountMap[key]); 
+						value = QVariant(httpCacheClientInvalidResponseCountMap[key]); 
 					}
 					currCnt += httpCacheClientInvalidResponseCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientConnectFailedCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
 						QString key = gWsCacheClientConnect[typeNum];
-						value = QVariant((unsigned long long)wsCacheClientConnectFailedCountMap[key]); 
+						value = QVariant(wsCacheClientConnectFailedCountMap[key]); 
 					}
 					currCnt += wsCacheClientConnectFailedCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientInvalidResponseCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
 						QString key = gWsCacheClientConnect[typeNum];
-						value = QVariant((unsigned long long)wsCacheClientInvalidResponseCountMap[key]); 
+						value = QVariant(wsCacheClientInvalidResponseCountMap[key]); 
 					}
 					currCnt += wsCacheClientInvalidResponseCountMap.size();
 					break;
