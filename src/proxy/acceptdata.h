@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -53,6 +53,7 @@ public:
 		int inSeq;
 		int outSeq;
 		int outCredits;
+		bool routerResp;
 		QVariant userData;
 
 		Request() :
@@ -65,7 +66,8 @@ public:
 			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
-			outCredits(-1)
+			outCredits(-1),
+			routerResp(false)
 		{
 		}
 	};

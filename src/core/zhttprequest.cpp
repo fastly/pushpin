@@ -102,6 +102,7 @@ public:
 	std::unique_ptr<Timer> keepAliveTimer;
 	std::unique_ptr<Timer> finishTimer;
 	bool multi;
+	bool routerResp;
 	bool quiet;
 	DeferCall deferCall;
 
@@ -132,6 +133,7 @@ public:
 		writableChanged(false),
 		errored(false),
 		multi(false),
+		routerResp(false),
 		quiet(false)
 	{
 		expireTimer = std::make_unique<Timer>();
@@ -220,6 +222,9 @@ public:
 		if(packet.multi)
 			multi = true;
 
+		if(packet.routerResp)
+			routerResp = true;
+
 		if(!packet.more)
 			haveRequestBody = true;
 
@@ -239,6 +244,7 @@ public:
 			outSeq = ss.outSeq;
 		if(ss.outCredits >= 0)
 			outCredits = ss.outCredits;
+		routerResp = ss.routerResp;
 		userData = ss.userData;
 
 		if(ss.responseCode != -1)
@@ -853,7 +859,7 @@ public:
 		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 		
-		manager->writeHttp(out, rid.first);
+		manager->writeHttp(out, rid.first, routerResp);
 	}
 
 	void writeCancel()
@@ -1302,6 +1308,7 @@ ZhttpRequest::ServerState ZhttpRequest::serverState() const
 	ss.inSeq = d->inSeq;
 	ss.outSeq = d->outSeq;
 	ss.outCredits = d->outCredits;
+	ss.routerResp = d->routerResp;
 	ss.userData = d->userData;
 	return ss;
 }
@@ -1428,6 +1435,11 @@ bool ZhttpRequest::isServer() const
 QByteArray ZhttpRequest::toAddress() const
 {
 	return d->toAddress;
+}
+
+bool ZhttpRequest::routerResp() const
+{
+	return d->routerResp;
 }
 
 int ZhttpRequest::outSeqInc()

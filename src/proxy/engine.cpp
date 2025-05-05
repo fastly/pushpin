@@ -890,6 +890,7 @@ private:
 			ss.inSeq = req.inSeq;
 			ss.outSeq = req.outSeq;
 			ss.outCredits = req.outCredits;
+			ss.routerResp = req.routerResp;
 			ss.userData = req.userData;
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);

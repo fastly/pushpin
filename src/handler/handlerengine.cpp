@@ -1036,6 +1036,7 @@ private:
 					rpreq.inSeq = rs.inSeq;
 					rpreq.outSeq = rs.outSeq;
 					rpreq.outCredits = rs.outCredits;
+					rpreq.routerResp = rs.routerResp;
 					rpreq.userData = rs.userData;
 
 					rp.requests += rpreq;
@@ -1101,6 +1102,7 @@ private:
 			ss.inSeq = rs.inSeq;
 			ss.outSeq = rs.outSeq;
 			ss.outCredits = rs.outCredits;
+			ss.routerResp = rs.routerResp;
 			ss.userData = rs.userData;
 
 			// take over responsibility for request

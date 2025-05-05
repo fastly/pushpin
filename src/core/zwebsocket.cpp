@@ -91,6 +91,7 @@ public:
 	int inContentType;
 	int outContentType;
 	bool multi;
+	bool routerResp;
 	DeferCall deferCall;
 
 	Private(ZWebSocket *_q) :
@@ -118,7 +119,8 @@ public:
 		outSize(0),
 		inContentType(-1),
 		outContentType((int)Frame::Text),
-		multi(false)
+		multi(false),
+		routerResp(false)
 	{
 		expireTimer = std::make_unique<Timer>();
 		expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
@@ -183,6 +185,9 @@ public:
 
 		if(packet.multi)
 			multi = true;
+
+		if(packet.routerResp)
+			routerResp = true;
 
 		return true;
 	}
@@ -762,7 +767,7 @@ public:
 		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 
-		manager->writeWs(out, rid.first);
+		manager->writeWs(out, rid.first, routerResp);
 	}
 
 	void writeFrameInternal(const Frame &frame, int credits = -1)
@@ -1274,6 +1279,11 @@ bool ZWebSocket::isServer() const
 QByteArray ZWebSocket::toAddress() const
 {
 	return d->toAddress;
+}
+
+bool ZWebSocket::routerResp() const
+{
+	return d->routerResp;
 }
 
 int ZWebSocket::outSeqInc()
