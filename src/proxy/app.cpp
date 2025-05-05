@@ -728,7 +728,6 @@ public:
 		foreach(QString groupKey, config.countMethodGroupMap.keys())
 		{
 			QString groupTotalStr = groupKey;
-			groupMethodCountMap[groupKey] = 0;
 			QStringList groupStrList = config.countMethodGroupMap[groupKey];
 			groupTotalStr += " : ";
 			for (int i = 0; i < groupStrList.count(); i++)
