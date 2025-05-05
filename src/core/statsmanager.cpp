@@ -50,6 +50,9 @@
 
 #define TICK_DURATION_MS 10
 
+extern QStringList gHttpBackendUrlList;
+extern QStringList gWsBackendUrlList;
+
 extern quint32 numRequestReceived, numMessageSent, numWsConnect;
 extern quint32 numClientCount, numHttpClientCount, numWsClientCount;
 extern quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildState;
@@ -585,24 +588,24 @@ public:
 			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_" + groupKey, "counter", "Number of ws "+groupKey);
 			mapCnt++;
 		}
-		for (int i=0; i<gHttpCacheClientConnect.count(); i++)
+		for (int i=0; i<gHttpBackendUrlList.count(); i++)
 		{
-			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_http"+QString::number(i+1), "counter", gHttpCacheClientConnect[i]);
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_http"+QString::number(i+1), "counter", gHttpBackendUrlList[i]);
 			mapCnt++;
 		}
-		for (int i=0; i<gHttpCacheClientConnect.count(); i++)
+		for (int i=0; i<gHttpBackendUrlList.count(); i++)
 		{
-			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_http"+QString::number(i+1), "counter", gHttpCacheClientConnect[i]);
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_http"+QString::number(i+1), "counter", gHttpBackendUrlList[i]);
 			mapCnt++;
 		}
-		for (int i=0; i<gWsCacheClientConnect.count(); i++)
+		for (int i=0; i<gWsBackendUrlList.count(); i++)
 		{
-			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_ws"+QString::number(i+1), "counter", gWsCacheClientConnect[i]);
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_connect_failed_to_ws"+QString::number(i+1), "counter", gWsBackendUrlList[i]);
 			mapCnt++;
 		}
-		for (int i=0; i<gWsCacheClientConnect.count(); i++)
+		for (int i=0; i<gWsBackendUrlList.count(); i++)
 		{
-			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_ws"+QString::number(i+1), "counter", gWsCacheClientConnect[i]);
+			prometheusMetrics += PrometheusMetric((PrometheusMetric::Type)(mapCnt), "number_of_invalid_response_from_ws"+QString::number(i+1), "counter", gWsBackendUrlList[i]);
 			mapCnt++;
 		}
 
