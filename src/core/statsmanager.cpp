@@ -1734,28 +1734,28 @@ private:
 					if (m.mtype >= currCnt && m.mtype < (currCnt+httpCacheClientConnectFailedCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
-						QString key = gHttpCacheClientConnect[typeNum];
+						QString key = gHttpBackendUrlList[typeNum];
 						value = QVariant(httpCacheClientConnectFailedCountMap[key]); 
 					}
 					currCnt += httpCacheClientConnectFailedCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+httpCacheClientInvalidResponseCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
-						QString key = gHttpCacheClientConnect[typeNum];
+						QString key = gHttpBackendUrlList[typeNum];
 						value = QVariant(httpCacheClientInvalidResponseCountMap[key]); 
 					}
 					currCnt += httpCacheClientInvalidResponseCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientConnectFailedCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
-						QString key = gWsCacheClientConnect[typeNum];
+						QString key = gWsBackendUrlList[typeNum];
 						value = QVariant(wsCacheClientConnectFailedCountMap[key]); 
 					}
 					currCnt += wsCacheClientConnectFailedCountMap.size();
 					if (m.mtype >= currCnt && m.mtype < (currCnt+wsCacheClientInvalidResponseCountMap.size()))
 					{
 						int typeNum = m.mtype - currCnt;
-						QString key = gWsCacheClientConnect[typeNum];
+						QString key = gWsBackendUrlList[typeNum];
 						value = QVariant(wsCacheClientInvalidResponseCountMap[key]); 
 					}
 					currCnt += wsCacheClientInvalidResponseCountMap.size();
