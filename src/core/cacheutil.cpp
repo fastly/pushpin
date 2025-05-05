@@ -984,6 +984,7 @@ static void remove_old_cache_items()
 		int cacheItemCount = 0;
 		int subscribeItemCount = 0;
 		int neverTimeoutCacheItemCount = 0;
+		int autoRefreshItemCount = 0;
 
 		// Remove items where the value is greater than 30
 		for	(int i=0; i < itemCount; i++)
@@ -993,10 +994,11 @@ static void remove_old_cache_items()
 			// prometheus status
 			if (pCacheItem->methodType == CACHE_METHOD)
 			{
+				cacheItemCount++;
 				if ((pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
 					neverTimeoutCacheItemCount++;
 				else
-					cacheItemCount++;
+					autoRefreshItemCount++;
 			}
 			else if (pCacheItem->methodType == SUBSCRIBE_METHOD)
 			{
@@ -1050,6 +1052,8 @@ static void remove_old_cache_items()
 		numCacheItem = cacheItemCount;
 		numSubscriptionItem = subscribeItemCount;
 		numNeverTimeoutCacheItem = neverTimeoutCacheItemCount;
+		numAutoRefreshItem = autoRefreshItemCount;
+		numAREItemCount = cacheItemCount - autoRefreshItemCount;
 
 		for	(int i=0; i < deleteIdList.count(); i++)
 		{
