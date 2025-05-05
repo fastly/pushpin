@@ -725,10 +725,10 @@ public:
 		config.redisPort = redisPort;
 		config.countMethodGroupMap = countMethodGroupMap;
 
-		foreach(QString groupKey, config.countMethodGroupMap.keys())
+		foreach(QString groupKey, countMethodGroupMap.keys())
 		{
 			QString groupTotalStr = groupKey;
-			QStringList groupStrList = config.countMethodGroupMap[groupKey];
+			QStringList groupStrList = countMethodGroupMap[groupKey];
 			groupTotalStr += " : ";
 			for (int i = 0; i < groupStrList.count(); i++)
 				groupTotalStr += groupStrList[i]+",";
