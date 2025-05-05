@@ -698,12 +698,12 @@ public:
 		QString redisHostAddr = settings.value("cache/redis_host_addr").toString();
 		int redisPort = settings.value("cache/redis_port", 6379).toInt();
 		// count method group
-		QStringList countMethodGroups = settings.value("Cache/ws_count_groups").toStringList();
+		QStringList countMethodGroups = settings.value("cache/ws_count_groups").toStringList();
 		QMap<QString, QStringList> countMethodGroupMap;
 		for (int i = 0; i < countMethodGroups.count(); i++)
 		{
 			QString groupKey = countMethodGroups[i];
-			QStringList groupValue = settings.value("Cache/" + groupKey).toStringList();
+			QStringList groupValue = settings.value("cache/" + groupKey).toStringList();
 			countMethodGroupMap[groupKey] = groupValue;
 		}
 
