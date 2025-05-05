@@ -1477,7 +1477,7 @@ public:
 			if (pCacheItem->proto == Scheme::http)
 			{
 				// prometheus status
-				httpCacheClientConnectFailedCountMap[urlPath]++;
+				////httpCacheClientConnectFailedCountMap[urlPath]++;
 
 				urlPath = get_switched_http_backend_url(urlPath);
 				for (int i=0; i<gHttpBackendUrlList.count(); i++)
@@ -1498,7 +1498,7 @@ public:
 			else if (pCacheItem->proto == Scheme::websocket)
 			{
 				// prometheus status
-				wsCacheClientConnectFailedCountMap[urlPath]++;
+				////wsCacheClientConnectFailedCountMap[urlPath]++;
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
@@ -1938,7 +1938,7 @@ public:
 					if (pCacheItem->httpBackendNo >= 0)
 					{
 						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
-						httpCacheClientInvalidResponseCountMap[urlPath]++;
+						////httpCacheClientInvalidResponseCountMap[urlPath]++;
 					}
 					
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
@@ -1991,7 +1991,7 @@ public:
 					if (pCacheItem->httpBackendNo >= 0)
 					{
 						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
-						httpCacheClientInvalidResponseCountMap[urlPath]++;
+						////httpCacheClientInvalidResponseCountMap[urlPath]++;
 					}
 
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
@@ -2240,7 +2240,7 @@ public:
 						if (ccIndex >= 0)
 						{
 							QString urlPath = gWsBackendUrlList[ccIndex];
-							wsCacheClientInvalidResponseCountMap[urlPath]++;
+							////wsCacheClientInvalidResponseCountMap[urlPath]++;
 						}
 
 						return 0;
