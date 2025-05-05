@@ -78,7 +78,7 @@ public:
 		const QString &msgParamsFieldName,
 		bool redisEnable,
 		const QString &redisHostAddr,
-		const int redisPort
+		const int redisPort,
 		QStringList countMethodGroups,
 		QMap<QString, QStringList> countMethodGroupMap);
 	
