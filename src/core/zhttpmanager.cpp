@@ -1477,7 +1477,8 @@ public:
 			if (pCacheItem->proto == Scheme::http)
 			{
 				// prometheus status
-				////httpCacheClientConnectFailedCountMap[urlPath]++;
+				if (httpCacheClientConnectFailedCountMap.contains(urlPath))
+					httpCacheClientConnectFailedCountMap[urlPath]++;
 
 				urlPath = get_switched_http_backend_url(urlPath);
 				for (int i=0; i<gHttpBackendUrlList.count(); i++)
@@ -1938,7 +1939,8 @@ public:
 					if (pCacheItem->httpBackendNo >= 0)
 					{
 						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
-						////httpCacheClientInvalidResponseCountMap[urlPath]++;
+						if (httpCacheClientInvalidResponseCountMap.contains(urlPath))
+							httpCacheClientInvalidResponseCountMap[urlPath]++;
 					}
 					
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
@@ -1991,7 +1993,8 @@ public:
 					if (pCacheItem->httpBackendNo >= 0)
 					{
 						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
-						////httpCacheClientInvalidResponseCountMap[urlPath]++;
+						if (httpCacheClientInvalidResponseCountMap.contains(urlPath))
+							httpCacheClientInvalidResponseCountMap[urlPath]++;
 					}
 
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
