@@ -1499,7 +1499,8 @@ public:
 			else if (pCacheItem->proto == Scheme::websocket)
 			{
 				// prometheus status
-				////wsCacheClientConnectFailedCountMap[urlPath]++;
+				if (wsCacheClientConnectFailedCountMap.contains(urlPath))
+					wsCacheClientConnectFailedCountMap[urlPath]++;
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
@@ -2243,7 +2244,8 @@ public:
 						if (ccIndex >= 0)
 						{
 							QString urlPath = gWsBackendUrlList[ccIndex];
-							////wsCacheClientInvalidResponseCountMap[urlPath]++;
+							if (wsCacheClientInvalidResponseCountMap.contains(urlPath))
+								wsCacheClientInvalidResponseCountMap[urlPath]++;
 						}
 
 						return 0;
