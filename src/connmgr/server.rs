@@ -2408,6 +2408,13 @@ impl TestServer {
 
         w.start_array()?;
 
+        if !prefix_addr {
+            w.start_array()?;
+            w.write_string(b"Response-Path")?;
+            w.write_string(b"router")?;
+            w.end_array()?;
+        }
+
         w.start_array()?;
         w.write_string(b"Content-Length")?;
         w.write_string(b"6")?;
@@ -2900,7 +2907,7 @@ pub mod tests {
 
         assert_eq!(
             str::from_utf8(&buf).unwrap(),
-            "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
+            "HTTP/1.0 200 OK\r\nResponse-Path: router\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
         // stream (ws)
