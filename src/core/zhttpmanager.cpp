@@ -140,6 +140,10 @@ quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 QMap<QString, int> groupMethodCountMap;
+QMap<QString, int> httpCacheClientConnectFailedCountMap;
+QMap<QString, int> httpCacheClientInvalidResponseCountMap;
+QMap<QString, int> wsCacheClientConnectFailedCountMap;
+QMap<QString, int> wsCacheClientInvalidResponseCountMap;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -1472,7 +1476,20 @@ public:
 			// switch backend of the failed response
 			if (pCacheItem->proto == Scheme::http)
 			{
+				// prometheus status
+				httpCacheClientConnectFailedCountMap[urlPath]++;
+
 				urlPath = get_switched_http_backend_url(urlPath);
+				for (int i=0; i<gHttpBackendUrlList.count(); i++)
+				{
+					if (gHttpBackendUrlList[i] == urlPath)
+					{
+						pCacheItem->httpBackendNo = i;
+						store_cache_item_field(itemId, "httpBackendNo", pCacheItem->httpBackendNo);
+						break;
+					}
+				}
+
 				QByteArray reqBody = pCacheItem->requestPacket.body;
 				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
 				replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
@@ -1480,6 +1497,8 @@ public:
 			}
 			else if (pCacheItem->proto == Scheme::websocket)
 			{
+				// prometheus status
+				wsCacheClientConnectFailedCountMap[urlPath]++;
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
@@ -1915,6 +1934,13 @@ public:
 				if (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true && 
 					pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
+					// prometheus status
+					if (pCacheItem->httpBackendNo >= 0)
+					{
+						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
+						httpCacheClientInvalidResponseCountMap[urlPath]++;
+					}
+					
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1961,6 +1987,13 @@ public:
 			{
 				if ((bodyParseSucceed == false || packetMsg.isResultNull == true) && pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 				{
+					// prometheus status
+					if (pCacheItem->httpBackendNo >= 0)
+					{
+						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
+						httpCacheClientInvalidResponseCountMap[urlPath]++;
+					}
+
 					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
 					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 					store_cache_item_field(itemId, "lastAccessTime", pCacheItem->lastAccessTime);
@@ -2201,6 +2234,14 @@ public:
 						log_debug("[WS] get NULL response, retrying %d", pCacheItem->retryCount);
 						pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
+						int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
+						// prometheus status
+						if (ccIndex >= 0)
+						{
+							QString urlPath = gWsBackendUrlList[ccIndex];
+							wsCacheClientInvalidResponseCountMap[urlPath]++;
+						}
 
 						return 0;
 					}
@@ -2928,12 +2969,18 @@ void ZhttpManager::setCacheParameters(
 
 	log_debug("[CONFIG] gHttpBackendUrlList");
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
-		log_debug("%s", qPrintable(gHttpBackendUrlList[i]));
+		QString connectPath = gHttpBackendUrlList[i];
+		log_debug("%s", qPrintable(connectPath));
+		httpCacheClientConnectFailedCountMap[connectPath] = 0;
+		httpCacheClientInvalidResponseCountMap[connectPath] = 0;
 	}
 
 	log_debug("[CONFIG] gWsBackendUrlList");
 	for (int i = 0; i < gWsBackendUrlList.size(); ++i) {
-		log_debug("%s", qPrintable(gWsBackendUrlList[i]));
+		QString connectPath = gWsBackendUrlList[i];
+		log_debug("%s", qPrintable(connectPath));
+		wsCacheClientConnectFailedCountMap[connectPath] = 0;
+		wsCacheClientInvalidResponseCountMap[connectPath] = 0;
 	}
 
 	log_debug("[CONFIG] gCacheMethodList");
