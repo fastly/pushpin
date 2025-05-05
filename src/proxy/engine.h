@@ -111,7 +111,6 @@ public:
 		bool redisEnable;
 		QString redisHostAddr;
 		int redisPort;
-		QStringList countMethodGroups;
 		QMap<QString, QStringList> countMethodGroupMap;
 
 		Configuration() :

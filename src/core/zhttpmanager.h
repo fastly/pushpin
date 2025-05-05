@@ -79,7 +79,6 @@ public:
 		bool redisEnable,
 		const QString &redisHostAddr,
 		const int redisPort,
-		QStringList countMethodGroups,
 		QMap<QString, QStringList> countMethodGroupMap);
 	
 	int create_wsCacheClientProcesses();

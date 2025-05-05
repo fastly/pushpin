@@ -723,8 +723,19 @@ public:
 		config.redisEnable = redisEnable;
 		config.redisHostAddr = redisHostAddr;
 		config.redisPort = redisPort;
-		config.countMethodGroups = countMethodGroups;
 		config.countMethodGroupMap = countMethodGroupMap;
+
+		foreach(QString groupKey, config.countMethodGroupMap.keys())
+		{
+			QString groupTotalStr = groupKey;
+			groupMethodCountMap[groupKey] = 0;
+			QStringList groupStrList = config.countMethodGroupMap[groupKey];
+			groupTotalStr += " : ";
+			for (int i = 0; i < groupStrList.count(); i++)
+				groupTotalStr += groupStrList[i]+",";
+			log_debug("%s", qPrintable(groupTotalStr));
+			gCountMethodGroupMap[groupKey] = groupStrList;
+		}
 
 		for(int n = 0; n < workerCount; ++n)
 		{
