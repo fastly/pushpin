@@ -1080,6 +1080,14 @@ public:
 				}
 				else
 				{
+					QString tmpStr = p.headers[HTTP_REFRESH_HEADER];
+					log_debug("[QQQQQ] %s", qPrintable(tmpStr));
+					QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
+					CacheItem *pCacheItem = load_cache_item(msgIdByte);
+					if (pCacheItem != NULL)
+					{
+						log_debug("[PPPPP]");
+					}
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
 				}
