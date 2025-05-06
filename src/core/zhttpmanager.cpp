@@ -1085,7 +1085,7 @@ public:
 					CacheItem *pCacheItem = load_cache_item(msgIdByte);
 					if (pCacheItem != NULL)
 					{
-						pCacheItem->requestPacket = p;
+						pCacheItem->requestPacket.ids[0].id = id.id;
 						store_cache_item(msgIdByte);
 					}
 					// remove HTTP_REFRESH_HEADER header
