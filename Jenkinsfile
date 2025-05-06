@@ -22,8 +22,8 @@ def tagName = null
 def slackChannel = null
 def emailToSlack = [
   'jkarneges@fastly.com': '@jkarneges',
-  'madeline.pratt@fastly.com': '@maddie',
   'ricky.hosfelt@fastly.com': '@Ricky',
+  'serra.abak@fastly.com': '@Serra',
 ]
 
 def configureGitCreds() {
