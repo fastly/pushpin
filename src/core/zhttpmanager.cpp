@@ -1926,65 +1926,67 @@ public:
 		if (parse_packet_msg(Scheme::http, p, packetMsg) < 0)
 			bodyParseSucceed = false;
 
-		// convert to QByteArray
-		QString tmpStr = packetMsg.id;
-		QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
-
-		CacheItem *pCacheItem = load_cache_item(msgIdByte);
-		if (pCacheItem != NULL)
+		if (bodyParseSucceed == true)
 		{
-			// if not http, return
-			if (pCacheItem->proto != Scheme::http)
-			{
-				log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(packetMsg.id));
-				return -1;
-			}
+			// convert to QByteArray
+			QString tmpStr = packetMsg.id;
+			QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 
-			if (pCacheItem->cachedFlag == false && 
-				(bodyParseSucceed == false || packetMsg.isResultNull == true) && 
-				pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
+			CacheItem *pCacheItem = load_cache_item(msgIdByte);
+			if (pCacheItem != NULL)
 			{
-				// prometheus status
-				if (pCacheItem->httpBackendNo >= 0)
+				// if not http, return
+				if (pCacheItem->proto != Scheme::http)
 				{
-					QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
-					if (httpCacheClientInvalidResponseCountMap.contains(urlPath))
-						httpCacheClientInvalidResponseCountMap[urlPath]++;
+					log_debug("[HTTP] detected non http response with cache item id %s", qPrintable(packetMsg.id));
+					return -1;
 				}
-				
-				log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
-				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
-				store_cache_item_field(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
+				if (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true && 
+					pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
+				{
+					// prometheus status
+					if (pCacheItem->httpBackendNo >= 0)
+					{
+						QString urlPath = gHttpBackendUrlList[pCacheItem->httpBackendNo];
+						if (httpCacheClientInvalidResponseCountMap.contains(urlPath))
+							httpCacheClientInvalidResponseCountMap[urlPath]++;
+					}
+					
+					log_debug("[HTTP] get NULL response, retrying %d", pCacheItem->retryCount);
+					pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+
+					store_cache_item_field(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
+					return 0;
+				}
+
+				pCacheItem->retryCount = 0;
+				pCacheItem->responsePacket = p;
+				pCacheItem->msgId = 0;
+				pCacheItem->newMsgId = 0;
+				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				pCacheItem->cachedFlag = true;
+				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
+				// recover original msgId
+				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
+
+				// send response to all clients
+				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
+				{
+					send_http_response_to_client(pCacheItem->responsePacket, 
+						pCacheItem->msgId,
+						pCacheItem->clientMap[cliId].msgId, 
+						pCacheItem->clientMap[cliId].from, 
+						cliId);
+					gHttpClientMap.remove(cliId);
+					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+				}
+				pCacheItem->clientMap.clear();
+
+				store_cache_item(msgIdByte);
+
 				return 0;
 			}
-
-			pCacheItem->retryCount = 0;
-			pCacheItem->responsePacket = p;
-			pCacheItem->msgId = 0;
-			pCacheItem->newMsgId = 0;
-			pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-			pCacheItem->cachedFlag = true;
-			log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
-			// recover original msgId
-			replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
-
-			// send response to all clients
-			foreach(QByteArray cliId, pCacheItem->clientMap.keys())
-			{
-				send_http_response_to_client(pCacheItem->responsePacket, 
-					pCacheItem->msgId,
-					pCacheItem->clientMap[cliId].msgId, 
-					pCacheItem->clientMap[cliId].from, 
-					cliId);
-				gHttpClientMap.remove(cliId);
-				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-			}
-			pCacheItem->clientMap.clear();
-
-			store_cache_item(msgIdByte);
-
-			return 0;
 		}
 		
 		// it`s not the response from switch-backend or auto-refresh
