@@ -755,6 +755,8 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 
 void store_cache_item(const QByteArray& itemId)
 {
+	QElapsedTimer timer;
+	timer.start();
 	if (gRedisEnable == false)
 	{
 		// global cache item map
@@ -773,6 +775,8 @@ void store_cache_item(const QByteArray& itemId)
 			log_debug("[REDIS] not loaded cache item %s", itemId.toHex().data());
 		}
 	}
+	qint64 nsecs = timer.nsecsElapsed();
+	log_debug("[PERF] store_cache_item %ld ns", nsecs);
 	
 	return;
 }
