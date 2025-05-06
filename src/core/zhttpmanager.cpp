@@ -1080,7 +1080,7 @@ public:
 				}
 				else
 				{
-					QString tmpStr = p.headers[HTTP_REFRESH_HEADER];
+					QString tmpStr = QString::fromUtf8(p.headers.get(HTTP_REFRESH_HEADER));
 					log_debug("[QQQQQ] %s", qPrintable(tmpStr));
 					QByteArray msgIdByte = QByteArray::fromHex(qPrintable(tmpStr.remove('\"')));
 					CacheItem *pCacheItem = load_cache_item(msgIdByte);
