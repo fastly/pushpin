@@ -6,6 +6,7 @@ from collections import namedtuple
 from datetime import datetime
 from grp import getgrnam
 import gzip
+import hashlib
 from http.client import HTTPConnection, HTTPSConnection
 from io import BytesIO
 from itertools import islice
@@ -19,6 +20,7 @@ import string
 import sys
 import tempfile
 import time
+import urllib.parse
 
 
 PKG_VERSION = '1.0.0'
@@ -406,8 +408,18 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
     return service_backends
 
 
-def sig_key_filename(service_id, dir):
-    return os.path.abspath(os.path.join(dir, '{}.key'.format(service_id)))
+def sig_key_filename(service_id):
+    return f'{service_id}.key'
+
+
+def cert_info_filename(service_id, backend_name):
+    hash = hashlib.sha1(backend_name.encode('utf-8')).hexdigest()[:4]
+    shortname = urllib.parse.quote(backend_name[:32], safe='')
+    return f'{service_id}:{shortname}-{hash}.crtinfo'
+
+
+def in_dir(fname, dir):
+    return os.path.abspath(os.path.join(dir, fname))
 
 
 def make_routes(service, backend, sig_keys_dir):
@@ -461,7 +473,7 @@ def make_routes(service, backend, sig_keys_dir):
         cond_opts += ',sig_iss={}'.format(sig_iss)
 
         if service.extensions.get('sig-key', ''):
-            cond_opts += ',sig_key=file:{}'.format(sig_key_filename(service_id, sig_keys_dir))
+            cond_opts += ',sig_key=file:{}'.format(in_dir(sig_key_filename(service_id), sig_keys_dir))
 
         headers = backend_extensions.get('headers', {})
 
@@ -565,14 +577,7 @@ def write_routes(fname, routes, force=False):
     return write_file(fname, data, mode=0o644, force=force)
 
 
-def write_sig_key(fname, key, uid=None, gid=None):
-    """
-    Returns True if file was changed.
-    """
-    return write_file(fname, key.hex() + '\n', mode=0o400, uid=uid, gid=gid)
-
-
-def write_sig_keys(keys, dir, user=None, group=None):
+def update_dir(dir, extension, files, mode=None, user=None, group=None):
     """
     Returns True if any files were changed/removed.
     """
@@ -597,34 +602,59 @@ def write_sig_keys(keys, dir, user=None, group=None):
         if (uid is not None and statinfo.st_uid != uid) or (gid is not None and statinfo.st_gid != gid):
             my_chown(dir, uid, gid)
 
-    old_key_files = set()
+    old_files = set()
 
     # look up existing key files
     for fname in os.listdir(dir):
-        if fname.endswith('.key'):
-            old_key_files.add(os.path.abspath(os.path.join(dir, fname)))
+        if fname.endswith(extension):
+            old_files.add(in_dir(fname, dir))
 
     changed = False
 
-    # write new key files as necessary, removing from old_key_files
-    for service_id, key in keys.items():
-        fname = sig_key_filename(service_id, dir)
+    # write new files as necessary, removing from old_files
+    for fname, data in files.items():
+        fname = in_dir(fname, dir)
 
-        if fname in old_key_files:
-            old_key_files.remove(fname)
+        if fname in old_files:
+            old_files.remove(fname)
 
-        if write_sig_key(fname, key, uid=uid, gid=gid):
+        if write_file(fname, data, mode=mode, uid=uid, gid=gid):
             changed = True
 
     # remove unneeded key files
-    for fname in old_key_files:
+    for fname in old_files:
         os.remove(fname)
         changed = True
 
     return changed
 
 
-def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=None, sig_keys_group=None):
+def write_sig_keys(keys, dir, user=None, group=None):
+    """
+    Returns True if any files were changed/removed.
+    """
+    files = {}
+    for service_id, key in keys.items():
+        fname = sig_key_filename(service_id)
+        files[fname] = key.hex() + '\n'
+
+    return update_dir(dir, '.key', files, mode=0o400, user=user, group=group)
+
+
+def write_certs(certs, dir, user=None, group=None):
+    """
+    Returns True if any files were changed/removed.
+    """
+    files = {}
+    for service_id, backend_certs in certs.items():
+        for backend_name, cert_info in backend_certs.items():
+            fname = cert_info_filename(service_id, backend_name)
+            files[fname] = json.dumps(cert_info) + '\n'
+
+    return update_dir(dir, '.crtinfo', files, mode=0o400, user=user, group=group)
+
+
+def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, certs_dir, secrets_user=None, secrets_group=None):
     try:
         os.mkdir(cache_dir)
     except FileExistsError:
@@ -658,9 +688,35 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=N
         if key:
             custom_sig_keys[service.id] = b64decode(key)
 
-    keys_changed = write_sig_keys(custom_sig_keys, sig_keys_dir, user=sig_keys_user, group=sig_keys_group)
+    keys_changed = write_sig_keys(custom_sig_keys, sig_keys_dir, user=secrets_user, group=secrets_group)
     if keys_changed:
         logging.info("sig keys changed")
+
+    client_certs = {}
+    for service, backends in services.values():
+        for backend in backends:
+            client_cert = backend.get('ssl_client_cert') or ''
+            client_key_info = backend.get('encrypted_ssl_client_key') or {}
+
+            if client_cert and client_key_info.get('secret_id') and client_key_info.get('secret_value'):
+                backend_certs = client_certs.get(service.id)
+                if backend_certs is None:
+                    backend_certs = {}
+                    client_certs[service.id] = backend_certs
+
+                backend_name = validate_backend(backend['name'])
+
+                backend_certs[backend_name] = {
+                    'cert': client_cert,
+                    'key': {
+                        'secret-id': client_key_info['secret_id'],
+                        'secret-value': client_key_info['secret_value']
+                    }
+                }
+
+    certs_changed = write_certs(client_certs, certs_dir, user=secrets_user, group=secrets_group)
+    if certs_changed:
+        logging.info("client certs changed")
 
     for service, backends in services.values():
         for backend in backends:
@@ -714,12 +770,14 @@ def main():
                         default='routes', help='location of routes file (default: ./routes)')
     parser.add_argument('--cache-dir', metavar='PATH', dest='cache_dir',
                         default='cache', help='directory to keep cached data (default: ./cache)')
+    parser.add_argument('--certs-dir', metavar='PATH', dest='certs_dir',
+                        default='certs', help='directory to write client certs/keys (default: ./certs)')
     parser.add_argument('--sig-keys-dir', metavar='PATH', dest='sig_keys_dir',
                         default='sig-keys', help='directory to write sig keys (default: ./sig-keys)')
-    parser.add_argument('--sig-keys-user', metavar='USERNAME', dest='sig_keys_user',
-                        help='owning user to set for sig keys')
-    parser.add_argument('--sig-keys-group', metavar='GROUP', dest='sig_keys_group',
-                        help='owning group to set for sig keys')
+    parser.add_argument('--secrets-user', metavar='USERNAME', dest='secrets_user',
+                        help='owning user to set for certs/keys')
+    parser.add_argument('--secrets-group', metavar='GROUP', dest='secrets_group',
+                        help='owning group to set for certs/keys')
     parser.add_argument('--loop', metavar='SECONDS', type=int,
                         dest='loop', help='repeat the process on an interval')
 
@@ -740,7 +798,7 @@ def main():
 
     while True:
         try:
-            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, sig_keys_user=args.sig_keys_user, sig_keys_group=args.sig_keys_group)
+            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, args.certs_dir, secrets_user=args.secrets_user, secrets_group=args.secrets_group)
         except Exception:
             logging.exception('update_routes failed')
 
