@@ -641,6 +641,8 @@ public:
 						if (ccIndex >= 0)
 						{
 							log_debug("[WS] disabled cache client %d", ccIndex);
+							QString urlPath = gWsBackendUrlList[ccIndex];
+							wsCacheClientConnectFailedCountMap[urlPath]++;
 							gWsCacheClientList[ccIndex].initFlag = false;
 						}
 					}
