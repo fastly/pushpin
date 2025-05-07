@@ -117,15 +117,15 @@ struct CacheItem {
 	QMap<QByteArray, ClientInCacheItem> clientMap;
 
 	MSGPACK_DEFINE(
-		orgMsgId, 
+		//orgMsgId, 
 		msgId,
-		newMsgId,
+		newMsgId
+		/*
 		refreshFlag,
 		lastRequestTime,
 		lastRefreshTime,
 		lastAccessTime,
-		cachedFlag
-		/*
+		cachedFlag,
 		proto,
 		retryCount,
 		httpBackendNo,
