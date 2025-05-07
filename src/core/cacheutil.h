@@ -125,6 +125,7 @@ struct CacheItem {
 		lastRefreshTime,
 		lastAccessTime,
 		cachedFlag,
+		/*
 		proto,
 		retryCount,
 		httpBackendNo,
@@ -138,6 +139,7 @@ struct CacheItem {
 		subscriptionStr,
 		subscriptionPacket,
 		clientMap
+		*/
 	);  // Enable MessagePack serialization
 };
 
