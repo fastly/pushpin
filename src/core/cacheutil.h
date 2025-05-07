@@ -119,7 +119,7 @@ struct CacheItem {
 	MSGPACK_DEFINE(
 		orgMsgId, 
 		msgId,
-		int newMsgId,
+		newMsgId,
 		refreshFlag,
 		lastRequestTime,
 		lastRefreshTime,
