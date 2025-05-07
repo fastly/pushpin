@@ -119,13 +119,13 @@ struct CacheItem {
 	MSGPACK_DEFINE(
 		//orgMsgId, 
 		msgId,
-		newMsgId
-		/*
+		newMsgId,
 		refreshFlag,
 		lastRequestTime,
 		lastRefreshTime,
 		lastAccessTime,
 		cachedFlag,
+		/*
 		proto,
 		retryCount,
 		httpBackendNo,
