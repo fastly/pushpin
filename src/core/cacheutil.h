@@ -115,6 +115,30 @@ struct CacheItem {
 	QString subscriptionStr;
 	ZhttpResponsePacket subscriptionPacket;
 	QMap<QByteArray, ClientInCacheItem> clientMap;
+
+	MSGPACK_DEFINE(
+		orgMsgId, 
+		msgId,
+		int newMsgId,
+		refreshFlag,
+		lastRequestTime,
+		lastRefreshTime,
+		lastAccessTime,
+		cachedFlag,
+		proto,
+		retryCount,
+		httpBackendNo,
+		cacheClientId,
+		methodName,
+		requestPacket,
+		responsePacket,
+		responseHashVal,
+		methodType,
+		orgSubscriptionStr,
+		subscriptionStr,
+		subscriptionPacket,
+		clientMap
+	);  // Enable MessagePack serialization
 };
 
 struct UnsubscribeRequestItem {
