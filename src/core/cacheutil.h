@@ -27,6 +27,7 @@
 #include <QHostAddress>
 #include <QObject>
 #include <hiredis.h>
+#include <msgpack.hpp>
 #include <stdexcept>
 #include <QQueue>
 #include <QMutex>
