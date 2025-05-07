@@ -151,7 +151,7 @@ redisContext* connectToRedis()
 class RedisPoolSingleton {
 public:
 	static RedisPool& instance() {
-		static RedisPool pool(gRedisPoolCount;, gRedisHostAddr.toUtf8().constData(), gRedisPort);
+		static RedisPool pool(gRedisPoolCount, gRedisHostAddr.toUtf8().constData(), gRedisPort);
 		return pool;
 	}
 
