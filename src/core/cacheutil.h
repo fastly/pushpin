@@ -124,7 +124,7 @@ struct CacheItem {
 		lastRequestTime,
 		lastRefreshTime,
 		lastAccessTime,
-		cachedFlag,
+		cachedFlag
 		/*
 		proto,
 		retryCount,
