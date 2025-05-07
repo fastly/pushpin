@@ -122,6 +122,7 @@ redisContext *gRedisContext = nullptr;
 bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
+int gRedisPoolCount = 10;
 
 // count method group
 QMap<QString, QStringList> gCountMethodGroupMap;
@@ -2922,6 +2923,7 @@ void ZhttpManager::setCacheParameters(
 	bool redisEnable,
 	const QString &redisHostAddr,
 	const int redisPort,
+	const int redisPoolCount,
 	QMap<QString, QStringList> countMethodGroupMap
 	)
 {
@@ -3075,8 +3077,9 @@ void ZhttpManager::setCacheParameters(
 	gRedisEnable = redisEnable;
 	gRedisHostAddr = redisHostAddr;
 	gRedisPort = redisPort;
-	log_debug("[CONFIG] redis %s, host=%s, port=%d", gCacheEnable ? "enabled" : "disabled",
-		qPrintable(gRedisHostAddr), gRedisPort);
+	gRedisPoolCount = redisPoolCount;
+	log_debug("[CONFIG] redis %s, host=%s, port=%d, pool=%d", gCacheEnable ? "enabled" : "disabled",
+		qPrintable(gRedisHostAddr), gRedisPort, gRedisPoolCount);
 	if (gRedisEnable == true)
 		gRedisContext = connectToRedis();
 

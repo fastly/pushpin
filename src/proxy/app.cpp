@@ -697,6 +697,7 @@ public:
 		bool redisEnable = settings.value("cache/redis_enable").toBool();
 		QString redisHostAddr = settings.value("cache/redis_host_addr").toString();
 		int redisPort = settings.value("cache/redis_port", 6379).toInt();
+		int redisPoolCount = settings.value("cache/redis_pool_count", 10).toInt();
 		// count method group
 		QStringList countMethodGroups = settings.value("cache/ws_count_groups").toStringList();
 		QMap<QString, QStringList> countMethodGroupMap;
@@ -723,6 +724,7 @@ public:
 		config.redisEnable = redisEnable;
 		config.redisHostAddr = redisHostAddr;
 		config.redisPort = redisPort;
+		config.redisPoolCount = redisPoolCount;
 		config.countMethodGroupMap = countMethodGroupMap;
 
 		for(int n = 0; n < workerCount; ++n)

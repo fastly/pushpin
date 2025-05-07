@@ -94,6 +94,7 @@ extern redisContext *gRedisContext;
 extern bool gRedisEnable;
 extern QString gRedisHostAddr;
 extern int gRedisPort;
+extern int gRedisPoolCount;
 
 // count method group
 extern QMap<QString, QStringList> gCountMethodGroupMap;
@@ -150,7 +151,7 @@ redisContext* connectToRedis()
 class RedisPoolSingleton {
 public:
 	static RedisPool& instance() {
-		static RedisPool pool(10, gRedisHostAddr.toUtf8().constData(), gRedisPort);
+		static RedisPool pool(gRedisPoolCount;, gRedisHostAddr.toUtf8().constData(), gRedisPort);
 		return pool;
 	}
 

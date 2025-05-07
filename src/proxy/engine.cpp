@@ -250,6 +250,7 @@ public:
 			config.redisEnable,
 			config.redisHostAddr,
 			config.redisPort,
+			config.redisPoolCount,
 			config.countMethodGroupMap);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
