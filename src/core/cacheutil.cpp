@@ -145,7 +145,7 @@ void runRedisPipelineAsync()
 		//conn->appendCommand("INCR async:counter");
 		//conn->appendCommand("GET async:counter");
 
-		QList<QByteArray> replies = conn->flushPipeline(4);
+		QList<QByteArray> replies = conn->flushPipeline(1);
 		//for (const QByteArray &r : replies)
 		//	log_debug("[Async Reply] %s", r.data());
 
