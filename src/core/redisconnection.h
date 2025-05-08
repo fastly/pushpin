@@ -17,7 +17,7 @@ public:
 	bool appendCommand(const QByteArray &cmd);
 	QList<QByteArray> flushPipeline(int expectedReplies);
 
-private:
+public:
 	redisContext *ctx;
 	QMutex mutex;
 };

@@ -129,8 +129,6 @@ void runRedisPipelineAsync()
 {
 	QtConcurrent::run([=]() 
 	{
-		QElapsedTimer timer;
-		timer.start();
 		RedisConnection_ *conn = pool.acquire();
 
 		if (!conn->isConnected()) 
@@ -146,12 +144,10 @@ void runRedisPipelineAsync()
 		conn->appendCommand("GET async:counter");
 
 		QList<QByteArray> replies = conn->flushPipeline(4);
-		//for (const QByteArray &r : replies)
-		//	log_debug("[Async Reply] %s", r.data());
+		for (const QByteArray &r : replies)
+			log_debug("[Async Reply] %s", r.data());
 
 		pool.release(conn);
-		qint64 nsecs = timer.nsecsElapsed();
-		log_debug("[Async Reply] store_cache_item %ld ns", nsecs);
 	});
 }
 
