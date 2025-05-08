@@ -5,11 +5,11 @@
 #include <QByteArray>
 #include <hiredis/hiredis.h>
 
-class RedisConnection : public QObject {
+class RedisConnection_ : public QObject {
 	Q_OBJECT
 public:
-	RedisConnection(QObject *parent = nullptr);
-	~RedisConnection();
+	RedisConnection_(QObject *parent = nullptr);
+	~RedisConnection_();
 
 	bool connectToServer(const QString &host = "127.0.0.1", int port = 6379);
 	bool isConnected() const;

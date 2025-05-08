@@ -7,7 +7,7 @@ RedisConnectionPool pool(4);
 // Example function to run pipelined Redis commands asynchronously
 void runRedisPipelineAsync() {
 	QtConcurrent::run([=]() {
-		RedisConnection *conn = pool.acquire();
+		RedisConnection_ *conn = pool.acquire();
 
 		if (!conn->isConnected()) {
 			qWarning() << "Redis not connected";

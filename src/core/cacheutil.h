@@ -142,7 +142,7 @@ void cache_thread();
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Redis
-class RedisConnection_ {
+class RedisConnection {
 public:
 	RedisConnection(const QString& host, int port) {
 		ctx = redisConnect(host.toStdString().c_str(), port);

@@ -128,7 +128,7 @@ void runRedisPipelineAsync()
 {
 	QtConcurrent::run([=]() 
 	{
-		RedisConnection *conn = pool.acquire();
+		RedisConnection_ *conn = pool.acquire();
 
 		if (!conn->isConnected()) 
 		{
