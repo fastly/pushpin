@@ -127,10 +127,10 @@ RedisConnectionPool pool(4);
 // Example function to run pipelined Redis commands asynchronously
 void runRedisPipelineAsync() 
 {
+	QElapsedTimer timer;
+	timer.start();
 	QtConcurrent::run([=]() 
 	{
-		QElapsedTimer timer;
-		timer.start();
 		RedisConnection_ *conn = pool.acquire();
 
 		if (!conn->isConnected()) 
@@ -150,9 +150,9 @@ void runRedisPipelineAsync()
 		//	log_debug("[Async Reply] %s", r.data());
 
 		pool.release(conn);
-		qint64 nsecs = timer.nsecsElapsed();
-		log_debug("[Async Reply] store_cache_item %ld ns", nsecs);
 	});
+	qint64 nsecs = timer.nsecsElapsed();
+	log_debug("[Async Reply] store_cache_item %ld ns", nsecs);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
