@@ -89,7 +89,6 @@ SOURCES += \
 	$$PWD/cacheutil.cpp \
 	$$PWD/redisconnection.cpp \
 	$$PWD/redisconnectionpool.cpp \
-	$$PWD/redistestasync.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \

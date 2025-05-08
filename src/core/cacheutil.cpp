@@ -52,6 +52,7 @@
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
+#include "redisconnectionpool.h"
 
 extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
@@ -118,6 +119,37 @@ extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 extern QMap<QString, int> groupMethodCountMap;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Global or shared pool
+RedisConnectionPool pool(4);
+
+// Example function to run pipelined Redis commands asynchronously
+void runRedisPipelineAsync() 
+{
+	QtConcurrent::run([=]() 
+	{
+		RedisConnection *conn = pool.acquire();
+
+		if (!conn->isConnected()) 
+		{
+			log_debug("Redis not connected");
+			pool.release(conn);
+			return;
+		}
+
+		conn->appendCommand("SET async:key1 \"value1\"");
+		conn->appendCommand("GET async:key1");
+		conn->appendCommand("INCR async:counter");
+		conn->appendCommand("GET async:counter");
+
+		QList<QByteArray> replies = conn->flushPipeline(4);
+		for (const QByteArray &r : replies)
+			log_debug("[Async Reply] %s", r.data());
+
+		pool.release(conn);
+	});
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis

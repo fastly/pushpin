@@ -3081,7 +3081,10 @@ void ZhttpManager::setCacheParameters(
 	log_debug("[CONFIG] redis %s, host=%s, port=%d, pool=%d", gCacheEnable ? "enabled" : "disabled",
 		qPrintable(gRedisHostAddr), gRedisPort, gRedisPoolCount);
 	if (gRedisEnable == true)
+	{
 		gRedisContext = connectToRedis();
+		runRedisPipelineAsync();
+	}
 
 	// count method group
 	log_debug("[CONFIG] count method group");
