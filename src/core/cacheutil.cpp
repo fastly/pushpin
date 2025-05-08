@@ -48,6 +48,7 @@
 #include <QElapsedTimer>
 #include <QDataStream>
 #include <QTimer>
+#include <QtConcurrent>
 
 #include "qtcompat.h"
 #include "tnetstring.h"
