@@ -10,11 +10,11 @@ public:
 	RedisConnectionPool(int size);
 	~RedisConnectionPool();
 
-	RedisConnection* acquire();
-	void release(RedisConnection* conn);
+	RedisConnection_* acquire();
+	void release(RedisConnection_* conn);
 
 private:
-	QQueue<RedisConnection*> pool;
+	QQueue<RedisConnection_*> pool;
 	QMutex mutex;
 	QSemaphore semaphore;
 };
