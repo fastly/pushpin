@@ -141,9 +141,9 @@ void runRedisPipelineAsync()
 		}
 
 		conn->appendCommand("SET async:key1 \"value1\"");
-		conn->appendCommand("GET async:key1");
-		conn->appendCommand("INCR async:counter");
-		conn->appendCommand("GET async:counter");
+		//conn->appendCommand("GET async:key1");
+		//conn->appendCommand("INCR async:counter");
+		//conn->appendCommand("GET async:counter");
 
 		QList<QByteArray> replies = conn->flushPipeline(4);
 		//for (const QByteArray &r : replies)
