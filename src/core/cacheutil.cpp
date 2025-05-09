@@ -141,18 +141,18 @@ void runRedisPipelineAsync()
 		}
 
 		conn->appendCommand("SET async:key1 \"value1\"");
-		//conn->appendCommand("GET async:key1");
-		//conn->appendCommand("INCR async:counter");
-		//conn->appendCommand("GET async:counter");
+		conn->appendCommand("GET async:key1");
+		conn->appendCommand("INCR async:counter");
+		conn->appendCommand("GET async:counter");
 
-		QList<QByteArray> replies = conn->flushPipeline(1);
-		//for (const QByteArray &r : replies)
-		//	log_debug("[Async Reply] %s", r.data());
+		QList<QByteArray> replies = conn->flushPipeline(4);
+		for (const QByteArray &r : replies)
+			log_debug("[Async Reply] %s", r.data());
 
 		pool.release(conn);
 	});
 	qint64 nsecs = timer.nsecsElapsed();
-	log_debug("[Async Reply] store_cache_item %ld ns", nsecs);
+	log_debug("[Async Reply] runRedisPipelineAsync %ld ns", nsecs);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -230,6 +230,47 @@ bool redis_is_cache_item(const QByteArray& itemId)
 
 void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item) 
 {
+	QtConcurrent::run([=]() 
+	{
+		RedisConnection_ *conn = pool.acquire();
+
+		if (!conn->isConnected()) 
+		{
+			log_debug("Redis not connected");
+			pool.release(conn);
+			return;
+		}
+
+		QMutexLocker locker(&conn->mutex);
+		QByteArray cmd = "SET async:key1 \"value1\"";
+		redisAppendCommand(conn->ctx, cmd.constData());
+
+		cmd = "GET async:key1";
+		redisAppendCommand(conn->ctx, cmd.constData());
+
+		cmd = "GET async:key1";
+		redisAppendCommand(conn->ctx, cmd.constData());
+
+		cmd = "INCR async:counter";
+		redisAppendCommand(conn->ctx, cmd.constData());
+
+		cmd = "GET async:counter";
+		redisAppendCommand(conn->ctx, cmd.constData());
+
+		conn->mutex.unlock();
+
+		//conn->appendCommand("SET async:key1 \"value1\"");
+		//conn->appendCommand("GET async:key1");
+		//conn->appendCommand("INCR async:counter");
+		//conn->appendCommand("GET async:counter");
+
+		QList<QByteArray> replies = conn->flushPipeline(4);
+		for (const QByteArray &r : replies)
+			log_debug("[Async Reply] %s", r.data());
+
+		pool.release(conn);
+	}
+
 	RedisPool& pool = RedisPoolSingleton::instance();
 	RedisConnection* conn = pool.acquire();
 
