@@ -195,8 +195,6 @@ private:
 	QWaitCondition cond;
 };
 
-void runRedisPipelineAsync();
-
 redisContext* connectToRedis();
 bool redis_is_cache_item(const QByteArray& itemId);
 void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item);

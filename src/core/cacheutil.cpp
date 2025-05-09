@@ -119,7 +119,7 @@ extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 extern QMap<QString, int> groupMethodCountMap;
-
+/*
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Global or shared pool
 RedisConnectionPool pool(4);
@@ -127,8 +127,6 @@ RedisConnectionPool pool(4);
 // Example function to run pipelined Redis commands asynchronously
 void runRedisPipelineAsync() 
 {
-	QElapsedTimer timer;
-	timer.start();
 	QtConcurrent::run([=]() 
 	{
 		RedisConnection_ *conn = pool.acquire();
@@ -140,25 +138,10 @@ void runRedisPipelineAsync()
 			return;
 		}
 
-		QMutexLocker locker(&conn->mutex);
-		QByteArray cmd = "SET async:key1 \"value1\"";
-		redisAppendCommand(conn->ctx, cmd.constData());
-
-		cmd = "GET async:key1";
-		redisAppendCommand(conn->ctx, cmd.constData());
-
-		cmd = "INCR async:counter";
-		redisAppendCommand(conn->ctx, cmd.constData());
-
-		cmd = "GET async:counter";
-		redisAppendCommand(conn->ctx, cmd.constData());
-
-		conn->mutex.unlock();
-
-		//conn->appendCommand("SET async:key1 \"value1\"");
-		//conn->appendCommand("GET async:key1");
-		//conn->appendCommand("INCR async:counter");
-		//conn->appendCommand("GET async:counter");
+		conn->appendCommand("SET async:key1 \"value1\"");
+		conn->appendCommand("GET async:key1");
+		conn->appendCommand("INCR async:counter");
+		conn->appendCommand("GET async:counter");
 
 		QList<QByteArray> replies = conn->flushPipeline(4);
 		for (const QByteArray &r : replies)
@@ -166,10 +149,8 @@ void runRedisPipelineAsync()
 
 		pool.release(conn);
 	});
-	qint64 nsecs = timer.nsecsElapsed();
-	log_debug("[Async Reply] runRedisPipelineAsync %ld ns", nsecs);
 }
-
+*/
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
 

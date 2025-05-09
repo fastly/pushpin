@@ -3084,8 +3084,7 @@ void ZhttpManager::setCacheParameters(
 	{
 		gRedisContext = connectToRedis();
 	}
-	runRedisPipelineAsync();
-
+	
 	// count method group
 	log_debug("[CONFIG] count method group");
 	foreach(QString groupKey, countMethodGroupMap.keys())
