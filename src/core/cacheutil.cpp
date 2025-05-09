@@ -147,9 +147,6 @@ void runRedisPipelineAsync()
 		cmd = "GET async:key1";
 		redisAppendCommand(conn->ctx, cmd.constData());
 
-		cmd = "GET async:key1";
-		redisAppendCommand(conn->ctx, cmd.constData());
-
 		cmd = "INCR async:counter";
 		redisAppendCommand(conn->ctx, cmd.constData());
 
