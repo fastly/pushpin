@@ -168,7 +168,7 @@ void runRedisPipelineAsync()
 			log_debug("[Async Reply] %s", r.data());
 
 		pool.release(conn);
-	}
+	};
 	qint64 nsecs = timer.nsecsElapsed();
 	log_debug("[Async Reply] runRedisPipelineAsync %ld ns", nsecs);
 }
