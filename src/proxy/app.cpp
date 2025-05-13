@@ -628,8 +628,6 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		log_debug("TTTTT %d", config.sessionsMax);
-
 		// Cache config
 		bool cacheEnable = settings.value("cache/cache_enable").toBool();
 		QStringList httpBackendUrlList = settings.value("cache/http_backend_urls").toStringList();
