@@ -74,7 +74,7 @@
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
-bool gCacheEnable = true;
+bool gCacheEnable = false;
 QStringList gHttpBackendUrlList;
 QStringList gWsBackendUrlList;
 
@@ -2927,6 +2927,11 @@ void ZhttpManager::setCacheParameters(
 	QMap<QString, QStringList> countMethodGroupMap
 	)
 {
+	if (gCacheEnable == true)
+	{
+		log_debug("[CONFIG] already passed");
+		return;
+	}
 	gCacheEnable = cacheEnable;
 	gHttpBackendUrlList = httpBackendUrlList;
 	gWsBackendUrlList = wsBackendUrlList;
