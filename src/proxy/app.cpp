@@ -552,8 +552,6 @@ public:
 		else
 			sessionsMax = clientMaxconn;
 
-		log_debug("TTTTT sessionsMax = %d", sessionsMax);
-
 		if(!args.routeLines.isEmpty())
 		{
 			domainMap = new DomainMap(this);
@@ -629,6 +627,8 @@ public:
 		config.statsReportInterval = statsReportInterval;
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
+
+		log_debug("TTTTT %d", config.sessionsMax);
 
 		// Cache config
 		bool cacheEnable = settings.value("cache/cache_enable").toBool();
