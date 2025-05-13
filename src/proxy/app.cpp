@@ -552,6 +552,8 @@ public:
 		else
 			sessionsMax = clientMaxconn;
 
+		log_debug("TTTTT sessionsMax = %d", sessionsMax);
+
 		if(!args.routeLines.isEmpty())
 		{
 			domainMap = new DomainMap(this);
