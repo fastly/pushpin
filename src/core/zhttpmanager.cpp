@@ -2416,7 +2416,7 @@ public:
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
 			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(cacheClient->from, id.id));
 			if(sock)
 			{
 				sock->handle(id.id, id.seq, p);
