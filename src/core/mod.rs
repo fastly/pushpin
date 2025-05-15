@@ -47,6 +47,10 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(test)]
 use std::path::{Path, PathBuf};
 
+pub fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
+
 pub fn version() -> &'static str {
     env!("APP_VERSION")
 }
@@ -94,6 +98,19 @@ pub fn ensure_example_config(dest: &Path) {
         fs::copy(src_dir.join("pushpin.conf"), dest_dir.join("pushpin.conf")).unwrap();
         fs::copy(src_dir.join("routes"), dest_dir.join("routes")).unwrap();
     });
+}
+
+mod ffi {
+    use std::os::raw::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn is_debug_build() -> c_int {
+        if super::is_debug_build() {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 #[cfg(test)]
