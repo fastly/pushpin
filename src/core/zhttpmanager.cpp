@@ -608,7 +608,7 @@ public:
 					gWsCacheClientList[ccIndex].initFlag = true;
 					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 					gWsCacheClientList[ccIndex].lastResponseSeq = packetSeq;
-					gWsCacheClientList[ccIndex].from = packet.from;
+					gWsCacheClientList[ccIndex].receiver = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s", ccIndex, gWsCacheClientList[ccIndex].clientId.data());
 					gWsInitResponsePacket = packet;
 				}
@@ -1012,6 +1012,7 @@ public:
 					gWsCacheClientList[ccIndex].initFlag = false;
 					gWsCacheClientList[ccIndex].clientId = id.id;
 					gWsCacheClientList[ccIndex].msgIdCount = -1;
+					gWsCacheClientList[ccIndex].from = p.from;
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
 					gWsCacheClientList[ccIndex].lastRequestTime = time(NULL);
 
