@@ -23,13 +23,13 @@
 
 namespace AcUtil {
 
-const QList<AcByteArray> & to(const QList<QByteArray> &other)
+inline const QList<AcByteArray> & to(const QList<QByteArray> &other)
 {
     // SAFETY: AcByteArray and QByteArray have identical layouts
     return reinterpret_cast<const QList<AcByteArray> &>(other);
 }
 
-const QList<QByteArray> & from(const QList<AcByteArray> &other)
+inline const QList<QByteArray> & from(const QList<AcByteArray> &other)
 {
     // SAFETY: AcByteArray and QByteArray have identical layouts
     return reinterpret_cast<const QList<QByteArray> &>(other);
