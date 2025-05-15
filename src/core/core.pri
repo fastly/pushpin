@@ -1,4 +1,9 @@
 HEADERS += \
+	$$PWD/acbytearray.h \
+	$$PWD/acstring.h \
+	$$PWD/acutil.h
+
+HEADERS += \
 	$$PWD/qzmqcontext.h \
 	$$PWD/qzmqsocket.h \
 	$$PWD/qzmqvalve.h \

@@ -26,6 +26,8 @@
 #include <assert.h>
 #include <QStringList>
 #include <QFile>
+#include "acbytearray.h"
+#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -148,7 +150,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-		clientSock->write(QList<QByteArray>() << QByteArray() << buf);
+		clientSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	}
 
 	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet)
@@ -161,9 +163,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-		QList<QByteArray> message;
-		message += headers;
-		message += QByteArray();
+		QList<AcByteArray> message;
+		message += AcUtil::to(headers);
+		message += AcByteArray();
 		message += buf;
 		serverSock->write(message);
 	}

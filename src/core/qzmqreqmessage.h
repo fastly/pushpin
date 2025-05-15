@@ -24,6 +24,8 @@
 #ifndef QZMQREQMESSAGE_H
 #define QZMQREQMESSAGE_H
 
+#include "acutil.h"
+
 namespace QZmq {
 
 class ReqMessage
@@ -33,9 +35,20 @@ public:
 	{
 	}
 
+	ReqMessage(const QList<AcByteArray> &headers, const QList<AcByteArray> &content) :
+		headers_(AcUtil::from(headers)),
+		content_(AcUtil::from(content))
+	{
+	}
+
 	ReqMessage(const QList<QByteArray> &headers, const QList<QByteArray> &content) :
 		headers_(headers),
 		content_(content)
+	{
+	}
+
+	ReqMessage(const QList<AcByteArray> &rawMessage) :
+		ReqMessage(AcUtil::from(rawMessage))
 	{
 	}
 

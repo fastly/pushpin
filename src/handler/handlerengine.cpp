@@ -29,6 +29,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include "acbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -1651,9 +1652,9 @@ private:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("OUT retry: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		QList<QByteArray> msg;
+		QList<AcByteArray> msg;
 		msg += instanceAddress;
-		msg += QByteArray();
+		msg += AcByteArray();
 		msg += TnetString::fromVariant(vout);
 		retrySock->write(msg);
 	}
@@ -1675,9 +1676,9 @@ private:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("OUT wscontrol: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		QList<QByteArray> msg;
+		QList<AcByteArray> msg;
 		msg += instanceAddress;
-		msg += QByteArray();
+		msg += AcByteArray();
 		msg += TnetString::fromVariant(vout);
 		wsControlStreamSock->write(msg);
 	}

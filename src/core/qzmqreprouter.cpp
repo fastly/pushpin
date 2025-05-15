@@ -23,6 +23,8 @@
 
 #include "qzmqreprouter.h"
 
+#include "acstring.h"
+#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
 
@@ -89,7 +91,7 @@ ReqMessage RepRouter::read()
 
 void RepRouter::write(const ReqMessage &message)
 {
-	d->sock->write(message.toRawMessage());
+	d->sock->write(AcUtil::to(message.toRawMessage()));
 }
 
 }
