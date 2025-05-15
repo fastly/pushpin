@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <QDateTime>
 #include <boost/signals2.hpp>
+#include "acbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -170,7 +171,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
-		initSock->write(QList<QByteArray>() << buf);
+		initSock->write(QList<AcByteArray>() << buf);
 	}
 
 	void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress)
@@ -183,9 +184,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s", instanceAddress.data());
 
-		QList<QByteArray> msg;
+		QList<AcByteArray> msg;
 		msg += instanceAddress;
-		msg += QByteArray();
+		msg += AcByteArray();
 		msg += buf;
 		streamSock->write(msg);
 	}
