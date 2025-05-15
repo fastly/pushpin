@@ -1016,7 +1016,7 @@ public:
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
 					gWsCacheClientList[ccIndex].lastRequestTime = time(NULL);
 
-					log_debug("[WS] passing the requests from cache client=%s", id.id.data());
+					log_debug("[WS] passing requests from cache client=%s, from=%s", id.id.data(), p.from.toHex().data());
 				}
 				else // if request from real client
 				{
