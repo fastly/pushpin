@@ -589,7 +589,7 @@ public:
 		int packetSeq = packet.ids.first().seq;
 
 		// cache process
-		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
+		if (gCacheEnable == false && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
 		{
 			pause_cache_thread();
 
@@ -1002,7 +1002,7 @@ public:
 				return;
 			}
 
-			if (gCacheEnable == true)
+			if (gCacheEnable == false)
 			{
 				pause_cache_thread();
 
@@ -1075,7 +1075,7 @@ public:
 			}
 
 			// cache process
-			if (gCacheEnable == true)
+			if (gCacheEnable == false)
 			{
 				pause_cache_thread();
 
@@ -1162,7 +1162,7 @@ public:
 			QByteArray packetId = p.ids[i].id;
 
 			// cache process
-			if (gCacheEnable == true)
+			if (gCacheEnable == false)
 			{
 				pause_cache_thread();
 
