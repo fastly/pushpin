@@ -2928,7 +2928,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &redisHostAddr,
 	const int redisPort,
 	const int redisPoolCount,
-	QHash<QString, QStringList> countMethodGroupMap
+	QMap<QString, QStringList> countMethodGroupMap
 	)
 {
 	if (gCacheEnable == true)
