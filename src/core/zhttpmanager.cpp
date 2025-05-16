@@ -1548,7 +1548,6 @@ public:
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
-		return;
 		if (!is_cache_item(itemId))
 		{
 			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.toHex().data());
@@ -2423,6 +2422,7 @@ public:
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(cacheClient->from, id.id));
 			if(sock)
 			{
+				log_debug("[QQQ]");
 				sock->handle(id.id, id.seq, p);
 				if(self.expired())
 					return -1;
