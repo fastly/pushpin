@@ -1330,11 +1330,11 @@ void check_cache_clients()
 	});
 }
 
-int get_main_cc_index()
+int get_main_cc_index(QByteArray instanceId)
 {
 	for (int i=0; i<gWsCacheClientList.count(); i++)
 	{
-		if (gWsCacheClientList[i].initFlag == true)
+		if (gWsCacheClientList[i].initFlag == true && gWsCacheClientList[i].instanceId == instanceId)
 			return i;
 	}
 	return -1;

@@ -1012,6 +1012,7 @@ public:
 				{
 					gWsCacheClientList[ccIndex].initFlag = false;
 					gWsCacheClientList[ccIndex].clientId = id.id;
+					gWsCacheClientList[ccIndex].instanceId = instanceId;
 					gWsCacheClientList[ccIndex].msgIdCount = -1;
 					gWsCacheClientList[ccIndex].from = p.from;
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
@@ -1023,7 +1024,7 @@ public:
 				else // if request from real client
 				{
 					log_debug("[WS] received init request from real client");
-					if (get_main_cc_index() < 0)
+					if (get_main_cc_index(instanceId) < 0)
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
@@ -1715,7 +1716,7 @@ public:
 		// create new cache item
 		struct CacheItem cacheItem;
 
-		int ccIndex = get_main_cc_index();
+		int ccIndex = get_main_cc_index(instanceId);
 		if (ccIndex < 0)
 			return -1;
 		cacheItem.msgId = gWsCacheClientList[ccIndex].msgIdCount;
@@ -2538,7 +2539,7 @@ public:
 					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
 					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
-						ccIndex = get_main_cc_index();
+						ccIndex = get_main_cc_index(instanceId);
 						if (ccIndex < 0)
 						{
 							log_warning("[WS] not initialized cache client, ignore");

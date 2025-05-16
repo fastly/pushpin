@@ -69,6 +69,7 @@ struct ClientItem {
 	QByteArray receiver;
 	QByteArray from;
 	QByteArray clientId;
+	QByteArray instanceId;
 };
 
 // Cache key item
@@ -227,7 +228,7 @@ bool is_never_timeout_method(QString methodStr, QString paramsStr);
 
 pid_t create_process_for_cacheclient(QString urlPath, int _no);
 
-int get_main_cc_index();
+int get_main_cc_index(QByteArray instanceId);
 int get_cc_index_from_clientId(QByteArray clientId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
 int get_cc_next_index_from_clientId(QByteArray clientId);
