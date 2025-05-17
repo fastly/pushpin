@@ -106,7 +106,7 @@ QFuture<void> gCacheThread;
 
 QStringList gCacheMethodList;
 QHash<QString, QString> gSubscribeMethodMap;
-QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
+QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
 QStringList gNeverTimeoutMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
@@ -2439,11 +2439,11 @@ public:
 
 	int send_unsubscribe_request_over_cacheclient()
 	{
-		int itemCount = gUnsubscribeRequestList.count();
+		int itemCount = gUnsubscribeRequestMap[instanceId].count();
 		if (itemCount > 0)
 		{			
-			UnsubscribeRequestItem reqItem = gUnsubscribeRequestList[0];
-			gUnsubscribeRequestList.removeAt(0);
+			UnsubscribeRequestItem reqItem = gUnsubscribeRequestMap[instanceId][0];
+			gUnsubscribeRequestMap[instanceId].removeAt(0);
 
 			// Create new packet by cache client
 			ZhttpRequestPacket p;

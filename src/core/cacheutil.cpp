@@ -70,7 +70,7 @@ extern QString gSubscribeChangesAttrName;
 
 extern QStringList gCacheMethodList;
 extern QHash<QString, QString> gSubscribeMethodMap;
-extern QList<UnsubscribeRequestItem> gUnsubscribeRequestList;
+extern QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
 extern QStringList gNeverTimeoutMethodList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
@@ -1077,12 +1077,17 @@ static void remove_old_cache_items()
 					// add unsubscribe request item for cache thread
 					if (pCacheItem->orgMsgId.isEmpty() == false)
 					{
-						UnsubscribeRequestItem reqItem;
-						reqItem.subscriptionStr = pCacheItem->subscriptionStr;
-						reqItem.from = pCacheItem->requestPacket.from;
-						reqItem.unsubscribeMethodName = gSubscribeMethodMap[pCacheItem->methodName];
-						reqItem.cacheClientId = pCacheItem->cacheClientId;
-						gUnsubscribeRequestList.append(reqItem);
+						int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
+						if (ccIndex >= 0)
+						{
+							QByteArray instanceId = gWsCacheClientList[ccIndex].instanceId;
+							UnsubscribeRequestItem reqItem;
+							reqItem.subscriptionStr = pCacheItem->subscriptionStr;
+							reqItem.from = pCacheItem->requestPacket.from;
+							reqItem.unsubscribeMethodName = gSubscribeMethodMap[pCacheItem->methodName];
+							reqItem.cacheClientId = pCacheItem->cacheClientId;
+							gUnsubscribeRequestMap[instanceId].append(reqItem);
+						}
 					}
 
 					// remove subscription item
