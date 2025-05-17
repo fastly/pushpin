@@ -781,7 +781,7 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 		ret = &gCacheItemMap[itemId];
 	}
 	qint64 nsecs = timer.nsecsElapsed();
-	log_debug("[PERF] load_cache_item %ld ns", nsecs);
+	//log_debug("[PERF] load_cache_item %ld ns", nsecs);
 
 	return ret;
 }
@@ -1054,7 +1054,7 @@ static void remove_old_cache_items()
 			{
 				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
 				{
-					log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
+					//log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
 					continue;
 				}
 				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
