@@ -231,7 +231,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no);
 int get_main_cc_index(QByteArray instanceId);
 int get_cc_index_from_clientId(QByteArray clientId);
 int get_cc_index_from_init_request(ZhttpRequestPacket &p);
-int get_cc_next_index_from_clientId(QByteArray clientId);
+int get_cc_next_index_from_clientId(QByteArray clientId, QByteArray instanceId);
 
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
 int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg);

@@ -1201,7 +1201,7 @@ int get_cc_index_from_clientId(QByteArray clientId)
 	return -1;
 }
 
-int get_cc_next_index_from_clientId(QByteArray clientId)
+int get_cc_next_index_from_clientId(QByteArray clientId, QByteArray instanceId)
 {
 	int ccIndex = get_cc_index_from_clientId(clientId);
 
@@ -1211,7 +1211,7 @@ int get_cc_next_index_from_clientId(QByteArray clientId)
 
 	for (int i = ccIndex; i < gWsCacheClientList.count(); i++)
 	{
-		if (gWsCacheClientList[i].initFlag == true)
+		if (gWsCacheClientList[i].initFlag == true && gWsCacheClientList[i].instanceId == instanceId)
 		{
 			return i;
 		}			
@@ -1219,7 +1219,7 @@ int get_cc_next_index_from_clientId(QByteArray clientId)
 
 	for (int i = 0; i < ccIndex; i++)
 	{
-		if (gWsCacheClientList[i].initFlag == true)
+		if (gWsCacheClientList[i].initFlag == true && gWsCacheClientList[i].instanceId == instanceId)
 		{
 			return i;
 		}			
