@@ -1243,7 +1243,7 @@ public:
 			}
 
 			int newSeq = update_request_seq(packetId);
-			log_debug("[PPP] %d", newSeq);
+			log_debug("[PPP] %s, %d", packetId.toHex().data(), newSeq);
 			if (newSeq >= 0)
 				p.ids[i].seq = newSeq;
 			else
@@ -2391,7 +2391,7 @@ public:
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
 		tempId.seq = update_request_seq(cacheClient->clientId);
-		log_debug("[PPP] %d", tempId.seq);
+		log_debug("[PPP] %s, %d", cacheClient->clientId.toHex().data(), tempId.seq);
 		p.ids.clear();
 		p.ids += tempId;
 
@@ -2461,7 +2461,7 @@ public:
 
 			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
 			tempId.seq = update_request_seq(cacheClient->clientId);
-			log_debug("[PPP] %d", tempId.seq);
+			log_debug("[PPP] %s, %d", cacheClient->clientId.toHex().data(), tempId.seq);
 			p.ids.append(tempId);
 
 			p.type = ZhttpRequestPacket::Data;
