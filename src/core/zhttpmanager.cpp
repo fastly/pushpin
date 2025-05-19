@@ -1435,7 +1435,7 @@ public:
 		}
 	}
 
-	void refresh_cache(QByteArray itemId, QString urlPath, int refreshCount)
+	void refresh_cache(QByteArray itemId, QString urlPath, qint64 refreshCount)
 	{
 		log_debug("_[TIMER] cache refresh %s %s", itemId.toHex().data(), qPrintable(urlPath));
 		CacheItem *pCacheItem = load_cache_item(itemId);
@@ -1452,6 +1452,7 @@ public:
 			return;
 		}
 		pCacheItem->lastRefreshCount++;
+		refreshCount = pCacheItem->lastRefreshCount;
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -1548,7 +1549,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(itemId, urlPath, pCacheItem->lastRefreshCount);
+				refresh_cache(itemId, urlPath, refreshCount);
 			});
 		}
 
@@ -1575,10 +1576,10 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(itemId, urlPath, pCacheItem->lastRefreshCount);
+				refresh_cache(itemId, urlPath, 0);
 			});
 		}
-		store_cache_item_field(itemId, "lastRefreshCount", pCacheItem->lastRefreshCount);
+		store_cache_item_field(itemId, "lastRefreshCount", 0);
 	}
 
 	void unregister_client(const QByteArray& clientId)
