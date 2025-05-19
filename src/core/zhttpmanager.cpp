@@ -1445,7 +1445,7 @@ public:
 			return;
 		}
 
-		// check refresh count
+		// check refresh count (can be duplicated by the removed cache item.)
 		if (refreshCount != pCacheItem->lastRefreshCount)
 		{
 			log_debug("_[TIMER] got invalid timer %s, expect %d, but %d", itemId.toHex().data(), refreshCount, pCacheItem->lastRefreshCount);
@@ -1570,13 +1570,15 @@ public:
 
 		log_debug("[REFRESH] Registered new cache refresh %s, %s", itemId.toHex().data(), qPrintable(urlPath));
 
+		pCacheItem->lastRefreshCount = 0;
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
 				refresh_cache(itemId, urlPath, pCacheItem->lastRefreshCount);
 			});
-		}		
+		}
+		store_cache_item_field(itemId, "lastRefreshCount", pCacheItem->lastRefreshCount);
 	}
 
 	void unregister_client(const QByteArray& clientId)
