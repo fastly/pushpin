@@ -1225,6 +1225,7 @@ public:
 						send_response_to_client(ZhttpResponsePacket::Pong, packetId, p.from);
 						break;
 					case ZhttpRequestPacket::Credit:
+						log_debug("[WS] received Credit, ignoring");
 						break;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
@@ -1243,7 +1244,7 @@ public:
 			}
 
 			int newSeq = update_request_seq(packetId);
-			log_debug("[PPP] %s, %d", packetId.toHex().data(), newSeq);
+			log_debug("[PPP] %s, %d", packetId.constData(), newSeq);
 			if (newSeq >= 0)
 				p.ids[i].seq = newSeq;
 			else
@@ -2391,7 +2392,7 @@ public:
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
 		tempId.seq = update_request_seq(cacheClient->clientId);
-		log_debug("[PPP] %s, %d", cacheClient->clientId.toHex().data(), tempId.seq);
+		log_debug("[PPP] %s, %d", cacheClient->clientId.constData(), tempId.seq);
 		p.ids.clear();
 		p.ids += tempId;
 
@@ -2426,12 +2427,15 @@ public:
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(cacheClient->from, id.id));
 			if(sock)
 			{
-				log_debug("[QQQ]");
 				sock->handle(id.id, id.seq, p);
 				if(self.expired())
 					return -1;
 
 				continue;
+			}
+			else
+			{
+				log_debug("[QQQ]");
 			}
 		}
 		return msgId;
@@ -2461,7 +2465,7 @@ public:
 
 			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
 			tempId.seq = update_request_seq(cacheClient->clientId);
-			log_debug("[PPP] %s, %d", cacheClient->clientId.toHex().data(), tempId.seq);
+			log_debug("[PPP] %s, %d", cacheClient->clientId.constData(), tempId.seq);
 			p.ids.append(tempId);
 
 			p.type = ZhttpRequestPacket::Data;
