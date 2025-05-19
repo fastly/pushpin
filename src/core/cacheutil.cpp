@@ -246,6 +246,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 		"refreshFlag %d "
 		"lastRequestTime %lld "
 		"lastRefreshTime %lld "
+		"lastRefreshCount %lld "
 		"lastAccessTime %lld "
 		"cachedFlag %d "
 		"proto %d "
@@ -269,6 +270,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 		(int)item.refreshFlag,
 		static_cast<long long>(item.lastRequestTime),
 		static_cast<long long>(item.lastRefreshTime),
+		static_cast<long long>(item.lastRefreshCount),
 		static_cast<long long>(item.lastAccessTime),
 		item.cachedFlag ? 1 : 0,
 		item.proto,
@@ -489,6 +491,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 		else if (field == "refreshFlag") item.refreshFlag = (char)value.toInt();
 		else if (field == "lastRequestTime") item.lastRequestTime = value.toLongLong();
 		else if (field == "lastRefreshTime") item.lastRefreshTime = value.toLongLong();
+		else if (field == "lastRefreshCount") item.lastRefreshCount = value.toLongLong();
 		else if (field == "lastAccessTime") item.lastAccessTime = value.toLongLong();
 		else if (field == "cachedFlag") item.cachedFlag = (value == "1");
 		else if (field == "proto") item.proto = (value == "0") ? Scheme::http : Scheme::websocket;

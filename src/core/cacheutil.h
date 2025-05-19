@@ -100,6 +100,7 @@ struct CacheItem {
 	char refreshFlag;
 	qint64 lastRequestTime;
 	qint64 lastRefreshTime;
+	qint64 lastRefreshCount;
 	qint64 lastAccessTime;
 	bool cachedFlag;
 	Scheme proto;

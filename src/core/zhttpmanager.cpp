@@ -1435,7 +1435,7 @@ public:
 		}
 	}
 
-	void refresh_cache(QByteArray itemId, QString urlPath)
+	void refresh_cache(QByteArray itemId, QString urlPath, int refreshCount)
 	{
 		log_debug("_[TIMER] cache refresh %s %s", itemId.toHex().data(), qPrintable(urlPath));
 		CacheItem *pCacheItem = load_cache_item(itemId);
@@ -1444,6 +1444,14 @@ public:
 			log_debug("_[TIMER] exit refresh %s", itemId.toHex().data());
 			return;
 		}
+
+		// check refresh count
+		if (refreshCount != pCacheItem->lastRefreshCount)
+		{
+			log_debug("_[TIMER] got invalid timer %s, expect %d, but %d", itemId.toHex().data(), refreshCount, pCacheItem->lastRefreshCount);
+			return;
+		}
+		pCacheItem->lastRefreshCount++;
 
 		int timeInterval = get_next_cache_refresh_interval(itemId);
 		qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -1540,19 +1548,21 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(itemId, urlPath);
+				refresh_cache(itemId, urlPath, pCacheItem->lastRefreshCount);
 			});
 		}
 
 		store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
 		store_cache_item_field(itemId, "cacheClientId", pCacheItem->cacheClientId);
 		store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
+		store_cache_item_field(itemId, "lastRefreshCount", pCacheItem->lastRefreshCount);
 		store_cache_item_field(itemId, "retryCount", pCacheItem->retryCount);
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
 	{
-		if (!is_cache_item(itemId))
+		CacheItem *pCacheItem = load_cache_item(itemId);
+		if (pCacheItem == NULL)
 		{
 			log_debug("[REFRESH] Canceled cache item because it not exist %s", itemId.toHex().data());
 			return;
@@ -1564,7 +1574,7 @@ public:
 		if (timeInterval > 0)
 		{
 			QTimer::singleShot(timeInterval * 1000, [=]() {
-				refresh_cache(itemId, urlPath);
+				refresh_cache(itemId, urlPath, pCacheItem->lastRefreshCount);
 			});
 		}		
 	}
@@ -1677,6 +1687,7 @@ public:
 			log_debug("[HTTP] added refresh passthrough method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastRefreshCount = 0;
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.cachedFlag = false;
@@ -1745,6 +1756,7 @@ public:
 			log_debug("[WS] added refresh passthrough method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastRefreshCount = 0;
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.cachedFlag = false;
 
