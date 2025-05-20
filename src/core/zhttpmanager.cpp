@@ -2331,7 +2331,7 @@ public:
 					}
 					pCacheItem->responsePacket = p;
 					pCacheItem->msgId = msgIdValue;
-					if ((msgIdValue.compare("true", Qt::CaseInsensitive) != 0) && (msgIdValue.compare("false", Qt::CaseInsensitive) != 0)) 
+					if ((msgResultStr.compare("true", Qt::CaseInsensitive) != 0) && (msgResultStr.compare("false", Qt::CaseInsensitive) != 0)) 
 					{
 						pCacheItem->subscriptionStr = msgResultStr;
 					}
