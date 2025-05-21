@@ -63,11 +63,11 @@ extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNever
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
-extern QHash<QString, int> groupMethodCountMap;
-extern QHash<QString, int> httpCacheClientConnectFailedCountMap;
-extern QHash<QString, int> httpCacheClientInvalidResponseCountMap;
-extern QHash<QString, int> wsCacheClientConnectFailedCountMap;
-extern QHash<QString, int> wsCacheClientInvalidResponseCountMap;
+extern QMap<QString, int> groupMethodCountMap;
+extern QMap<QString, int> httpCacheClientConnectFailedCountMap;
+extern QMap<QString, int> httpCacheClientInvalidResponseCountMap;
+extern QMap<QString, int> wsCacheClientConnectFailedCountMap;
+extern QMap<QString, int> wsCacheClientInvalidResponseCountMap;
 
 static qint64 durationToTicksRoundDown(qint64 msec)
 {

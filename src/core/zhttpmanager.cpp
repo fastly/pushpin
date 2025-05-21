@@ -79,12 +79,12 @@ QStringList gHttpBackendUrlList;
 QStringList gWsBackendUrlList;
 
 QList<ClientItem> gWsCacheClientList;
-QHash<QByteArray, int> gWsKilledCacheClientMap;
-QHash<QByteArray, time_t> gRestartCacheClientMap;
+QMap<QByteArray, int> gWsKilledCacheClientMap;
+QMap<QByteArray, time_t> gRestartCacheClientMap;
 
 ZhttpResponsePacket gWsInitResponsePacket;
-QHash<QByteArray, ClientItem> gWsClientMap;
-QHash<QByteArray, ClientItem> gHttpClientMap;
+QMap<QByteArray, ClientItem> gWsClientMap;
+QMap<QByteArray, ClientItem> gHttpClientMap;
 
 QList<CacheKeyItem> gCacheKeyItemList;
 QString gMsgIdAttrName = "id";
@@ -105,17 +105,17 @@ int gCacheItemMaxCount = 3000;
 QFuture<void> gCacheThread;
 
 QStringList gCacheMethodList;
-QHash<QString, QString> gSubscribeMethodMap;
-QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
+QMap<QString, QString> gSubscribeMethodMap;
+QMap<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
 QStringList gNeverTimeoutMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
 
 // multi packets params
-QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
-QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
-QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
+QMap<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
+QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
+QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
 redisContext *gRedisContext = nullptr;
@@ -125,7 +125,7 @@ int gRedisPort = 6379;
 int gRedisPoolCount = 10;
 
 // count method group
-QHash<QString, QStringList> gCountMethodGroupMap;
+QMap<QString, QStringList> gCountMethodGroupMap;
 
 // prometheus status
 QList<QString> gCacheMethodRequestCountList;
@@ -140,11 +140,11 @@ quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNeverTimeout
 quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
-QHash<QString, int> groupMethodCountMap;
-QHash<QString, int> httpCacheClientConnectFailedCountMap;
-QHash<QString, int> httpCacheClientInvalidResponseCountMap;
-QHash<QString, int> wsCacheClientConnectFailedCountMap;
-QHash<QString, int> wsCacheClientInvalidResponseCountMap;
+QMap<QString, int> groupMethodCountMap;
+QMap<QString, int> httpCacheClientConnectFailedCountMap;
+QMap<QString, int> httpCacheClientInvalidResponseCountMap;
+QMap<QString, int> wsCacheClientConnectFailedCountMap;
+QMap<QString, int> wsCacheClientInvalidResponseCountMap;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
