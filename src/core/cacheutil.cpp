@@ -58,7 +58,7 @@ extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 
-QMap<QByteArray, CacheItem> gCacheItemMap;
+QHash<QByteArray, CacheItem> gCacheItemMap;
 
 extern QString gMsgIdAttrName;
 extern QString gMsgMethodAttrName;
@@ -69,19 +69,19 @@ extern QString gSubscribeBlockAttrName;
 extern QString gSubscribeChangesAttrName;
 
 extern QStringList gCacheMethodList;
-extern QMap<QString, QString> gSubscribeMethodMap;
-extern QMap<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
+extern QHash<QString, QString> gSubscribeMethodMap;
+extern QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
 extern QStringList gNeverTimeoutMethodList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
 // multi packets params
-extern QMap<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
-extern QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
-extern QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
+extern QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
+extern QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
+extern QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 extern QList<ClientItem> gWsCacheClientList;
-extern QMap<QByteArray, ClientItem> gWsClientMap;
-extern QMap<QByteArray, ClientItem> gHttpClientMap;
+extern QHash<QByteArray, ClientItem> gWsClientMap;
+extern QHash<QByteArray, ClientItem> gHttpClientMap;
 
 extern int gAccessTimeoutSeconds;
 extern int gResponseTimeoutSeconds;
@@ -98,7 +98,7 @@ extern int gRedisPort;
 extern int gRedisPoolCount;
 
 // count method group
-extern QMap<QString, QStringList> gCountMethodGroupMap;
+extern QHash<QString, QStringList> gCountMethodGroupMap;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -118,7 +118,7 @@ extern quint32 numCacheInsert, numCacheHit, numNeverTimeoutCacheInsert, numNever
 extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
-extern QMap<QString, int> groupMethodCountMap;
+extern QHash<QString, int> groupMethodCountMap;
 /*
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Global or shared pool
@@ -293,7 +293,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 	pool.release(conn);
 
 	// store client map
-	QMap<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
+	QHash<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
 
 	// delete original client map
 	QString originalClientMapVal = "";
@@ -420,9 +420,9 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 			buf.constData(), buf.size()
 		);
 	}
-	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
+	else if constexpr (std::is_same<T, QHash<QByteArray, ClientInCacheItem>>::value)
 	{
-		QMap<QByteArray, ClientInCacheItem> clientMap = value;
+		QHash<QByteArray, ClientInCacheItem> clientMap = value;
 
 		// delete original client map
 		QString originalClientMapVal = "";
@@ -588,7 +588,7 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 		QVariant data = TnetString::toVariant(output);
 		value.fromVariant(data);
 	}
-	else if constexpr (std::is_same<T, QMap<QByteArray, ClientInCacheItem>>::value)
+	else if constexpr (std::is_same<T, QHash<QByteArray, ClientInCacheItem>>::value)
 	{
 		QString clientMap = QString::fromUtf8(output);
 		log_debug("Load ClientMap=%s", qPrintable(clientMap));
@@ -889,7 +889,7 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 	return;
 }
 
-void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QMap<QByteArray, ClientInCacheItem>& value)
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QHash<QByteArray, ClientInCacheItem>& value)
 {
 	if (gRedisEnable == false)
 	{
@@ -902,7 +902,7 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
-			redis_store_cache_item_field<QMap<QByteArray, ClientInCacheItem>>(itemId, fieldName, value);	
+			redis_store_cache_item_field<QHash<QByteArray, ClientInCacheItem>>(itemId, fieldName, value);	
 		}
 		else
 		{
