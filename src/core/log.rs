@@ -160,3 +160,27 @@ pub fn local_offset_check() {
         log::warn!("Failed to determine local time offset. Log timestamps will be in UTC.");
     }
 }
+
+mod ffi {
+    use super::*;
+
+    #[no_mangle]
+    pub extern "C" fn log_init() {
+        ensure_init_simple_logger(None, false);
+
+        log::set_logger(get_simple_logger()).unwrap();
+    }
+
+    #[no_mangle]
+    pub extern "C" fn log_set_level(level: libc::c_int) {
+        let level = match level {
+            core::i32::MIN..=0 => log::LevelFilter::Error,
+            1 => log::LevelFilter::Warn,
+            2 => log::LevelFilter::Info,
+            3 => log::LevelFilter::Debug,
+            4..=core::i32::MAX => log::LevelFilter::Trace,
+        };
+
+        log::set_max_level(level);
+    }
+}

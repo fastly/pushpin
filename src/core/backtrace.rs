@@ -76,3 +76,12 @@ pub fn setup_signal_handlers() {
     try_set_signal_handler(libc::SIGILL, on_sigfatal);
     try_set_signal_handler(libc::SIGSEGV, on_sigfatal);
 }
+
+mod ffi {
+    use super::*;
+
+    #[no_mangle]
+    pub extern "C" fn backtrace_setup_signal_handlers() {
+        setup_signal_handlers()
+    }
+}
