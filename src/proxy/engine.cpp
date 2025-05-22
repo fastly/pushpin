@@ -378,7 +378,7 @@ public:
 				if(!stats->setPrometheusPort(config.prometheusPort))
 				{
 					log_error("unable to bind to prometheus port: %s", qPrintable(config.prometheusPort));
-					return false;
+					//return false;
 				}
 			}
 		}
