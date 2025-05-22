@@ -320,6 +320,8 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 		QString clientItemVal = clientMap[mapKey].msgId;
 		clientItemVal += "\n";
 		clientItemVal += clientMap[mapKey].from.toHex().data();
+		clientItemVal += "\n";
+		clientItemVal += clientMap[mapKey].instanceId.toHex().data();
 		//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
 		redis_store_cache_item_field<QString>(itemId, mapKey.toHex().data(), clientItemVal);
 	}
@@ -449,6 +451,8 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 			QString clientItemVal = clientMap[mapKey].msgId;
 			clientItemVal += "\n";
 			clientItemVal += clientMap[mapKey].from.toHex().data();
+			clientItemVal += "\n";
+			clientItemVal += clientMap[mapKey].instanceId.toHex().data();
 			//log_debug("Store clientItemVal=%s", qPrintable(clientItemVal));
 			redis_store_cache_item_field<QString>(itemId, mapKey.toHex().data(), clientItemVal);
 		}
@@ -523,11 +527,12 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 			QString mapValStr = "";
 			redis_load_cache_item_field<QString>(itemId, qPrintable(mapKeyStr), mapValStr);
 			QStringList mapValList = mapValStr.split("\n");
-			if (mapValList.length() == 2)
+			if (mapValList.length() == 3)
 			{
 				ClientInCacheItem cacheClientItem;
 				cacheClientItem.msgId = mapValList[0];
 				cacheClientItem.from = QByteArray::fromHex(qPrintable(mapValList[1]));
+				cacheClientItem.instanceId = QByteArray::fromHex(qPrintable(mapValList[2]));
 				QByteArray mapKeyByte = QByteArray::fromHex(qPrintable(mapKeyStr));
 				item.clientMap[mapKeyByte] = cacheClientItem;
 			}
@@ -604,11 +609,12 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 				redis_load_cache_item_field<QString>(itemId, qPrintable(mapKeyStr), mapValStr);
 				log_debug("mapValStr = %s", qPrintable(mapValStr));
 				QStringList mapValList = mapValStr.split("\n");
-				if (mapValList.length() == 2)
+				if (mapValList.length() == 3)
 				{
 					ClientInCacheItem cacheClientItem;
 					cacheClientItem.msgId = mapValList[0];
 					cacheClientItem.from = QByteArray::fromHex(qPrintable(mapValList[1]));
+					cacheClientItem.instanceId = QByteArray::fromHex(qPrintable(mapValList[2]));
 					QByteArray mapKeyByte = QByteArray::fromHex(qPrintable(mapKeyStr));
 					value[mapKeyByte] = cacheClientItem;
 				}

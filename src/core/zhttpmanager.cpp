@@ -447,6 +447,7 @@ public:
 		ZhttpResponsePacket::Type packetType,
 		const QByteArray &clientId, 
 		const QByteArray &from,
+		const QByteArray &clientInstanceId,
 		int credits = 0,
 		ZhttpResponsePacket *responsePacket = NULL,
 		const QByteArray &responseKey = NULL)
@@ -502,7 +503,7 @@ public:
 			break;
 		}
 
-		out.from = instanceId;
+		out.from = clientInstanceId;
 		write(CacheResponse, out, newFrom);
 	}
 
@@ -1003,7 +1004,7 @@ public:
 			{
 				log_warning("zws server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
+					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from, instanceId);
 				return;
 			}
 
@@ -1033,7 +1034,7 @@ public:
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-							send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
+							send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from, instanceId);
 						resume_cache_thread();
 						return;
 					}
@@ -1044,7 +1045,7 @@ public:
 						// register ws client
 						register_ws_client(id.id, p.from, p.uri.toString());
 						// respond with cached init packet
-						send_response_to_client(ZhttpResponsePacket::Data, id.id, p.from, 0, &gWsInitResponsePacket, responseKey);
+						send_response_to_client(ZhttpResponsePacket::Data, id.id, p.from, instanceId, 0, &gWsInitResponsePacket, responseKey);
 						resume_cache_thread();
 						return;
 					}
@@ -1077,7 +1078,7 @@ public:
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
 				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
+					send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from, instanceId);
 				return;
 			}
 
@@ -1126,7 +1127,7 @@ public:
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
 			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
-				send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from);
+				send_response_to_client(ZhttpResponsePacket::Cancel, id.id, p.from, instanceId);
 			return;
 		}
 	}
@@ -1223,7 +1224,7 @@ public:
 						//send_wsCloseResponse(packetId);
 						break;
 					case ZhttpRequestPacket::Close:
-						send_response_to_client(ZhttpResponsePacket::Close, packetId, p.from);
+						send_response_to_client(ZhttpResponsePacket::Close, packetId, p.from, instanceId);
 						unregister_client(packetId);
 						break;
 					case ZhttpRequestPacket::KeepAlive:
@@ -1231,17 +1232,17 @@ public:
 						//send_pingResponse(packetId);
 						break;
 					case ZhttpRequestPacket::Pong:
-						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, 0);
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, instanceId, 0);
 						break;
 					case ZhttpRequestPacket::Ping:
-						send_response_to_client(ZhttpResponsePacket::Pong, packetId, p.from);
+						send_response_to_client(ZhttpResponsePacket::Pong, packetId, p.from, instanceId);
 						break;
 					case ZhttpRequestPacket::Credit:
 						log_debug("[WS] received Credit, ignoring");
 						break;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
-						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()), instanceId);
 						process_ws_stream_request(packetId, p);
 						break;
 					default:
@@ -1436,7 +1437,7 @@ public:
 		if (gWsClientMap.contains(clientId))
 		{
 			log_debug("_[TIMER] send ping to client %s", clientId.data());
-			send_response_to_client(ZhttpResponsePacket::Ping, clientId, gWsClientMap[clientId].from);
+			send_response_to_client(ZhttpResponsePacket::Ping, clientId, gWsClientMap[clientId].from, gWsClientMap[clientId].instanceId);
 			QTimer::singleShot(PING_INTERVAL * 1000, [=]() {
 				timer_send_ping_to_client(clientId);
 			});
@@ -1710,6 +1711,7 @@ public:
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.clientMap[clientId].msgId = packetMsg.id;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
+		cacheItem.clientMap[clientId].instanceId = instanceId;
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
@@ -1766,6 +1768,7 @@ public:
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
+		cacheItem.clientMap[clientId].instanceId = instanceId;
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
@@ -1907,6 +1910,7 @@ public:
 					// add client to list
 					pCacheItem->clientMap[packetId].msgId = packetMsg.id;
 					pCacheItem->clientMap[packetId].from = p.from;
+					pCacheItem->clientMap[packetId].instanceId = instanceId;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
@@ -2139,6 +2143,7 @@ public:
 								{
 									QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
 									QByteArray from = pCacheItem->clientMap[cliId].from;
+									QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 
 									log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s", 
 										cliId.data(), qPrintable(orgMsgId), from.data());
@@ -2146,12 +2151,12 @@ public:
 									ZhttpResponsePacket out = pCacheItem->responsePacket;
 									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 									replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
+									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, orgInstanceId, 0, &out);
 
 									ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 									replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 									replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, orgInstanceId, 0, &out1);
 
 									++it;
 								}
@@ -2244,6 +2249,7 @@ public:
 							{
 								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
 								QByteArray from = pCacheItem->clientMap[cliId].from;
+								QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, from=%s", 
 										cliId.data(), qPrintable(orgMsgId), from.data());
@@ -2251,7 +2257,7 @@ public:
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, orgInstanceId, 0, &out1);
 
 								++it;
 							}
@@ -2340,9 +2346,10 @@ public:
 							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
 							QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
 							QByteArray from = pCacheItem->clientMap[clientId].from;
+							QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 							ZhttpResponsePacket out = pCacheItem->responsePacket;
 							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
+							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, orgInstanceId, 0, &out);
 						}
 					}
 					pCacheItem->clientMap.clear();
@@ -2409,6 +2416,7 @@ public:
 							{
 								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
 								QByteArray from = pCacheItem->clientMap[cliId].from;
+								QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 
 								log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s", 
 										cliId.data(), qPrintable(orgMsgId), from.data());
@@ -2416,12 +2424,12 @@ public:
 								ZhttpResponsePacket out = pCacheItem->responsePacket;
 								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, orgInstanceId, 0, &out);
 
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, orgInstanceId, 0, &out1);
 
 								++it;
 							}
@@ -2639,23 +2647,24 @@ public:
 					{
 						ZhttpResponsePacket out = pCacheItem->responsePacket;
 						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, instanceId, 0, &out);
 					}
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
 						ZhttpResponsePacket out = pCacheItem->responsePacket;
 						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 						replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, instanceId, 0, &out);
 
 						ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 						replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 						replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out1);
+						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, instanceId, 0, &out1);
 
 						// add client to list
 						pCacheItem->clientMap[packetId].msgId = msgIdStr;
 						pCacheItem->clientMap[packetId].from = p.from;
+						pCacheItem->clientMap[packetId].instanceId = instanceId;
 						log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					}
@@ -2666,6 +2675,7 @@ public:
 					// add client to list
 					pCacheItem->clientMap[packetId].msgId = msgIdStr;
 					pCacheItem->clientMap[packetId].from = p.from;
+					pCacheItem->clientMap[packetId].instanceId = instanceId;
 					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}

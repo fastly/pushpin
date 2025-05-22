@@ -90,6 +90,7 @@ enum CacheMethodType {
 struct ClientInCacheItem {
 	QString msgId;
 	QByteArray from;
+	QByteArray instanceId;
 };
 
 // Cache Item
