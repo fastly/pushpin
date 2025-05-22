@@ -2137,10 +2137,11 @@ public:
 								QByteArray cliId = it.key();
 								if (gWsClientMap.contains(cliId))
 								{
-									log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
+									QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
+									QByteArray from = pCacheItem->clientMap[cliId].from;
 
-									QString orgMsgId = it.value().msgId;
-									QByteArray from = it.value().from;
+									log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s", 
+										cliId.data(), qPrintable(orgMsgId), from.data());
 
 									ZhttpResponsePacket out = pCacheItem->responsePacket;
 									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
@@ -2241,10 +2242,11 @@ public:
 							QByteArray cliId = it.key();
 							if (gWsClientMap.contains(cliId))
 							{
-								log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
+								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
+								QByteArray from = pCacheItem->clientMap[cliId].from;
 
-								QString orgMsgId = it.value().msgId;
-								QByteArray from = it.value().from;
+								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, from=%s", 
+										cliId.data(), qPrintable(orgMsgId), from.data());
 
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
@@ -2405,10 +2407,11 @@ public:
 							QByteArray cliId = it.key();
 							if (gWsClientMap.contains(cliId))
 							{
-								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
-								
-								QString orgMsgId = it.value().msgId;
-								QByteArray from = it.value().from;
+								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
+								QByteArray from = pCacheItem->clientMap[cliId].from;
+
+								log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s", 
+										cliId.data(), qPrintable(orgMsgId), from.data());
 
 								ZhttpResponsePacket out = pCacheItem->responsePacket;
 								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
