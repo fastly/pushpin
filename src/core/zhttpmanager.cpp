@@ -473,6 +473,7 @@ public:
 				out = *responsePacket;
 				out.ids[0].id = clientId;
 				out.ids[0].seq = newSeq;
+				out.ids[0].from = newFrom;
 				if (responseKey != NULL)
 				{
 					out.headers.removeAll("sec-websocket-accept");
@@ -487,6 +488,7 @@ public:
 		case ZhttpResponsePacket::Credit:
 			tempId.id = clientId;
 			tempId.seq = newSeq;
+			tempId.from = newFrom;
 			out.ids += tempId;
 			out.type = packetType;
 			out.credits = credits;
@@ -494,12 +496,13 @@ public:
 		default:
 			tempId.id = clientId;
 			tempId.seq = newSeq;
+			tempId.from = newFrom;
 			out.ids += tempId;
 			out.type = packetType;
 			break;
 		}
 
-		out.from = newFrom;
+		out.from = instanceId;
 		write(CacheResponse, out, newFrom);
 	}
 
