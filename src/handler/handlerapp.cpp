@@ -325,7 +325,6 @@ public:
 		QString statsFormat = settings.value("handler/stats_format").toString();
 		QString prometheusPort = settings.value("handler/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
-		bool newEventLoop = settings.value("handler/new_event_loop", false).toBool();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -391,7 +390,7 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, newEventLoop);
+		return runLoop(config, true);
 	}
 
 private:
