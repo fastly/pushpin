@@ -22,6 +22,8 @@
  */
 
 #include <unistd.h>
+#include <chrono>
+#include <thread>
 #include <boost/signals2.hpp>
 #include <QDir>
 #include <QJsonDocument>
@@ -39,10 +41,13 @@
 #include "packet/statspacket.h"
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "domainmap.h"
 #include "engine.h"
+
+using namespace std::chrono_literals;
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
 
@@ -563,7 +568,7 @@ public:
 	Wrapper *wrapper;
 	QList<StatsPacket> trackedPackets;
 
-	TestState()
+	TestState(std::function<void (int)> loop_wait)
 	{
 		qRegisterMetaType<QList<StatsPacket>>();
 
@@ -575,12 +580,10 @@ public:
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
-		Timer::init(100);
-
 		wrapper = new Wrapper(workDir);
 		wrapper->startHttp();
 
-		domainMap = new DomainMap(configDir.filePath("routes.test"), false);
+		domainMap = new DomainMap(configDir.filePath("routes.test"), true);
 
 		engine = new Engine(domainMap);
 
@@ -607,11 +610,11 @@ public:
 
 		wrapper->startHandler();
 
-		QTest::qWait(500);
-
 		engine->statsManager()->reported.connect([=](const QList<StatsPacket>& packets) {
 			trackedPackets.append(packets);
 		});
+
+		loop_wait(500);
 	}
 
 	~TestState()
@@ -619,21 +622,34 @@ public:
 		delete engine;
 		delete domainMap;
 		delete wrapper;
-
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
-
-		DeferCall::cleanup();
-		Timer::deinit();
 	}
 };
 
 }
 
-static void passthrough()
+static void runWithEventLoop(std::function<void (TestState &, std::function<void (int)>)> f)
 {
-	TestQCoreApplication qapp;
-	TestState state;
+	EventLoop loop(100);
+
+	auto loop_wait = [&](int ms) {
+		for(int i = ms; i > 0; i -= 10)
+		{
+			std::this_thread::sleep_for(10ms);
+			loop.step();
+		}
+	};
+
+	{
+		TestState state(loop_wait);
+
+		f(state, loop_wait);
+	}
+
+	DeferCall::cleanup();
+}
+
+static void passthrough(TestState &state, std::function<void (int)> loop_wait)
+{
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -650,7 +666,7 @@ static void passthrough()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -672,10 +688,8 @@ static void passthrough()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 11); // "hello world"
 }
 
-static void passthroughWithoutInspect()
+static void passthroughWithoutInspect(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Wrapper *wrapper = state.wrapper;
 
 	wrapper->inspectEnabled = false;
@@ -692,15 +706,13 @@ static void passthroughWithoutInspect()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT_EQ(wrapper->in, QByteArray("hello world"));
 }
 
-static void passthroughJsonp()
+static void passthroughJsonp(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Wrapper *wrapper = state.wrapper;
 
 	ZhttpRequestPacket zreq;
@@ -715,7 +727,7 @@ static void passthroughJsonp()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(wrapper->in.startsWith("/**/jpcb({"));
 	TEST_ASSERT(wrapper->in.endsWith("});\n"));
@@ -732,10 +744,8 @@ static void passthroughJsonp()
 	TEST_ASSERT_EQ(data["body"].toByteArray(), QByteArray("{\"hello\": \"world\"}"));
 }
 
-static void passthroughJsonpBasic()
+static void passthroughJsonpBasic(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Wrapper *wrapper = state.wrapper;
 
 	ZhttpRequestPacket zreq;
@@ -750,15 +760,13 @@ static void passthroughJsonpBasic()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT_EQ(wrapper->in, QByteArray("/**/jpcb({\"hello\": \"world\"});\n"));
 }
 
-static void passthroughPostStream()
+static void passthroughPostStream(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -779,7 +787,7 @@ static void passthroughPostStream()
 
 	// ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	// now finish the request
 	zreq = ZhttpRequestPacket();
@@ -796,7 +804,7 @@ static void passthroughPostStream()
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -818,10 +826,8 @@ static void passthroughPostStream()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 11); // "hello world"
 }
 
-static void passthroughPostStreamFail()
+static void passthroughPostStreamFail(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -842,7 +848,7 @@ static void passthroughPostStreamFail()
 
 	// ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	// now cancel the request
 	zreq = ZhttpRequestPacket();
@@ -859,7 +865,7 @@ static void passthroughPostStreamFail()
 
 	// wait for server side to receive error
 	while(!wrapper->serverFailed)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -878,10 +884,8 @@ static void passthroughPostStreamFail()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 0);
 }
 
-static void acceptResponse()
+static void acceptResponse(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -897,7 +901,7 @@ static void acceptResponse()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -920,10 +924,8 @@ static void acceptResponse()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 0);
 }
 
-static void acceptStream()
+static void acceptStream(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -939,7 +941,7 @@ static void acceptStream()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -963,10 +965,8 @@ static void acceptStream()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 12); // "stream open\n"
 }
 
-static void acceptResponseBodyInstruct()
+static void acceptResponseBodyInstruct(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Wrapper *wrapper = state.wrapper;
 
 	ZhttpRequestPacket zreq;
@@ -981,15 +981,13 @@ static void acceptResponseBodyInstruct()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT_EQ(wrapper->acceptIn, QByteArray("{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\" } ] } }"));
 }
 
-static void acceptNoHold()
+static void acceptNoHold(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1005,7 +1003,7 @@ static void acceptNoHold()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1026,10 +1024,8 @@ static void acceptNoHold()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 11); // "hello world"
 }
 
-static void acceptNoHoldBodyInstruct()
+static void acceptNoHoldBodyInstruct(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Wrapper *wrapper = state.wrapper;
 
 	ZhttpRequestPacket zreq;
@@ -1044,15 +1040,13 @@ static void acceptNoHoldBodyInstruct()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT_EQ(wrapper->acceptIn, QByteArray("{ \"response\": { \"body\": \"hello world\" } }"));
 }
 
-static void passthroughThenAcceptStream()
+static void passthroughThenAcceptStream(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1068,7 +1062,7 @@ static void passthroughThenAcceptStream()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1093,10 +1087,8 @@ static void passthroughThenAcceptStream()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 110001);
 }
 
-static void passthroughThenAcceptNext()
+static void passthroughThenAcceptNext(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1112,7 +1104,7 @@ static void passthroughThenAcceptNext()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1136,10 +1128,8 @@ static void passthroughThenAcceptNext()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 110001);
 }
 
-static void acceptWithRetry()
+static void acceptWithRetry(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1155,7 +1145,7 @@ static void acceptWithRetry()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1189,10 +1179,8 @@ static void acceptWithRetry()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 105); // "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }" + "hello world"
 }
 
-static void passthroughShared()
+static void passthroughShared(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1224,7 +1212,7 @@ static void passthroughShared()
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
 	while(wrapper->clientReqsFinished < 2)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1249,10 +1237,8 @@ static void passthroughShared()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 11); // "hello world"
 }
 
-static void passthroughSharedPost()
+static void passthroughSharedPost(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1287,7 +1273,7 @@ static void passthroughSharedPost()
 
 	// we've hit prefetch, wait for inspect
 	while(!wrapper->inspected)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	// finish the requests
 
@@ -1315,7 +1301,7 @@ static void passthroughSharedPost()
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
 	while(wrapper->clientReqsFinished < 2)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1340,10 +1326,8 @@ static void passthroughSharedPost()
 	TEST_ASSERT_EQ(p.serverContentBytesReceived, 11); // "hello world"
 }
 
-static void passthroughWs()
+static void passthroughWs(TestState &state, std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
 	Engine *engine = state.engine;
 	Wrapper *wrapper = state.wrapper;
 
@@ -1358,7 +1342,7 @@ static void passthroughWs()
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 	while(!wrapper->isWs)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	zreq = ZhttpRequestPacket();
 	zreq.from = "test-client";
@@ -1374,7 +1358,7 @@ static void passthroughWs()
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 	while(!wrapper->finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	engine->statsManager()->flushReport(QByteArray());
 
@@ -1398,23 +1382,23 @@ static void passthroughWs()
 
 extern "C" int proxyengine_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(passthrough());
-	TEST_CATCH(passthroughWithoutInspect());
-	TEST_CATCH(passthroughJsonp());
-	TEST_CATCH(passthroughJsonpBasic());
-	TEST_CATCH(passthroughPostStream());
-	TEST_CATCH(passthroughPostStreamFail());
-	TEST_CATCH(acceptResponse());
-	TEST_CATCH(acceptStream());
-	TEST_CATCH(acceptResponseBodyInstruct());
-	TEST_CATCH(acceptNoHold());
-	TEST_CATCH(acceptNoHoldBodyInstruct());
-	TEST_CATCH(passthroughThenAcceptStream());
-	TEST_CATCH(passthroughThenAcceptNext());
-	TEST_CATCH(acceptWithRetry());
-	TEST_CATCH(passthroughShared());
-	TEST_CATCH(passthroughSharedPost());
-	TEST_CATCH(passthroughWs());
+	TEST_CATCH(runWithEventLoop(passthrough));
+	TEST_CATCH(runWithEventLoop(passthroughWithoutInspect));
+	TEST_CATCH(runWithEventLoop(passthroughJsonp));
+	TEST_CATCH(runWithEventLoop(passthroughJsonpBasic));
+	TEST_CATCH(runWithEventLoop(passthroughPostStream));
+	TEST_CATCH(runWithEventLoop(passthroughPostStreamFail));
+	TEST_CATCH(runWithEventLoop(acceptResponse));
+	TEST_CATCH(runWithEventLoop(acceptStream));
+	TEST_CATCH(runWithEventLoop(acceptResponseBodyInstruct));
+	TEST_CATCH(runWithEventLoop(acceptNoHold));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldBodyInstruct));
+	TEST_CATCH(runWithEventLoop(passthroughThenAcceptStream));
+	TEST_CATCH(runWithEventLoop(passthroughThenAcceptNext));
+	TEST_CATCH(runWithEventLoop(acceptWithRetry));
+	TEST_CATCH(runWithEventLoop(passthroughShared));
+	TEST_CATCH(runWithEventLoop(passthroughSharedPost));
+	TEST_CATCH(runWithEventLoop(passthroughWs));
 
 	return 0;
 }
