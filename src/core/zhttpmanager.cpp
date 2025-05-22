@@ -499,7 +499,7 @@ public:
 			break;
 		}
 
-		out.from = instanceId;
+		out.from = newFrom;
 		write(CacheResponse, out, newFrom);
 	}
 
