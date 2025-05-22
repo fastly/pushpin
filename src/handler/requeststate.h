@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,6 +37,7 @@ public:
 	int inSeq;
 	int outSeq;
 	int outCredits;
+	bool routerResp;
 	QHostAddress peerAddress;
 	QHostAddress logicalPeerAddress;
 	bool isHttps;
@@ -52,6 +54,7 @@ public:
 		inSeq(0),
 		outSeq(0),
 		outCredits(0),
+		routerResp(false),
 		isHttps(false),
 		debug(false),
 		isRetry(false),

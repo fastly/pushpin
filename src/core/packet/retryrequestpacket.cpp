@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -70,6 +70,9 @@ QVariant RetryRequestPacket::toVariant() const
 		vrequest["in-seq"] = r.inSeq;
 		vrequest["out-seq"] = r.outSeq;
 		vrequest["out-credits"] = r.outCredits;
+
+		if(r.routerResp)
+			vrequest["router-resp"] = r.routerResp;
 
 		if(r.userData.isValid())
 			vrequest["user-data"] = r.userData;
@@ -246,6 +249,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 		if(!vrequest.contains("out-credits") || !canConvert(vrequest["out-credits"], QMetaType::Int))
 			return false;
 		r.outCredits = vrequest["out-credits"].toInt();
+
+		if(vrequest.contains("router-resp"))
+		{
+			if(typeId(vrequest["router-resp"]) != QMetaType::Bool)
+				return false;
+
+			r.routerResp = vrequest["router-resp"].toBool();
+		}
 
 		if(vrequest.contains("user-data"))
 			r.userData = vrequest["user-data"];

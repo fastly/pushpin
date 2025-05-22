@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -60,6 +60,14 @@ RequestState RequestState::fromVariant(const QVariant &in)
 		return RequestState();
 
 	rs.outCredits = r["out-credits"].toInt();
+
+	if(r.contains("router-resp"))
+	{
+		if(typeId(r["router-resp"]) != QMetaType::Bool)
+			return RequestState();
+
+		rs.routerResp = r["router-resp"].toBool();
+	}
 
 	if(r.contains("response-code"))
 	{

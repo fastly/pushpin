@@ -77,6 +77,7 @@ public:
 		int messageWait;
 		QHash<QString, QByteArray> messageKeys;
 		int idCacheTtl;
+		bool updateOnFirstSubscription;
 		int connectionsMax;
 		int connectionSubscriptionMax;
 		int subscriptionLinger;
@@ -100,6 +101,7 @@ public:
 			messageBlockSize(-1),
 			messageWait(-1),
 			idCacheTtl(-1),
+			updateOnFirstSubscription(false),
 			connectionsMax(-1),
 			connectionSubscriptionMax(-1),
 			subscriptionLinger(-1),

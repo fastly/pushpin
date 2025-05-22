@@ -1062,6 +1062,7 @@ private:
 			rpreq.inSeq = ss.inSeq;
 			rpreq.outSeq = ss.outSeq;
 			rpreq.outCredits = ss.outCredits;
+			rpreq.routerResp = ss.routerResp;
 			rpreq.userData = ss.userData;
 
 			rp.requests += rpreq;

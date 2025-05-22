@@ -555,7 +555,6 @@ public:
 		int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
-		bool newEventLoop = settings.value("proxy/new_event_loop", false).toBool();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -652,7 +651,7 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, args.routeLines, routesFile, workerCount, newEventLoop);
+		return runLoop(config, args.routeLines, routesFile, workerCount, true);
 	}
 
 private:

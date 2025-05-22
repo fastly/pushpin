@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -77,6 +77,10 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 			vrequest["in-seq"] = r.inSeq;
 			vrequest["out-seq"] = r.outSeq;
 			vrequest["out-credits"] = r.outCredits;
+
+			if(r.routerResp)
+				vrequest["router-resp"] = true;
+
 			if(r.userData.isValid())
 				vrequest["user-data"] = r.userData;
 
