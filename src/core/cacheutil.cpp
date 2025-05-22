@@ -71,6 +71,7 @@ extern QString gSubscribeChangesAttrName;
 extern QStringList gCacheMethodList;
 extern QHash<QString, QString> gSubscribeMethodMap;
 extern QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
+extern QList<QByteArray>  gDeleteClientList;
 extern QStringList gNeverTimeoutMethodList;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
@@ -85,6 +86,7 @@ extern QHash<QByteArray, ClientItem> gHttpClientMap;
 
 extern int gAccessTimeoutSeconds;
 extern int gResponseTimeoutSeconds;
+extern int gClientNoRequestTimeoutSeconds;
 extern int gCacheTimeoutSeconds;
 extern int gShorterTimeoutSeconds;
 extern int gLongerTimeoutSeconds;
@@ -1125,6 +1127,43 @@ static void remove_old_cache_items()
 	}
 }
 
+void check_old_clients()
+{
+	qint64 clientNoRequestTimeoutSeconds = gClientNoRequestTimeoutSeconds * 1000;
+	time_t currTime = time(NULL);
+
+	int httpClientCount = 0;
+	int wsClientCount = 0;
+	int healthClientCount = 0;
+	// lookup clients to delete
+	foreach(QByteArray id, gHttpClientMap.keys())
+	{
+		int diffSeconds = currTime - gHttpClientMap[id].lastRequestTime;
+		if (!gDeleteClientList.contains(id) && (diffSeconds > clientNoRequestTimeoutSeconds))
+		{
+			// delete this client
+			log_debug("[HTTP] add delete client id=%s", id.data());
+			gDeleteClientList.append(id);
+		}
+	}
+
+	foreach(QByteArray id, gWsClientMap.keys())
+	{
+		int diffSeconds = currTime - gWsClientMap[id].lastRequestTime;
+		if (!gDeleteClientList.contains(id) && (diffSeconds > clientNoRequestTimeoutSeconds))
+		{
+			// delete this client
+			log_debug("[WS] add delete client id=%s", id.data());
+			gDeleteClientList.append(id);
+			continue;
+		}
+	}
+
+	// count clients
+	numHttpClientCount = gHttpClientMap.count();
+	numWsClientCount = gWsClientMap.count();
+}
+
 void cache_thread()
 {
 	gCacheThreadAllowFlag = true;
@@ -1138,6 +1177,7 @@ void cache_thread()
 		gCacheThreadRunning = true;
 
 		remove_old_cache_items();
+		check_old_clients();
 
 		gCacheThreadRunning = false;
 

@@ -97,6 +97,7 @@ QString gSubscribeChangesAttrName = "params>>result>>changes";
 
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 90;
+int gClientNoRequestTimeoutSeconds = 120; // 2mins
 int gCacheTimeoutSeconds = 10;
 int gShorterTimeoutSeconds = 5;
 int gLongerTimeoutSeconds = 60;
@@ -107,6 +108,7 @@ QFuture<void> gCacheThread;
 QStringList gCacheMethodList;
 QHash<QString, QString> gSubscribeMethodMap;
 QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
+QList<QByteArray> gDeleteClientList;
 QStringList gNeverTimeoutMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
@@ -1170,11 +1172,15 @@ public:
 
 				// complete tasks from cache thread
 				send_unsubscribe_request_over_cacheclient();
+				delete_old_clients();
 
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
 					log_debug("[HTTP] received ws request from real client=%s", packetId.data());
+
+					// update client last request time
+					gHttpClientMap[packetId].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 					// if cancel/close request, remove client from the subscription client list
 					int ret;
@@ -1202,6 +1208,9 @@ public:
 				else if (gWsClientMap.contains(packetId))
 				{
 					log_debug("[WS] received ws request from real client=%s", packetId.data());
+
+					// update client last request time
+					gWsClientMap[packetId].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 					// if cancel/close request, remove client from the subscription client list
 					switch (p.type)
@@ -2518,6 +2527,18 @@ public:
 		}
 
 		return 0;
+	}
+
+	int delete_old_clients()
+	{
+		int itemCount = gDeleteClientList.count();
+		if (itemCount > 0)
+		{
+			QByteArray clientId = gDeleteClientList[0];
+			gDeleteClientList.removeAt(0);
+
+			unregister_client(clientId);
+		}
 	}
 
 	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)
