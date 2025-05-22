@@ -703,7 +703,7 @@ public:
 			resume_cache_thread();
 		}
 
-		update_client_response_seq(packetId, packetSeq);
+		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
@@ -1815,7 +1815,7 @@ public:
 		// update seq
 		if (gHttpClientMap.contains(newPacketId))
 		{
-			seqNum = gHttpClientMap[newPacketId].lastResponseSeq + 1;
+			seqNum = get_client_new_response_seq(newPacketId);
 		}
 		responsePacket.ids[0].id = newPacketId.data();
 		responsePacket.ids[0].seq = seqNum;

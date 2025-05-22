@@ -2001,16 +2001,21 @@ int get_client_new_response_seq(const QByteArray &clientId)
 	if (gWsClientMap.contains(clientId)) 
 	{
 		ret = gWsClientMap[clientId].lastResponseSeq + 1;
+		gWsClientMap[clientId].lastResponseSeq = ret;
 	}
 	else if (gHttpClientMap.contains(clientId)) 
 	{
 		ret = gHttpClientMap[clientId].lastResponseSeq + 1;
+		gHttpClientMap[clientId].lastResponseSeq = ret;
 	}
 	else // cache client
 	{
 		int ccIndex = get_cc_index_from_clientId(clientId);
 		if (ccIndex >= 0)
+		{
 			ret = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
+			gWsCacheClientList[ccIndex].lastResponseSeq = ret;
+		}
 	}
 	
 	return ret;
