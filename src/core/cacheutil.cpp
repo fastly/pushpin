@@ -759,10 +759,10 @@ bool is_cache_item(const QByteArray& itemId)
 
 CacheItem* load_cache_item(const QByteArray& itemId)
 {
-	QElapsedTimer timer;
+	//QElapsedTimer timer;
 	CacheItem* ret = NULL;
 
-	timer.start();
+	//timer.start();
 	if (gRedisEnable == false)
 	{
 		// global cache item map
@@ -785,7 +785,7 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 		gCacheItemMap[itemId] = redis_load_cache_item(itemId);
 		ret = &gCacheItemMap[itemId];
 	}
-	qint64 nsecs = timer.nsecsElapsed();
+	//qint64 nsecs = timer.nsecsElapsed();
 	//log_debug("[PERF] load_cache_item %ld ns", nsecs);
 
 	return ret;
@@ -793,8 +793,8 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 
 void store_cache_item(const QByteArray& itemId)
 {
-	QElapsedTimer timer;
-	timer.start();
+	//QElapsedTimer timer;
+	//timer.start();
 	if (gRedisEnable == false)
 	{
 		// global cache item map
@@ -813,8 +813,8 @@ void store_cache_item(const QByteArray& itemId)
 			log_debug("[REDIS] not loaded cache item %s", itemId.toHex().data());
 		}
 	}
-	qint64 nsecs = timer.nsecsElapsed();
-	log_debug("[PERF] store_cache_item %ld ns", nsecs);
+	//qint64 nsecs = timer.nsecsElapsed();
+	//log_debug("[PERF] store_cache_item %ld ns", nsecs);
 	
 	return;
 }

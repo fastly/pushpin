@@ -2131,22 +2131,23 @@ public:
 							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 							while (it != pCacheItem->clientMap.end()) 
 							{
-								if (gWsClientMap.contains(it))
+								QByteArray cliId = it.key();
+								if (gWsClientMap.contains(cliId))
 								{
-									log_debug("[WS] Sending Subscription content to client id=%s", it.data());
+									log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 
-									QString orgMsgId = pCacheItem->clientMap[it].msgId;
-									QByteArray from = pCacheItem->clientMap[it].from;
+									QString orgMsgId = it.value().msgId;
+									QByteArray from = it.value().from;
 
 									ZhttpResponsePacket out = pCacheItem->responsePacket;
 									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 									replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out);
+									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 									ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 									replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 									replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 
 									++it;
 								}
@@ -2234,17 +2235,18 @@ public:
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 						while (it != pCacheItem->clientMap.end()) 
 						{
-							if (gWsClientMap.contains(it))
+							QByteArray cliId = it.key();
+							if (gWsClientMap.contains(cliId))
 							{
-								log_debug("[WS] Sending Subscription update to client id=%s", it.data());
+								log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
 
-								QString orgMsgId = pCacheItem->clientMap[it].msgId;
-								QByteArray from = pCacheItem->clientMap[it].from;
+								QString orgMsgId = it.value().msgId;
+								QByteArray from = it.value().from;
 
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 
 								++it;
 							}
@@ -2397,22 +2399,23 @@ public:
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 						while (it != pCacheItem->clientMap.end()) 
 						{
-							if (gWsClientMap.contains(it))
+							QByteArray cliId = it.key();
+							if (gWsClientMap.contains(cliId))
 							{
-								log_debug("[WS] Sending Subscription content to client id=%s", it.data());
+								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
 								
-								QString orgMsgId = pCacheItem->clientMap[it].msgId;
-								QByteArray from = pCacheItem->clientMap[it].from;
+								QString orgMsgId = it.value().msgId;
+								QByteArray from = it.value().from;
 
 								ZhttpResponsePacket out = pCacheItem->responsePacket;
 								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
 
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
 
 								++it;
 							}
