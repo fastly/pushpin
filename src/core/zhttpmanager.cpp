@@ -1242,7 +1242,7 @@ public:
 						break;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
-						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()), instanceId);
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, instanceId, static_cast<int>(p.body.size()));
 						process_ws_stream_request(packetId, p);
 						break;
 					default:
@@ -2346,7 +2346,7 @@ public:
 							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
 							QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
 							QByteArray from = pCacheItem->clientMap[clientId].from;
-							QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
+							QByteArray orgInstanceId = pCacheItem->clientMap[clientId].instanceId;
 							ZhttpResponsePacket out = pCacheItem->responsePacket;
 							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, orgInstanceId, 0, &out);
