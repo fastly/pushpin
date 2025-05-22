@@ -3,7 +3,7 @@ import tnetstring
 import zmq
 
 if len(sys.argv) < 3:
-    print("usage: %s [pub_spec] [pull_spec]" % sys.argv[0])
+    print(f"usage: {sys.argv[0]} [pub_spec] [pull_spec]")
     sys.exit(1)
 
 pub_spec = sys.argv[1]
@@ -27,19 +27,20 @@ while True:
     socks = dict(poller.poll())
     if socks.get(pull_sock) == zmq.POLLIN:
         m = tnetstring.loads(pull_sock.recv())
-        channel = m["channel"]
+        channel = m[b"channel"]
         if channel in subs:
-            del m["channel"]
+            del m[b"channel"]
             pub_sock.send_multipart([channel, tnetstring.dumps(m)])
     elif socks.get(pub_sock) == zmq.POLLIN:
         m = pub_sock.recv()
         mtype = m[0]
         topic = m[1:]
-        if mtype == "\x01":
+        topicstr = topic.decode("utf-8")
+        if mtype == 1:
             assert topic not in subs
-            print("subscribing [%s]" % topic)
+            print(f"subscribing [{topicstr}]")
             subs.add(topic)
-        elif mtype == "\x00":
+        elif mtype == 0:
             assert topic in subs
-            print("unsubscribing [%s]" % topic)
+            print(f"unsubscribing [{topicstr}]")
             subs.remove(topic)

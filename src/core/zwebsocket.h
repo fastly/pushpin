@@ -88,6 +88,7 @@ private:
 	void startServer();
 	bool isServer() const;
 	QByteArray toAddress() const;
+	bool routerResp() const;
 	int outSeqInc();
 	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);

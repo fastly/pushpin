@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +25,7 @@ use crate::core::event;
 use crate::core::executor::Executor;
 use crate::core::list;
 use crate::core::reactor::Reactor;
-use crate::core::select::{select_10, select_9, select_option, select_slice, Select10, Select9};
+use crate::core::select::{select_10, select_option, select_slice, Select10};
 use crate::core::tnetstring;
 use crate::core::zmq::{
     AsyncZmqSocket, MultipartHeader, SpecInfo, ZmqSendFuture, ZmqSendToFuture, ZmqSocket,
@@ -390,7 +391,7 @@ struct ReqPipeEnd {
 }
 
 struct StreamPipeEnd {
-    sender: channel::Sender<arena::Arc<zmq::Message>>,
+    sender: channel::Sender<(arena::Arc<zmq::Message>, bool)>,
     receiver_any: channel::Receiver<zmq::Message>,
     receiver_addr: channel::Receiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
@@ -401,7 +402,7 @@ struct AsyncReqPipeEnd {
 }
 
 struct AsyncStreamPipeEnd {
-    sender: AsyncSender<arena::Arc<zmq::Message>>,
+    sender: AsyncSender<(arena::Arc<zmq::Message>, bool)>,
     receiver_any: AsyncReceiver<zmq::Message>,
     receiver_addr: AsyncReceiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
@@ -792,7 +793,7 @@ impl StreamHandles {
         }
     }
 
-    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
+    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>], from_router: bool) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
@@ -811,7 +812,12 @@ impl StreamHandles {
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
-                match p.pe.sender.send(arena::Arc::clone(msg)).await {
+                match p
+                    .pe
+                    .sender
+                    .send((arena::Arc::clone(msg), from_router))
+                    .await
+                {
                     Ok(_) => {}
                     Err(_) => {
                         p.valid.set(false);
@@ -1535,6 +1541,12 @@ impl ClientSocketManager {
             .set_sndhwm(other_hwm as i32)
             .unwrap();
         client_stream
+            .out_stream
+            .inner()
+            .inner()
+            .set_rcvhwm(other_hwm as i32)
+            .unwrap();
+        client_stream
             .in_
             .inner()
             .inner()
@@ -1555,6 +1567,13 @@ impl ClientSocketManager {
         client_stream
             .out_stream
             .set_retry_timeout(Some(STREAM_OUT_STREAM_DELAY));
+
+        client_stream
+            .out_stream
+            .inner()
+            .inner()
+            .set_identity(instance_id.as_bytes())
+            .unwrap();
 
         let sub = format!("{} ", instance_id);
         client_stream
@@ -1590,7 +1609,7 @@ impl ClientSocketManager {
                 None
             };
 
-            let result = select_9(
+            let result = select_10(
                 control_receiver.recv(),
                 select_option(pin!(req_handles_recv).as_pin_mut()),
                 select_option(req_send.as_mut()),
@@ -1599,13 +1618,14 @@ impl ClientSocketManager {
                 select_option(stream_out_send.as_mut()),
                 select_option(pin!(stream_handles_recv_addr).as_pin_mut()),
                 select_option(stream_out_stream_send.as_mut()),
+                client_stream.out_stream.recv_routed(),
                 client_stream.in_.recv(),
             )
             .await;
 
             match result {
                 // control_receiver.recv
-                Select9::R1(result) => match result {
+                Select10::R1(result) => match result {
                     Ok(req) => match req {
                         ControlRequest::Stop => break,
                         ControlRequest::SetClientReq(specs) => {
@@ -1671,7 +1691,7 @@ impl ClientSocketManager {
                     Err(e) => error!("control recv: {}", e),
                 },
                 // req_handles_recv
-                Select9::R2(msg) => {
+                Select10::R2(msg) => {
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT req {}", packet_to_string(&msg));
                     }
@@ -1679,7 +1699,7 @@ impl ClientSocketManager {
                     req_send = Some(client_req.sock.send_to(MultipartHeader::new(), msg));
                 }
                 // req_send
-                Select9::R3(result) => {
+                Select10::R3(result) => {
                     if let Err(e) = result {
                         error!("req zmq send: {}", e);
                     }
@@ -1687,7 +1707,7 @@ impl ClientSocketManager {
                     req_send = None;
                 }
                 // client_req.sock.recv_routed
-                Select9::R4(result) => match result {
+                Select10::R4(result) => match result {
                     Ok((_, msg)) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN req {}", packet_to_string(&msg));
@@ -1698,7 +1718,7 @@ impl ClientSocketManager {
                     Err(e) => error!("req zmq recv: {}", e),
                 },
                 // stream_handles_recv_any
-                Select9::R5(msg) => {
+                Select10::R5(msg) => {
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT stream {}", packet_to_string(&msg));
                     }
@@ -1706,7 +1726,7 @@ impl ClientSocketManager {
                     stream_out_send = Some(client_stream.out.send(msg));
                 }
                 // stream_out_send
-                Select9::R6(result) => {
+                Select10::R6(result) => {
                     if let Err(e) = result {
                         error!("stream zmq send: {}", e);
                     }
@@ -1714,7 +1734,7 @@ impl ClientSocketManager {
                     stream_out_send = None;
                 }
                 // stream_handles_recv_addr
-                Select9::R7((addr, msg)) => {
+                Select10::R7((addr, msg)) => {
                     let h = vec![zmq::Message::from(addr.as_slice())];
 
                     if log_enabled!(log::Level::Trace) {
@@ -1728,7 +1748,7 @@ impl ClientSocketManager {
                     stream_out_stream_send = Some(client_stream.out_stream.send_to(h, msg));
                 }
                 // stream_out_stream_send
-                Select9::R8(result) => {
+                Select10::R8(result) => {
                     match result {
                         Ok(()) => {}
                         Err(zmq::Error::EHOSTUNREACH) => {
@@ -1740,8 +1760,20 @@ impl ClientSocketManager {
 
                     stream_out_stream_send = None;
                 }
+                // client_stream.out_stream.recv_routed
+                Select10::R9(result) => match result {
+                    Ok((_, msg)) => {
+                        if log_enabled!(log::Level::Trace) {
+                            trace!("IN stream (router) {}", packet_to_string(&msg));
+                        }
+
+                        Self::handle_stream_message(msg, &messages_memory, None, &stream_handles)
+                            .await;
+                    }
+                    Err(e) => error!("stream (router) zmq recv: {}", e),
+                },
                 // client_stream.in_.recv
-                Select9::R9(result) => match result {
+                Select10::R10(result) => match result {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN stream {}", packet_to_string(&msg));
@@ -1750,7 +1782,7 @@ impl ClientSocketManager {
                         Self::handle_stream_message(
                             msg,
                             &messages_memory,
-                            &instance_id,
+                            Some(&instance_id),
                             &stream_handles,
                         )
                         .await;
@@ -1829,36 +1861,40 @@ impl ClientSocketManager {
     async fn handle_stream_message(
         msg: zmq::Message,
         messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
-        instance_id: &str,
+        expect_addr: Option<&str>,
         handles: &StreamHandles,
     ) {
         let msg = arena::Arc::new(msg, messages_memory).unwrap();
 
         let buf = msg.get();
 
-        let mut pos = None;
-        for (i, b) in buf.iter().enumerate() {
-            if *b == b' ' {
-                pos = Some(i);
-                break;
+        let buf = if let Some(expect_addr) = expect_addr {
+            let mut pos = None;
+            for (i, b) in buf.iter().enumerate() {
+                if *b == b' ' {
+                    pos = Some(i);
+                    break;
+                }
             }
-        }
 
-        let pos = match pos {
-            Some(pos) => pos,
-            None => {
-                warn!("unable to determine packet address");
+            let pos = match pos {
+                Some(pos) => pos,
+                None => {
+                    warn!("unable to determine packet address");
+                    return;
+                }
+            };
+
+            let addr = &buf[..pos];
+            if addr != expect_addr.as_bytes() {
+                warn!("packet not for us");
                 return;
             }
+
+            &buf[pos + 1..]
+        } else {
+            buf
         };
-
-        let addr = &buf[..pos];
-        if addr != instance_id.as_bytes() {
-            warn!("packet not for us");
-            return;
-        }
-
-        let buf = &buf[pos + 1..];
 
         let mut scratch = ParseScratch::new();
 
@@ -1870,7 +1906,7 @@ impl ClientSocketManager {
             }
         };
 
-        handles.send(&msg, ids).await;
+        handles.send(&msg, ids, expect_addr.is_none()).await;
     }
 }
 
@@ -2552,7 +2588,7 @@ impl AsyncClientReqHandle {
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
     sender_addr: channel::Sender<(ArrayVec<u8, 64>, zmq::Message)>,
-    receiver: channel::Receiver<arena::Arc<zmq::Message>>,
+    receiver: channel::Receiver<(arena::Arc<zmq::Message>, bool)>,
 }
 
 impl ClientStreamHandle {
@@ -2568,9 +2604,9 @@ impl ClientStreamHandle {
         self.sender_addr.get_write_registration()
     }
 
-    pub fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv(&self) -> Result<(arena::Arc<zmq::Message>, bool), io::Error> {
         match self.receiver.try_recv() {
-            Ok(msg) => Ok(msg),
+            Ok(ret) => Ok(ret),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
             Err(mpsc::TryRecvError::Disconnected) => {
                 Err(io::Error::from(io::ErrorKind::BrokenPipe))
@@ -2607,7 +2643,7 @@ impl ClientStreamHandle {
 pub struct AsyncClientStreamHandle {
     sender_any: AsyncSender<zmq::Message>,
     sender_addr: AsyncSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    receiver: AsyncReceiver<arena::Arc<zmq::Message>>,
+    receiver: AsyncReceiver<(arena::Arc<zmq::Message>, bool)>,
 }
 
 impl AsyncClientStreamHandle {
@@ -2619,11 +2655,11 @@ impl AsyncClientStreamHandle {
         }
     }
 
-    pub async fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
-        match self.receiver.recv().await {
-            Ok(msg) => Ok(msg),
-            Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
-        }
+    pub async fn recv(&self) -> Result<(arena::Arc<zmq::Message>, bool), io::Error> {
+        self.receiver
+            .recv()
+            .await
+            .map_err(|_| io::Error::from(io::ErrorKind::BrokenPipe))
     }
 
     pub async fn send_to_any(&self, msg: zmq::Message) -> Result<(), io::Error> {
@@ -3143,20 +3179,18 @@ mod tests {
             )
             .unwrap();
 
-        let msg;
-        loop {
+        let (msg, from_router) = loop {
             match h1.recv() {
-                Ok(m) => {
-                    msg = m;
-                    break;
-                }
+                Ok(ret) => break ret,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     wait_readable(&mut poller, mio::Token(1));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),
             };
-        }
+        };
+
+        assert!(!from_router);
 
         let msg = msg.get();
 
@@ -3183,6 +3217,44 @@ mod tests {
         };
         assert_eq!(rdata.body, b"world");
 
+        // send via router
+        in_stream_sock
+            .send_multipart(
+                [
+                    "test".as_bytes(),
+                    &[],
+                    "T52:4:from,12:test-handler,2:id,3:a-2,4:body,8:world a2,}".as_bytes(),
+                ],
+                0,
+            )
+            .unwrap();
+
+        let (msg, from_router) = loop {
+            match h1.recv() {
+                Ok(ret) => break ret,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    wait_readable(&mut poller, mio::Token(1));
+                    continue;
+                }
+                Err(e) => panic!("recv: {}", e),
+            };
+        };
+
+        assert!(from_router);
+
+        let msg = msg.get();
+
+        let buf = &msg;
+
+        let mut scratch = ParseScratch::new();
+        let resp = Response::parse(buf, &mut scratch).unwrap();
+
+        let rdata = match resp.ptype {
+            ResponsePacket::Data(data) => data,
+            _ => panic!("expected data packet"),
+        };
+        assert_eq!(rdata.body, b"world a2");
+
         h2.send_to_any(zmq::Message::from("hello b".as_bytes()))
             .unwrap();
 
@@ -3197,20 +3269,18 @@ mod tests {
             )
             .unwrap();
 
-        let msg;
-        loop {
+        let (msg, from_router) = loop {
             match h2.recv() {
-                Ok(m) => {
-                    msg = m;
-                    break;
-                }
+                Ok(ret) => break ret,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     wait_readable(&mut poller, mio::Token(2));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),
             };
-        }
+        };
+
+        assert!(!from_router);
 
         let msg = msg.get();
 

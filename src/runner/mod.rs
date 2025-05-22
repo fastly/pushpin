@@ -29,7 +29,7 @@ use std::string::String;
 use url::Url;
 
 use crate::core::config::{get_config_file, CustomConfig};
-use crate::core::version;
+use crate::core::{is_debug_build, version};
 
 #[derive(Parser, Clone)]
 #[command(
@@ -383,6 +383,12 @@ impl Settings {
             return Err("no server ports configured".into());
         }
 
+        let target_dir = if is_debug_build() {
+            exec_dir.join("target").join("debug")
+        } else {
+            exec_dir.join("target").join("release")
+        };
+
         Ok(Self {
             service_names: config
                 .runner
@@ -393,17 +399,9 @@ impl Settings {
             config_file: config_file_path,
             run_dir,
             log_file: args_data.log_file,
-            connmgr_bin: get_service_dir(
-                exec_dir.into(),
-                "pushpin-connmgr",
-                "bin/pushpin-connmgr",
-            )?,
-            proxy_bin: get_service_dir(exec_dir.into(), "pushpin-proxy", "bin/pushpin-proxy")?,
-            handler_bin: get_service_dir(
-                exec_dir.into(),
-                "pushpin-handler",
-                "bin/pushpin-handler",
-            )?,
+            connmgr_bin: get_bin(&target_dir, "pushpin-connmgr")?,
+            proxy_bin: get_bin(&target_dir, "pushpin-proxy")?,
+            handler_bin: get_bin(&target_dir, "pushpin-handler")?,
             certs_dir,
             ipc_prefix,
             ports,
@@ -458,14 +456,10 @@ fn ensure_dir(directory_path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn get_service_dir(
-    exec_dir: PathBuf,
-    service_name: &str,
-    service_dir: &str,
-) -> Result<PathBuf, Box<dyn Error>> {
-    let service_exec_dir = exec_dir.join(service_dir);
-    if service_exec_dir.is_file() {
-        return Ok(fs::canonicalize(service_exec_dir)?);
+fn get_bin(target_dir: &Path, service_name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let target_bin = target_dir.join(service_name);
+    if target_bin.is_file() {
+        return Ok(fs::canonicalize(target_bin)?);
     }
 
     Ok(PathBuf::from(service_name))

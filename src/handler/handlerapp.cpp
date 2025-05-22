@@ -318,6 +318,7 @@ public:
 		int messageWait = settings.value("handler/message_wait", 5000).toInt();
 		QStringList rawMessageKeys = settings.value("handler/message_keys").toStringList();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
+		bool updateOnFirstSubscription = settings.value("handler/update_on_first_subscription", true).toBool();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
 		int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
@@ -328,7 +329,6 @@ public:
 		QString statsFormat = settings.value("handler/stats_format").toString();
 		QString prometheusPort = settings.value("handler/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
-		bool newEventLoop = settings.value("handler/new_event_loop", false).toBool();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -409,6 +409,7 @@ public:
 		config.messageWait = messageWait;
 		config.messageKeys = messageKeys;
 		config.idCacheTtl = idCacheTtl;
+		config.updateOnFirstSubscription = updateOnFirstSubscription;
 		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;
 		config.subscriptionLinger = subscriptionLinger;
@@ -420,7 +421,7 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, newEventLoop);
+		return runLoop(config, true);
 	}
 
 private:
