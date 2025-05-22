@@ -1130,7 +1130,7 @@ static void remove_old_cache_items()
 void check_old_clients()
 {
 	qint64 clientNoRequestTimeoutSeconds = gClientNoRequestTimeoutSeconds * 1000;
-	time_t currTime = time(NULL);
+	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 
 	int httpClientCount = 0;
 	int wsClientCount = 0;
@@ -1138,8 +1138,8 @@ void check_old_clients()
 	// lookup clients to delete
 	foreach(QByteArray id, gHttpClientMap.keys())
 	{
-		int diffSeconds = currTime - gHttpClientMap[id].lastRequestTime;
-		if (!gDeleteClientList.contains(id) && (diffSeconds > clientNoRequestTimeoutSeconds))
+		int diffMSeconds = currMTime - gHttpClientMap[id].lastRequestTime;
+		if (!gDeleteClientList.contains(id) && (diffMSeconds > clientNoRequestTimeoutSeconds))
 		{
 			// delete this client
 			log_debug("[HTTP] add delete client id=%s", id.data());
@@ -1149,8 +1149,8 @@ void check_old_clients()
 
 	foreach(QByteArray id, gWsClientMap.keys())
 	{
-		int diffSeconds = currTime - gWsClientMap[id].lastRequestTime;
-		if (!gDeleteClientList.contains(id) && (diffSeconds > clientNoRequestTimeoutSeconds))
+		int diffMSeconds = currMTime - gWsClientMap[id].lastRequestTime;
+		if (!gDeleteClientList.contains(id) && (diffMSeconds > clientNoRequestTimeoutSeconds))
 		{
 			// delete this client
 			log_debug("[WS] add delete client id=%s", id.data());
