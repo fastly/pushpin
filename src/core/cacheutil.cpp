@@ -1132,9 +1132,6 @@ void check_old_clients()
 	qint64 clientNoRequestTimeoutSeconds = gClientNoRequestTimeoutSeconds * 1000;
 	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 
-	int httpClientCount = 0;
-	int wsClientCount = 0;
-	int healthClientCount = 0;
 	// lookup clients to delete
 	foreach(QByteArray id, gHttpClientMap.keys())
 	{

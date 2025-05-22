@@ -1597,27 +1597,13 @@ public:
 		{
 			// delete client from gHttpClientMap
 			gHttpClientMap.remove(clientId);
-			log_debug("[HTTP] Deleted one client in gHttpClientMap, current count=%d", gHttpClientMap.size());
+			log_debug("[HTTP] Deleted http client=%s", clientId.data());
 		}
 		else
 		{
-			// cache lookup
-			foreach(QByteArray itemId, get_cache_item_ids())
-			{
-				CacheItem* pCacheItem = load_cache_item(itemId);
-				if (pCacheItem->clientMap.contains(clientId))
-				{
-					pCacheItem->clientMap.remove(clientId);
-					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", 
-						clientId.data(), pCacheItem->msgId, qPrintable(pCacheItem->subscriptionStr.left(16)));
-
-					store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
-				}
-			}
-
 			// delete client from gWsClientMap
 			gWsClientMap.remove(clientId);
-			log_debug("[WS] Deleted one client in gWsClientMap, current count=%d", gWsClientMap.size());
+			log_debug("[WS] Deleted ws client=%s", clientId.data());
 		}
 	}
 
@@ -1646,7 +1632,7 @@ public:
 	{
 		if (gWsClientMap.contains(packetId))
 		{
-			log_debug("[WS] already exists http client id=%s", packetId.data());
+			log_debug("[WS] already exists ws client id=%s", packetId.data());
 			return;
 		}
 
@@ -2011,16 +1997,19 @@ public:
 				// recover original msgId
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
 
-				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
-					send_http_response_to_client(pCacheItem->responsePacket, 
-						pCacheItem->msgId,
-						pCacheItem->clientMap[cliId].msgId, 
-						pCacheItem->clientMap[cliId].from, 
-						cliId);
-					gHttpClientMap.remove(cliId);
-					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+					if (gHttpClientMap.contains(cliId))
+					{
+						send_http_response_to_client(pCacheItem->responsePacket, 
+							pCacheItem->msgId,
+							pCacheItem->clientMap[cliId].msgId, 
+							pCacheItem->clientMap[cliId].from, 
+							cliId);
+						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+						gHttpClientMap.remove(cliId);
+						log_debug("[HTTP] Removed http client id=%s", cliId.data());
+					}
 				}
 				pCacheItem->clientMap.clear();
 
@@ -2072,11 +2061,17 @@ public:
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
-					send_http_response_to_client(pCacheItem->responsePacket, 
-						pCacheItem->msgId, pCacheItem->clientMap[cliId].msgId, 
-						pCacheItem->clientMap[cliId].from, cliId);
-					gHttpClientMap.remove(cliId);
-					log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+					if (gHttpClientMap.contains(cliId))
+					{
+						send_http_response_to_client(pCacheItem->responsePacket, 
+							pCacheItem->msgId,
+							pCacheItem->clientMap[cliId].msgId, 
+							pCacheItem->clientMap[cliId].from, 
+							cliId);
+						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
+						gHttpClientMap.remove(cliId);
+						log_debug("[HTTP] Removed http client id=%s", cliId.data());
+					}
 				}
 				pCacheItem->clientMap.clear();
 
@@ -2133,22 +2128,32 @@ public:
 							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
 								pCacheItem->msgId, qPrintable(subscriptionStr));
 							// send update subscribe to all clients
-							foreach(QByteArray cliId, pCacheItem->clientMap.keys())
+							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
+							while (it != pCacheItem->clientMap.end()) 
 							{
-								log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
+								if (gWsClientMap.contains(it))
+								{
+									log_debug("[WS] Sending Subscription content to client id=%s", it.data());
 
-								QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
-								QByteArray from = pCacheItem->clientMap[cliId].from;
+									QString orgMsgId = pCacheItem->clientMap[it].msgId;
+									QByteArray from = pCacheItem->clientMap[it].from;
 
-								ZhttpResponsePacket out = pCacheItem->responsePacket;
-								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
+									ZhttpResponsePacket out = pCacheItem->responsePacket;
+									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
+									replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
+									send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out);
 
-								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+									ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+									replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+									replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
+									send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+
+									++it;
+								}
+								else 
+								{
+									it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
+								}
 							}
 						}
 					}
@@ -2226,17 +2231,27 @@ public:
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 						// send update subscribe to all clients
-						foreach(QByteArray cliId, pCacheItem->clientMap.keys())
+						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
+						while (it != pCacheItem->clientMap.end()) 
 						{
-							log_debug("[WS] Sending Subscription update to client id=%s", cliId.data());
+							if (gWsClientMap.contains(it))
+							{
+								log_debug("[WS] Sending Subscription update to client id=%s", it.data());
 
-							QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
-							QByteArray from = pCacheItem->clientMap[cliId].from;
+								QString orgMsgId = pCacheItem->clientMap[it].msgId;
+								QByteArray from = pCacheItem->clientMap[it].from;
 
-							ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
+								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+
+								++it;
+							}
+							else 
+							{
+								it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
+							}
 						}
 					}
 
@@ -2311,14 +2326,17 @@ public:
 					QString urlPath = "";
 					foreach(QByteArray clientId, pCacheItem->clientMap.keys())
 					{
-						if (urlPath.isEmpty())
-							urlPath = gWsClientMap[clientId].urlPath;
-						log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
-						QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
-						QByteArray from = pCacheItem->clientMap[clientId].from;
-						ZhttpResponsePacket out = pCacheItem->responsePacket;
-						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-						send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
+						if (gWsClientMap.contains(clientId))
+						{
+							if (urlPath.isEmpty())
+								urlPath = gWsClientMap[clientId].urlPath;
+							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
+							QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
+							QByteArray from = pCacheItem->clientMap[clientId].from;
+							ZhttpResponsePacket out = pCacheItem->responsePacket;
+							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
+							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
+						}
 					}
 					pCacheItem->clientMap.clear();
 
@@ -2376,22 +2394,32 @@ public:
 					if (pCacheItem->cachedFlag == true)
 					{
 						// send update subscribe to all clients
-						foreach(QByteArray cliId, pCacheItem->clientMap.keys())
+						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
+						while (it != pCacheItem->clientMap.end()) 
 						{
-							log_debug("[WS] Sending Subscription content to client id=%s", cliId.data());
-							
-							QString orgMsgId = pCacheItem->clientMap[cliId].msgId;
-							QByteArray from = pCacheItem->clientMap[cliId].from;
+							if (gWsClientMap.contains(it))
+							{
+								log_debug("[WS] Sending Subscription content to client id=%s", it.data());
+								
+								QString orgMsgId = pCacheItem->clientMap[it].msgId;
+								QByteArray from = pCacheItem->clientMap[it].from;
 
-							ZhttpResponsePacket out = pCacheItem->responsePacket;
-							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-							replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
+								ZhttpResponsePacket out = pCacheItem->responsePacket;
+								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
+								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
+								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out);
 
-							ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-							replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-							replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-							send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
+								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
+								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
+								send_response_to_client(ZhttpResponsePacket::Data, it, from, 0, &out1);
+
+								++it;
+							}
+							else 
+							{
+								it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
+							}
 						}
 					}
 				}
