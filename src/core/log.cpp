@@ -144,12 +144,10 @@ bool log_rotate()
 
 void log(int level, const char *fmt, ...)
 {
-	/*
 	va_list ap;
 	va_start(ap, fmt);
 	log(level, fmt, ap);
 	va_end(ap);
-	*/
 }
 
 void log_error(const char *fmt, ...)
@@ -186,5 +184,5 @@ void log_debug(const char *fmt, ...)
 
 void log_raw(const char *s)
 {
-	log(s);
+	//log(s);
 }
