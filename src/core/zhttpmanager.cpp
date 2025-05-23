@@ -491,7 +491,7 @@ public:
 			break;
 		}
 
-		out.from = instanceId;//clientInstanceId;
+		out.from = clientInstanceId;
 		writeToClient(CacheResponse, out, newFrom);
 	}
 
