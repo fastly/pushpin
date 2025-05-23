@@ -71,6 +71,8 @@
 
 #define PING_INTERVAL	20
 
+QMutex mutex;
+
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
@@ -700,6 +702,8 @@ public:
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
+
+		QMutexLocker locker(&mutex);
 
 		QByteArray packetId = packet.ids.first().id;
 		int newSeq = get_client_new_response_seq(packetId);
