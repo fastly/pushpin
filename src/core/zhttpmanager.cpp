@@ -1869,7 +1869,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::http, p, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::http, p, packetMsg, instanceId) < 0)
 			return -1;
 
 		// get method string
@@ -1954,7 +1954,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::http, p, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::http, p, packetMsg, instanceId) < 0)
 			bodyParseSucceed = false;
 
 		if (bodyParseSucceed == true)
@@ -2100,7 +2100,7 @@ public:
 
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::websocket, p, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::websocket, p, packetMsg, instanceId) < 0)
 			return -1;
 
 		// id
@@ -2589,7 +2589,7 @@ public:
 		
 		// parse json body
 		PacketMsg packetMsg;
-		if (parse_packet_msg(Scheme::websocket, p, packetMsg) < 0)
+		if (parse_packet_msg(Scheme::websocket, p, packetMsg, instanceId) < 0)
 			return -1;
 
 		// read msgIdStr (id) and methodName (method)
