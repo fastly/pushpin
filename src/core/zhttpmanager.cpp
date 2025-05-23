@@ -458,12 +458,6 @@ public:
 
 		ZhttpResponsePacket::Id tempId;
 
-		int newSeq = get_client_new_response_seq(clientId);
-		if (newSeq < 0)
-		{
-			log_debug("[WS] failed to get new response seq %s", clientId.toHex().data());
-			return;
-		}
 		QByteArray newFrom = from;
 
 		switch (packetType)
@@ -705,19 +699,25 @@ public:
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void writeToClient(SessionType type, const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+	void writeToClient(SessionType type, ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
+
+		QByteArray packetId = packet.ids.first().id;
+		int newSeq = get_client_new_response_seq(packetId);
+		if (newSeq < 0)
+		{
+			log_warn("[WS] failed to get new response seq %s", clientId.toHex().data());
+			return;
+		}
+		packet.ids.first().seq = newSeq;
 
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
-
-		QByteArray packetId = packet.ids.first().id;
-		int packetSeq = packet.ids.first().seq;
 
 		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
@@ -1829,14 +1829,7 @@ public:
 		responsePacket.headers.removeAll("Content-Length");
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
-		int seqNum = 0;
-		// update seq
-		if (gHttpClientMap.contains(newPacketId))
-		{
-			seqNum = get_client_new_response_seq(newPacketId);
-		}
 		responsePacket.ids[0].id = newPacketId.data();
-		responsePacket.ids[0].seq = seqNum;
 		responsePacket.from = instanceId;
 		
 		writeToClient(HttpSession, responsePacket, from);
@@ -1867,13 +1860,6 @@ public:
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
 		responsePacket.ids[0].id = clientId;
-		int newSeq = get_client_new_response_seq(clientId);
-		if (newSeq < 0)
-		{
-			log_debug("[HTTP] failed to get new response seq %s", clientId.toHex().data());
-			return;
-		}
-		responsePacket.ids[0].seq = newSeq;
 
 		writeToClient(CacheResponse, responsePacket, orgFrom);
 
