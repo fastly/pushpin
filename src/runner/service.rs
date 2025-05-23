@@ -452,7 +452,7 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
         msg.to_string()
     };
 
-    println!("Value of level: {}", level);	
+    println!("Value of name: {}", name);	
     if level == log::Level::Trace {
         return;
     }
