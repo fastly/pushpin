@@ -29,6 +29,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "test.h"
+#include "acstring.h"
+#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -224,9 +226,9 @@ private:
 			zreq.type = ZhttpRequestPacket::HandoffProceed;
 			QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 			log_debug("writing: %s", buf.data());
-			QList<QByteArray> msg;
+			QList<AcByteArray> msg;
 			msg.append("proxy");
-			msg.append(QByteArray());
+			msg.append(AcByteArray());
 			msg.append(buf);
 			zhttpClientOutStreamSock->write(msg);
 		}
@@ -292,7 +294,7 @@ private:
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
 				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-				zhttpServerOutSock->write(QList<QByteArray>() << buf);
+				zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 			}
 
 			return;
@@ -312,7 +314,7 @@ private:
 			zresp.reason = "Switching Protocols";
 			zresp.credits = 200000;
 			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+			zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 
 			// send message
 			zresp.ids[0].seq = serverOutSeq++;
@@ -321,7 +323,7 @@ private:
 			zresp.reason.clear();
 			zresp.body = "hello world";
 			buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+			zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 
 			return;
 		}
@@ -331,7 +333,7 @@ private:
 			// close
 			zresp.type = ZhttpResponsePacket::Close;
 			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+			zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 
 			return;
 		}
@@ -436,7 +438,7 @@ private:
 		}
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
 		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-		zhttpServerOutSock->write(QList<QByteArray>() << buf);
+		zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 
 		// zero out so we can accept another request
 		serverOutSeq = 0;
@@ -463,7 +465,7 @@ private:
 			vresp["success"] = true;
 			vresp["value"] = respValue;
 			log_debug("inspect response: %s", qPrintable(TnetString::variantToString(vresp, -1)));
-			handlerInspectSock->write(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage());
+			handlerInspectSock->write(AcUtil::to(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage()));
 		}
 	}
 
@@ -531,7 +533,7 @@ private:
 		else if(!vaccept.value("response-sent").toBool())
 			respValue["response"] = vresponse;
 		vresp["value"] = respValue;
-		handlerAcceptSock->write(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage());
+		handlerAcceptSock->write(AcUtil::to(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage()));
 
 		log_debug("instruct: [%s]", acceptIn.data());
 
@@ -546,9 +548,9 @@ private:
 				QByteArray buf = TnetString::fromVariant(vretry);
 				log_debug("retrying: %s", qPrintable(TnetString::variantToString(vretry, -1)));
 
-				QList<QByteArray> msg;
+				QList<AcByteArray> msg;
 				msg.append("proxy");
-				msg.append(QByteArray());
+				msg.append(AcByteArray());
 				msg.append(buf);
 				handlerRetryOutSock->write(msg);
 				return;
@@ -664,7 +666,7 @@ static void passthrough(TestState &state, std::function<void (int)> loop_wait)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -704,7 +706,7 @@ static void passthroughWithoutInspect(TestState &state, std::function<void (int)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -725,7 +727,7 @@ static void passthroughJsonp(TestState &state, std::function<void (int)> loop_wa
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -758,7 +760,7 @@ static void passthroughJsonpBasic(TestState &state, std::function<void (int)> lo
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -783,7 +785,7 @@ static void passthroughPostStream(TestState &state, std::function<void (int)> lo
 
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	// ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
@@ -797,9 +799,9 @@ static void passthroughPostStream(TestState &state, std::function<void (int)> lo
 	zreq.body = " world";
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	QList<QByteArray> msg;
+	QList<AcByteArray> msg;
 	msg.append("proxy");
-	msg.append(QByteArray());
+	msg.append(AcByteArray());
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
@@ -844,7 +846,7 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	// ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
@@ -857,9 +859,9 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 	zreq.type = ZhttpRequestPacket::Cancel;
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	QList<QByteArray> msg;
+	QList<AcByteArray> msg;
 	msg.append("proxy");
-	msg.append(QByteArray());
+	msg.append(AcByteArray());
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
@@ -899,7 +901,7 @@ static void acceptResponse(TestState &state, std::function<void (int)> loop_wait
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -939,7 +941,7 @@ static void acceptStream(TestState &state, std::function<void (int)> loop_wait)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -979,7 +981,7 @@ static void acceptResponseBodyInstruct(TestState &state, std::function<void (int
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1001,7 +1003,7 @@ static void acceptNoHold(TestState &state, std::function<void (int)> loop_wait)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1038,7 +1040,7 @@ static void acceptNoHoldBodyInstruct(TestState &state, std::function<void (int)>
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1060,7 +1062,7 @@ static void passthroughThenAcceptStream(TestState &state, std::function<void (in
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1102,7 +1104,7 @@ static void passthroughThenAcceptNext(TestState &state, std::function<void (int)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1143,7 +1145,7 @@ static void acceptWithRetry(TestState &state, std::function<void (int)> loop_wai
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -1204,12 +1206,12 @@ static void passthroughShared(TestState &state, std::function<void (int)> loop_w
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 0);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id2, 0);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	while(wrapper->clientReqsFinished < 2)
 		loop_wait(10);
@@ -1264,12 +1266,12 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 0);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id2, 0);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 
 	// we've hit prefetch, wait for inspect
 	while(!wrapper->inspected)
@@ -1285,9 +1287,9 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 1);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	QList<QByteArray> msg;
+	QList<AcByteArray> msg;
 	msg.append("proxy");
-	msg.append(QByteArray());
+	msg.append(AcByteArray());
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
@@ -1296,7 +1298,7 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	log_debug("writing: %s", buf.data());
 	msg.clear();
 	msg.append("proxy");
-	msg.append(QByteArray());
+	msg.append(AcByteArray());
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
@@ -1340,7 +1342,7 @@ static void passthroughWs(TestState &state, std::function<void (int)> loop_wait)
 	zreq.credits = 200000;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+	wrapper->zhttpClientOutSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->isWs)
 		loop_wait(10);
 
@@ -1352,9 +1354,9 @@ static void passthroughWs(TestState &state, std::function<void (int)> loop_wait)
 	zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id("19", 1);
 	buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
-	QList<QByteArray> msg;
+	QList<AcByteArray> msg;
 	msg.append("proxy");
-	msg.append(QByteArray());
+	msg.append(AcByteArray());
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 	while(!wrapper->finished)

@@ -33,6 +33,8 @@
 #include <QTimer>
 #include <QDir>
 #include <QSettings>
+#include "acstring.h"
+#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qtcompat.h"
@@ -937,7 +939,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logByteArray(LOG_LEVEL_DEBUG, buf, "m2: OUT");
 
-		m2_out_sock->write(QList<QByteArray>() << buf);
+		m2_out_sock->write(QList<AcByteArray>() << buf);
 	}
 
 	void m2_control_write(int index, const QByteArray &cmd, const QVariantHash &args)
@@ -952,8 +954,8 @@ public:
 		log_debug("m2: OUT control %s %s", m2_send_idents[index].data(), buf.data());
 #endif
 
-		QList<QByteArray> message;
-		message += QByteArray();
+		QList<AcByteArray> message;
+		message += AcByteArray();
 		message += buf;
 		controlPorts[index].sock->write(message);
 	}
@@ -1222,9 +1224,9 @@ public:
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT", logprefix);
 
 		if(mode == Http)
-			zhttp_out_sock->write(QList<QByteArray>() << buf);
+			zhttp_out_sock->write(QList<AcByteArray>() << buf);
 		else // WebSocket
-			zws_out_sock->write(QList<QByteArray>() << buf);
+			zws_out_sock->write(QList<AcByteArray>() << buf);
 	}
 
 	void zhttp_out_write(Mode mode, const ZhttpRequestPacket &packet, const QByteArray &instanceAddress)
@@ -1237,9 +1239,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT instance=%s", logprefix, instanceAddress.data());
 
-		QList<QByteArray> message;
+		QList<AcByteArray> message;
 		message += instanceAddress;
-		message += QByteArray();
+		message += AcByteArray();
 		message += buf;
 
 		if(mode == Http)
@@ -2753,7 +2755,7 @@ public:
 
 		while(sock->canRead())
 		{
-			QList<QByteArray> message = sock->read();
+			QList<QByteArray> message = AcUtil::from(sock->read());
 
 			if(message.count() != 2)
 			{

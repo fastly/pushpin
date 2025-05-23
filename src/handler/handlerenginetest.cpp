@@ -25,6 +25,7 @@
 #include <thread>
 #include <QDir>
 #include "test.h"
+#include "acstring.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -218,7 +219,7 @@ public:
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
 				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-				zhttpServerOutSock->write(QList<QByteArray>() << buf);
+				zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 			}
 
 			return;
@@ -238,7 +239,7 @@ public:
 
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
 		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
-		zhttpServerOutSock->write(QList<QByteArray>() << buf);
+		zhttpServerOutSock->write(QList<AcByteArray>() << buf);
 
 		// zero out so we can accept another request
 		serverOutSeq = 0;
@@ -397,7 +398,7 @@ static void acceptNoHold(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -449,7 +450,7 @@ static void acceptNoHoldResponseSent(Wrapper *wrapper, std::function<void (int)>
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -501,7 +502,7 @@ static void acceptNoHoldNext(Wrapper *wrapper, std::function<void (int)> loop_wa
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -560,7 +561,7 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (i
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -618,7 +619,7 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -634,7 +635,7 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 	data["formats"] = formats;
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 	while(!wrapper->finished)
 		loop_wait(10);
 
@@ -687,7 +688,7 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -705,7 +706,7 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	data.clear();
 
@@ -721,7 +722,7 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	while(!wrapper->finished)
 		loop_wait(10);
@@ -775,7 +776,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data["args"] = args;
 
 	QByteArray buf = TnetString::fromVariant(data);
-	wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+	wrapper->proxyAcceptSock->write(QList<AcByteArray>() << AcByteArray() << buf);
 	while(!wrapper->acceptSuccess)
 		loop_wait(10);
 
@@ -794,7 +795,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	data.clear();
 
@@ -812,7 +813,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	data.clear();
 
@@ -830,7 +831,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	data.clear();
 
@@ -848,7 +849,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	data.clear();
 
@@ -866,7 +867,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	}
 
 	buf = TnetString::fromVariant(data);
-	wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+	wrapper->publishPushSock->write(QList<AcByteArray>() << buf);
 
 	while(!wrapper->finished)
 		loop_wait(10);
