@@ -474,7 +474,6 @@ public:
 				out = *responsePacket;
 				out.ids[0].id = clientId;
 				out.ids[0].seq = newSeq;
-				out.from = newFrom;
 				if (responseKey != NULL)
 				{
 					out.headers.removeAll("sec-websocket-accept");
@@ -492,18 +491,16 @@ public:
 			out.ids += tempId;
 			out.type = packetType;
 			out.credits = credits;
-			out.from = newFrom;
 			break;
 		default:
 			tempId.id = clientId;
 			tempId.seq = newSeq;
 			out.ids += tempId;
 			out.type = packetType;
-			out.from = newFrom;
 			break;
 		}
 
-		out.from = clientInstanceId;
+		out.from = instanceId;//clientInstanceId;
 		write(CacheResponse, out, newFrom);
 	}
 
