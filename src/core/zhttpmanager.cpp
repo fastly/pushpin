@@ -467,7 +467,6 @@ public:
 			{
 				out = *responsePacket;
 				out.ids[0].id = clientId;
-				out.ids[0].seq = newSeq;
 				if (responseKey != NULL)
 				{
 					out.headers.removeAll("sec-websocket-accept");
@@ -481,14 +480,12 @@ public:
 			return;
 		case ZhttpResponsePacket::Credit:
 			tempId.id = clientId;
-			tempId.seq = newSeq;
 			out.ids += tempId;
 			out.type = packetType;
 			out.credits = credits;
 			break;
 		default:
 			tempId.id = clientId;
-			tempId.seq = newSeq;
 			out.ids += tempId;
 			out.type = packetType;
 			break;
@@ -708,7 +705,7 @@ public:
 		int newSeq = get_client_new_response_seq(packetId);
 		if (newSeq < 0)
 		{
-			log_warn("[WS] failed to get new response seq %s", clientId.toHex().data());
+			log_debug("[WS] failed to get new response seq %s", packetId.toHex().data());
 			return;
 		}
 		packet.ids.first().seq = newSeq;
