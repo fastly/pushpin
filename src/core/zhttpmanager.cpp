@@ -501,7 +501,7 @@ public:
 		}
 
 		out.from = instanceId;//clientInstanceId;
-		write(CacheResponse, out, newFrom);
+		writeToClient(CacheResponse, out, newFrom);
 	}
 
 	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
@@ -705,6 +705,24 @@ public:
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
+	void writeToClient(SessionType type, const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+	{
+		assert(server_out_sock);
+		const char *logprefix = logPrefixForType(type);
+
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+		QByteArray packetId = packet.ids.first().id;
+		int packetSeq = packet.ids.first().seq;
+
+		//update_client_response_seq(packetId, packetSeq);
+		server_out_sock->write(QList<QByteArray>() << buf);
+	}
+
 	static const char *logPrefixForType(SessionType type)
 	{
 		switch(type)
@@ -776,7 +794,7 @@ public:
 		zresp.from = instanceId;
 		zresp.ids = ids;
 		zresp.type = ZhttpResponsePacket::KeepAlive;
-		write(type, zresp, zhttpAddress);
+		writeToClient(type, zresp, zhttpAddress);
 	}
 
 	void client_out_messagesWritten(int count)
@@ -1821,7 +1839,7 @@ public:
 		responsePacket.ids[0].seq = seqNum;
 		responsePacket.from = instanceId;
 		
-		write(HttpSession, responsePacket, from);
+		writeToClient(HttpSession, responsePacket, from);
 
 		// update the counter for prometheus
 		gCacheMethodResponseCountList.append("HTTP");
@@ -1857,7 +1875,7 @@ public:
 		}
 		responsePacket.ids[0].seq = newSeq;
 
-		write(CacheResponse, responsePacket, orgFrom);
+		writeToClient(CacheResponse, responsePacket, orgFrom);
 
 		// update the counter for prometheus
 		gCacheMethodResponseCountList.append("HTTP");
