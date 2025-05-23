@@ -701,7 +701,7 @@ public:
 			resume_cache_thread();
 		}
 
-		//update_client_response_seq(packetId, packetSeq);
+		update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
