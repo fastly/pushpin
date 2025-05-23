@@ -713,8 +713,8 @@ public:
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+		//if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+		//	LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
