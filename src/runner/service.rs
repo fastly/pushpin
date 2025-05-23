@@ -401,7 +401,7 @@ fn start_log_handler(
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
             match line {
-                Ok(msg) => log_message(&name_str, log::Level::Debug, &msg),
+                Ok(msg) => log_message(&name_str, log::Level::Info, &msg),
                 Err(_) => {
                     log_message(
                         &name_str,
