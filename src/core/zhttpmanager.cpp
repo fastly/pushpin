@@ -71,8 +71,6 @@
 
 #define PING_INTERVAL	20
 
-QMutex mutex;
-
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
@@ -703,8 +701,6 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QMutexLocker locker(&mutex);
-
 		QByteArray packetId = packet.ids.first().id;
 		int newSeq = get_client_new_response_seq(packetId);
 		if (newSeq < 0)
@@ -1273,7 +1269,6 @@ public:
 			}
 
 			int newSeq = update_request_seq(packetId);
-			log_debug("[PPP] %s, %d", packetId.constData(), newSeq);
 			if (newSeq >= 0)
 				p.ids[i].seq = newSeq;
 			else
@@ -2467,7 +2462,6 @@ public:
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
 		tempId.seq = update_request_seq(cacheClient->clientId);
-		log_debug("[PPP] %s, %d", cacheClient->clientId.constData(), tempId.seq);
 		p.ids.clear();
 		p.ids += tempId;
 
@@ -2540,7 +2534,6 @@ public:
 
 			tempId.id = gWsCacheClientList[ccIndex].clientId; // id
 			tempId.seq = update_request_seq(cacheClient->clientId);
-			log_debug("[PPP] %s, %d", cacheClient->clientId.constData(), tempId.seq);
 			p.ids.append(tempId);
 
 			p.type = ZhttpRequestPacket::Data;

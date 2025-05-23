@@ -236,8 +236,8 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p);
 int get_cc_next_index_from_clientId(QByteArray clientId, QByteArray instanceId);
 
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
-int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg);
-int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg);
+int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg, const QByteArray& instanceId);
+int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg, const QByteArray& instanceId);
 
 void replace_id_field(QByteArray &body, QString oldId, int newId);
 void replace_id_field(QByteArray &body, QString oldId, QString newId);

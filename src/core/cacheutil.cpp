@@ -1524,7 +1524,7 @@ int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap)
 	return 0;
 }
 
-int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg& packetMsg, const QByteArray& instanceId)
 {
 	// Parse json message
 	QVariantMap jsonMap;
@@ -1562,6 +1562,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	else
 	{
 		QString subKey = QString("WS+");
+		if (is_subscribe_method(packetMsg.method))
+		{
+			subKey += instanceId.data();
+			log_debug("[QQQ] %s", qPrintable(subKey));
+		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
@@ -1571,7 +1576,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	return 0;
 }
 
-int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg)
+int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg& packetMsg, const QByteArray& instanceId)
 {
 	// Parse json message
 	QVariantMap jsonMap;
@@ -1609,6 +1614,11 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	else
 	{
 		QString subKey = QString("WS+");
+		if (is_subscribe_method(packetMsg.method))
+		{
+			subKey += instanceId.data();
+			log_debug("[QQQ] %s", qPrintable(subKey));
+		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
