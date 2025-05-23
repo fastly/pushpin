@@ -401,7 +401,7 @@ fn start_log_handler(
         let reader = BufReader::new(stdout);
         for line in reader.lines() {
             match line {
-                Ok(msg) => log_message(&name_str, log::Level::Info, &msg),
+                Ok(msg) => log_message(&name_str, log::Level::Debug, &msg),
                 Err(_) => {
                     log_message(
                         &name_str,
@@ -435,7 +435,6 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
-	/*
     const MAX_MSG_LEN: usize = 2048; // Set your desired message length limit
 
     // Find the position of the 3rd space (' ') in the string
@@ -465,7 +464,6 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
             ))
             .build(),
     );
-	*/
 }
 /*
 fn log_message(name: &str, level: log::Level, msg: &str) {
