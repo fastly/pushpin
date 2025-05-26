@@ -3185,21 +3185,6 @@ void ZhttpManager::setCacheParameters(
 		QTimer::singleShot(3 * 1000, [=]() {
 			initCacheClient(0);
 		});
-		// create processes for cache client
-		for (int i = 0; i < gWsBackendUrlList.count(); i++)
-		{
-			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], i);
-			if (processId > 0)
-			{
-				ClientItem cacheClient;
-				cacheClient.initFlag = false;
-				cacheClient.processId = processId;
-				cacheClient.urlPath = gWsBackendUrlList[i];
-				cacheClient.lastResponseTime = time(NULL);
-
-				gWsCacheClientList.append(cacheClient);
-			}
-		}
 
 		QTimer::singleShot(30 * 1000, [=]() {
 			check_cache_clients();
