@@ -3016,7 +3016,7 @@ void initCacheClient(int backendUrlNo)
 			ClientItem cacheClient;
 			cacheClient.initFlag = false;
 			cacheClient.processId = processId;
-			cacheClient.urlPath = gWsBackendUrlList[i];
+			cacheClient.urlPath = gWsBackendUrlList[backendUrlNo];
 			cacheClient.lastResponseTime = time(NULL);
 
 			gWsCacheClientList.append(cacheClient);
