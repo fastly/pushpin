@@ -3186,7 +3186,7 @@ void ZhttpManager::setCacheParameters(
 			initCacheClient(0);
 		});
 
-		QTimer::singleShot(30 * 1000, [=]() {
+		QTimer::singleShot(120 * 1000, [=]() {
 			check_cache_clients();
 		});
 

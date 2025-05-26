@@ -1368,7 +1368,7 @@ void check_cache_clients()
 				}
 			}
 
-			log_debug("[WS] killing cache client %d process %d", i, gWsCacheClientList[i].processId);
+			log_debug("[WS] killing cache client %d process %d, %s", i, gWsCacheClientList[i].processId, gWsCacheClientList[i].clientId.data());
 			kill(gWsCacheClientList[i].processId, SIGTERM);
 			gWsCacheClientList[i].processId = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
 			gWsCacheClientList[i].lastResponseTime = time(NULL);
