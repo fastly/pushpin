@@ -1351,7 +1351,7 @@ void check_cache_clients()
 		int diff = (int)(currTime - gWsCacheClientList[i].lastResponseTime);
 		if (diff > gResponseTimeoutSeconds)
 		{
-			log_debug("[WS] detected cache client %d response timeout %d", i, gWsCacheClientList[i].processId);
+			log_debug("[WS] detected cache client %d response timeout %s", i, gWsCacheClientList[i].clientId.data());
 			gWsCacheClientList[i].initFlag = false;
 		}
 
