@@ -452,10 +452,6 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
         msg.to_string()
     };
 
-    if level == log::Level::Info {
-        return;
-    }
-
     log::logger().log(
         &log::Record::builder()
             .level(level)

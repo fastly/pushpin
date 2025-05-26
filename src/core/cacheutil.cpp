@@ -1320,7 +1320,6 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	}
 	else if (processId == 0) // child process
 	{
-		QThread::sleep(2);
 		char *bin = (char*)"/usr/bin/wscat";
 		
 		// create wscat

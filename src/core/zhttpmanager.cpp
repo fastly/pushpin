@@ -148,6 +148,8 @@ QHash<QString, int> httpCacheClientInvalidResponseCountMap;
 QHash<QString, int> wsCacheClientConnectFailedCountMap;
 QHash<QString, int> wsCacheClientInvalidResponseCountMap;
 
+static int gWorkersCount;
+
 /////////////////////////////////////////////////////////////////////////////////////
 
 class ZhttpManager::Private : public QObject
@@ -3001,6 +3003,35 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 	return total;
 }
 
+void initCacheClient(int backendUrlNo)
+{
+	log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[backendUrlNo]));
+
+	for (int i=0; i<gWorkersCount; i++)
+	{
+		// create processes for cache client
+		pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[backendUrlNo], backendUrlNo);
+		if (processId > 0)
+		{
+			ClientItem cacheClient;
+			cacheClient.initFlag = false;
+			cacheClient.processId = processId;
+			cacheClient.urlPath = gWsBackendUrlList[i];
+			cacheClient.lastResponseTime = time(NULL);
+
+			gWsCacheClientList.append(cacheClient);
+		}
+	}
+
+	backendUrlNo++;
+	if (backendUrlNo < gWsBackendUrlList.count())
+	{
+		QTimer::singleShot(1 * 1000, [=]() {
+			initCacheClient(backendUrlNo);
+		});
+	}
+}
+
 void ZhttpManager::setCacheParameters(
 	bool cacheEnable,
 	const QStringList &httpBackendUrlList,
@@ -3022,6 +3053,7 @@ void ZhttpManager::setCacheParameters(
 	QMap<QString, QStringList> countMethodGroupMap
 	)
 {
+	gWorkersCount++;
 	if (gCacheEnable == true)
 	{
 		log_debug("[CONFIG] already passed");
@@ -3150,6 +3182,9 @@ void ZhttpManager::setCacheParameters(
 
 	if (gCacheEnable == true)
 	{
+		QTimer::singleShot(3 * 1000, [=]() {
+			initCacheClient(0);
+		});
 		// create processes for cache client
 		for (int i = 0; i < gWsBackendUrlList.count(); i++)
 		{
