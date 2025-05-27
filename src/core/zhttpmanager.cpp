@@ -3005,18 +3005,18 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 
 void initCacheClient(int backendUrlNo)
 {
-	log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[backendUrlNo]));
+	log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
 
 	for (int i=0; i<gWorkersCount; i++)
 	{
 		// create processes for cache client
-		pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[backendUrlNo], backendUrlNo);
+		pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[0], backendUrlNo);
 		if (processId > 0)
 		{
 			ClientItem cacheClient;
 			cacheClient.initFlag = false;
 			cacheClient.processId = processId;
-			cacheClient.urlPath = gWsBackendUrlList[backendUrlNo];
+			cacheClient.urlPath = gWsBackendUrlList[0];
 			cacheClient.lastResponseTime = time(NULL);
 
 			gWsCacheClientList.append(cacheClient);
