@@ -3003,33 +3003,28 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 	return total;
 }
 
-void initCacheClient(int backendUrlNo)
+void initCacheClient(int workerNo)
 {
 	log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
 
-	for (int i=0; i<gWorkersCount; i++)
+	// create processes for cache client
+	pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[0], workerNo);
+	if (processId > 0)
 	{
-		// create processes for cache client
-		pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[0], backendUrlNo);
-		if (processId > 0)
-		{
-			ClientItem cacheClient;
-			cacheClient.initFlag = false;
-			cacheClient.processId = processId;
-			cacheClient.urlPath = gWsBackendUrlList[0];
-			cacheClient.lastResponseTime = time(NULL);
+		ClientItem cacheClient;
+		cacheClient.initFlag = false;
+		cacheClient.processId = processId;
+		cacheClient.urlPath = gWsBackendUrlList[0];
+		cacheClient.lastResponseTime = time(NULL);
 
-			gWsCacheClientList.append(cacheClient);
-		}
-		break;
+		gWsCacheClientList.append(cacheClient);
 	}
 
-	backendUrlNo++;
-	//if (backendUrlNo < gWsBackendUrlList.count())
-	if (backendUrlNo < 5)
+	workerNo++;
+	if (workerNo < gWorkersCount)
 	{
 		QTimer::singleShot(1 * 1000, [=]() {
-			initCacheClient(backendUrlNo);
+			initCacheClient(workerNo);
 		});
 	}
 }
@@ -3184,6 +3179,11 @@ void ZhttpManager::setCacheParameters(
 
 	if (gCacheEnable == true)
 	{
+		if (gWsBackendUrlList.count() == 0)
+		{
+			log_debug("[WS] not defined ws backend url, exiting");
+			exit(0);
+		}
 		QTimer::singleShot(3 * 1000, [=]() {
 			initCacheClient(0);
 		});
