@@ -3021,13 +3021,12 @@ void initCacheClient(int backendUrlNo)
 
 			gWsCacheClientList.append(cacheClient);
 		}
-		QThread::msleep(500);
-		if (i==1)
-			break;
+		break;
 	}
 
 	backendUrlNo++;
-	if (backendUrlNo < gWsBackendUrlList.count())
+	//if (backendUrlNo < gWsBackendUrlList.count())
+	if (backendUrlNo < 5)
 	{
 		QTimer::singleShot(1 * 1000, [=]() {
 			initCacheClient(backendUrlNo);
