@@ -3021,6 +3021,7 @@ void initCacheClient(int backendUrlNo)
 
 			gWsCacheClientList.append(cacheClient);
 		}
+		QThread::msleep(500);
 		if (i==1)
 			break;
 	}
