@@ -3021,7 +3021,8 @@ void initCacheClient(int backendUrlNo)
 
 			gWsCacheClientList.append(cacheClient);
 		}
-		break;
+		if (i==1)
+			break;
 	}
 
 	backendUrlNo++;
