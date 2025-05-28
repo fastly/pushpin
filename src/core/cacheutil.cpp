@@ -204,7 +204,10 @@ bool redis_is_cache_item(const QByteArray& itemId)
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return ret;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -232,7 +235,10 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -337,7 +343,10 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -474,7 +483,10 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return item;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -549,7 +561,10 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return -1;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -635,7 +650,10 @@ void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldNa
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -660,7 +678,10 @@ void redis_remove_cache_item(const QByteArray &itemId)
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
@@ -682,7 +703,10 @@ void redis_removeall_cache_item()
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return;
+	}
 
 	redisReply* reply = (redisReply*)redisCommand(conn->context(), "FLUSHDB");
 
@@ -706,7 +730,10 @@ QList<QByteArray> redis_get_cache_item_ids()
 	RedisConnection* conn = pool.acquire();
 
 	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
 		return ret;
+	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER;
 
