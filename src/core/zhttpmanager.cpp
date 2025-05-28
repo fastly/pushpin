@@ -3023,7 +3023,7 @@ void initCacheClient(int workerNo)
 	workerNo++;
 	if (workerNo < gWorkersCount)
 	{
-		QTimer::singleShot(1 * 1000, [=]() {
+		QTimer::singleShot(1 * 100, [=]() {
 			initCacheClient(workerNo);
 		});
 	}
@@ -3184,7 +3184,7 @@ void ZhttpManager::setCacheParameters(
 			log_debug("[WS] not defined ws backend url, exiting");
 			exit(0);
 		}
-		QTimer::singleShot(3 * 1000, [=]() {
+		QTimer::singleShot(2 * 1000, [=]() {
 			initCacheClient(0);
 		});
 
