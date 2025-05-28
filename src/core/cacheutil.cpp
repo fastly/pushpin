@@ -796,7 +796,7 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	CacheItem* ret = NULL;
 
 	//timer.start();
-	if (gRedisEnable == false)
+	if (gRedisEnable != false)
 	{
 		// global cache item map
 		if (!is_cache_item(itemId))
@@ -839,7 +839,7 @@ void store_cache_item(const QByteArray& itemId)
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item %s", itemId.toHex().data());
-			//redis_save_cache_item(itemId, gCacheItemMap[itemId]);	
+			redis_save_cache_item(itemId, gCacheItemMap[itemId]);	
 		}
 		else
 		{
