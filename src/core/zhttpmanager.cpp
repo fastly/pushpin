@@ -584,7 +584,7 @@ public:
 		QByteArray packetId = packet.ids.first().id;
 		int packetSeq = packet.ids.first().seq;
 
-		log_debug("[TTT] id=%s buf=%s", packetId.toHex().data(), buf.toHex().data());
+		log_debug("[TTT] id=%s buf=%s", packetId.data(), buf.data());
 
 		// cache process
 		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
