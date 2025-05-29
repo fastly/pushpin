@@ -720,10 +720,16 @@ bool is_cache_item(const QByteArray& itemId)
 
 CacheItem* load_cache_item(const QByteArray& itemId)
 {
-	//QElapsedTimer timer;
 	CacheItem* ret = NULL;
 
-	//timer.start();
+	// global cache item map
+	if (!is_cache_item(itemId))
+	{
+		log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
+		return NULL;
+	}
+	ret = &gCacheItemMap[itemId];
+/*
 	if (gRedisEnable == false)
 	{
 		// global cache item map
@@ -737,18 +743,16 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	else
 	{
 		// redis
-		//if (!redis_is_cache_item(itemId))
-		//{
-		//	log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
-		//	return NULL;
-		//}
+		if (!redis_is_cache_item(itemId))
+		{
+			log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
+			return NULL;
+		}
 		// store into global map and return of it`s pointer
 		//gCacheItemMap[itemId] = redis_load_cache_item(itemId);
 		ret = &gCacheItemMap[itemId];
 	}
-	//qint64 nsecs = timer.nsecsElapsed();
-	//log_debug("[PERF] load_cache_item %ld ns", nsecs);
-
+*/
 	return ret;
 }
 
