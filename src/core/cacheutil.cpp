@@ -128,6 +128,7 @@ bool redis_is_cache_item(const QByteArray& itemId)
 {
 	bool ret = false;
 
+	log_debug("[QQQ] redis_is_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -158,6 +159,7 @@ bool redis_is_cache_item(const QByteArray& itemId)
 
 void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item) 
 {
+	log_debug("[QQQ] redis_create_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -265,6 +267,7 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 template <typename T>
 void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value) 
 {
+	log_debug("[QQQ] redis_store_cache_item_field");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -404,6 +407,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 {
 	CacheItem item;
 
+	log_debug("[QQQ] redis_load_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -481,6 +485,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 template <typename T>
 int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName, T& value) 
 {
+	log_debug("[QQQ] redis_load_cache_item_field");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -569,6 +574,7 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 
 void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldName) 
 {
+	log_debug("[QQQ] redis_remove_cache_item_field");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -596,6 +602,7 @@ void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldNa
 
 void redis_remove_cache_item(const QByteArray &itemId) 
 {
+	log_debug("[QQQ] redis_remove_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -620,6 +627,7 @@ void redis_remove_cache_item(const QByteArray &itemId)
 
 void redis_removeall_cache_item() 
 {
+	log_debug("[QQQ] redis_removeall_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -646,6 +654,7 @@ QList<QByteArray> redis_get_cache_item_ids()
 {
 	QList<QByteArray> ret;
 
+	log_debug("[QQQ] redis_get_cache_item_ids");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
