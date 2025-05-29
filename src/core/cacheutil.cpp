@@ -138,7 +138,7 @@ bool redis_is_cache_item(const QByteArray& itemId)
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
-	redisReply *reply = (redisReply*)redisCommand(conn->context(), "EXISTS %b", key.constData(), key.size());
+	redisReply *reply = (redisReply*)redisCommand(conn.data(), "EXISTS %b", key.constData(), key.size());
 	if (reply == NULL) 
 	{
 		log_debug("[REDIS] EXISTS Command failed\n");
@@ -172,7 +172,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
 	QByteArray subscriptionPacket = TnetString::fromVariant(item.subscriptionPacket.toVariant());
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(),
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HSET %b "
 		"orgMsgId %b "
 		"msgId %d "
@@ -278,7 +278,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	redisReply* reply = nullptr;
 	if constexpr (std::is_same<T, QString>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
@@ -288,7 +288,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, int>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
@@ -298,7 +298,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, float>::value || std::is_same<T, double>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %f",
 			key.constData(), key.size(),
@@ -308,7 +308,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, bool>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %d",
 			key.constData(), key.size(),
@@ -318,7 +318,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, char*>::value || std::is_same<T, const char*>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %s",
 			key.constData(), key.size(),
@@ -328,7 +328,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, long>::value || std::is_same<T, long long>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %lld",
 			key.constData(), key.size(),
@@ -338,7 +338,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	}
 	else if constexpr (std::is_same<T, QByteArray>::value)
 	{
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
@@ -350,7 +350,7 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 	{
 		QVariant vpacket = value.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
-		reply = (redisReply*)redisCommand(conn->context(),
+		reply = (redisReply*)redisCommand(conn.data(),
 			"HSET %b "
 			"%s %b",
 			key.constData(), key.size(),
@@ -414,7 +414,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(),
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HGETALL %b", key.constData(), key.size());
 
 	if (!reply || reply->type != REDIS_REPLY_ARRAY) {
@@ -491,7 +491,7 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(),
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HGET %b "
 		"%s",
 		key.constData(), key.size(),
@@ -579,7 +579,7 @@ void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldNa
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(), 
+	redisReply* reply = (redisReply*)redisCommand(conn.data(), 
 		"HDEL %b %s", 
 		key.constData(), key.size(), 
 		fieldName
@@ -606,7 +606,7 @@ void redis_remove_cache_item(const QByteArray &itemId)
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(),
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"DEL %b",
 		key.constData(), key.size()
 	);
@@ -628,7 +628,7 @@ void redis_removeall_cache_item()
 		return;
 	}
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(), "FLUSHDB");
+	redisReply* reply = (redisReply*)redisCommand(conn.data(), "FLUSHDB");
 
 	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
 	{
@@ -656,7 +656,7 @@ QList<QByteArray> redis_get_cache_item_ids()
 
 	QByteArray key = REDIS_CACHE_ID_HEADER;
 
-	redisReply* reply = (redisReply*)redisCommand(conn->context(),
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"KEYS %b*",
 		key.constData(), key.size()
 	);
