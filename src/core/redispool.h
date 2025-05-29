@@ -23,6 +23,6 @@ private:
 	QMutex m_mutex;
 	QWaitCondition m_cond;
 	QQueue<redisContext*> m_pool;
-	const int m_maxConnections = 10;
+	const int m_maxConnections = 100;
 	int m_activeConnections = 0;
 };

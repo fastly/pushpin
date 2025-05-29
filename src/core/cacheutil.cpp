@@ -156,7 +156,7 @@ bool redis_is_cache_item(const QByteArray& itemId)
 	return ret;
 }
 
-void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item) 
+void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item) 
 {
 	auto conn = RedisPool::instance()->acquire();
 
@@ -758,7 +758,7 @@ void store_cache_item(const QByteArray& itemId)
 		if (gCacheItemMap.contains(itemId))
 		{
 			log_debug("[REDIS] save cache item %s", itemId.toHex().data());
-			redis_save_cache_item(itemId, gCacheItemMap[itemId]);	
+			redis_create_cache_item(itemId, gCacheItemMap[itemId]);	
 		}
 		else
 		{
@@ -867,7 +867,7 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 	return;
 }
 
-void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
+void create_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 {
 	// global cache item map
 	gCacheItemMap[itemId] = cacheItem;
@@ -875,7 +875,7 @@ void save_cache_item(const QByteArray& itemId, const CacheItem& cacheItem)
 	if (gRedisEnable == true)
 	{
 		// redis
-		redis_save_cache_item(itemId, cacheItem);
+		redis_create_cache_item(itemId, cacheItem);
 	}
 
 	// save prometheus
