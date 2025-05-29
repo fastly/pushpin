@@ -583,8 +583,6 @@ public:
 		QByteArray packetId = packet.ids.first().id;
 		int packetSeq = packet.ids.first().seq;
 
-		log_debug("[TTT] id=%s buf=%s", packetId.data(), buf.data());
-
 		// cache process
 		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
 		{
@@ -2487,7 +2485,6 @@ public:
 			{
 				logStr = vrespStr;
 			}
-			log_debug("[TTT] %s, %s, %s", p.from.toHex().data(), cacheClient->from.toHex().data(), instanceId.toHex().data());
 			log_debug("[WS] send_ws_request_over_cacheclient: %s", qPrintable(logStr));
 		}
 

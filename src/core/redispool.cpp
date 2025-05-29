@@ -1,5 +1,6 @@
 // RedisPool.cpp
 #include "redispool.h"
+#include "log.h"
 
 RedisPool* RedisPool::instance() {
 	static RedisPool pool;
@@ -32,6 +33,8 @@ QSharedPointer<redisContext> RedisPool::acquire() {
 		conn = createConnection();
 		++m_activeConnections;
 	}
+
+	log_debug("[TTT] active connections = %d", m_activeConnections);
 
 	return QSharedPointer<redisContext>(conn, [](redisContext* c) {
 		RedisPool::instance()->release(c);
