@@ -1112,7 +1112,7 @@ public:
 					if (pCacheItem != NULL)
 					{
 						pCacheItem->requestPacket.ids[0].id = id.id;
-						store_cache_item_field(msgIdByte, "requestPacket", TnetString::fromVariant(pCacheItem->requestPacket.toVariant());
+						store_cache_item_field(msgIdByte, "requestPacket", TnetString::fromVariant(pCacheItem->requestPacket.toVariant()));
 					}
 					// remove HTTP_REFRESH_HEADER header
 					p.headers.removeAll(HTTP_REFRESH_HEADER);
@@ -2013,7 +2013,7 @@ public:
 				pCacheItem->clientMap.clear();
 
 				store_cache_item_field(msgIdByte, "retryCount", pCacheItem->retryCount);
-				store_cache_item_field(msgIdByte, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant());
+				store_cache_item_field(msgIdByte, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 				store_cache_item_field(msgIdByte, "msgId", pCacheItem->msgId);
 				store_cache_item_field(msgIdByte, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(msgIdByte, "lastRefreshTime", pCacheItem->lastRefreshTime);
@@ -2080,7 +2080,7 @@ public:
 				}
 				pCacheItem->clientMap.clear();
 
-				store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant());
+				store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 				store_cache_item_field(itemId, "responseHashVal", pCacheItem->responseHashVal);
 				store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 				store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
@@ -2272,7 +2272,7 @@ public:
 						}
 					}
 
-					store_cache_item_field(itemId, "subscriptionPacket", TnetString::fromVariant(pCacheItem->subscriptionPacket.toVariant());
+					store_cache_item_field(itemId, "subscriptionPacket", TnetString::fromVariant(pCacheItem->subscriptionPacket.toVariant()));
 					store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
 					store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 					store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
@@ -2372,7 +2372,7 @@ public:
 					}
 					else
 					{
-						store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant());
+						store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 						store_cache_item_field(itemId, "responseHashVal", pCacheItem->responseHashVal);
 						store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
 						store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
@@ -2458,7 +2458,7 @@ public:
 						}
 					}
 
-					store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant());
+					store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 					store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 					store_cache_item_field(itemId, "subscriptionStr", pCacheItem->subscriptionStr);
 					store_cache_item_field(itemId, "orgSubscriptionStr", pCacheItem->orgSubscriptionStr);
