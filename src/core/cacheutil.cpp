@@ -815,7 +815,7 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 			return NULL;
 		}
 		// store into global map and return of it`s pointer
-		//gCacheItemMap[itemId] = redis_load_cache_item(itemId);
+		gCacheItemMap[itemId] = redis_load_cache_item(itemId);
 		ret = &gCacheItemMap[itemId];
 	}
 	//qint64 nsecs = timer.nsecsElapsed();

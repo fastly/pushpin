@@ -93,6 +93,44 @@ struct ClientInCacheItem {
 	QByteArray instanceId;
 };
 
+// Example subset of your structure
+struct CacheItem_ {
+	QString orgMsgId;
+	int msgId;
+	int newMsgId;
+	char refreshFlag;
+	qint64 lastRequestTime;
+	bool cachedFlag;
+	QByteArray cacheClientId;
+
+	// Add more fields here...
+
+	// Serialization
+	friend QDataStream& operator<<(QDataStream& out, const CacheItem_& item) {
+		out << item.orgMsgId;
+		out << item.msgId;
+		out << item.newMsgId;
+		out << item.refreshFlag;
+		out << item.lastRequestTime;
+		out << item.cachedFlag;
+		out << item.cacheClientId;
+		// Add more fields here...
+		return out;
+	}
+
+	friend QDataStream& operator>>(QDataStream& in, CacheItem_& item) {
+		in >> item.orgMsgId;
+		in >> item.msgId;
+		in >> item.newMsgId;
+		in >> item.refreshFlag;
+		in >> item.lastRequestTime;
+		in >> item.cachedFlag;
+		in >> item.cacheClientId;
+		// Add more fields here...
+		return in;
+	}
+};
+
 // Cache Item
 struct CacheItem {
 	QString orgMsgId;
