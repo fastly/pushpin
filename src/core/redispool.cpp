@@ -34,7 +34,7 @@ QSharedPointer<redisContext> RedisPool::acquire() {
 		++m_activeConnections;
 	}
 
-	log_debug("[TTT] active connections = %d", m_activeConnections);
+	log_debug("[TTT] activeConns=%d, pools=%d", m_activeConnections, m_pool.count());
 
 	return QSharedPointer<redisContext>(conn, [](redisContext* c) {
 		RedisPool::instance()->release(c);
