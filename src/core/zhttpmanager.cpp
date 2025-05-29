@@ -120,7 +120,6 @@ QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 // redis
-redisContext *gRedisContext = nullptr;
 bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
@@ -3206,7 +3205,7 @@ void ZhttpManager::setCacheParameters(
 		qPrintable(gRedisHostAddr), gRedisPort, gRedisPoolCount);
 	if (gRedisEnable == true)
 	{
-		gRedisContext = connectToRedis();
+		redis_removeall_cache_item();
 	}
 	
 	// count method group

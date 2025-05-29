@@ -41,7 +41,6 @@
 #include "cacheutil.h"
 
 extern bool gCacheThreadAllowFlag;
-extern redisContext *gRedisContext;
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -799,10 +798,6 @@ private slots:
 			delete t;
 
 		threads.clear();
-
-		// free redis
-		if (gRedisContext != nullptr)
-			redisFree(gRedisContext);
 
 		gCacheThreadAllowFlag = false;
 

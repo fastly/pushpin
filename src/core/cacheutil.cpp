@@ -93,7 +93,6 @@ extern int gLongerTimeoutSeconds;
 extern int gCacheItemMaxCount;
 
 // redis
-extern redisContext *gRedisContext;
 extern bool gRedisEnable;
 extern QString gRedisHostAddr;
 extern int gRedisPort;
@@ -121,87 +120,15 @@ extern quint32 numCacheLookup, numCacheExpiry, numRequestMultiPart;
 extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup, numSubscriptionExpiry, numResponseMultiPart;
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 extern QHash<QString, int> groupMethodCountMap;
-/*
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Global or shared pool
-RedisConnectionPool pool(4);
 
-// Example function to run pipelined Redis commands asynchronously
-void runRedisPipelineAsync() 
-{
-	QtConcurrent::run([=]() 
-	{
-		RedisConnection_ *conn = pool.acquire();
-
-		if (!conn->isConnected()) 
-		{
-			log_debug("Redis not connected");
-			pool.release(conn);
-			return;
-		}
-
-		conn->appendCommand("SET async:key1 \"value1\"");
-		conn->appendCommand("GET async:key1");
-		conn->appendCommand("INCR async:counter");
-		conn->appendCommand("GET async:counter");
-
-		QList<QByteArray> replies = conn->flushPipeline(4);
-		for (const QByteArray &r : replies)
-			log_debug("[Async Reply] %s", r.data());
-
-		pool.release(conn);
-	});
-}
-*/
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
-
-redisContext* connectToRedis() 
-{
-	QByteArray hostAddrBytes = gRedisHostAddr.toUtf8();
-	const char *hostname = hostAddrBytes.constData();
-	int port = gRedisPort;
-	struct timeval timeout = {1, 500000}; // 1.5 seconds
-	redisContext *c = redisConnectWithTimeout(hostname, port, timeout);
-	if (c == nullptr || c->err) 
-	{
-		if (c) 
-		{
-			log_debug("Connection error: %s", c->errstr);
-			redisFree(c);
-		} 
-		else 
-		{
-			log_debug("Connection error: can't allocate redis context");
-		}
-		return nullptr;
-	}
-	log_debug("[CACHE] Connected to redis server %s:%d", hostname, port);
-
-	redis_removeall_cache_item();
-	return c;
-}
-
-class RedisPoolSingleton {
-public:
-	static RedisPool& instance() {
-		static RedisPool pool(gRedisPoolCount, gRedisHostAddr.toUtf8().constData(), gRedisPort);
-		return pool;
-	}
-
-private:
-	RedisPoolSingleton() = default;
-	~RedisPoolSingleton() = default;
-	RedisPoolSingleton(const RedisPoolSingleton&) = delete;
-	RedisPoolSingleton& operator=(const RedisPoolSingleton&) = delete;
-};
 
 bool redis_is_cache_item(const QByteArray& itemId)
 {
 	bool ret = false;
 
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -224,15 +151,14 @@ bool redis_is_cache_item(const QByteArray& itemId)
 	}
 
 	if (reply) freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return ret;
 }
 
 void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item) 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -298,7 +224,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 	if (reply != nullptr)
 		freeReplyObject(reply);
 
-	pool.release(conn);
+	//pool.release(conn);
 
 	// store client map
 	QHash<QByteArray, ClientInCacheItem> clientMap = item.clientMap;
@@ -339,8 +265,7 @@ void redis_save_cache_item(const QByteArray& itemId, const CacheItem& item)
 template <typename T>
 void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value) 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -472,15 +397,14 @@ void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldNam
 
 	if (reply != nullptr) 
 		freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 }
 
 CacheItem redis_load_cache_item(const QByteArray& itemId) 
 {
 	CacheItem item;
 
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -527,7 +451,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 		else if (field == "clientMap") clientMap = QString::fromUtf8(value);
 	}
 	freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	//log_debug("Load ClientMap=%s", qPrintable(clientMap));
 	QStringList mapList = clientMap.split("\n");
@@ -557,8 +481,7 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 template <typename T>
 int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName, T& value) 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -639,15 +562,14 @@ int redis_load_cache_item_field(const QByteArray& itemId, const char *fieldName,
 
 	if (reply != nullptr)
 		freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return 0;
 }
 
 void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldName) 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -667,15 +589,14 @@ void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldNa
 		log_debug("[REDIS] removed field %s, %s", itemId.toHex().data(), fieldName);
 	}
 	freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return;
 }
 
 void redis_remove_cache_item(const QByteArray &itemId) 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -692,15 +613,14 @@ void redis_remove_cache_item(const QByteArray &itemId)
 
 	if (reply != nullptr)
 		freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return;
 }
 
 void redis_removeall_cache_item() 
 {
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -717,7 +637,7 @@ void redis_removeall_cache_item()
 
 	if (reply != nullptr)
 		freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return;
 }
@@ -726,8 +646,7 @@ QList<QByteArray> redis_get_cache_item_ids()
 {
 	QList<QByteArray> ret;
 
-	RedisPool& pool = RedisPoolSingleton::instance();
-	RedisConnection* conn = pool.acquire();
+	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
 	{
@@ -765,7 +684,7 @@ QList<QByteArray> redis_get_cache_item_ids()
 	}
 
 	freeReplyObject(reply);
-	pool.release(conn);
+	//pool.release(conn);
 
 	return ret;
 }

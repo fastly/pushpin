@@ -58,6 +58,7 @@ HEADERS += \
 	$$PWD/socketnotifier.h \
 	$$PWD/eventloop.h \
 	$$PWD/cacheutil.h \
+	$$PWD/redispool.h \
 	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
@@ -85,6 +86,7 @@ SOURCES += \
 	$$PWD/socketnotifier.cpp \
 	$$PWD/eventloop.cpp \
 	$$PWD/cacheutil.cpp \
+	$$PWD/redispool.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \
