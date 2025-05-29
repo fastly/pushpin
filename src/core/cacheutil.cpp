@@ -791,6 +791,30 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 	return;
 }
 
+void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QString& value)
+{
+	if (gRedisEnable == false)
+	{
+		// global cache item map
+		log_debug("[CACHE] store cache item %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+	}
+	else
+	{
+		// redis
+		if (gCacheItemMap.contains(itemId))
+		{
+			log_debug("[REDIS] save cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+			redis_store_cache_item_field<QString>(itemId, fieldName, value);	
+		}
+		else
+		{
+			log_debug("[REDIS] not loaded cache item field %s, %s", itemId.toHex().data(), qPrintable(fieldName));
+		}
+	}
+	
+	return;
+}
+
 void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const qint64& value)
 {
 	if (gRedisEnable == false)
