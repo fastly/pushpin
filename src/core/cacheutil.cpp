@@ -743,34 +743,6 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	return ret;
 }
 
-void store_cache_item(const QByteArray& itemId)
-{
-	//QElapsedTimer timer;
-	//timer.start();
-	if (gRedisEnable == false)
-	{
-		// global cache item map
-		log_debug("[CACHE] store cache item %s", itemId.toHex().data());
-	}
-	else
-	{
-		// redis
-		if (gCacheItemMap.contains(itemId))
-		{
-			log_debug("[REDIS] save cache item %s", itemId.toHex().data());
-			redis_create_cache_item(itemId, gCacheItemMap[itemId]);	
-		}
-		else
-		{
-			log_debug("[REDIS] not loaded cache item %s", itemId.toHex().data());
-		}
-	}
-	//qint64 nsecs = timer.nsecsElapsed();
-	//log_debug("[PERF] store_cache_item %ld ns", nsecs);
-	
-	return;
-}
-
 void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const int& value)
 {
 	if (gRedisEnable == false)
