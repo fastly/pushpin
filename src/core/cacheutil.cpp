@@ -737,11 +737,11 @@ CacheItem* load_cache_item(const QByteArray& itemId)
 	else
 	{
 		// redis
-		if (!redis_is_cache_item(itemId))
-		{
-			log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
-			return NULL;
-		}
+		//if (!redis_is_cache_item(itemId))
+		//{
+		//	log_debug("[REDIS] not found cache item %s", itemId.toHex().data());
+		//	return NULL;
+		//}
 		// store into global map and return of it`s pointer
 		//gCacheItemMap[itemId] = redis_load_cache_item(itemId);
 		ret = &gCacheItemMap[itemId];
