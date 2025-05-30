@@ -353,7 +353,7 @@ fn get_qt_lib_prefix(lib_dir: &Path, version_maj: u16) -> Result<String, Box<dyn
 }
 
 fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
-    let paths = ["/usr/local/include", "/usr/include"];
+    let paths = ["/usr/local/include", "/usr/include", "/opt/homebrew/include"];
     let version_filename = "boost/version.hpp";
 
     for path in paths {
