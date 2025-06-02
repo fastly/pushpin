@@ -2071,7 +2071,7 @@ public:
 				log_debug("[11111] %s", buff.data());
 				replace_id_field(buff, packetMsg.id, RESPONSE_ID_MARK);
 				log_debug("[22222] %s", buff.data());
-				store_cache_response_body(msgIdByte, pCacheItem->responsePacket.body);
+				store_cache_response_body(itemId, pCacheItem->responsePacket.body);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
@@ -2604,7 +2604,7 @@ public:
 		return 0;
 	}
 
-	int delete_old_clients()
+	void delete_old_clients()
 	{
 		int itemCount = gDeleteClientList.count();
 		if (itemCount > 0)
