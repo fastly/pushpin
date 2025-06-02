@@ -677,7 +677,7 @@ public:
 					}
 					else
 					{
-						int ret = process_http_response(packet);
+						int ret = process_http_response(packet, buf);
 						if (ret == 0)
 						{
 							resume_cache_thread();
@@ -1194,7 +1194,7 @@ public:
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
-					log_debug("[HTTP] received ws request from real client=%s", packetId.data());
+					log_debug("[HTTP] received http request from real client=%s", packetId.data());
 
 					// update client last request time
 					gHttpClientMap[packetId].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
@@ -1935,9 +1935,9 @@ public:
 		return -1;
 	}
 
-	int process_http_response(const ZhttpResponsePacket &response)
+	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &responseBuf)
 	{
-		ZhttpResponsePacket p = response;
+		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
 
 		// check multi-part response
@@ -1994,14 +1994,17 @@ public:
 				pCacheItem->cachedFlag = true;
 				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 				// recover original msgId
-				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
+				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
+
+				// store response body
+				store_cache_response_body(msgIdByte, pCacheItem->responsePacket.body);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
 						send_http_response_to_client(pCacheItem->responsePacket, 
-							pCacheItem->msgId,
+							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 
 							pCacheItem->clientMap[cliId].from, 
 							cliId);
@@ -2061,7 +2064,14 @@ public:
 				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
 				// recover original msgId
-				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, pCacheItem->msgId);
+				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
+
+				// store response body
+				QByteArray buff = responseBuf;
+				log_debug("[11111] %s", buff.data());
+				replace_id_field(buff, packetMsg.id, RESPONSE_ID_MARK);
+				log_debug("[22222] %s", buff.data());
+				store_cache_response_body(msgIdByte, pCacheItem->responsePacket.body);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
@@ -2069,7 +2079,7 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						send_http_response_to_client(pCacheItem->responsePacket, 
-							pCacheItem->msgId,
+							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 
 							pCacheItem->clientMap[cliId].from, 
 							cliId);

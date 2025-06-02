@@ -50,6 +50,8 @@
 
 #define HTTP_REFRESH_HEADER		"HTTP_REFRESH_REQUEST"
 
+#define RESPONSE_ID_MARK		"RESONSE_ID_MARK"
+
 #define RETRY_RESPONSE_MAX_COUNT	5
 
 enum Scheme {
@@ -171,6 +173,9 @@ void store_cache_item_field(const QByteArray& itemId, const char* fieldName, con
 void create_cache_item(const QByteArray& itemId, const CacheItem& cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_ids();
+
+void store_cache_response_body(const QByteArray& itemId, const QByteArray& responseBody);
+QByteArray load_cache_response_body(const QByteArray& itemId);
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);

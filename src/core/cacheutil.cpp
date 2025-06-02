@@ -58,6 +58,9 @@ extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 
+// Response Body for cache item
+QHash<QByteArray, QByteArray> gCacheResponseBody;
+
 QHash<QByteArray, CacheItem> gCacheItemMap;
 
 extern QString gMsgIdAttrName;
@@ -946,6 +949,16 @@ QList<QByteArray> get_cache_item_ids()
 	}
 
 	return ret;
+}
+
+void store_cache_response_body(const QByteArray& itemId, const QByteArray& responseBody)
+{
+	gCacheResponseBody[itemId] = responseBody;
+}
+
+QByteArray load_cache_response_body(const QByteArray& itemId)
+{
+	return gCacheResponseBody[itemId];
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
