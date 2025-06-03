@@ -955,11 +955,25 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 {
 	QByteArray buff = responseBuf;
 
-	// search msgId
-	QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-	QString newMsgId = QString("XX") + QString::number(msgId.length());
-	QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+	log_debug("[----1] %s", buff.data());
+
+	// replace id
+	int idLen = packetId.length;
+	QByteArray oldPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
+	QByteArray newPattern = QByteArray("XXXXX");
 	buff.replace(oldPattern, newPattern);
+
+	// replace seq
+	int seqNumLength = QString::number(seqNum).length();
+	QByteArray oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
+	QByteArray newPattern = QByteArray("YYYYY");
+
+	// replace msgId
+	oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
+	QString newMsgId = QString("ZZZZZ") + QString::number(msgId.length());
+	newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+	buff.replace(oldPattern, newPattern);
+	
 	log_debug("[00000] %s", buff.data());
 
 	gCacheResponseBuffer[itemId] = buff;
