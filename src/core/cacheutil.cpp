@@ -34,7 +34,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QByteArrayView>
 #include <QCoreApplication>
 #include <QMap>
 #include <QRegularExpression>
@@ -1002,7 +1001,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId/bodyLen
-	int startIndex = buff.indexOf(QByteArrayView("\"id\":ZZZZZ")) + 10;
+	int startIndex = buff.indexOf("\"id\":ZZZZZ") + 10;
 	if (startIndex > 0)
 	{
 		int endIndex = buff.indexOf(',', startIndex);
