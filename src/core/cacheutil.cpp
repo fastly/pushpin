@@ -957,7 +957,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 	// search msgId
 	QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-	QString newMsgId = QString("XX") + QString::number(msgId.Length);
+	QString newMsgId = QString("XX") + QString::number(msgId.length());
 	QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
 	buff.replace(oldPattern, newPattern);
 	log_debug("[00000] %s", buff.data());
