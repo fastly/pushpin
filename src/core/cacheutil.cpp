@@ -1017,6 +1017,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 		// replace bodyLen
 		oldPattern = QByteArray("4:body,QQQQQ");
 		newPattern = QByteArray("4:body,") + QByteArray::number(newLen) + QByteArray(":");
+		buff.replace(oldPattern, newPattern);
 	}
 
 	log_debug("[11111] %s", buff.data());
