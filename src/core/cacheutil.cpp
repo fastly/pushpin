@@ -974,7 +974,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 
 	// Replace the "id":"...." string (assumes it's a simple string field)
 	QRegularExpression idRegex(R"("id"\s*:\s*"[^"]*")");
-	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":"%1")").arg(QString::fromUtf8(newId)));
+	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":"%1")").arg(msgId));
 	QByteArray updatedJson = updatedJsonStr.toUtf8();
 	int newLength = updatedJson.size();
 
