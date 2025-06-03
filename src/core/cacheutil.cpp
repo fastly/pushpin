@@ -983,7 +983,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson + ",}";
 
 	// Replace the full old body block
-	buff.replace(match.capturedStart(0), match.capturedLength(0), QByteArray(qPrintable(msgId)));
+	buff.replace(match.capturedStart(0), match.capturedLength(0), newBody);
 
 	log_debug("[33333] %s", buff.data());
 
