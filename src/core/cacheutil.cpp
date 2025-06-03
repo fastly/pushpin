@@ -960,6 +960,30 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 {
 	log_debug("[11111] %s, %d, %s", packetId.data(), seqNum, qPrintable(msgId));
 	QByteArray buff = gCacheResponseBuffer[itemId];
+
+	// Match JSON body inside 4:body,<length>:<json>,}
+	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}),\})");
+	QRegularExpressionMatch bodyMatch = bodyRegex.match(buff);
+
+	if (!bodyMatch.hasMatch()) {
+		return QByteArray();
+	}
+
+	QString oldJson = bodyMatch.captured(2);
+
+	// Replace "id":"..." with new ID
+	QRegularExpression idRegex(R"("id"\s*:\s*"[^"]*")");
+	QString newJson = oldJson;
+	newJson.replace(idRegex, QString("\"id\":\"%1\"").arg(msgId));
+
+	// Recalculate byte length of the new JSON
+	int newLength = newJson.toUtf8().size();
+
+	// Build new body segment
+	QString newBody = QString("4:body,%1:%2,}").arg(newLength).arg(newJson);
+
+	// Replace the full old body with the new one
+	buff.replace(bodyRegex, newBody);
 	log_debug("[22222] %s", buff.data());
 	return buff;
 }
