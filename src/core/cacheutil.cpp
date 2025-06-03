@@ -958,7 +958,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	log_debug("[----1] %s", buff.data());
 
 	// replace id
-	int idLen = packetId.length;
+	int idLen = packetId.length();
 	QByteArray oldPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
 	QByteArray newPattern = QByteArray("XXXXX");
 	buff.replace(oldPattern, newPattern);
