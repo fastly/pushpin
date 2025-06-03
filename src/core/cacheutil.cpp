@@ -978,6 +978,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":%1)").arg(msgId));
 	QByteArray updatedJson = updatedJsonStr.toUtf8();
 	int newLength = updatedJson.size();
+	log_debug("[33333] %s, %d, %d", updatedJson.data(), updatedJsonStr.length(), newLength);
 
 	// Build new 4:body,<len>:<json>,}
 	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson;
@@ -985,7 +986,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	// Replace the full old body block
 	buff.replace(match.capturedStart(0), match.capturedLength(0), newBody);
 
-	log_debug("[33333] %s", buff.data());
+	log_debug("[44444] %s", buff.data());
 
 	return buff;
 }
