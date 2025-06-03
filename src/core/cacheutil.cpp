@@ -963,7 +963,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	log_debug("[22222] %s", buff.data());
 
 	// Match 4:body,<length>:<json>,}
-	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}),\})");
+	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}))");
 	QRegularExpressionMatch match = bodyRegex.match(QString::fromUtf8(buff));
 
 	if (!match.hasMatch()) {
@@ -980,7 +980,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	int newLength = updatedJson.size();
 
 	// Build new 4:body,<len>:<json>,}
-	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson + ",}";
+	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson;
 
 	// Replace the full old body block
 	buff.replace(match.capturedStart(0), match.capturedLength(0), newBody);
