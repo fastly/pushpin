@@ -983,7 +983,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	// replace Content-Length header
 	int bodyLenNumLength = QString::number(bodyLen).length();
 	oldPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(bodyLen);
-	newPattern = QByteArray("4:body,PPPPP");
+	newPattern = QByteArray("14:Content-Length,PPPPP");
 	buff.replace(oldPattern, newPattern);
 	
 	log_debug("[00000] %s", buff.data());
@@ -1026,7 +1026,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
-		oldPattern = QByteArray("4:body,PPPPP");
+		oldPattern = QByteArray("14:Content-Length,PPPPP");
 		int bodyLenNumLength = QString::number(newLen).length();
 		newPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(newLen);
 		buff.replace(oldPattern, newPattern);
