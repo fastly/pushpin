@@ -976,8 +976,8 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	buff.replace(oldPattern, newPattern);
 
 	// replace body length
-	QByteArray oldPattern = QByteArray("4:body,") + QByteArray::number(bodyLen) + QByteArray(":");
-	QByteArray newPattern = QByteArray("4:body,QQQQQ");
+	oldPattern = QByteArray("4:body,") + QByteArray::number(bodyLen) + QByteArray(":");
+	newPattern = QByteArray("4:body,QQQQQ");
 	
 	log_debug("[00000] %s", buff.data());
 
