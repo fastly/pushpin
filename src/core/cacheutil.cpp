@@ -961,30 +961,31 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	log_debug("[11111] %s, %d, %s", packetId.data(), seqNum, qPrintable(msgId));
 	QByteArray buff = gCacheResponseBuffer[itemId];
 
-	// Match JSON body inside 4:body,<length>:<json>,}
+	// Match 4:body,<length>:<json>,}
 	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}),\})");
-	QRegularExpressionMatch bodyMatch = bodyRegex.match(buff);
+	QRegularExpressionMatch match = bodyRegex.match(QString::fromUtf8(buff));
 
-	if (!bodyMatch.hasMatch()) {
+	if (!match.hasMatch()) {
 		return QByteArray();
 	}
 
-	QString oldJson = bodyMatch.captured(2);
+	int oldLength = match.captured(1).toInt();
+	QByteArray oldJson = match.captured(2).toUtf8();
 
-	// Replace "id":"..." with new ID
+	// Replace the "id":"...." string (assumes it's a simple string field)
 	QRegularExpression idRegex(R"("id"\s*:\s*"[^"]*")");
-	QString newJson = oldJson;
-	newJson.replace(idRegex, QString("\"id\":\"%1\"").arg(msgId));
+	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":"%1")").arg(QString::fromUtf8(newId)));
+	QByteArray updatedJson = updatedJsonStr.toUtf8();
+	int newLength = updatedJson.size();
 
-	// Recalculate byte length of the new JSON
-	int newLength = newJson.toUtf8().size();
+	// Build new 4:body,<len>:<json>,}
+	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson + ",}";
 
-	// Build new body segment
-	QString newBody = QString("4:body,%1:%2,}").arg(newLength).arg(newJson);
+	// Replace the full old body block
+	buff.replace(match.capturedStart(0), match.capturedLength(0), QByteArray(qPrintable(msgId)));
 
-	// Replace the full old body with the new one
-	buff.replace(bodyRegex, newBody);
 	log_debug("[22222] %s", buff.data());
+
 	return buff;
 }
 
