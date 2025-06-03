@@ -958,8 +958,9 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
 {
-	log_debug("[11111] %s,  %d, %s", packetId.data(), seqNum, qPrintable(msgId));
+	log_debug("[11111] %s, %d, %s", packetId.data(), seqNum, qPrintable(msgId));
 	QByteArray buff = gCacheResponseBuffer[itemId];
+	log_debug("[22222] %s", buff.data());
 	return buff;
 }
 
