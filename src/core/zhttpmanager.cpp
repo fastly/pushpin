@@ -1998,7 +1998,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(msgIdByte, responseBuf);
+				store_cache_response_buffer(msgIdByte, responseBuf, packetId, seqNum, packetMsg.id);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -2068,7 +2068,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(itemId, responseBuf);
+				store_cache_response_buffer(itemId, responseBuf, packetId, seqNum, packetMsg.id);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())

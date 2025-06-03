@@ -951,9 +951,18 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId)
 {
-	gCacheResponseBuffer[itemId] = responseBuf;
+	QByteArray buff = responseBuf;
+
+	// search msgId
+	QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
+	QString newMsgId = QString("XX") + QString::number(msgId.Length);
+	QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+	buff.replace(oldPattern, newPattern);
+	log_debug("[00000] %s", buff.data());
+
+	gCacheResponseBuffer[itemId] = buff;
 }
 
 QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
@@ -978,7 +987,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":%1)").arg(msgId));
 	QByteArray updatedJson = updatedJsonStr.toUtf8();
 	int newLength = updatedJson.size();
-	log_debug("[33333] %s, %s, %d", updatedJson.data(), oldJson.data(), newLength);
+	log_debug("[33333] %s, %s, %d", updatedJson.data(), updatedJsonStr.length(), newLength);
 
 	// Build new 4:body,<len>:<json>,}
 	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson;
