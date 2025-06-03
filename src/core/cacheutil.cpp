@@ -963,7 +963,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	log_debug("[22222] %s", buff.data());
 
 	// Match 4:body,<length>:<json>,}
-	QRegularExpression bodyRegex(R"(4:body,(\d+):)");
+	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}),\})");
 	QRegularExpressionMatch match = bodyRegex.match(QString::fromUtf8(buff));
 
 	if (!match.hasMatch()) {
