@@ -1005,12 +1005,12 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	if (startIndex > 0)
 	{
 		int endIndex = buff.indexOf(',', startIndex);
-		QByteArray part = data.mid(startIndex, endIndex-startIndex);
+		QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 		int orgLen = part.toInt();
 		int newLen = orgLen + msgId.length();
 
 		// replace msgId
-		newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+		newPattern = QByteArray("\"id\":") + msgId.toUtf8();
 		buff.replace(startIndex-10, endIndex-startIndex+10, newPattern);
 
 		// replace bodyLen
