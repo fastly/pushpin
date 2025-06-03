@@ -951,7 +951,7 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, int bodyLen)
 {
 	QByteArray buff = responseBuf;
 
@@ -960,20 +960,24 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	// replace id
 	int idLen = packetId.length();
 	QByteArray oldPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
-	QByteArray newPattern = QByteArray("XXXXX");
+	QByteArray newPattern = QByteArray("2:id,") + QByteArray("XXXXX");
 	buff.replace(oldPattern, newPattern);
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
 	oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
-	newPattern = QByteArray("YYYYY");
+	newPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId
 	oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-	QString newMsgId = QString("ZZZZZ") + QString::number(msgId.length());
+	QString newMsgId = QString("ZZZZZ") + QString::number(bodyLen-msgId.length());
 	newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
 	buff.replace(oldPattern, newPattern);
+
+	// replace body length
+	QByteArray oldPattern = QByteArray("4:body,") + QByteArray::number(bodyLen) + QByteArray(":");
+	QByteArray newPattern = QByteArray("4:body,QQQQQ");
 	
 	log_debug("[00000] %s", buff.data());
 
@@ -982,35 +986,39 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
 {
-	log_debug("[11111] %s, %d, %s", packetId.data(), seqNum, qPrintable(msgId));
 	QByteArray buff = gCacheResponseBuffer[itemId];
-	log_debug("[22222] %s", buff.data());
 
-	// Match 4:body,<length>:<json>,}
-	QRegularExpression bodyRegex(R"(4:body,(\d+):(\{.*?\}))");
-	QRegularExpressionMatch match = bodyRegex.match(QString::fromUtf8(buff));
+	// replace id
+	int idLen = packetId.length();
+	QByteArray oldPattern = QByteArray("2:id,") + QByteArray("XXXXX");
+	QByteArray newPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
+	buff.replace(oldPattern, newPattern);
 
-	if (!match.hasMatch()) {
-		return QByteArray();
+	// replace seq
+	int seqNumLength = QString::number(seqNum).length();
+	oldPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
+	newPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
+	buff.replace(oldPattern, newPattern);
+
+	// replace msgId/bodyLen
+	int startIndex = buff.indexOf(QByteArrayView("\"id\":ZZZZZ")) + 10;
+	if (startIndex > 0)
+	{
+		int endIndex = buff.indexOf(',', startIndex);
+		QByteArray part = data.mid(startIndex, endIndex-startIndex);
+		int orgLen = part.toInt();
+		int newLen = orgLen + msgId.length();
+
+		// replace msgId
+		newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+		buff.replace(startIndex-10, endIndex-startIndex+10, newPattern);
+
+		// replace bodyLen
+		oldPattern = QByteArray("4:body,QQQQQ");
+		newPattern = QByteArray("4:body,") + QByteArray::number(newLen) + QByteArray(":");
 	}
 
-	int oldLength = match.captured(1).toInt();
-	QByteArray oldJson = match.captured(2).toUtf8();
-
-	// Replace the "id":"...." string (assumes it's a simple string field)
-	QRegularExpression idRegex(R"("id"\s*:\s*[^,^}]*)");
-	QString updatedJsonStr = QString::fromUtf8(oldJson).replace(idRegex, QString(R"("id":%1)").arg(msgId));
-	QByteArray updatedJson = updatedJsonStr.toUtf8();
-	int newLength = updatedJson.size();
-	log_debug("[33333] %s, %s, %d", updatedJson.data(), updatedJsonStr.length(), newLength);
-
-	// Build new 4:body,<len>:<json>,}
-	QByteArray newBody = QByteArray("4:body,") + QByteArray::number(newLength) + ":" + updatedJson;
-
-	// Replace the full old body block
-	buff.replace(match.capturedStart(0), match.capturedLength(0), newBody);
-
-	log_debug("[44444] %s", buff.data());
+	log_debug("[11111] %s", buff.data());
 
 	return buff;
 }
