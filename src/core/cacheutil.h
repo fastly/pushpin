@@ -174,7 +174,7 @@ void create_cache_item(const QByteArray& itemId, const CacheItem& cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_ids();
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& response);
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf);
 QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId);
 
 bool is_convertible_to_int(const QString &str);

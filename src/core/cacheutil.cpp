@@ -59,7 +59,7 @@ extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 
 // Response Body for cache item
-QHash<QByteArray, QByteArray> gCacheResponseBody;
+QHash<QByteArray, QByteArray> gCacheResponseBuffer;
 
 QHash<QByteArray, CacheItem> gCacheItemMap;
 
@@ -951,15 +951,15 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& response)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf)
 {
-	gCacheResponseBody[itemId] = responseBody;
+	gCacheResponseBuffer[itemId] = responseBuf;
 }
 
 QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
 {
 	log_debug("[11111] %s,  %d, %s", packetId.data(), seqNum, qPrintable(msgId));
-	QByteArray buff = gCacheResponseBody[itemId];
+	QByteArray buff = gCacheResponseBuffer[itemId];
 	return buff;
 }
 
