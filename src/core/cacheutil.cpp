@@ -34,6 +34,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QByteArrayView>
 #include <QCoreApplication>
 #include <QMap>
 #include <QRegularExpression>
