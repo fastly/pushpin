@@ -951,14 +951,16 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_body(const QByteArray& itemId, const QByteArray& responseBody)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& response)
 {
 	gCacheResponseBody[itemId] = responseBody;
 }
 
-QByteArray load_cache_response_body(const QByteArray& itemId)
+QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
 {
-	return gCacheResponseBody[itemId];
+	log_debug("[11111] %s,  %d, %s", packetId.data(), seqNum, qPrintable(msgId));
+	QByteArray buff = gCacheResponseBody[itemId];
+	return buff;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

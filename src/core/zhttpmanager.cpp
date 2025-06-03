@@ -1939,6 +1939,7 @@ public:
 	{
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
+		int seqNum = p.ids[0].seq;
 
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
@@ -1997,7 +1998,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_body(msgIdByte, pCacheItem->responsePacket.body);
+				store_cache_response_buffer(msgIdByte, responseBuf);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -2067,17 +2068,14 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				QByteArray buff = responseBuf;
-				log_debug("[11111] %s", buff.data());
-				replace_id_field(buff, packetMsg.id, RESPONSE_ID_MARK);
-				log_debug("[22222] %s", buff.data());
-				store_cache_response_body(itemId, pCacheItem->responsePacket.body);
+				store_cache_response_buffer(itemId, responseBuf);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
+						load_cache_response_buffer(itemId, cliId, 11, QString("22"));
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 
