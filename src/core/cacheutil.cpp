@@ -965,8 +965,8 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
-	QByteArray oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
-	QByteArray newPattern = QByteArray("YYYYY");
+	oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
+	newPattern = QByteArray("YYYYY");
 
 	// replace msgId
 	oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
