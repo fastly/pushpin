@@ -722,7 +722,7 @@ public:
 		log_debug("[AAAAA] %s", buf.data());
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &from)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
@@ -2090,7 +2090,7 @@ public:
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
-						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId, pCacheItem->clientMap[cliId].from);
+						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId);
 						/*
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
