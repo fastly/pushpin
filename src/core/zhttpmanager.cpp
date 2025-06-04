@@ -1168,6 +1168,7 @@ public:
 			return;
 		}
 
+		log_debug("[CCCCC] %s", msg[0].data());
 		if(msg[2].length() < 1 || msg[2][0] != 'T')
 		{
 			log_warning("zhttp/zws server: received message with invalid format (missing type), skipping");
