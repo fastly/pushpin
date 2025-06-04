@@ -972,36 +972,36 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	// replace id
 	int idLen = packetId.length();
 	QByteArray oldPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
-	QByteArray newPattern = QByteArray("2:id,") + QByteArray("XXXXX");
+	QByteArray newPattern = QByteArray("2:id,") + QByteArray("__ID__");
 	buff.replace(oldPattern, newPattern);
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
 	oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
-	newPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
+	newPattern = QByteArray("3:seq,") + QByteArray("__SEQ__");
 	buff.replace(oldPattern, newPattern);
 
 	// replace from
 	int fromLen = from.length();
 	oldPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
-	newPattern = QByteArray("4:from,") + QByteArray("TTTTT");
+	newPattern = QByteArray("4:from,") + QByteArray("__FROM__");
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId
 	oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-	QString newMsgId = QString("ZZZZZ") + QString::number(bodyLen-msgId.length());
+	QString newMsgId = QString("__MSGID__") + QString::number(bodyLen-msgId.length());
 	newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
 	buff.replace(oldPattern, newPattern);
 
 	// replace body length
 	oldPattern = QByteArray("4:body,") + QByteArray::number(bodyLen) + QByteArray(":");
-	newPattern = QByteArray("4:body,QQQQQ");
+	newPattern = QByteArray("4:body,__BODY__");
 	buff.replace(oldPattern, newPattern);
 
 	// replace Content-Length header
 	int bodyLenNumLength = QString::number(bodyLen).length();
 	oldPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(bodyLen);
-	newPattern = QByteArray("14:Content-Length,PPPPP");
+	newPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
 	buff.replace(oldPattern, newPattern);
 	
 	log_debug("[00000] %s", buff.data());
@@ -1015,24 +1015,24 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 
 	// replace id
 	int idLen = packetId.length();
-	QByteArray oldPattern = QByteArray("2:id,") + QByteArray("XXXXX");
+	QByteArray oldPattern = QByteArray("2:id,") + QByteArray("__ID__");
 	QByteArray newPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
 	buff.replace(oldPattern, newPattern);
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
-	oldPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
+	oldPattern = QByteArray("3:seq,") + QByteArray("__SEQ__");
 	newPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
 	buff.replace(oldPattern, newPattern);
 
 	// replace from
 	int fromLen = from.length();
-	oldPattern = QByteArray("4:from,") + QByteArray("TTTTT");
+	oldPattern = QByteArray("4:from,") + QByteArray("__FROM__");
 	newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId/bodyLen
-	int startIndex = buff.indexOf("\"id\":ZZZZZ") + 10;
+	int startIndex = buff.indexOf("\"id\":__MSGID__") + 14;
 	if (startIndex > 0)
 	{
 		int endIndex = buff.indexOf(',', startIndex);
@@ -1045,20 +1045,20 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 		buff.replace(startIndex-10, endIndex-startIndex+10, newPattern);
 
 		// replace bodyLen
-		oldPattern = QByteArray("4:body,QQQQQ");
+		oldPattern = QByteArray("4:body,__BODY__");
 		newPattern = QByteArray("4:body,") + QByteArray::number(newLen) + QByteArray(":");
 		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
-		oldPattern = QByteArray("14:Content-Length,PPPPP");
+		oldPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
 		int bodyLenNumLength = QString::number(newLen).length();
 		newPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(newLen);
 		buff.replace(oldPattern, newPattern);
 	}
 
 	// remove connmgr Txxx:
-	int buffLent = buff.length();
-	buff = QByteArray("connmgr T") + QByteArray::number(buffLent-1) + QByteArray(":") + buff;
+	int buffLen = buff.length();
+	buff = QByteArray("connmgr T") + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
 
 	log_debug("[11111] %s", buff.data());
 
