@@ -1906,7 +1906,7 @@ public:
 
 				if (pCacheItem->cachedFlag == true)
 				{
-					writeToClient_(packetMsg.paramsHash, packetId, pCacheItem->clientMap[packetId].msgId);
+					writeToClient_(packetMsg.paramsHash, packetId, packetMsg.id);
 					/*
 					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
 						packetMsg.id, packetId, p.from);
