@@ -1015,8 +1015,8 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 
 	// replace from
 	int fromLen = from.length();
-	QByteArray oldPattern = QByteArray("4:from,") + QByteArray("TTTTT");
-	QByteArray newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
+	oldPattern = QByteArray("4:from,") + QByteArray("TTTTT");
+	newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId/bodyLen
