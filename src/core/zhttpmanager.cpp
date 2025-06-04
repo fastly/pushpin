@@ -2091,11 +2091,13 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId, pCacheItem->clientMap[cliId].from);
+						/*
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 
 							pCacheItem->clientMap[cliId].from, 
 							cliId);
+						*/
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Removed http client id=%s", cliId.data());
