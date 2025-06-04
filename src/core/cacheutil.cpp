@@ -1001,6 +1001,18 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 {
 	QByteArray buff = gCacheResponseBuffer[itemId];
 
+	// remove connmgr Txxx:
+	QByteArray prefix = "connmgr T";
+	int start = buff.indexOf(prefix);
+	if (start != -1) 
+	{
+		int colon = buff.indexOf(':', start + prefix.length());
+		if (colon != -1) 
+		{
+			buff.remove(start, colon - start + 1);  // Remove up to and including colon
+		}
+	}
+
 	// replace id
 	int idLen = packetId.length();
 	QByteArray oldPattern = QByteArray("2:id,") + QByteArray("XXXXX");
@@ -1043,6 +1055,10 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 		newPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(newLen);
 		buff.replace(oldPattern, newPattern);
 	}
+
+	// remove connmgr Txxx:
+	int buffLent = buff.length();
+	buff = QByteArray("connmgr T") + QByteArray::number(buffLent-1) + QByteArray(":");
 
 	log_debug("[11111] %s", buff.data());
 
