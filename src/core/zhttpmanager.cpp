@@ -1963,7 +1963,7 @@ public:
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
 			return 0;
-		else (ret == 1) // end of multi-response
+		else if (ret == 1) // end of multi-response
 		{
 			QVariant vpacket = packet.toVariant();
 			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
