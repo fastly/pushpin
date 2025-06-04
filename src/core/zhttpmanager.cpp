@@ -1906,8 +1906,11 @@ public:
 
 				if (pCacheItem->cachedFlag == true)
 				{
+					writeToClient_(packetMsg.paramsHash, packetId, pCacheItem->clientMap[packetId].msgId);
+					/*
 					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
 						packetMsg.id, packetId, p.from);
+					*/
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 				}
@@ -2019,11 +2022,14 @@ public:
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
+						writeToClient_(msgIdByte, cliId, pCacheItem->clientMap[cliId].msgId);
+						/*
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 
 							pCacheItem->clientMap[cliId].from, 
 							cliId);
+						*/
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Removed http client id=%s", cliId.data());
