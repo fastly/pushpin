@@ -719,6 +719,22 @@ public:
 
 		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
+
+		log_debug("[AAAAA] %s", buf.data());
+	}
+
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &from)
+	{
+		assert(server_out_sock);
+		const char *logprefix = logPrefixForType(CacheResponse);
+
+		int newSeq = get_client_new_response_seq(clientId);
+		QByteArray buf = load_cache_response_buffer(cacheItemId, cliId, newSeq, msgId, from);
+
+		log_debug("[BBBBB] %s", buf.data());
+
+		//update_client_response_seq(packetId, packetSeq);
+		//server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
 	static const char *logPrefixForType(SessionType type)
@@ -1998,7 +2014,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, p.body.length());
+				store_cache_response_buffer(msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -2068,14 +2084,14 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(itemId, responseBuf, packetId, seqNum, packetMsg.id, p.body.length());
+				store_cache_response_buffer(itemId, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
-						load_cache_response_buffer(itemId, cliId, 11, QString("22"));
+						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId, pCacheItem->clientMap[cliId].from);
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
 							pCacheItem->clientMap[cliId].msgId, 

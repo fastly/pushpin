@@ -951,7 +951,7 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, int bodyLen)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int bodyLen)
 {
 	QByteArray buff = responseBuf;
 
@@ -967,6 +967,12 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	int seqNumLength = QString::number(seqNum).length();
 	oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
 	newPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
+	buff.replace(oldPattern, newPattern);
+
+	// replace from
+	int fromLen = from.length();
+	oldPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
+	newPattern = QByteArray("4:from,") + QByteArray("TTTTT");
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId
@@ -991,7 +997,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	gCacheResponseBuffer[itemId] = buff;
 }
 
-QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId)
+QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
 {
 	QByteArray buff = gCacheResponseBuffer[itemId];
 
@@ -1005,6 +1011,12 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 	int seqNumLength = QString::number(seqNum).length();
 	oldPattern = QByteArray("3:seq,") + QByteArray("YYYYY");
 	newPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
+	buff.replace(oldPattern, newPattern);
+
+	// replace from
+	int fromLen = from.length();
+	QByteArray oldPattern = QByteArray("4:from,") + QByteArray("TTTTT");
+	QByteArray newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId/bodyLen
