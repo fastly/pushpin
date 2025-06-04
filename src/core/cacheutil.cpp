@@ -951,14 +951,14 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int bodyLen)
+void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int bodyLen)
 {
 	QByteArray buff = responseBuf;
 
 	log_debug("[----1] %s", buff.data());
 
 	// remove connmgr Txxx:
-	QByteArray prefix = "connmgr T";
+	QByteArray prefix = instanceAddress + " T";
 	int start = buff.indexOf(prefix);
 	if (start != -1) 
 	{
@@ -1009,7 +1009,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	gCacheResponseBuffer[itemId] = buff;
 }
 
-QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
+QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
 {
 	QByteArray buff = gCacheResponseBuffer[itemId];
 
@@ -1058,7 +1058,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 
 	// remove connmgr Txxx:
 	int buffLen = buff.length();
-	buff = QByteArray("connmgr T") + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
+	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
 
 	log_debug("[11111] %s", buff.data());
 
@@ -1990,6 +1990,8 @@ int check_multi_packets_for_http_response(ZhttpResponsePacket &p)
 			p.body = gHttpMultiPartResponseItemMap[pId].body;
 
 			gHttpMultiPartResponseItemMap.remove(pId);
+
+			return 1;
 		}
 	}
 	else

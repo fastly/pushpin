@@ -676,7 +676,7 @@ public:
 					}
 					else
 					{
-						int ret = process_http_response(packet, buf);
+						int ret = process_http_response(packet, instanceAddress, buf);
 						if (ret == 0)
 						{
 							resume_cache_thread();
@@ -722,13 +722,13 @@ public:
 		log_debug("[AAAAA] %s", buf.data());
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId)
+	void writeToClient_(const QByteArray &instanceAddress, const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
 
 		int newSeq = get_client_new_response_seq(clientId);
-		QByteArray buf = load_cache_response_buffer(cacheItemId, clientId, newSeq, msgId, instanceId);
+		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId);
 
 		log_debug("[BBBBB] %s", buf.data());
 
@@ -1906,7 +1906,7 @@ public:
 
 				if (pCacheItem->cachedFlag == true)
 				{
-					writeToClient_(packetMsg.paramsHash, packetId, packetMsg.id);
+					writeToClient_("connmgr", packetMsg.paramsHash, packetId, packetMsg.id);
 					/*
 					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
 						packetMsg.id, packetId, p.from);
@@ -1953,7 +1953,7 @@ public:
 		return -1;
 	}
 
-	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &responseBuf)
+	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &instanceAddress, QByteArray &responseBuf)
 	{
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
@@ -1963,7 +1963,12 @@ public:
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
 			return 0;
-
+		else (ret == 1) // end of multi-response
+		{
+			QVariant vpacket = packet.toVariant();
+			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+		}
+		
 		bool bodyParseSucceed = true;
 
 		// parse json body
@@ -2016,13 +2021,13 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
+				store_cache_response_buffer(instanceAddress, msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
-						writeToClient_(msgIdByte, cliId, pCacheItem->clientMap[cliId].msgId);
+						writeToClient_(instanceAddress, msgIdByte, cliId, pCacheItem->clientMap[cliId].msgId);
 						/*
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
@@ -2089,14 +2094,14 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(itemId, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
+				store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
 					if (gHttpClientMap.contains(cliId))
 					{
-						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId);
+						writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
 						/*
 						send_http_response_to_client(pCacheItem->responsePacket, 
 							RESPONSE_ID_MARK,
