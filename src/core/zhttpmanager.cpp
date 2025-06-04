@@ -733,7 +733,7 @@ public:
 		log_debug("[BBBBB] %s", buf.data());
 
 		//update_client_response_seq(packetId, packetSeq);
-		//server_out_sock->write(QList<QByteArray>() << buf);
+		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
 	static const char *logPrefixForType(SessionType type)
