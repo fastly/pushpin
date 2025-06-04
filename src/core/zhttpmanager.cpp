@@ -1965,7 +1965,7 @@ public:
 			return 0;
 		else if (ret == 1) // end of multi-response
 		{
-			QVariant vpacket = packet.toVariant();
+			QVariant vpacket = p.toVariant();
 			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 		}
 		
