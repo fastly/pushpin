@@ -1042,7 +1042,7 @@ QByteArray load_cache_response_buffer(const QByteArray& itemId, QByteArray packe
 
 		// replace msgId
 		newPattern = QByteArray("\"id\":") + msgId.toUtf8();
-		buff.replace(startIndex-10, endIndex-startIndex+10, newPattern);
+		buff.replace(startIndex-14, endIndex-startIndex+14, newPattern);
 
 		// replace bodyLen
 		oldPattern = QByteArray("4:body,__BODY__");
