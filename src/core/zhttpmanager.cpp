@@ -1168,7 +1168,6 @@ public:
 			return;
 		}
 
-		log_debug("[CCCCC] %s", msg[0].data());
 		if(msg[2].length() < 1 || msg[2][0] != 'T')
 		{
 			log_warning("zhttp/zws server: received message with invalid format (missing type), skipping");
@@ -1907,7 +1906,7 @@ public:
 
 				if (pCacheItem->cachedFlag == true)
 				{
-					writeToClient_("connmgr", packetMsg.paramsHash, packetId, packetMsg.id);
+					writeToClient_(p.from, packetMsg.paramsHash, packetId, packetMsg.id);
 					/*
 					reply_http_cached_content(pCacheItem->responsePacket, pCacheItem->msgId, 
 						packetMsg.id, packetId, p.from);
