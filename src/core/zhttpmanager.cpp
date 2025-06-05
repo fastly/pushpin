@@ -2771,7 +2771,7 @@ public:
 						replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
 						*/
-						writeToClient_(p.from, paramsHashpCacheItem->subscriptionPacket, packetId, packetMsg.id);
+						writeToClient_(p.from, pCacheItem->subscriptionPacket, packetId, packetMsg.id);
 						/*
 						ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 						replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
