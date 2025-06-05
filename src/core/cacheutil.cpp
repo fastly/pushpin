@@ -971,9 +971,16 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 
 	// replace id
 	int idLen = packetId.length();
-	QByteArray oldPattern = QByteArray("2:id,") + QByteArray::number(idLen) + QByteArray(":") + packetId;
-	QByteArray newPattern = QByteArray("2:id,") + QByteArray("__ID__");
-	buff.replace(oldPattern, newPattern);
+	prefix = "2:id,";
+	start = buff.indexOf(prefix);
+	if (start != -1) 
+	{
+		int end = buff.indexOf(',', start + prefix.length());
+		if (end != -1) 
+		{
+			buff.replace(start, colon - start, "2:id,__ID__");  // Replace
+		}
+	}
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
