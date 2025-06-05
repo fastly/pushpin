@@ -702,7 +702,7 @@ public:
 		const char *logprefix = logPrefixForType(type);
 
 		QByteArray clientId = packet.ids.first().id;
-		int newSeq = get_client_new_response_seq(packetId);
+		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
 		{
 			log_debug("[WS] failed to get new response seq %s", clientId.toHex().data());
@@ -1960,7 +1960,6 @@ public:
 	{
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
-		int seqNum = p.ids[0].seq;
 		QByteArray from = p.from;
 		int bodyLen = p.body.length();
 
