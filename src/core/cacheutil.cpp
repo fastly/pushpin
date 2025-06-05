@@ -2035,6 +2035,7 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 			p.body = gWsMultiPartResponseItemMap[pId].body;
 
 			gWsMultiPartResponseItemMap.remove(pId);
+			return 1;
 		}
 	}
 	else

@@ -664,7 +664,7 @@ public:
 						//out.credits = creditSize;
 						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
-						process_ws_cacheclient_response(packet, ccIndex);
+						process_ws_cacheclient_response(packet, ccIndex, instanceAddress, buf);
 						/*
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
@@ -1958,6 +1958,8 @@ public:
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
 		int seqNum = p.ids[0].seq;
+		QByteArray from = p.from;
+		int bodyLen = p.body.length();
 
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
@@ -1967,6 +1969,7 @@ public:
 		{
 			QVariant vpacket = p.toVariant();
 			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+			bodyLen = p.body.length();
 		}
 		
 		bool bodyParseSucceed = true;
@@ -2021,7 +2024,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(instanceAddress, msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
+				store_cache_response_buffer(instanceAddress, msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -2094,7 +2097,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, p.from, p.body.length());
+				store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
@@ -2131,15 +2134,21 @@ public:
 		return -1;
 	}
 
-	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber)
+	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber, const QByteArray &instanceAddress, QByteArray &responseBuf)
 	{
 		ZhttpResponsePacket p = response;
 		QByteArray packetId = p.ids[0].id;
+		int seqNum = p.ids[0].seq;
 
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
 		if (ret < 0)
 			return -1;
+		else if (ret == 1) // end of multi-response
+		{
+			QVariant vpacket = p.toVariant();
+			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+		}
 
 		// parse json body
 		PacketMsg packetMsg;
@@ -2381,6 +2390,9 @@ public:
 					pCacheItem->msgId = msgIdValue;
 					pCacheItem->cachedFlag = true;
 
+					// store response body
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, msgIdValue, from, bodyLen);
+
 					// send response to all clients
 					QString urlPath = "";
 					foreach(QByteArray clientId, pCacheItem->clientMap.keys())
@@ -2390,12 +2402,15 @@ public:
 							if (urlPath.isEmpty())
 								urlPath = gWsClientMap[clientId].urlPath;
 							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
+							writeToClient_(instanceAddress, itemId, clientId, pCacheItem->clientMap[clientId].msgId);
+							/*
 							QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
 							QByteArray from = pCacheItem->clientMap[clientId].from;
 							QByteArray orgInstanceId = pCacheItem->clientMap[clientId].instanceId;
 							ZhttpResponsePacket out = pCacheItem->responsePacket;
 							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
+							*/
 						}
 					}
 					pCacheItem->clientMap.clear();
