@@ -2026,7 +2026,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(instanceAddress, msgIdByte, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+				store_cache_response_buffer(instanceAddress, msgIdByte, responseBuf, packetMsg.id, bodyLen);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -2099,7 +2099,7 @@ public:
 				replace_id_field(pCacheItem->responsePacket.body, packetMsg.id, RESPONSE_ID_MARK);
 
 				// store response body
-				store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+				store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, bodyLen);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
@@ -2174,7 +2174,7 @@ public:
 			QString subscriptionStr = packetMsg.subscription;
 
 			// store response body
-			store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, 0, from, -1);
+			store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, 0, -1);
 
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
@@ -2311,7 +2311,7 @@ public:
 						}
 
 						// store response body
-						store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, packetMsg.id, from, -1);
+						store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetMsg.id, -1);
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -2421,7 +2421,7 @@ public:
 					pCacheItem->cachedFlag = true;
 
 					// store response body
-					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, bodyLen);
 
 					// send response to all clients
 					QString urlPath = "";
@@ -2491,7 +2491,7 @@ public:
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 					// store response body
-					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, bodyLen);
 
 					// Search temp teim in SubscriptionItemMap
 					QByteArray resultBytes = msgResultStr.toUtf8();

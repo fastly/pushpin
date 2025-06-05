@@ -951,7 +951,7 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, const QByteArray& responseBuf, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int bodyLen)
+void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int bodyLen)
 {
 	QByteArray buff = responseBuf;
 
@@ -970,7 +970,6 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 	}
 
 	// replace id
-	int idLen = packetId.length();
 	prefix = "2:id,";
 	start = buff.indexOf(prefix);
 	if (start != -1) 
@@ -983,16 +982,28 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 	}
 
 	// replace seq
-	int seqNumLength = QString::number(seqNum).length();
-	QByteArray oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
-	QByteArray newPattern = QByteArray("3:seq,") + QByteArray("__SEQ__");
-	buff.replace(oldPattern, newPattern);
+	prefix = "3:seq,";
+	start = buff.indexOf(prefix);
+	if (start != -1) 
+	{
+		int end = buff.indexOf(',', start + prefix.length());
+		if (end != -1) 
+		{
+			buff.replace(start, end - start, "3:seq,__SEQ__");  // Replace
+		}
+	}
 
 	// replace from
-	int fromLen = from.length();
-	oldPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
-	newPattern = QByteArray("4:from,") + QByteArray("__FROM__");
-	buff.replace(oldPattern, newPattern);
+	prefix = "4:from,";
+	start = buff.indexOf(prefix);
+	if (start != -1) 
+	{
+		int end = buff.indexOf(',', start + prefix.length());
+		if (end != -1) 
+		{
+			buff.replace(start, end - start, "4:from,__FROM__");  // Replace
+		}
+	}
 
 	if (bodyLen >= 0)
 	{
