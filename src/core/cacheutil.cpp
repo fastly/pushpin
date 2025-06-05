@@ -984,8 +984,8 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 
 	// replace seq
 	int seqNumLength = QString::number(seqNum).length();
-	oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
-	newPattern = QByteArray("3:seq,") + QByteArray("__SEQ__");
+	QByteArray oldPattern = QByteArray("3:seq,") + QByteArray::number(seqNumLength) + QByteArray(":") + QByteArray::number(seqNum);
+	QByteArray newPattern = QByteArray("3:seq,") + QByteArray("__SEQ__");
 	buff.replace(oldPattern, newPattern);
 
 	// replace from
