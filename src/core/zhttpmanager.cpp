@@ -2172,7 +2172,7 @@ public:
 			QString subscriptionStr = packetMsg.subscription;
 
 			// store response body
-			store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, 0, from, bodyLen);
+			store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, 0, from, -1);
 
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
@@ -2309,7 +2309,7 @@ public:
 						}
 
 						// store response body
-						store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+						store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, packetMsg.id, from, -1);
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
