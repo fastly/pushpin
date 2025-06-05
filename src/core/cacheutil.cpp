@@ -986,7 +986,7 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 	start = buff.indexOf(prefix);
 	if (start != -1) 
 	{
-		int end = buff.indexOf(',', start + prefix.length());
+		int end = buff.indexOf('#', start + prefix.length());
 		if (end != -1) 
 		{
 			buff.replace(start, end - start, "3:seq,__SEQ__");  // Replace
