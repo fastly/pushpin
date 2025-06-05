@@ -1008,9 +1008,9 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 	if (bodyLen >= 0)
 	{
 		// replace msgId
-		oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
+		QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
 		QString newMsgId = QString("__MSGID__") + QString::number(bodyLen-msgId.length());
-		newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+		QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
 		buff.replace(oldPattern, newPattern);
 
 		// replace body length
