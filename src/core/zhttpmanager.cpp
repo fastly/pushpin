@@ -701,11 +701,11 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QByteArray packetId = packet.ids.first().id;
+		QByteArray clientId = packet.ids.first().id;
 		int newSeq = get_client_new_response_seq(packetId);
 		if (newSeq < 0)
 		{
-			log_debug("[WS] failed to get new response seq %s", packetId.toHex().data());
+			log_debug("[WS] failed to get new response seq %s", clientId.toHex().data());
 			return;
 		}
 		packet.ids.first().seq = newSeq;
@@ -716,7 +716,8 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
-		//update_client_response_seq(packetId, packetSeq);
+		log_debug("[CCCCCA] %s %d", clientId.data(), newSeq);
+		//update_client_response_seq(clientId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 
 		log_debug("[AAAAA] %s", buf.data());
@@ -728,7 +729,7 @@ public:
 		const char *logprefix = logPrefixForType(CacheResponse);
 
 		int newSeq = get_client_new_response_seq(clientId);
-		log_debug("[CCCCC] %s %d", clientId.data(), newSeq);
+		log_debug("[CCCCCB] %s %d", clientId.data(), newSeq);
 
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId);
 
