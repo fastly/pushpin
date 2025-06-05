@@ -978,7 +978,7 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 		int end = buff.indexOf(',', start + prefix.length());
 		if (end != -1) 
 		{
-			buff.replace(start, colon - start, "2:id,__ID__");  // Replace
+			buff.replace(start, end - start, "2:id,__ID__");  // Replace
 		}
 	}
 
