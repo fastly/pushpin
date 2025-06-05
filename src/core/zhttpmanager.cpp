@@ -2394,7 +2394,7 @@ public:
 					pCacheItem->cachedFlag = true;
 
 					// store response body
-					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, msgIdValue, from, bodyLen);
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
 
 					// send response to all clients
 					QString urlPath = "";
