@@ -2139,6 +2139,7 @@ public:
 		ZhttpResponsePacket p = response;
 		QByteArray packetId = p.ids[0].id;
 		int seqNum = p.ids[0].seq;
+		QByteArray from = p.from;
 
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
