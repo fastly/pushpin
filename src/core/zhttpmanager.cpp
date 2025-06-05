@@ -728,6 +728,8 @@ public:
 		const char *logprefix = logPrefixForType(CacheResponse);
 
 		int newSeq = get_client_new_response_seq(clientId);
+		log_debug("[CCCCC] %s %d", clientId.data(), newSeq);
+
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId);
 
 		log_debug("[BBBBB] %s", buf.data());

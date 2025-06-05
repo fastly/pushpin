@@ -1064,8 +1064,6 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	int buffLen = buff.length();
 	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
 
-	log_debug("[11111] %s", buff.mid(0,1024).data());
-
 	return buff;
 }
 
