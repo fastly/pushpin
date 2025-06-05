@@ -2171,6 +2171,9 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
+			// store response body
+			store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, 0, from, bodyLen);
+
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
@@ -2199,16 +2202,21 @@ public:
 
 									log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s, instanceId=%s", 
 											cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
-
+									
+									writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
+									/*
 									ZhttpResponsePacket out = pCacheItem->responsePacket;
 									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 									replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
-
+									*/
+									writeToClient_(instanceAddress, subscriptionStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
+									/*
 									ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 									replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 									replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+									*/
 
 									++it;
 								}
@@ -2283,11 +2291,25 @@ public:
 							}
 
 							pCacheItem->subscriptionPacket = tempPacket;
+
+							QVariant vpacket = tempPacket.toVariant();
+							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+							packetId = p.ids[0].id;
+							seqNum = p.ids[0].seq;
+							from = p.from;
+							bodyLen = tempPacket.body.length();
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
 							pCacheItem->subscriptionPacket = p;
+
+							QVariant vpacket = p.toVariant();
+							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+							bodyLen = p.body.length();
 						}
+
+						// store response body
+						store_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -2306,10 +2328,13 @@ public:
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, from=%s, instanceId=%s", 
 										cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
 
+								writeToClient_(instanceAddress, subscriptionStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
+								/*
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								*/
 
 								++it;
 							}
@@ -2463,8 +2488,11 @@ public:
 					// update subscription last update time
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
+					// store response body
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetId, seqNum, packetMsg.id, from, bodyLen);
+
 					// Search temp teim in SubscriptionItemMap
-					QByteArray resultBytes = msgResultStr.toLatin1();
+					QByteArray resultBytes = msgResultStr.toUtf8();
 					CacheItem* pResultCacheItem = load_cache_item(resultBytes);
 					if (pResultCacheItem != NULL)
 					{
@@ -2492,16 +2520,24 @@ public:
 
 								log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, from=%s, instanceId=%s", 
 										cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
+								
+								writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
 
+								/*
 								ZhttpResponsePacket out = pCacheItem->responsePacket;
 								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
+								*/
 
+								writeToClient_(instanceAddress, msgResultStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
+
+								/*
 								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
 								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
 								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
 								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
+								*/
 
 								++it;
 							}
