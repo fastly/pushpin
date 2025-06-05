@@ -1058,6 +1058,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 
 	// remove connmgr Txxx:
 	int buffLen = buff.length();
+	log_debug("[CCCCC] %d", buffLen);
 	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
 
 	log_debug("[11111] %s", buff.mid(0,1024).data());
