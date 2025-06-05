@@ -2140,6 +2140,7 @@ public:
 		QByteArray packetId = p.ids[0].id;
 		int seqNum = p.ids[0].seq;
 		QByteArray from = p.from;
+		int bodyLen = p.body.length();
 
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
@@ -2149,6 +2150,7 @@ public:
 		{
 			QVariant vpacket = p.toVariant();
 			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+			bodyLen = p.body.length();
 		}
 
 		// parse json body
