@@ -2719,9 +2719,12 @@ public:
 
 					if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 					{
+						writeToClient_(p.from, paramsHash, packetId, packetMsg.id);
+						/*
 						ZhttpResponsePacket out = pCacheItem->responsePacket;
 						replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
 						send_response_to_client(ZhttpResponsePacket::Data, packetId, p.from, 0, &out);
+						*/
 					}
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
