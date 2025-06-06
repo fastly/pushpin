@@ -2632,7 +2632,7 @@ public:
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
 						writeToClient_(paramsHash, packetId, packetMsg.id, p.from, instanceId);
-						writeToClient_(pCacheItem->orgSubscriptionStr.toUtf8(), packetId, packetMsg.id, p.from, instanceId);
+						writeToClient_(pCacheItem->subscriptionStr.toUtf8(), packetId, packetMsg.id, p.from, instanceId);
 						// add client to list
 						pCacheItem->clientMap[packetId].msgId = msgIdStr;
 						pCacheItem->clientMap[packetId].from = p.from;
