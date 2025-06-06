@@ -955,7 +955,7 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 {
 	QByteArray buff = responseBuf;
 
-	log_debug("[----1] %s", buff.mid(0,1024).data());
+	//log_debug("[----1] %s", buff.mid(0,1024).data());
 
 	// remove connmgr Txxx:
 	QByteArray prefix = instanceAddress + " T";
@@ -1025,7 +1025,7 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 		buff.replace(oldPattern, newPattern);
 	}
 	
-	log_debug("[00000] %s", buff.mid(0,1024).data());
+	//log_debug("[00000] %s", buff.mid(0,1024).data());
 
 	gCacheResponseBuffer[itemId] = buff;
 }
@@ -2112,6 +2112,7 @@ int get_client_new_response_seq(const QByteArray &clientId)
 	{
 		ret = gWsClientMap[clientId].lastResponseSeq + 1;
 		gWsClientMap[clientId].lastResponseSeq = ret;
+		log_debug("[DDDDD] %s %d", clientId.data(), ret);
 	}
 	else if (gHttpClientMap.contains(clientId)) 
 	{
