@@ -2095,7 +2095,6 @@ public:
 
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-		int bodyLen = p.body.length();
 
 		// parse json body
 		PacketMsg packetMsg;
@@ -2163,12 +2162,15 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							QString patternStr("\"block\":\"");
-							qsizetype idxStart = tempPacket.body.indexOf(patternStr);
+							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, itemId, packetId, 0, QString("__ID__"), "__FROM__")
+							log_debug("[00000] %s", responseBuff.data());
+
+							QByteArray patternStr = "\"block\":\"";
+							qsizetype idxStart = responseBuf.indexOf(patternStr);
 							if (idxStart >= 0)
 							{
-								qsizetype idxEnd = tempPacket.body.indexOf("\"", idxStart+9);
-								tempPacket.body.replace(idxStart+9, idxEnd-(idxStart+9), QByteArray(qPrintable(msgBlockStr)));
+								qsizetype idxEnd = responseBuf.indexOf("\"", idxStart+9);
+								responseBuf.replace(idxStart+9, idxEnd-(idxStart+9), QByteArray(qPrintable(msgBlockStr)));
 							}
 							else
 							{
@@ -2196,14 +2198,14 @@ public:
 								qsizetype idxEnd = 0;
 								while (1)
 								{
-									idxStart = tempPacket.body.indexOf(patternStr, idxEnd);
+									idxStart = responseBuf.indexOf(patternStr, idxEnd);
 									if (idxStart < 0)
 										break;
 									
-									idxEnd = tempPacket.body.indexOf("]", idxStart+changeList[0].length());
+									idxEnd = responseBuf.indexOf("]", idxStart+changeList[0].length());
 									if (idxEnd > idxStart)
 									{
-										tempPacket.body.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
+										responseBuf.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
 									}
 									else
 									{
@@ -2211,13 +2213,8 @@ public:
 										break;
 									}	
 								}
-								
 							}
-
-							QVariant vpacket = tempPacket.toVariant();
-							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-							packetId = p.ids[0].id;
-							bodyLen = tempPacket.body.length();
+							log_debug("[11111] %s", responseBuff.data());
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
