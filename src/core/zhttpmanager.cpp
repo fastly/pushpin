@@ -649,13 +649,13 @@ public:
 					if (ccIndex >= 0)
 					{
 						// increase credit
-						//int creditSize = static_cast<int>(packet.body.size());
+						int creditSize = static_cast<int>(packet.body.size());
 						//int seqNum = update_request_seq(packetId);
 						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
-						//ZhttpRequestPacket out;
-						//out.type = ZhttpRequestPacket::Credit;
-						//out.credits = creditSize;
-						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
+						ZhttpRequestPacket out;
+						out.type = ZhttpRequestPacket::Credit;
+						out.credits = creditSize;
+						send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
 						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
 						resume_cache_thread();
@@ -1934,7 +1934,6 @@ public:
 
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-		int bodyLen = p.body.length();
 		
 		bool bodyParseSucceed = true;
 
