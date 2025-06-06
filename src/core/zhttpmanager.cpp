@@ -2166,7 +2166,6 @@ public:
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
 							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
-							log_debug("[00000] %s", responseBuf.data());
 
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf.indexOf(patternStr);
@@ -2217,7 +2216,6 @@ public:
 									}	
 								}
 							}
-							log_debug("[11111] %s", responseBuf.data());
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
