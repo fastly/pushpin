@@ -2330,7 +2330,7 @@ public:
 							if (urlPath.isEmpty())
 								urlPath = gWsClientMap[cliId].urlPath;
 							log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
-							writeToClient_(itemId, clientId, orgMsgId, instanceAddress, orgInstanceId);
+							writeToClient_(itemId, cliId, orgMsgId, instanceAddress, orgInstanceId);
 						}
 					}
 					pCacheItem->clientMap.clear();
