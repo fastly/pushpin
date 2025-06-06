@@ -19,7 +19,7 @@ use clap::{Parser, arg};
 use pushpin::core::{call_c_main, version};
 use pushpin::import_cpp;
 use std::env;
-use std::ffi::CString;
+use std::ffi::{CString, OsString};
 use std::process::ExitCode;
 
 import_cpp! {
@@ -59,18 +59,6 @@ pub struct CliArgs {
     #[arg(short, long, action = clap::ArgAction::SetTrue, default_value_t = false)]
     pub verbose: bool,
 }
-
-// C-compatible struct that matches CliArgs in handlerapp.cpp
-#[repr(C)]
-pub struct CArgsData {
-    pub config_file: *const libc::c_char,
-    pub log_file: *const libc::c_char,
-    pub log_level: *const libc::c_char,
-    pub ipc_prefix: *const libc::c_char,
-    pub port_offset: *const libc::c_char,
-    pub verbose: *const libc::c_char,
-}
-
 impl CliArgs {
     /// Verifies the command line arguments and returns a new instance of `CliArgs`.
     pub fn verify(self) -> Self {
@@ -79,25 +67,49 @@ impl CliArgs {
         // Check if log level is within the valid range
         // Check if ipc_prefix is a valid string
         // Check if port_offset is within the valid range
+
+        // 	if(parser->isSet(logLevelOption))
+// 	{
+// 		bool ok;
+// 		int x = parser->value(logLevelOption).toInt(&ok);
+// 		if(!ok || x < 0)
+// 		{
+// 			*errorMessage = "error: loglevel must be greater than or equal to 0";
+// 			return CommandLineError;
+// 		}
+
+// 		args->logLevel = x;
+// 	}
+
+// 	if(parser->isSet(verboseOption))
+// 		args->logLevel = 3;
+
+// 	if(parser->isSet(ipcPrefixOption))
+// 		args->ipcPrefix = parser->value(ipcPrefixOption);
+
+// 	if(parser->isSet(portOffsetOption))
+// 	{
+// 		bool ok;
+// 		int x = parser->value(portOffsetOption).toInt(&ok);
+// 		if(!ok || x < 0)
+// 		{
+// 			*errorMessage = "error: port-offset must be greater than or equal to 0";
+// 			return CommandLineError;
+// 		}
+
+// 		args->portOffset = x;
+// 	}
+
+// 	return CommandLineOk;
+// }
+
         self
     }
 
-    pub fn into_c_struct(self) -> CArgsData {
-        let to_c_str = |opt: Option<String>| -> *const libc::c_char {
-            opt.map_or_else(
-                || CString::new("").unwrap().into_raw(),
-                |s| CString::new(s).unwrap().into_raw(),
-            )
-        };
-
-        CArgsData {
-            config_file: CString::new(self.config_file).unwrap().into_raw(),
-            log_file: to_c_str(self.log_file),
-            log_level: CString::new(self.log_level).unwrap().into_raw(),
-            ipc_prefix: to_c_str(self.ipc_prefix),
-            port_offset: to_c_str(self.port_offset),
-            verbose: CString::new(if self.verbose { "true" } else { "false" }).unwrap().into_raw(),
-        }
+    pub fn into_osstring_vec(self) -> Vec<OsString> {
+        self.into_iter()
+            .map(|(_, value)| OsString::from(value))
+            .collect()
     }
 }
 
@@ -133,16 +145,9 @@ impl IntoIterator for CliArgs {
 }
 
 fn main() -> ExitCode {
-    let cli_args: CArgsData = CliArgs::parse().verify().into_c_struct();
+    let cli_args = CliArgs::parse().verify();
 
     unsafe { 
-        ExitCode::from(call_c_main(handler_main, (
-            cli_args.config_file,
-            cli_args.log_file,
-            cli_args.log_level,
-            cli_args.ipc_prefix,
-            cli_args.port_offset,
-            cli_args.verbose
-        )))
+        ExitCode::from(call_c_main(handler_main, cli_args.into_osstring_vec()))
     }
 }
