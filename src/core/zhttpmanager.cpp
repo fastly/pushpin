@@ -697,7 +697,6 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
-		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
@@ -722,7 +721,6 @@ public:
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 		log_debug("[ACCCCC] %s %d", clientId.data(), newSeq);
-		//update_client_response_seq(clientId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 
 		//log_debug("[AAAAA] %s", buf.mid(1024).data());
@@ -739,7 +737,6 @@ public:
 
 		//log_debug("[BBBBB] %s", buf.mid(1024).data());
 
-		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
