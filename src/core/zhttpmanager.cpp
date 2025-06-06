@@ -2069,7 +2069,6 @@ public:
 				}
 				pCacheItem->clientMap.clear();
 
-				store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 				store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 				store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
 				store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
@@ -2126,9 +2125,6 @@ public:
 				{
 					if (pCacheItem->cachedFlag == false)
 					{
-						// update subscription packet
-						pCacheItem->subscriptionPacket = p;
-
 						if (pCacheItem->msgId != -1)
 						{
 							pCacheItem->cachedFlag = true;
@@ -2166,7 +2162,6 @@ public:
 						{
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
-							ZhttpResponsePacket tempPacket = pCacheItem->subscriptionPacket;
 
 							QString patternStr("\"block\":\"");
 							qsizetype idxStart = tempPacket.body.indexOf(patternStr);
@@ -2327,7 +2322,6 @@ public:
 						return 0;
 					}
 					
-					pCacheItem->responsePacket = p;
 					pCacheItem->responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 					log_debug("[WS] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
 					pCacheItem->msgId = msgIdValue;
@@ -2358,7 +2352,6 @@ public:
 					}
 					else
 					{
-						store_cache_item_field(itemId, "responsePacket", TnetString::fromVariant(pCacheItem->responsePacket.toVariant()));
 						store_cache_item_field(itemId, "responseHashVal", pCacheItem->responseHashVal);
 						store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
 						store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
