@@ -720,7 +720,7 @@ public:
 		//update_client_response_seq(clientId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 
-		log_debug("[AAAAA] %s", buf.data());
+		//log_debug("[AAAAA] %s", buf.mid(1024).data());
 	}
 
 	void writeToClient_(const QByteArray &instanceAddress, const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId)
@@ -733,7 +733,7 @@ public:
 
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId);
 
-		log_debug("[BBBBB] %s", buf.data());
+		//log_debug("[BBBBB] %s", buf.mid(1024).data());
 
 		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
