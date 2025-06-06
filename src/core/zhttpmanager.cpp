@@ -2166,7 +2166,7 @@ public:
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
 							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, itemId, packetId, 0, QString("__ID__"), "__FROM__");
-							log_debug("[00000] %s", responseBuff.data());
+							log_debug("[00000] %s", responseBuf.data());
 
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf.indexOf(patternStr);
@@ -2223,7 +2223,6 @@ public:
 						{
 							QVariant vpacket = p.toVariant();
 							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-							bodyLen = p.body.length();
 						}
 
 						// store response body
