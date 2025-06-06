@@ -595,7 +595,7 @@ public:
 					// cache client
 					gWsCacheClientList[ccIndex].initFlag = true;
 					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
-					gWsCacheClientList[ccIndex].lastResponseSeq = packetSeq;
+					gWsCacheClientList[ccIndex].lastResponseSeq = -1;
 					gWsCacheClientList[ccIndex].receiver = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s, from=%s", ccIndex, gWsCacheClientList[ccIndex].clientId.data(),
 						packet.from.toHex().data());
