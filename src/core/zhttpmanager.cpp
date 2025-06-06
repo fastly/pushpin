@@ -2165,7 +2165,7 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, itemId, packetId, 0, QString("__ID__"), "__FROM__");
+							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 							log_debug("[00000] %s", responseBuf.data());
 
 							QByteArray patternStr = "\"block\":\"";
