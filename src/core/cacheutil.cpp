@@ -957,7 +957,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		int colon = buff.indexOf(':', start + prefix.length());
 		if (colon != -1) 
 		{
-			buff.remove(0, colon - 1);  // Remove up to and including colon
+			buff.remove(0, colon + 1);  // Remove up to and including colon
 		}
 	}
 
