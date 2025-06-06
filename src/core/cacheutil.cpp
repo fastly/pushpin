@@ -943,7 +943,7 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int bodyLen)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId)
 {
 	QByteArray buff = responseBuf;
 
@@ -997,13 +997,9 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		}
 	}
 
-	if (bodyLen >= 0)
+	if (!msgId.isEmpty())
 	{
-		// replace msgId
-		QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-		QString newMsgId = QString("__MSGID__") + QString::number(bodyLen-msgId.length());
-		QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
-		buff.replace(oldPattern, newPattern);
+		int bodyLen = 0;
 
 		// replace body length
 		prefix = "4:body,";
@@ -1011,11 +1007,19 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		if (start != -1) 
 		{
 			int end = buff.indexOf(':', start + prefix.length());
+			QByteArray part = buff.mid(start + prefix.length(), end-start-prefix.length());
+			bodyLen = part.toInt();
 			if (end != -1) 
 			{
 				buff.replace(start, end - start, "4:body,__BODY__");  // Replace
 			}
 		}
+
+		// replace msgId
+		QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
+		QString newMsgId = QString("__MSGID__") + QString::number(bodyLen-msgId.length());
+		QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
 		int bodyLenNumLength = QString::number(bodyLen).length();
