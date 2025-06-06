@@ -2165,7 +2165,7 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, itemId, packetId, 0, QString("__ID__"), "__FROM__")
+							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, itemId, packetId, 0, QString("__ID__"), "__FROM__");
 							log_debug("[00000] %s", responseBuff.data());
 
 							QByteArray patternStr = "\"block\":\"";
@@ -2217,7 +2217,7 @@ public:
 									}	
 								}
 							}
-							log_debug("[11111] %s", responseBuff.data());
+							log_debug("[11111] %s", responseBuf.data());
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
@@ -2328,7 +2328,7 @@ public:
 					pCacheItem->cachedFlag = true;
 
 					// store response body
-					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, bodyLen);
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, p.body.length());
 
 					// send response to all clients
 					QString urlPath = "";
@@ -2388,7 +2388,7 @@ public:
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 					// store response body
-					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, bodyLen);
+					store_cache_response_buffer(instanceAddress, itemId, responseBuf, packetMsg.id, p.body.length());
 
 					// Search temp teim in SubscriptionItemMap
 					QByteArray resultBytes = msgResultStr.toUtf8();
