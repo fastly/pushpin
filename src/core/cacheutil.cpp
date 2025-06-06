@@ -947,7 +947,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 {
 	QByteArray buff = responseBuf;
 
-	log_debug("[----1] %s", buff.mid(0,1024).data());
+	log_debug("[00000] %s", buff.mid(0,1024).data());
 
 	// remove connmgr Txxx:
 	QByteArray prefix = " T";
@@ -1027,8 +1027,6 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		newPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
 		buff.replace(oldPattern, newPattern);
 	}
-	
-	log_debug("[00000] %s", buff.mid(0,1024).data());
 
 	gCacheResponseBuffer[itemId] = buff;
 }
@@ -1084,6 +1082,8 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	// add connmgr Txxx:
 	int buffLen = buff.length();
 	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
+
+	log_debug("[11111] %s", buff.mid(0,1024).data());
 
 	return buff;
 }

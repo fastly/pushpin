@@ -1987,7 +1987,7 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						QString msgId = pCacheItem->clientMap[cliId].msgId;
-						QByteArray orgInstanceId = pCacheItem->clientMap[cliId].orgInstanceId;
+						QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 						writeToClient_(msgIdByte, cliId, msgId, instanceAddress, orgInstanceId);
 
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
@@ -2052,7 +2052,7 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						QString msgId = pCacheItem->clientMap[cliId].msgId;
-						QByteArray orgInstanceId = pCacheItem->clientMap[cliId].orgInstanceId;
+						QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId, instanceAddress, orgInstanceId);
 
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
@@ -2139,7 +2139,7 @@ public:
 											cliId.data(), qPrintable(orgMsgId), orgInstanceId.data());
 									
 									writeToClient_(itemId, cliId, orgMsgId, instanceAddress, orgInstanceId);
-									writeToClient_(subscriptionStr.toUtf8(), cliId, porgMsgId, instanceAddress, orgInstanceId);
+									writeToClient_(subscriptionStr.toUtf8(), cliId, orgMsgId, instanceAddress, orgInstanceId);
 
 									++it;
 								}
@@ -2328,8 +2328,8 @@ public:
 							QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 							
 							if (urlPath.isEmpty())
-								urlPath = gWsClientMap[clientId].urlPath;
-							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
+								urlPath = gWsClientMap[cliId].urlPath;
+							log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
 							writeToClient_(itemId, clientId, orgMsgId, instanceAddress, orgInstanceId);
 						}
 					}
