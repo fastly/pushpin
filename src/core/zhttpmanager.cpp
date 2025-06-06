@@ -716,7 +716,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
-		log_debug("[CCCCCA] %s %d", clientId.data(), newSeq);
+		log_debug("[ACCCCC] %s %d", clientId.data(), newSeq);
 		//update_client_response_seq(clientId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 
@@ -729,7 +729,7 @@ public:
 		const char *logprefix = logPrefixForType(CacheResponse);
 
 		int newSeq = get_client_new_response_seq(clientId);
-		log_debug("[CCCCCB] %s %d", clientId.data(), newSeq);
+		log_debug("[BCCCCC] %s %d", clientId.data(), newSeq);
 
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId);
 
