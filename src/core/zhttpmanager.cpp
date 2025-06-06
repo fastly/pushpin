@@ -659,6 +659,7 @@ public:
 						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
 						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
+						resume_cache_thread();
 						return;
 						/*
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
@@ -671,7 +672,7 @@ public:
 					}
 					else
 					{
-						int ret = process_http_response(packet, instanceAddress, buf);
+						int ret = process_http_response(packet, instanceAddress);
 						if (ret == 0)
 						{
 							resume_cache_thread();
@@ -689,7 +690,7 @@ public:
 
 		ZhttpResponsePacket p = packet;
 
-		int p.ids.first().seq = get_client_new_response_seq(packetId);
+		p.ids.first().seq = get_client_new_response_seq(packetId);
 		QVariant vpacket = p.toVariant();
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
@@ -730,7 +731,6 @@ public:
 	void writeToClient_(const QByteArray &instanceAddress, const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId)
 	{
 		assert(server_out_sock);
-		const char *logprefix = logPrefixForType(CacheResponse);
 
 		int newSeq = get_client_new_response_seq(clientId);
 		log_debug("[BCCCCC] %s %d", clientId.data(), newSeq);
@@ -1960,23 +1960,20 @@ public:
 		return -1;
 	}
 
-	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &instanceAddress, QByteArray &responseBuf)
+	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &instanceAddress)
 	{
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
 		QByteArray from = p.from;
-		int bodyLen = p.body.length();
 
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
 			return 0;
-		else if (ret == 1) // end of multi-response
-		{
-			QVariant vpacket = p.toVariant();
-			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-			bodyLen = p.body.length();
-		}
+
+		QVariant vpacket = p.toVariant();
+		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+		int bodyLen = p.body.length();
 		
 		bool bodyParseSucceed = true;
 
@@ -2151,7 +2148,7 @@ public:
 
 		QByteArray packetId = p.ids[0].id;
 
-		QVariant vpacket = packet.toVariant();
+		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 		int bodyLen = p.body.length();
 
@@ -2300,8 +2297,6 @@ public:
 							QVariant vpacket = tempPacket.toVariant();
 							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 							packetId = p.ids[0].id;
-							seqNum = p.ids[0].seq;
-							from = p.from;
 							bodyLen = tempPacket.body.length();
 						}
 						else // it`s for non state_subscribeStorage methods
