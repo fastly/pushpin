@@ -2119,30 +2119,9 @@ int get_client_new_response_seq(const QByteArray &clientId)
 			gWsCacheClientList[ccIndex].lastResponseSeq = ret;
 		}
 	}
-	log_debug("[BDDDDD] %s %d", clientId.data(), ret);
 	
 	return ret;
 }
-
-void update_client_response_seq(const QByteArray &clientId, int seqNum)
-{
-	log_debug("[ADDDDD] %s %d", clientId.data(), seqNum);
-	if (gWsClientMap.contains(clientId)) 
-	{
-		gWsClientMap[clientId].lastResponseSeq = seqNum;
-	}
-	else if (gHttpClientMap.contains(clientId)) 
-	{
-		gHttpClientMap[clientId].lastResponseSeq = seqNum;
-	}
-	else // cache client
-	{
-		int ccIndex = get_cc_index_from_clientId(clientId);
-		if (ccIndex >= 0)
-			gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
-	}
-}
-
 
 void send_http_post_request_with_refresh_header(QString backend, QByteArray postData, char *headerVal)
 {
