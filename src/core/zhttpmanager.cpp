@@ -573,12 +573,6 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QVariant vpacket = packet.toVariant();
-		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
-
 		QByteArray packetId = packet.ids.first().id;
 		int packetSeq = packet.ids.first().seq;
 
@@ -665,6 +659,7 @@ public:
 						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
 						process_ws_cacheclient_response(packet, ccIndex, instanceAddress, buf);
+						return;
 						/*
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
 						if (ret == 0)
@@ -692,7 +687,16 @@ public:
 			resume_cache_thread();
 		}
 
-		update_client_response_seq(packetId, packetSeq);
+		ZhttpResponsePacket p = packet;
+
+		int p.ids.first().seq = get_client_new_response_seq(packetId);
+		QVariant vpacket = p.toVariant();
+		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+
+		//update_client_response_seq(packetId, packetSeq);
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
@@ -2136,24 +2140,23 @@ public:
 		return -1;
 	}
 
-	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber, const QByteArray &instanceAddress, QByteArray &responseBuf)
+	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber, const QByteArray &instanceAddress)
 	{
 		ZhttpResponsePacket p = response;
-		QByteArray packetId = p.ids[0].id;
-		int seqNum = p.ids[0].seq;
-		QByteArray from = p.from;
-		int bodyLen = p.body.length();
-
+		
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
 		if (ret < 0)
 			return -1;
-		else if (ret == 1) // end of multi-response
-		{
-			QVariant vpacket = p.toVariant();
-			responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-			bodyLen = p.body.length();
-		}
+
+		QByteArray packetId = p.ids[0].id;
+
+		QVariant vpacket = packet.toVariant();
+		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+		int bodyLen = p.body.length();
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
 		// parse json body
 		PacketMsg packetMsg;
