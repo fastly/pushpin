@@ -2096,6 +2096,9 @@ public:
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", "[CacheClient]", instanceAddress.data());
+
 		// parse json body
 		PacketMsg packetMsg;
 		if (parse_packet_msg(Scheme::websocket, p, packetMsg, instanceId) < 0)
