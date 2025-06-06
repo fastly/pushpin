@@ -943,21 +943,21 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
-void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int bodyLen)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int bodyLen)
 {
 	QByteArray buff = responseBuf;
 
-	//log_debug("[----1] %s", buff.mid(0,1024).data());
+	log_debug("[----1] %s", buff.mid(0,1024).data());
 
 	// remove connmgr Txxx:
-	QByteArray prefix = instanceAddress + " T";
+	QByteArray prefix = " T";
 	int start = buff.indexOf(prefix);
 	if (start != -1) 
 	{
 		int colon = buff.indexOf(':', start + prefix.length());
 		if (colon != -1) 
 		{
-			buff.remove(start, colon - start + 1);  // Remove up to and including colon
+			buff.remove(0, colon - 1);  // Remove up to and including colon
 		}
 	}
 
@@ -1006,9 +1006,16 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 		buff.replace(oldPattern, newPattern);
 
 		// replace body length
-		oldPattern = QByteArray("4:body,") + QByteArray::number(bodyLen) + QByteArray(":");
-		newPattern = QByteArray("4:body,__BODY__");
-		buff.replace(oldPattern, newPattern);
+		prefix = "4:body,";
+		start = buff.indexOf(prefix);
+		if (start != -1) 
+		{
+			int end = buff.indexOf(':', start + prefix.length());
+			if (end != -1) 
+			{
+				buff.replace(start, end - start, "4:body,__BODY__");  // Replace
+			}
+		}
 
 		// replace Content-Length header
 		int bodyLenNumLength = QString::number(bodyLen).length();
@@ -1017,7 +1024,7 @@ void store_cache_response_buffer(const QByteArray& instanceAddress, const QByteA
 		buff.replace(oldPattern, newPattern);
 	}
 	
-	//log_debug("[00000] %s", buff.mid(0,1024).data());
+	log_debug("[00000] %s", buff.mid(0,1024).data());
 
 	gCacheResponseBuffer[itemId] = buff;
 }
@@ -1060,7 +1067,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 
 		// replace bodyLen
 		oldPattern = QByteArray("4:body,__BODY__");
-		newPattern = QByteArray("4:body,") + QByteArray::number(newLen) + QByteArray(":");
+		newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
 		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
