@@ -658,7 +658,7 @@ public:
 						//out.credits = creditSize;
 						//send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
-						process_ws_cacheclient_response(packet, ccIndex, instanceAddress, buf);
+						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
 						return;
 						/*
 						int ret = process_ws_cacheclient_response(packet, ccIndex);
