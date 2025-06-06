@@ -495,37 +495,6 @@ public:
 		writeToClient(CacheResponse, out, newFrom);
 	}
 
-	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
-	{
-		std::weak_ptr<Private> self = q->d;
-
-		const ZhttpResponsePacket::Id &id = packet.ids.first();
-
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
-		{
-			ZhttpRequestPacket out;
-			out.from = instanceId;
-			ZhttpRequestPacket::Id tempId;
-			tempId.id = id.id; // id
-			tempId.seq = seqNum; // seq
-			out.ids += tempId;
-			out.type = ZhttpRequestPacket::Credit;
-			out.credits = credits;
-
-			log_debug("[WS] sending credit packets client=%s, credit=%d", id.id.toHex().data(), credits);
-			
-			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(from, id.id));
-			if(sock)
-			{
-				sock->handle(id.id, seqNum, out);
-				if(self.expired())
-					return;
-			}
-		}
-	}
-
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -650,8 +619,6 @@ public:
 					{
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
-						//int seqNum = update_request_seq(packetId);
-						//tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 						ZhttpRequestPacket out;
 						out.type = ZhttpRequestPacket::Credit;
 						out.credits = creditSize;
@@ -2259,7 +2226,6 @@ public:
 			cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.cachedFlag = false;
 			cacheItem.methodType = CacheMethodType::SUBSCRIBE_METHOD;
-			cacheItem.orgSubscriptionStr = subscriptionStr;
 			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
 
@@ -2364,15 +2330,6 @@ public:
 						pCacheItem->subscriptionStr = msgResultStr;
 					}
 					
-					if (pCacheItem->orgSubscriptionStr.isEmpty())
-					{
-						pCacheItem->orgSubscriptionStr = msgResultStr;
-					}
-					else
-					{
-						log_debug("[WS] Detected the original subscription string \"%s\"", qPrintable(pCacheItem->orgSubscriptionStr));
-					}
-					
 					log_debug("[WS] Registered Subscription result for \"%s\"", qPrintable(msgResultStr));
 
 					// update subscription last update time
@@ -2423,7 +2380,6 @@ public:
 
 					//store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 					//store_cache_item_field(itemId, "subscriptionStr", pCacheItem->subscriptionStr);
-					//store_cache_item_field(itemId, "orgSubscriptionStr", pCacheItem->orgSubscriptionStr);
 					//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 					//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 				}

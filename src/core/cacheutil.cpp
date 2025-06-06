@@ -194,7 +194,6 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 		"requestPacket %b "
 		"responseHashVal %b "
 		"methodType %d "
-		"orgSubscriptionStr %b "
 		"subscriptionStr %b ",
 
 		key.constData(), key.size(),
@@ -216,7 +215,6 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 		requestPacket.constData(), requestPacket.size(),
 		item.responseHashVal.constData(), item.responseHashVal.size(),
 		item.methodType,
-		item.orgSubscriptionStr.toUtf8().constData(), item.orgSubscriptionStr.toUtf8().size(),
 		item.subscriptionStr.toUtf8().constData(), item.subscriptionStr.toUtf8().size()
 	);
 
@@ -445,7 +443,6 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 		else if (field == "requestPacket") item.requestPacket.fromVariant(TnetString::toVariant(value));
 		else if (field == "responseHashVal") item.responseHashVal = value;
 		else if (field == "methodType") item.methodType = (value == "0") ? CacheMethodType::CACHE_METHOD : CacheMethodType::SUBSCRIBE_METHOD;
-		else if (field == "orgSubscriptionStr") item.orgSubscriptionStr = QString::fromUtf8(value);
 		else if (field == "subscriptionStr") item.subscriptionStr = QString::fromUtf8(value);
 		else if (field == "clientMap") clientMap = QString::fromUtf8(value);
 	}
@@ -1197,8 +1194,7 @@ static void remove_old_cache_items()
 					}
 
 					// remove subscription item
-					log_debug("[WS] deleting1 subscription item originSubscriptionStr=\"%s\", subscriptionStr=\"%s\"", 
-						qPrintable(pCacheItem->orgSubscriptionStr), qPrintable(pCacheItem->subscriptionStr));
+					log_debug("[WS] deleting1 subscription item subscriptionStr=\"%s\"", qPrintable(pCacheItem->subscriptionStr));
 					deleteIdList.append(itemId);  // Safely erase and move to the next item
 					continue;
 				}

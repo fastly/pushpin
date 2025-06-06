@@ -116,7 +116,6 @@ struct CacheItem {
 	ZhttpRequestPacket requestPacket;
 	QByteArray responseHashVal;
 	CacheMethodType methodType;
-	QString orgSubscriptionStr;
 	QString subscriptionStr;
 	QHash<QByteArray, ClientInCacheItem> clientMap;
 };
