@@ -574,7 +574,6 @@ public:
 		const char *logprefix = logPrefixForType(type);
 
 		QByteArray packetId = packet.ids.first().id;
-		int packetSeq = packet.ids.first().seq;
 
 		// cache process
 		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
@@ -1848,35 +1847,6 @@ public:
 		gCacheMethodResponseCountList.append("HTTP");
 	}
 
-	void send_http_response_to_client(const ZhttpResponsePacket &cacheItemResponsePacket, 
-		int cacheItemMsgId, QString cacheItemClientMsgId, 
-		const QByteArray &cacheItemClientFrom, const QByteArray &clientId)
-	{
-		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
-
-		QString orgMsgId = cacheItemClientMsgId;
-		QByteArray orgFrom = cacheItemClientFrom;
-
-		// replace messageid
-		replace_id_field(responsePacket.body, cacheItemMsgId, orgMsgId);
-
-		// update "Content-Length" field
-		int newContentLength = static_cast<int>(responsePacket.body.size());
-		log_debug("[HTTP] body newlength=%d", newContentLength);
-		// replace messageid
-		QByteArray contentLengthHeader;
-		contentLengthHeader.setNum(newContentLength);
-		responsePacket.headers.removeAll("Content-Length");
-		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
-
-		responsePacket.ids[0].id = clientId;
-
-		writeToClient(CacheResponse, responsePacket, orgFrom);
-
-		// update the counter for prometheus
-		gCacheMethodResponseCountList.append("HTTP");
-	}
-
 	int process_http_request(QByteArray id, const ZhttpRequestPacket &p, const QString &urlPath)
 	{
 		QByteArray packetId = id;
@@ -2014,7 +1984,6 @@ public:
 				}
 
 				pCacheItem->retryCount = 0;
-				pCacheItem->responsePacket = p;
 				pCacheItem->msgId = 0;
 				pCacheItem->newMsgId = 0;
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -2031,13 +2000,7 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						writeToClient_(instanceAddress, msgIdByte, cliId, pCacheItem->clientMap[cliId].msgId);
-						/*
-						send_http_response_to_client(pCacheItem->responsePacket, 
-							RESPONSE_ID_MARK,
-							pCacheItem->clientMap[cliId].msgId, 
-							pCacheItem->clientMap[cliId].from, 
-							cliId);
-						*/
+
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Removed http client id=%s", cliId.data());
@@ -2105,13 +2068,7 @@ public:
 					if (gHttpClientMap.contains(cliId))
 					{
 						writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
-						/*
-						send_http_response_to_client(pCacheItem->responsePacket, 
-							RESPONSE_ID_MARK,
-							pCacheItem->clientMap[cliId].msgId, 
-							pCacheItem->clientMap[cliId].from, 
-							cliId);
-						*/
+
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 						gHttpClientMap.remove(cliId);
 						log_debug("[HTTP] Removed http client id=%s", cliId.data());
@@ -2200,19 +2157,7 @@ public:
 											cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
 									
 									writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
-									/*
-									ZhttpResponsePacket out = pCacheItem->responsePacket;
-									replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-									replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
-									*/
 									writeToClient_(instanceAddress, subscriptionStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
-									/*
-									ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-									replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-									replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-									send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-									*/
 
 									++it;
 								}
@@ -2271,11 +2216,7 @@ public:
 									idxEnd = tempPacket.body.indexOf("]", idxStart+changeList[0].length());
 									if (idxEnd > idxStart)
 									{
-										//QByteArray oldPattern = tempPacket.body.mid(idxStart, idxEnd-idxStart+1);
-										//log_debug("[WS] replaced old=%s pattern=%s", tempPacket.body.data(), oldPattern.data());
 										tempPacket.body.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
-										//log_debug("[WS] replaced new=%s pattern=%s", tempPacket.body.data(), qPrintable(newPattern));
-										//log_debug("[WS] replaced at offset=%d", idxStart);
 									}
 									else
 									{
@@ -2323,12 +2264,6 @@ public:
 										cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
 
 								writeToClient_(instanceAddress, subscriptionStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
-								/*
-								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-								*/
 
 								++it;
 							}
@@ -2425,14 +2360,6 @@ public:
 								urlPath = gWsClientMap[clientId].urlPath;
 							log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
 							writeToClient_(instanceAddress, itemId, clientId, pCacheItem->clientMap[clientId].msgId);
-							/*
-							QString orgMsgId = pCacheItem->clientMap[clientId].msgId;
-							QByteArray from = pCacheItem->clientMap[clientId].from;
-							QByteArray orgInstanceId = pCacheItem->clientMap[clientId].instanceId;
-							ZhttpResponsePacket out = pCacheItem->responsePacket;
-							replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-							send_response_to_client(ZhttpResponsePacket::Data, clientId, from, 0, &out);
-							*/
 						}
 					}
 					pCacheItem->clientMap.clear();
@@ -2516,22 +2443,7 @@ public:
 										cliId.data(), qPrintable(orgMsgId), from.data(), orgInstanceId.data());
 								
 								writeToClient_(instanceAddress, itemId, cliId, pCacheItem->clientMap[cliId].msgId);
-
-								/*
-								ZhttpResponsePacket out = pCacheItem->responsePacket;
-								replace_id_field(out.body, pCacheItem->msgId, orgMsgId);
-								replace_result_field(out.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out);
-								*/
-
 								writeToClient_(instanceAddress, msgResultStr.toUtf8(), cliId, pCacheItem->clientMap[cliId].msgId);
-
-								/*
-								ZhttpResponsePacket out1 = pCacheItem->subscriptionPacket;
-								replace_id_field(out1.body, pCacheItem->msgId, orgMsgId);
-								replace_subscription_field(out1.body, pCacheItem->subscriptionStr, pCacheItem->orgSubscriptionStr);
-								send_response_to_client(ZhttpResponsePacket::Data, cliId, from, 0, &out1);
-								*/
 
 								++it;
 							}

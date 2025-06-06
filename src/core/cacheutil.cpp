@@ -174,8 +174,6 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	QByteArray requestPacket = TnetString::fromVariant(item.requestPacket.toVariant());
-	QByteArray responsePacket = TnetString::fromVariant(item.responsePacket.toVariant());
-	QByteArray subscriptionPacket = TnetString::fromVariant(item.subscriptionPacket.toVariant());
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HSET %b "
@@ -194,12 +192,10 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 		"cacheClientId %b "
 		"methodName %b "
 		"requestPacket %b "
-		"responsePacket %b "
 		"responseHashVal %b "
 		"methodType %d "
 		"orgSubscriptionStr %b "
-		"subscriptionStr %b "
-		"subscriptionPacket %b",
+		"subscriptionStr %b ",
 
 		key.constData(), key.size(),
 
@@ -218,12 +214,10 @@ void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item)
 		item.cacheClientId.constData(), item.cacheClientId.size(),
 		item.methodName.toUtf8().constData(), item.methodName.toUtf8().size(),
 		requestPacket.constData(), requestPacket.size(),
-		responsePacket.constData(), responsePacket.size(),
 		item.responseHashVal.constData(), item.responseHashVal.size(),
 		item.methodType,
 		item.orgSubscriptionStr.toUtf8().constData(), item.orgSubscriptionStr.toUtf8().size(),
-		item.subscriptionStr.toUtf8().constData(), item.subscriptionStr.toUtf8().size(),
-		subscriptionPacket.constData(), subscriptionPacket.size()
+		item.subscriptionStr.toUtf8().constData(), item.subscriptionStr.toUtf8().size()
 	);
 
 	if (reply != nullptr)
@@ -449,12 +443,10 @@ CacheItem redis_load_cache_item(const QByteArray& itemId)
 		else if (field == "cacheClientId") item.cacheClientId = value;
 		else if (field == "methodName") item.methodName = QString::fromUtf8(value);
 		else if (field == "requestPacket") item.requestPacket.fromVariant(TnetString::toVariant(value));
-		else if (field == "responsePacket") item.responsePacket.fromVariant(TnetString::toVariant(value));
 		else if (field == "responseHashVal") item.responseHashVal = value;
 		else if (field == "methodType") item.methodType = (value == "0") ? CacheMethodType::CACHE_METHOD : CacheMethodType::SUBSCRIBE_METHOD;
 		else if (field == "orgSubscriptionStr") item.orgSubscriptionStr = QString::fromUtf8(value);
 		else if (field == "subscriptionStr") item.subscriptionStr = QString::fromUtf8(value);
-		else if (field == "subscriptionPacket") item.subscriptionPacket.fromVariant(TnetString::toVariant(value));
 		else if (field == "clientMap") clientMap = QString::fromUtf8(value);
 	}
 	freeReplyObject(reply);
