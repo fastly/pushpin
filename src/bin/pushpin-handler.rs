@@ -22,12 +22,8 @@ use std::env;
 use std::ffi::CString;
 use std::process::ExitCode;
 
-// import_cpp! {
-//     fn handler_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-// }
-
 import_cpp! {
-    fn handler_main(args: *const CCliArgs) -> libc::c_int;
+    fn handler_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
 }
 
 
@@ -64,6 +60,17 @@ pub struct CliArgs {
     pub verbose: bool,
 }
 
+// C-compatible struct that matches CliArgs in handlerapp.cpp
+#[repr(C)]
+pub struct CArgsData {
+    pub config_file: *const libc::c_char,
+    pub log_file: *const libc::c_char,
+    pub log_level: *const libc::c_char,
+    pub ipc_prefix: *const libc::c_char,
+    pub port_offset: *const libc::c_char,
+    pub verbose: *const libc::c_char,
+}
+
 impl CliArgs {
     /// Verifies the command line arguments and returns a new instance of `CliArgs`.
     pub fn verify(self) -> Self {
@@ -76,22 +83,20 @@ impl CliArgs {
     }
 
     pub fn into_c_struct(self) -> CArgsData {
+        let to_c_str = |opt: Option<String>| -> *const libc::c_char {
+            opt.map_or_else(
+                || CString::new("").unwrap().into_raw(),
+                |s| CString::new(s).unwrap().into_raw(),
+            )
+        };
+
         CArgsData {
             config_file: CString::new(self.config_file).unwrap().into_raw(),
-            log_file: self.log_file.as_ref().map_or_else(
-                || CString::new("").unwrap().into_raw(),
-                |s| CString::new(s).unwrap().into_raw(),
-            ),
-            log_level: self.log_level.parse::<libc::c_int>().unwrap_or(2),
-            ipc_prefix: self.ipc_prefix.as_ref().map_or_else(
-                || CString::new("").unwrap().into_raw(),
-                |s| CString::new(s).unwrap().into_raw(),
-            ),
-            port_offset: self.port_offset
-                .as_ref()
-                .and_then(|s| s.parse::<libc::c_int>().ok())
-                .unwrap_or(-1),
-            verbose: self.verbose,
+            log_file: to_c_str(self.log_file),
+            log_level: CString::new(self.log_level).unwrap().into_raw(),
+            ipc_prefix: to_c_str(self.ipc_prefix),
+            port_offset: to_c_str(self.port_offset),
+            verbose: CString::new(if self.verbose { "true" } else { "false" }).unwrap().into_raw(),
         }
     }
 }
@@ -127,31 +132,17 @@ impl IntoIterator for CliArgs {
     }
 }
 
-// C-compatible struct that matches CliArgs in handlerapp.cpp
-#[repr(C)]
-pub struct CCliArgs {
-    pub config_file: *const libc::c_char,
-    pub log_file: *const libc::c_char,
-    pub log_level: libc::c_int,
-    pub ipc_prefix: *const libc::c_char,
-    pub port_offset: libc::c_int,
-    pub verbose: bool,
-}
-
-// Modify the handler_main function signature to accept our struct
-// import_cpp! {
-//     fn handler_main_with_args(args: *const CArgsData) -> libc::c_int;
-// }
-
 fn main() -> ExitCode {
-    let cli_args = CliArgs::parse().verify();
+    let cli_args: CArgsData = CliArgs::parse().verify().into_c_struct();
 
-    // Call the C++ function with our struct
     unsafe { 
-        // We need to keep the CStrings alive until the C++ function returns
-        let result = handler_main(&cli_args.into_c_struct());
-        ExitCode::from(result)
+        ExitCode::from(call_c_main(handler_main, (
+            cli_args.config_file,
+            cli_args.log_file,
+            cli_args.log_level,
+            cli_args.ipc_prefix,
+            cli_args.port_offset,
+            cli_args.verbose
+        )))
     }
-
-    // unsafe { ExitCode::from(call_c_main(handler_main, env::args_os())) }
 }
