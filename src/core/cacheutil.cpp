@@ -357,7 +357,11 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 	if (gRedisEnable == false)
 	{
+		QElapsedTimer timer;
+		timer.start();
 		gCacheResponseBuffer[itemId] = buff;
+		qint64 elapsedNs = timer.nsecsElapsed();
+		log_debug("[STORE] %d", elapsedNs);
 	}
 	else
 	{
@@ -374,7 +378,11 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	QByteArray buff = "";
 	if (gRedisEnable == false)
 	{
+		QElapsedTimer timer;
+		timer.start();
 		buff = gCacheResponseBuffer[itemId];
+		qint64 elapsedNs = timer.nsecsElapsed();
+		log_debug("[LOAD] %d", elapsedNs);
 	}
 	else
 	{
