@@ -355,7 +355,6 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		buff.replace(oldPattern, newPattern);
 	}
 
-	log_debug("[00000] %s", buff.mid(0,1024).data());
 	if (gRedisEnable == false)
 		gCacheResponseBuffer[itemId] = buff;
 	else
@@ -369,7 +368,6 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 		buff = gCacheResponseBuffer[itemId];
 	else
 		buff = redis_load_cache_response(itemId);
-	log_debug("[11111] %s", buff.mid(0,1024).data());
 
 	// replace id
 	int idLen = packetId.length();
