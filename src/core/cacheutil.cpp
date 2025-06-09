@@ -940,6 +940,61 @@ QList<QByteArray> get_cache_item_ids()
 	return ret;
 }
 
+void redis_store_cache_response(const QByteArray& itemId, const QByteArray& response) 
+{
+	auto conn = RedisPool::instance()->acquire();
+
+	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
+		return;
+	}
+
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
+		"HSET %b "
+		"%s %b",
+		key.constData(), key.size(),
+		fieldName, 
+		value.constData(), value.size()
+	);
+	
+	if (reply != nullptr) 
+		freeReplyObject(reply);
+	pool.release(conn);
+}
+
+QByteArray redis_load_cache_response(const QByteArray& itemId) 
+{
+	log_debug("[QQQ] redis_load_cache_item_field");
+	auto conn = RedisPool::instance()->acquire();
+
+	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
+		return null;
+	}
+
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
+
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
+		"HGET %b "
+		"%s",
+		key.constData(), key.size(),
+		fieldName
+	);
+
+	if (reply == nullptr)
+		return null;
+
+	QByteArray output(reply->str, reply->len);
+	
+	if (reply != nullptr)
+		freeReplyObject(reply);
+	pool.release(conn);
+
+	return output;
+}
+
 void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId)
 {
 	QByteArray buff = responseBuf;
