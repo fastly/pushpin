@@ -950,6 +950,8 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 		return;
 	}
 
+	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
+
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HSET %b "
 		"%s %b",
