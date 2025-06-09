@@ -955,7 +955,7 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"HSET %b %b",
 		key.constData(), key.size(),
-		value.constData(), value.size()
+		response.constData(), response.size()
 	);
 	
 	if (reply != nullptr) 
