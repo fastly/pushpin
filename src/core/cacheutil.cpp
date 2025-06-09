@@ -246,7 +246,6 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 
 QByteArray redis_load_cache_response(const QByteArray& itemId) 
 {
-	log_debug("[QQQ] redis_load_cache_item_field");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)
@@ -276,8 +275,6 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId)
 {
 	QByteArray buff = responseBuf;
-
-	log_debug("[00000] %s", buff.mid(0,1024).data());
 
 	// remove connmgr Txxx:
 	QByteArray prefix = " T";
@@ -358,12 +355,21 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		buff.replace(oldPattern, newPattern);
 	}
 
-	gCacheResponseBuffer[itemId] = buff;
+	log_debug("[00000] %s", buff.mid(0,1024).data());
+	if (gRedisEnable == false)
+		gCacheResponseBuffer[itemId] = buff;
+	else
+		redis_store_cache_response(itemId, buff);
 }
 
 QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
 {
-	QByteArray buff = gCacheResponseBuffer[itemId];
+	QByteArray buff = "";
+	if (gRedisEnable == false)
+		buff = gCacheResponseBuffer[itemId];
+	else
+		buff = redis_load_cache_response(itemId);
+	log_debug("[11111] %s", buff.mid(0,1024).data());
 
 	// replace id
 	int idLen = packetId.length();
