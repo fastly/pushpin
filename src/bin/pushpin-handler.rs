@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-use clap::builder::Str;
 use clap::{Parser, arg};
 use pushpin::core::{call_c_main, version};
+use pushpin::core::config::get_config_file;
 use pushpin::import_cpp;
 use std::env;
-use std::ffi::{CString, OsString};
+use std::ffi::{OsString};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 import_cpp! {
@@ -36,72 +37,42 @@ import_cpp! {
 )]
 pub struct CliArgs {
     /// Set path to the configuration file
-    #[arg(short, long, value_name = "file", default_value = "pushpin.conf")]
-    pub config_file: String,
+    #[arg(short, long, value_name = "file")]
+    pub config_file: Option<String>,
 
     /// Set path to the log file
     #[arg(short = 'l', long, value_name = "file")]
     pub log_file: Option<String>,
 
-    /// Set log level
-    #[arg(short = 'L', long, value_name = "x", default_value = "2")]
-    pub log_level: String,
+    /// Set log level (0=error, 1=warn, 2=info, 3=debug, 4=trace)
+    #[arg(short = 'L', long, value_name = "x", default_value = "2", value_parser = clap::value_parser!(u32).range(1..=4))]
+    pub log_level: u32,
 
     /// Override ipc_prefix config option, which is used to add a prefix to all ZeroMQ IPC filenames
     #[arg(long, value_name = "prefix")]
     pub ipc_prefix: Option<String>,
 
     /// Override port_offset config option, which is used to increment all ZeroMQ TCP ports and the HTTP control server port
-    #[arg(long, value_name = "offset")]
-    pub port_offset: Option<String>,
-
-    /// Enable verbose output. Same as --loglevel=3.
-    #[arg(short, long, action = clap::ArgAction::SetTrue, default_value_t = false)]
-    pub verbose: bool,
+    #[arg(long, value_name = "offset", value_parser = clap::value_parser!(u32))]
+    pub port_offset: Option<u32>,
 }
 impl CliArgs {
-    /// Verifies the command line arguments and returns a new instance of `CliArgs`.
-    pub fn verify(self) -> Self {
-        // Check if the configuration file exists and is readable
-        // Check if log file is specified and valid
-        // Check if log level is within the valid range
-        // Check if ipc_prefix is a valid string
-        // Check if port_offset is within the valid range
-
-        // 	if(parser->isSet(logLevelOption))
-// 	{
-// 		bool ok;
-// 		int x = parser->value(logLevelOption).toInt(&ok);
-// 		if(!ok || x < 0)
-// 		{
-// 			*errorMessage = "error: loglevel must be greater than or equal to 0";
-// 			return CommandLineError;
-// 		}
-
-// 		args->logLevel = x;
-// 	}
-
-// 	if(parser->isSet(verboseOption))
-// 		args->logLevel = 3;
-
-// 	if(parser->isSet(ipcPrefixOption))
-// 		args->ipcPrefix = parser->value(ipcPrefixOption);
-
-// 	if(parser->isSet(portOffsetOption))
-// 	{
-// 		bool ok;
-// 		int x = parser->value(portOffsetOption).toInt(&ok);
-// 		if(!ok || x < 0)
-// 		{
-// 			*errorMessage = "error: port-offset must be greater than or equal to 0";
-// 			return CommandLineError;
-// 		}
-
-// 		args->portOffset = x;
-// 	}
-
-// 	return CommandLineOk;
-// }
+    /// Verifies the command line arguments.
+    pub fn verify(mut self) -> Self {
+        // Get current working directory
+        let work_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        
+        // Convert config_file Option<String> to Option<PathBuf>
+        let config_path = self.config_file.as_ref().map(|s| PathBuf::from(s));
+        
+        // Use get_config_file to find the config file
+        self.config_file = match get_config_file(&work_dir, config_path) {
+            Ok(path) => Some(path.to_string_lossy().to_string()),
+            Err(e) => {
+                eprintln!("error: failed to find configuration file: {}", e);
+                std::process::exit(1);
+            }
+        };
 
         self
     }
@@ -120,25 +91,27 @@ impl IntoIterator for CliArgs {
     fn into_iter(self) -> Self::IntoIter {
         let mut args: Vec<(String, String)> = vec![];
 
-        args.push(("config-file".to_string(), self.config_file));
+        args.push((
+            "config-file".to_string(), 
+            self.config_file.unwrap_or_else(|| "".to_string())
+        ));
 
-        if let Some(log_file) = self.log_file {
-            args.push(("log-file".to_string(), log_file));
-        }
+        args.push((
+            "log-file".to_string(),
+            self.log_file.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
+        ));
 
-        args.push(("log-level".to_string(), self.log_level));
+        args.push(("log-level".to_string(), self.log_level.to_string()));
 
-        if let Some(ipc_prefix) = self.ipc_prefix {
-            args.push(("ipc-prefix".to_string(), ipc_prefix));
-        }
+        args.push((
+            "ipc-prefix".to_string(),
+            self.ipc_prefix.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
+        ));
 
-        if let Some(port_offset) = self.port_offset {
-            args.push(("port-offset".to_string(), port_offset));
-        }
-
-        if self.verbose {
-            args.push(("verbose".to_string(), "true".to_string()));
-        }
+        args.push((
+            "port-offset".to_string(),
+            self.port_offset.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
+        ));
 
         args.into_iter()
     }

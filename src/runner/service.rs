@@ -362,7 +362,7 @@ impl PushpinHandlerService {
         let service_name = "handler";
 
         args.push(settings.handler_bin.display().to_string());
-        args.push(format!("--config={}", settings.config_file.display()));
+        args.push(format!("--config-file={}", settings.config_file.display()));
 
         if settings.port_offset > 0 {
             args.push(format!("--port-offset={}", settings.port_offset));
@@ -374,7 +374,7 @@ impl PushpinHandlerService {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        args.push(format!("--loglevel={}", log_level));
+        args.push(format!("--log-level={}", log_level));
 
         Self {
             service: Service::new(String::from(service_name), log_level),
