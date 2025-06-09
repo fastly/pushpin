@@ -144,21 +144,6 @@ void resume_cache_thread();
 void cache_thread();
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Redis
-
-bool redis_is_cache_item(const QByteArray& itemId);
-void redis_create_cache_item(const QByteArray& itemId, const CacheItem& item);
-template <typename T>
-void redis_store_cache_item_field(const QByteArray& itemId, const char* fieldName, const T& value);
-CacheItem redis_load_cache_item(const QByteArray& itemId);
-template <typename T>
-int redis_load_cache_item_field(const QByteArray& itemId, const char* fieldName, T& value);
-void redis_remove_cache_item_field(const QByteArray &itemId, const char* fieldName);
-void redis_remove_cache_item(const QByteArray &itemId);
-void redis_removeall_cache_item();
-QList<QByteArray> redis_get_cache_item_ids();
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
 bool is_cache_item(const QByteArray& itemId);
 CacheItem* load_cache_item(const QByteArray& itemId);
