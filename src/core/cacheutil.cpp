@@ -976,8 +976,8 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
-		"HGET %b ",
-		key.constData(), key.size(),
+		"HGET %b",
+		key.constData(), key.size()
 	);
 
 	if (reply == nullptr)
