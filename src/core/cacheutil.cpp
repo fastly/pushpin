@@ -960,7 +960,6 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 	
 	if (reply != nullptr) 
 		freeReplyObject(reply);
-	pool.release(conn);
 }
 
 QByteArray redis_load_cache_response(const QByteArray& itemId) 
@@ -984,13 +983,12 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	if (reply == nullptr)
 		return null;
 
-	QByteArray output(reply->str, reply->len);
+	QByteArray response(reply->str, reply->len);
 	
 	if (reply != nullptr)
 		freeReplyObject(reply);
-	pool.release(conn);
 
-	return output;
+	return response;
 }
 
 void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId)
