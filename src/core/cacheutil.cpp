@@ -970,7 +970,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	if (!conn)
 	{
 		log_debug("[REDIS] CONN failed\n");
-		return null;
+		return QByteArray();
 	}
 
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
@@ -981,7 +981,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	);
 
 	if (reply == nullptr)
-		return null;
+		return QByteArray();
 
 	QByteArray response(reply->str, reply->len);
 	
