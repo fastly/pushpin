@@ -356,18 +356,34 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	}
 
 	if (gRedisEnable == false)
+	{
 		gCacheResponseBuffer[itemId] = buff;
+	}
 	else
+	{
+		QElapsedTimer timer;
+		timer.start();
 		redis_store_cache_response(itemId, buff);
+		qint64 elapsedNs = timer.nsecsElapsed();
+		log_debug("[STORE] %d", elapsedNs);
+	}
 }
 
 QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
 {
 	QByteArray buff = "";
 	if (gRedisEnable == false)
+	{
 		buff = gCacheResponseBuffer[itemId];
+	}
 	else
+	{
+		QElapsedTimer timer;
+		timer.start();
 		buff = redis_load_cache_response(itemId);
+		qint64 elapsedNs = timer.nsecsElapsed();
+		log_debug("[LOAD] %d", elapsedNs);
+	}
 
 	// replace id
 	int idLen = packetId.length();
