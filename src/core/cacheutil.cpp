@@ -235,8 +235,8 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
-		"HSET %b %b",
-		key.constData(), key.size(),
+		"SET %s %b",
+		key.constData(),
 		response.constData(), response.size()
 	);
 	
@@ -257,8 +257,8 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
-		"HGET %b",
-		key.constData(), key.size()
+		"GET %s",
+		key.constData()
 	);
 
 	if (reply == nullptr)
@@ -418,8 +418,6 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	// add connmgr Txxx:
 	int buffLen = buff.length();
 	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
-
-	log_debug("[11111] %s", buff.mid(0,1024).data());
 
 	return buff;
 }
