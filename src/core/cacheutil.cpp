@@ -953,10 +953,8 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
-		"HSET %b "
-		"%s %b",
+		"HSET %b %b",
 		key.constData(), key.size(),
-		fieldName, 
 		value.constData(), value.size()
 	);
 	
@@ -979,10 +977,8 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
-		"HGET %b "
-		"%s",
+		"HGET %b ",
 		key.constData(), key.size(),
-		fieldName
 	);
 
 	if (reply == nullptr)
