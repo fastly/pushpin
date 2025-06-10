@@ -2379,10 +2379,12 @@ public:
 		p.ids.clear();
 		p.ids += tempId;
 
+		int msgId = -1;
 		if (!orgMsgId.isEmpty())
 		{
 			cacheClient->msgIdCount += 1;
-			replace_id_field(p.body, orgMsgId, cacheClient->msgIdCount);
+			msgId = cacheClient->msgIdCount;
+			replace_id_field(p.body, orgMsgId, msgId);
 		}
 
 		// log
