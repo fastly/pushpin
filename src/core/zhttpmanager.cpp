@@ -2369,7 +2369,7 @@ public:
 		out.body = pCacheItem->requestBody;
 		
 		int msgId = cacheClient->msgIdCount + 1;
-		replace_id_field(p.body, QString("__ID__"), msgId);
+		replace_id_field(out.body, QString("__ID__"), msgId);
 		cacheClient->msgIdCount = msgId;
 
 		send_ws_request_over_cacheclient(out, ccIndex);
@@ -2382,7 +2382,7 @@ public:
 		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 		{
 			log_debug("[WS] Invalid cache client %d", ccIndex);
-			return -1;
+			return;
 		}
 
 		// Create new packet by cache client
@@ -2421,7 +2421,7 @@ public:
 			{
 				sock->handle(id.id, id.seq, p);
 				if(self.expired())
-					return -1;
+					return;
 
 				continue;
 			}
@@ -2430,7 +2430,6 @@ public:
 				log_debug("[QQQ]");
 			}
 		}
-		return msgId;
 	}
 
 	int send_unsubscribe_request_over_cacheclient()
