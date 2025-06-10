@@ -512,7 +512,7 @@ static void remove_old_cache_items()
 					continue;
 				} 
 			}
-			else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD && pCacheItem->cachedFlag == true)
+			else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 			{
 				qint64 refreshDiff = currMTime - pCacheItem->lastRefreshTime;
 				
@@ -521,7 +521,7 @@ static void remove_old_cache_items()
 					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", pCacheItem->clientMap.count(), refreshDiff);
 
 					// add unsubscribe request item for cache thread
-					if (pCacheItem->orgMsgId.isEmpty() == false)
+					if (pCacheItem->cachedFlag == true)
 					{
 						int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
 						if (ccIndex >= 0)

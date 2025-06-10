@@ -99,7 +99,6 @@ struct ClientInCacheItem {
 
 // Cache Item
 struct CacheItem {
-	QString orgMsgId;
 	int msgId;
 	int newMsgId;
 	char refreshFlag;
