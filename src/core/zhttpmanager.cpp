@@ -1487,8 +1487,7 @@ public:
 				else if (pCacheItem->proto == Scheme::websocket)
 				{
 					// Send client cache request packet for auto-refresh
-					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
-					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestBody, ccIndex);
+					pCacheItem->newMsgId = send_ws_auto_refresh_request(itemId);
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
@@ -1540,9 +1539,8 @@ public:
 
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId, instanceId);
-				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
-				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestBody, ccIndex);
+				pCacheItem->newMsgId = send_ws_auto_refresh_request(itemId, ccIndex);
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
@@ -2360,7 +2358,26 @@ public:
 		return 0;
 	}
 
-	int send_ws_request_over_cacheclient(const QByteArray &body, int ccIndex)
+	int send_ws_auto_refresh_request(const QByteArray &cacheItemId, int ccIndex)
+	{
+		CacheItem *pCacheItem = load_cache_item(itemId);
+		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
+
+		ZhttpRequestPacket out;
+		out.type = ZhttpRequestPacket::Data;
+		out.body = pCacheItem->requestBody;
+		
+		int msgId = cacheClient->msgIdCount + 1;
+		if (!orgMsgId.isEmpty())
+		{
+			replace_id_field(p.body, QString("__ID__"), msgId);
+			cacheClient->msgIdCount = msgId;
+		}
+
+		return send_ws_request_over_cacheclient(out, ccIndex);
+	}
+
+	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, int ccIndex)
 	{
 		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 		{
@@ -2369,22 +2386,14 @@ public:
 		}
 
 		// Create new packet by cache client
-		ZhttpRequestPacket p;
-		p.type = ZhttpRequestPacket::Data;
+		ZhttpRequestPacket p = packet;
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
-		int msgId = cacheClient->msgIdCount + 1;
 
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
 		tempId.seq = update_request_seq(cacheClient->clientId);
 		p.ids.clear();
 		p.ids += tempId;
-
-		if (!orgMsgId.isEmpty())
-		{
-			replace_id_field(p.body, QString("__ID__"), msgId);
-			cacheClient->msgIdCount = msgId;
-		}
 
 		// log
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -2597,7 +2606,7 @@ public:
 				
 				pCacheItem = load_cache_item(paramsHash);
 				// Send new client cache request packet
-				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, ccIndex);
+				pCacheItem->newMsgId = send_ws_auto_refresh_request(paramsHash, ccIndex);
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 				//store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);

@@ -537,7 +537,7 @@ static void remove_old_cache_items()
 					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", pCacheItem->clientMap.count(), refreshDiff);
 
 					// add unsubscribe request item for cache thread
-					if (pCacheItem->orgMsgId.isEmpty() == false)
+					if (pCacheItem->msgId != -1)
 					{
 						int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
 						if (ccIndex >= 0)
