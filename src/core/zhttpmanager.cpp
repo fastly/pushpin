@@ -2372,7 +2372,6 @@ public:
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
-		int msgId = cacheClient->msgIdCount + 1;
 
 		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
@@ -2382,8 +2381,8 @@ public:
 
 		if (!orgMsgId.isEmpty())
 		{
-			replace_id_field(p.body, orgMsgId, msgId);
-			cacheClient->msgIdCount = msgId;
+			cacheClient->msgIdCount += 1;
+			replace_id_field(p.body, orgMsgId, cacheClient->msgIdCount);
 		}
 
 		// log
