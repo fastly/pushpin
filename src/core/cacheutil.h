@@ -99,6 +99,7 @@ struct ClientInCacheItem {
 
 // Cache Item
 struct CacheItem {
+	QString orgMsgId;
 	int msgId;
 	int newMsgId;
 	char refreshFlag;
@@ -113,7 +114,6 @@ struct CacheItem {
 	QByteArray cacheClientId;
 	QString methodName;
 	ZhttpRequestPacket requestPacket;
-	QByteArray requestBody;
 	QByteArray responseHashVal;
 	CacheMethodType methodType;
 	QString subscriptionStr;

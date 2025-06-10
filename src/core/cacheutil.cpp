@@ -357,19 +357,11 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 
 	if (gRedisEnable == false)
 	{
-		QElapsedTimer timer;
-		timer.start();
 		gCacheResponseBuffer[itemId] = buff;
-		qint64 elapsedNs = timer.nsecsElapsed();
-		log_debug("[STORE] %d", elapsedNs);
 	}
 	else
 	{
-		QElapsedTimer timer;
-		timer.start();
 		redis_store_cache_response(itemId, buff);
-		qint64 elapsedNs = timer.nsecsElapsed();
-		log_debug("[STORE] %d", elapsedNs);
 	}
 }
 
@@ -378,19 +370,11 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	QByteArray buff = "";
 	if (gRedisEnable == false)
 	{
-		QElapsedTimer timer;
-		timer.start();
 		buff = gCacheResponseBuffer[itemId];
-		qint64 elapsedNs = timer.nsecsElapsed();
-		log_debug("[LOAD] %d", elapsedNs);
 	}
 	else
 	{
-		QElapsedTimer timer;
-		timer.start();
 		buff = redis_load_cache_response(itemId);
-		qint64 elapsedNs = timer.nsecsElapsed();
-		log_debug("[LOAD] %d", elapsedNs);
 	}
 
 	// replace id
@@ -537,7 +521,7 @@ static void remove_old_cache_items()
 					log_debug("[WS] checking subscription item clientCount=%d diff=%ld", pCacheItem->clientMap.count(), refreshDiff);
 
 					// add unsubscribe request item for cache thread
-					if (pCacheItem->msgId != -1)
+					if (pCacheItem->orgMsgId.isEmpty() == false)
 					{
 						int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
 						if (ccIndex >= 0)
