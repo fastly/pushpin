@@ -1487,7 +1487,8 @@ public:
 				else if (pCacheItem->proto == Scheme::websocket)
 				{
 					// Send client cache request packet for auto-refresh
-					pCacheItem->newMsgId = send_ws_auto_refresh_request(itemId);
+					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
+					pCacheItem->newMsgId = send_ws_auto_refresh_request(itemId, ccIndex);
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
@@ -1694,7 +1695,7 @@ public:
 
 		// save the request packet with new id
 		cacheItem.requestBody = clientPacket.body;
-		replace_id_field(cacheItem.requestBody, packetMsg.id, QString("__ID__"))
+		replace_id_field(cacheItem.requestBody, packetMsg.id, QString("__ID__"));
 		cacheItem.clientMap[clientId].msgId = packetMsg.id;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.clientMap[clientId].instanceId = instanceId;
@@ -1751,7 +1752,7 @@ public:
 
 		// save the request packet with new id
 		cacheItem.requestBody = clientPacket.body;
-		replace_id_field(cacheItem.requestBody, orgMsgId, QString("__ID__"))
+		replace_id_field(cacheItem.requestBody, orgMsgId, QString("__ID__"));
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.clientMap[clientId].instanceId = instanceId;
@@ -2360,7 +2361,7 @@ public:
 
 	int send_ws_auto_refresh_request(const QByteArray &cacheItemId, int ccIndex)
 	{
-		CacheItem *pCacheItem = load_cache_item(itemId);
+		CacheItem *pCacheItem = load_cache_item(cacheItemId);
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
 
 		ZhttpRequestPacket out;
@@ -2368,16 +2369,15 @@ public:
 		out.body = pCacheItem->requestBody;
 		
 		int msgId = cacheClient->msgIdCount + 1;
-		if (!orgMsgId.isEmpty())
-		{
-			replace_id_field(p.body, QString("__ID__"), msgId);
-			cacheClient->msgIdCount = msgId;
-		}
+		replace_id_field(p.body, QString("__ID__"), msgId);
+		cacheClient->msgIdCount = msgId;
 
-		return send_ws_request_over_cacheclient(out, ccIndex);
+		send_ws_request_over_cacheclient(out, ccIndex);
+
+		return msgId;
 	}
 
-	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, int ccIndex)
+	void send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, int ccIndex)
 	{
 		if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 		{
