@@ -1482,14 +1482,14 @@ public:
 				{
 					QByteArray reqBody = pCacheItem->requestPacket.body;
 					QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-					replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
+					replace_id_field(reqBody, QString("__MSGID__"), newMsgId);
 					send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 				}
 				else if (pCacheItem->proto == Scheme::websocket)
 				{
 					// Send client cache request packet for auto-refresh
 					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
-					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, pCacheItem->orgMsgId, ccIndex);
+					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, QString("__MSGID__"), ccIndex);
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
@@ -1526,7 +1526,7 @@ public:
 
 				QByteArray reqBody = pCacheItem->requestPacket.body;
 				QString newMsgId = QString("\"%1\"").arg(itemId.toHex().data());
-				replace_id_field(reqBody, pCacheItem->orgMsgId, newMsgId);
+				replace_id_field(reqBody, QString("__MSGID__"), newMsgId);
 				send_http_post_request_with_refresh_header(urlPath, reqBody, itemId.toHex().data());
 			}
 			else if (pCacheItem->proto == Scheme::websocket)
@@ -1543,7 +1543,7 @@ public:
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId, instanceId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
-				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, pCacheItem->orgMsgId, ccIndex);
+				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, QString("__MSGID__"), ccIndex);
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
@@ -1696,8 +1696,8 @@ public:
 		}
 
 		// save the request packet with new id
-		cacheItem.orgMsgId = packetMsg.id;
 		cacheItem.requestPacket = clientPacket;
+		replace_id_field(cacheItem.requestPacket.body, packetMsg.id, QString("__MSGID__"));
 		cacheItem.clientMap[clientId].msgId = packetMsg.id;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.clientMap[clientId].instanceId = instanceId;
@@ -1753,8 +1753,8 @@ public:
 		cacheItem.cachedFlag = false;
 
 		// save the request packet with new id
-		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
+		replace_id_field(cacheItem.requestPacket.body, orgMsgId, QString("__MSGID__"));
 		cacheItem.clientMap[clientId].msgId = orgMsgId;
 		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.clientMap[clientId].instanceId = instanceId;
