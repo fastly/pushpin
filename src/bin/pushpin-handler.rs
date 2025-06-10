@@ -124,3 +124,65 @@ fn main() -> ExitCode {
         ExitCode::from(call_c_main(handler_main, cli_args.into_osstring_vec()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_cli_args() {
+        // Create mock config file
+        let file = NamedTempFile::new().unwrap();
+        let config_test_file = file.path().to_str().unwrap().to_string();
+
+        // Test the verification of command line arguments
+        let args = CliArgs {
+            config_file: Some(config_test_file.clone()),
+            log_file: Some("pushpin.log".to_string()),
+            log_level: 3,
+            ipc_prefix: Some("ipc".to_string()),
+            port_offset: Some(8080),
+        };
+        let verified_args = args.verify();
+        assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
+        assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
+        assert_eq!(verified_args.log_level, 3);
+        assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
+        assert_eq!(verified_args.port_offset, Some(8080));
+        
+        // Test the conversion to OsString vector
+        let osstring_vec = verified_args.into_osstring_vec();
+        assert_eq!(osstring_vec.len(), 5);
+        assert_eq!(osstring_vec[0], OsString::from(config_test_file));
+        assert_eq!(osstring_vec[1], OsString::from("pushpin.log"));
+        assert_eq!(osstring_vec[2], OsString::from("3"));
+        assert_eq!(osstring_vec[3], OsString::from("ipc"));
+        assert_eq!(osstring_vec[4], OsString::from("8080"));
+        
+        // Test empty command line arguments
+        let empty_args = CliArgs {
+            config_file: None,
+            log_file: None,
+            log_level: 2,
+            ipc_prefix: None,
+            port_offset: None,
+        };
+        let verified_empty_args = empty_args.verify();
+        let default_config_file = get_config_file(&env::current_dir().unwrap(), None).unwrap().to_string_lossy().to_string();
+        assert_eq!(verified_empty_args.config_file, Some(default_config_file.clone()));
+        assert_eq!(verified_empty_args.log_file, None);
+        assert_eq!(verified_empty_args.log_level, 2);
+        assert_eq!(verified_empty_args.ipc_prefix, None);
+        assert_eq!(verified_empty_args.port_offset, None);
+
+        // Test the conversion to OsString vector
+        let empty_osstring_vec = verified_empty_args.into_osstring_vec();
+        assert_eq!(empty_osstring_vec.len(), 5);
+        assert_eq!(empty_osstring_vec[0], OsString::from(default_config_file));
+        assert_eq!(empty_osstring_vec[1], OsString::from(""));
+        assert_eq!(empty_osstring_vec[2], OsString::from("2"));
+        assert_eq!(empty_osstring_vec[3], OsString::from(""));
+        assert_eq!(empty_osstring_vec[4], OsString::from(""));
+    }
+}

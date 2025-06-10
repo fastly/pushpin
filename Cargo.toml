@@ -50,6 +50,7 @@ zmq = "0.9"
 [dev-dependencies]
 criterion = "0.5"
 env_logger = { version = "0.9", default-features = false }
+tempfile = "3.20.0"
 test-log = "0.2"
 
 [build-dependencies]
@@ -82,7 +83,7 @@ bench = false
 
 [[bin]]
 name = "pushpin-handler"
-test = false
+test = true
 bench = false
 
 [[bin]]
