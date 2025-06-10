@@ -1489,8 +1489,7 @@ public:
 				{
 					// Send client cache request packet for auto-refresh
 					int ccIndex = get_cc_index_from_clientId(pCacheItem->cacheClientId);
-					QString orgMsgId = pCacheItem->orgMsgId;
-					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+					pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, pCacheItem->orgMsgId, ccIndex);
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 			}
@@ -1544,8 +1543,7 @@ public:
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId, instanceId);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
-				QString orgMsgId = pCacheItem->orgMsgId;
-				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, orgMsgId, ccIndex);
+				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, pCacheItem->orgMsgId, ccIndex);
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			}
 		}
@@ -1779,33 +1777,6 @@ public:
 		create_cache_item(methodNameParamsHashVal, cacheItem);
 
 		return ccIndex;
-	}
-
-	void reply_http_cached_content(const ZhttpResponsePacket &cacheItemResponsePacket, 
-		int cacheItemMsgId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
-	{
-		//// Send cached response
-		ZhttpResponsePacket responsePacket = cacheItemResponsePacket;
-
-		// replace id str
-		replace_id_field(responsePacket.body, cacheItemMsgId, orgMsgId);
-
-		// update "Content-Length" field
-		int newContentLength = static_cast<int>(responsePacket.body.size());
-		log_debug("[HTTP] body newlength=%d", newContentLength);
-		// replace messageid
-		QByteArray contentLengthHeader;
-		contentLengthHeader.setNum(newContentLength);
-		responsePacket.headers.removeAll("Content-Length");
-		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
-
-		responsePacket.ids[0].id = newPacketId.data();
-		responsePacket.from = instanceId;
-		
-		writeToClient(HttpSession, responsePacket, from);
-
-		// update the counter for prometheus
-		gCacheMethodResponseCountList.append("HTTP");
 	}
 
 	int process_http_request(QByteArray id, const ZhttpRequestPacket &p, const QString &urlPath)
