@@ -5,4 +5,5 @@ SOURCES += \
 	$$PWD/idformattest.cpp \
 	$$PWD/publishformattest.cpp \
 	$$PWD/publishitemtest.cpp \
-	$$PWD/handlerenginetest.cpp
+	$$PWD/handlerenginetest.cpp \
+	$$PWD/argstest.cpp

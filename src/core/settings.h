@@ -41,6 +41,7 @@ public:
 
 	void setIpcPrefix(const QString &s);
 	void setPortOffset(int x);
+	bool operator==(const Settings& other) const;
 
 private:
 	QSettings *main_;

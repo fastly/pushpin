@@ -111,7 +111,7 @@ public:
 			.logFile = (!extArgs[1].isEmpty()) ? extArgs[1] : QString(),
 			.logLevel = extArgs[2].toInt(),
 			.ipcPrefix = extArgs[3],
-			.portOffset = (!extArgs[4].isEmpty()) ? extArgs[4].toInt() : -1,
+			.portOffset = (!extArgs[4].isEmpty()) ? extArgs[4].toInt() : -1
 		};
 
 		if(args.logLevel != -1)
@@ -400,4 +400,64 @@ HandlerApp::~HandlerApp() = default;
 int HandlerApp::run()
 {
 	return Private::run();
+}
+
+Settings HandlerApp::loadSettingsFromCliArgs()
+{
+	QCoreApplication::setApplicationName("pushpin-handler");
+	QCoreApplication::setApplicationVersion(Config::get().version);
+
+	// Load the command line arguments
+	QStringList extArgs = QCoreApplication::arguments();
+	if(extArgs.isEmpty())
+	{
+		log_error("Error processing arguments. Use --help for usage.");
+		throw std::exception();
+	}
+	ArgsData args { 
+		.configFile = extArgs[0],
+		.logFile 	= (!extArgs[1].isEmpty()) ? extArgs[1] : QString(),
+		.logLevel 	= extArgs[2].toInt(),
+		.ipcPrefix 	= extArgs[3],
+		.portOffset = (!extArgs[4].isEmpty()) ? extArgs[4].toInt() : -1,
+	};
+
+	// Set the log level
+	if(args.logLevel != -1)
+		log_setOutputLevel(args.logLevel);
+	else
+		log_setOutputLevel(LOG_LEVEL_INFO);
+
+	// Set the log file if specified
+	if(!args.logFile.isEmpty())
+	{
+		if(!log_setFile(args.logFile))
+		{
+			log_error("failed to open log file: %s", qPrintable(args.logFile));
+			throw std::exception();
+		}
+	}
+
+	log_debug("starting...");
+
+	// QSettings doesn't inform us if the config file can't be opened, so do that ourselves
+	{
+		QFile file(args.configFile);
+		if(!file.open(QIODevice::ReadOnly))
+		{
+			log_error("failed to open %s", qPrintable(args.configFile));
+			throw std::exception();
+		}
+	}
+
+	// Create and set up the Settings object
+	Settings settings(args.configFile);
+
+	if(!args.ipcPrefix.isEmpty())
+		settings.setIpcPrefix(args.ipcPrefix);
+
+	if(args.portOffset != -1)
+		settings.setPortOffset(args.portOffset);
+
+	return settings;
 }

@@ -148,6 +148,7 @@ pub mod ffi {
         pub fn publishformat_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn publishitem_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn handlerengine_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn args_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn template_test(out_ex: *mut TestException) -> libc::c_int;
     }
 }

@@ -189,3 +189,10 @@ void Settings::setPortOffset(int x)
 {
 	portOffset_ = x;
 }
+
+bool Settings::operator==(const Settings& other) const {
+    return ipcPrefix_ == other.ipcPrefix_ && 
+           portOffset_ == other.portOffset_ &&
+           libdir_ == other.libdir_ &&
+           rundir_ == other.rundir_;
+}

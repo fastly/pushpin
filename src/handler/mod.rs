@@ -54,6 +54,11 @@ mod tests {
         unsafe { ffi::handlerengine_test(out_ex) == 0 }
     }
 
+    fn args_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::args_test(out_ex) == 0 }
+    }
+
     #[test]
     fn filter() {
         run_serial(filter_test);
@@ -87,5 +92,10 @@ mod tests {
     #[test]
     fn handlerengine() {
         run_serial(handlerengine_test);
+    }
+
+    #[test]
+    fn args() {
+        run_serial(args_test);
     }
 }

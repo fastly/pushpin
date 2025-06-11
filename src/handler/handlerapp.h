@@ -23,6 +23,7 @@
 
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
+#include "settings.h"
 
 class HandlerApp
 {
@@ -31,6 +32,7 @@ public:
 	~HandlerApp();
 
 	int run();
+	static Settings loadSettingsFromCliArgs();
 
 private:
 	class Private;
