@@ -99,7 +99,6 @@ struct ClientInCacheItem {
 
 // Cache Item
 struct CacheItem {
-	int msgId;
 	int newMsgId;
 	char refreshFlag;
 	qint64 lastRequestTime;

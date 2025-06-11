@@ -204,7 +204,7 @@ void remove_cache_item(const QByteArray& itemId)
 	}
 	else if (gCacheItemMap[itemId].methodType == SUBSCRIBE_METHOD)
 	{
-		if (gCacheItemMap[itemId].msgId != -1)
+		if (gCacheItemMap[itemId].newMsgId != -1)
 			numSubscriptionExpiry++;
 	}
 

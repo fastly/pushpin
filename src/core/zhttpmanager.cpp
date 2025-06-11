@@ -1555,7 +1555,6 @@ public:
 			});
 		}
 
-		//store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
 		//store_cache_item_field(itemId, "cacheClientId", pCacheItem->cacheClientId);
 		//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 		//store_cache_item_field(itemId, "lastRefreshCount", pCacheItem->lastRefreshCount);
@@ -1654,7 +1653,6 @@ public:
 	{
 		// create new cache item
 		struct CacheItem cacheItem;
-		cacheItem.msgId = -1;
 		cacheItem.newMsgId = -1;
 		cacheItem.refreshFlag = 0x00;
 		if (is_never_timeout_method(packetMsg.method, packetMsg.params))
@@ -1724,7 +1722,6 @@ public:
 		int ccIndex = get_main_cc_index(instanceId);
 		if (ccIndex < 0)
 			return -1;
-		cacheItem.msgId = gWsCacheClientList[ccIndex].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[ccIndex].msgIdCount;
 		cacheItem.refreshFlag = 0x00;
 		if (is_never_timeout_method(methodName, msgParams))
@@ -1911,7 +1908,6 @@ public:
 				}
 
 				pCacheItem->retryCount = 0;
-				pCacheItem->msgId = 0;
 				pCacheItem->newMsgId = 0;
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				pCacheItem->cachedFlag = true;
@@ -1936,8 +1932,6 @@ public:
 				pCacheItem->clientMap.clear();
 
 				//store_cache_item_field(msgIdByte, "retryCount", pCacheItem->retryCount);
-				//store_cache_item_field(msgIdByte, "msgId", pCacheItem->msgId);
-				//store_cache_item_field(msgIdByte, "newMsgId", pCacheItem->newMsgId);
 				//store_cache_item_field(msgIdByte, "lastRefreshTime", pCacheItem->lastRefreshTime);
 				//store_cache_item_field(msgIdByte, "cachedFlag", pCacheItem->cachedFlag);
 				//store_cache_item_field(msgIdByte, "clientMap", pCacheItem->clientMap);
@@ -1975,7 +1969,6 @@ public:
 
 				pCacheItem->responseHashVal = calculate_response_hash_val(p.body, 0);
 				log_debug("[HTTP] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
-				pCacheItem->msgId = 0;
 				pCacheItem->newMsgId = 0;
 				pCacheItem->cachedFlag = true;
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -2000,8 +1993,6 @@ public:
 				}
 				pCacheItem->clientMap.clear();
 
-				//store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
-				//store_cache_item_field(itemId, "newMsgId", pCacheItem->newMsgId);
 				//store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
 				//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 				//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
@@ -2058,11 +2049,11 @@ public:
 				{
 					if (pCacheItem->cachedFlag == false)
 					{
-						if (pCacheItem->msgId != -1)
+						if (pCacheItem->newMsgId != -1)
 						{
 							pCacheItem->cachedFlag = true;
 							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
-								pCacheItem->msgId, qPrintable(subscriptionStr));
+								pCacheItem->newMsgId, qPrintable(subscriptionStr));
 							// send update subscribe to all clients
 							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 							while (it != pCacheItem->clientMap.end()) 
@@ -2192,7 +2183,7 @@ public:
 
 			// create new subscription item
 			struct CacheItem cacheItem;
-			cacheItem.msgId = -1;
+			cacheItem.newMsgId = -1;
 			cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 			cacheItem.cachedFlag = false;
@@ -2249,7 +2240,7 @@ public:
 					
 					pCacheItem->responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
 					log_debug("[WS] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
-					pCacheItem->msgId = msgIdValue;
+					pCacheItem->newMsgId = msgIdValue;
 					pCacheItem->cachedFlag = true;
 
 					// store response body
@@ -2282,7 +2273,6 @@ public:
 					{
 						//store_cache_item_field(itemId, "responseHashVal", pCacheItem->responseHashVal);
 						//store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
-						//store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 						//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 					}
 				}
@@ -2295,7 +2285,7 @@ public:
 					{
 						return -1;
 					}
-					pCacheItem->msgId = msgIdValue;
+					pCacheItem->newMsgId = msgIdValue;
 					if ((msgResultStr.compare("true", Qt::CaseInsensitive) != 0) && (msgResultStr.compare("false", Qt::CaseInsensitive) != 0)) 
 					{
 						pCacheItem->subscriptionStr = msgResultStr;
@@ -2314,7 +2304,7 @@ public:
 					CacheItem* pResultCacheItem = load_cache_item(resultBytes);
 					if (pResultCacheItem != NULL)
 					{
-						if (pResultCacheItem->msgId == -1)
+						if (pResultCacheItem->newMsgId == -1)
 						{
 							pCacheItem->cachedFlag = true;
 							remove_cache_item(resultBytes);
@@ -2349,7 +2339,6 @@ public:
 						}
 					}
 
-					//store_cache_item_field(itemId, "msgId", pCacheItem->msgId);
 					//store_cache_item_field(itemId, "subscriptionStr", pCacheItem->subscriptionStr);
 					//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
 					//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
@@ -2599,7 +2588,6 @@ public:
 				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
-				//store_cache_item_field(paramsHash, "newMsgId", pCacheItem->newMsgId);
 				//store_cache_item_field(paramsHash, "lastRequestTime", pCacheItem->lastRequestTime);
 
 				// register cache refresh
