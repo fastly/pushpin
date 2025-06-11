@@ -1967,8 +1967,6 @@ public:
 				if (bodyParseSucceed == false)
 					return -1;
 
-				pCacheItem->responseHashVal = calculate_response_hash_val(p.body, 0);
-				log_debug("[HTTP] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
 				pCacheItem->newMsgId = 0;
 				pCacheItem->cachedFlag = true;
 				pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -2238,8 +2236,6 @@ public:
 						return 0;
 					}
 					
-					pCacheItem->responseHashVal = calculate_response_hash_val(p.body, msgIdValue);
-					log_debug("[WS] responseHashVal=%s", pCacheItem->responseHashVal.toHex().data());
 					pCacheItem->newMsgId = msgIdValue;
 					pCacheItem->cachedFlag = true;
 
@@ -2268,12 +2264,6 @@ public:
 					{
 						log_debug("[WS] Delete cache item because no auto-refresh");
 						remove_cache_item(itemId);
-					}
-					else
-					{
-						//store_cache_item_field(itemId, "responseHashVal", pCacheItem->responseHashVal);
-						//store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
-						//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 					}
 				}
 				else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
