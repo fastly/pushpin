@@ -134,23 +134,16 @@ void redis_removeall_cache_item()
 		return;
 	}
 
-	log_debug("1");
-
 	redisReply* reply = (redisReply*)redisCommand(conn.data(), "FLUSHDB");
-
-	log_debug("2");
 
 	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
 	{
 		log_debug("[REDIS] Database cleared successfully.");
 	}
 
-	log_debug("3");
-
 	if (reply != nullptr)
 		freeReplyObject(reply);
 	//pool.release(conn);
-	log_debug("4");
 
 	return;
 }
