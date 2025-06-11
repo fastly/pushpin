@@ -97,9 +97,6 @@ extern int gCacheItemMaxCount;
 
 // redis
 extern bool gRedisEnable;
-extern QString gRedisHostAddr;
-extern int gRedisPort;
-extern int gRedisPoolCount;
 
 // count method group
 extern QHash<QString, QStringList> gCountMethodGroupMap;

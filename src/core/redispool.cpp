@@ -2,6 +2,10 @@
 #include "redispool.h"
 #include "log.h"
 
+extern QString gRedisHostAddr;
+extern int gRedisPort;
+extern int gRedisPoolCount;
+
 RedisPool* RedisPool::instance() {
 	static RedisPool pool;
 	return &pool;
@@ -17,12 +21,12 @@ RedisPool::~RedisPool() {
 }
 
 redisContext* RedisPool::createConnection() {
-	return redisConnect("127.0.0.1", 6379); // Update if needed
+	return redisConnect(qPrintable(gRedisHostAddr), gRedisPort); // Update if needed
 }
 
 QSharedPointer<redisContext> RedisPool::acquire() {
 	QMutexLocker locker(&m_mutex);
-	while (m_pool.isEmpty() && m_activeConnections >= m_maxConnections) {
+	while (m_pool.isEmpty() && m_activeConnections >= gRedisPoolCount) {
 		m_cond.wait(&m_mutex);
 	}
 
