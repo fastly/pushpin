@@ -54,9 +54,9 @@ mod tests {
         unsafe { ffi::handlerengine_test(out_ex) == 0 }
     }
 
-    fn args_test(out_ex: &mut TestException) -> bool {
+    fn cliargs_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { ffi::args_test(out_ex) == 0 }
+        unsafe { ffi::cliargs_test(out_ex) == 0 }
     }
 
     #[test]
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn args() {
-        run_serial(args_test);
+    fn cliargs() {
+        run_serial(cliargs_test);
     }
 }

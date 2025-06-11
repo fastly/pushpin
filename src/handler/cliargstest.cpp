@@ -26,7 +26,7 @@
 #include "settings.h"
 #include "test.h"
 
-void testArguments()
+void cliArgsTest()
 {
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
@@ -71,9 +71,9 @@ void testArguments()
     TEST_ASSERT(!(mock_settings == settings));
 }
 
-extern "C" int args_test(ffi::TestException *out_ex)
+extern "C" int cliargs_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(testArguments());
+	TEST_CATCH(cliArgsTest());
 
 	return 0;
 }
