@@ -1576,13 +1576,22 @@ public:
 		//store_cache_item_field(itemId, "lastRefreshCount", 0);
 	}
 
-	void unregister_client(const QByteArray& clientId)
+	void unregister_client(const QByteArray& clientFrom)
 	{
 		if (gHttpClientMap.contains(clientId))
 		{
 			// delete client from gHttpClientMap
+			QByteArray from = gHttpClientMap[clientId].from;
 			gHttpClientMap.remove(clientId);
 			log_debug("[HTTP] Deleted http client=%s", clientId.data());
+
+			ZhttpRequest::Rid rid(from, clientId);
+
+			ZhttpRequest *req = serverReqsByRid.value(rid);
+			if(req)
+			{
+				unlink(req);
+			}
 		}
 		else
 		{
