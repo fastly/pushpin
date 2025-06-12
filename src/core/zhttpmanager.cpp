@@ -1183,7 +1183,6 @@ public:
 						unregister_client(packetId);
 						break;
 					case ZhttpRequestPacket::Data:
-						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 						ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 						if (ret == 0)
 						{
@@ -1800,6 +1799,9 @@ public:
 
 				// prometheus staus
 				update_prometheus_hit_count(*pCacheItem);
+
+				// send credit response to client
+				send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 
 				if (pCacheItem->cachedFlag == true)
 				{
