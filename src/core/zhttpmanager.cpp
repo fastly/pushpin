@@ -1584,11 +1584,7 @@ public:
 			QByteArray from = gHttpClientMap[clientId].from;
 
 			ZhttpRequest::Rid rid(from, clientId);
-			ZhttpRequest *req = serverReqsByRid.value(rid);
-			if(req)
-			{
-				send_response_to_client(ZhttpResponsePacket::Cancel, clientId, from);
-			}
+			serverReqsByRid.remove(rid);
 			
 			gHttpClientMap.remove(clientId);
 			log_debug("[HTTP] Deleted http client=%s", clientId.data());
