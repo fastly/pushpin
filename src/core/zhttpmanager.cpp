@@ -1186,7 +1186,7 @@ public:
 						ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 						if (ret == 0)
 						{
-							p.type = ZhttpRequestPacket::Close;
+							p.type = ZhttpRequestPacket::Cancel;
 							//resume_cache_thread();
 							//continue;
 						}
