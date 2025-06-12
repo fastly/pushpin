@@ -627,14 +627,6 @@ public:
 						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
 						resume_cache_thread();
 						return;
-						/*
-						int ret = process_ws_cacheclient_response(packet, ccIndex);
-						if (ret == 0)
-						{
-							resume_cache_thread();
-							return;
-						}
-						*/
 					}
 					else
 					{
@@ -1191,6 +1183,7 @@ public:
 						unregister_client(packetId);
 						break;
 					case ZhttpRequestPacket::Data:
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
 						ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 						if (ret == 0)
 						{
