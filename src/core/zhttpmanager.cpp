@@ -1590,7 +1590,7 @@ public:
 			ZhttpRequest *req = serverReqsByRid.value(rid);
 			if(req)
 			{
-				unlink(req);
+				send_response_to_client(ZhttpResponsePacket::Cancel, clientId, from);
 			}
 		}
 		else
