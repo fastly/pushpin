@@ -1576,7 +1576,7 @@ public:
 		//store_cache_item_field(itemId, "lastRefreshCount", 0);
 	}
 
-	void unregister_client(const QByteArray& clientFrom)
+	void unregister_client(const QByteArray& clientId)
 	{
 		if (gHttpClientMap.contains(clientId))
 		{
