@@ -1186,8 +1186,9 @@ public:
 						ret = process_http_request(packetId, p, gHttpClientMap[packetId].urlPath);
 						if (ret == 0)
 						{
-							resume_cache_thread();
-							continue;
+							p.type = ZhttpRequestPacket::Close;
+							//resume_cache_thread();
+							//continue;
 						}
 						break;
 					default:
@@ -1580,13 +1581,6 @@ public:
 	{
 		if (gHttpClientMap.contains(clientId))
 		{
-			// delete client from gHttpClientMap
-			QByteArray from = gHttpClientMap[clientId].from;
-
-			ZhttpRequest::Rid rid(from, clientId);
-			serverReqsByRid.remove(rid);
-			clientReqsByRid.remove(rid);
-			
 			gHttpClientMap.remove(clientId);
 			log_debug("[HTTP] Deleted http client=%s", clientId.data());
 		}
