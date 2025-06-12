@@ -675,7 +675,7 @@ public:
 		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
 		{
-			log_debug("[WS] failed to get new response seq %s", clientId.toHex().data());
+			log_debug("[WS] failed to get new response seq %s", clientId.constData());
 			return;
 		}
 		packet.ids.first().seq = newSeq;
@@ -1811,8 +1811,8 @@ public:
 				if (pCacheItem->cachedFlag == true)
 				{
 					writeToClient_(packetMsg.paramsHash, packetId, packetMsg.id, p.from, instanceId);
-					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
+					unregister_client(packetId);
 				}
 				else
 				{
@@ -1824,8 +1824,7 @@ public:
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(packetMsg.id), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
-				//store_cache_item_field(packetMsg.paramsHash, "clientMap", pCacheItem->clientMap);
-				//store_cache_item_field(packetMsg.paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
+
 				return 0;
 			}
 			else
@@ -1926,16 +1925,10 @@ public:
 						writeToClient_(msgIdByte, cliId, msgId, instanceAddress, orgInstanceId);
 
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-						gHttpClientMap.remove(cliId);
-						log_debug("[HTTP] Removed http client id=%s", cliId.data());
+						unregister_client(cliId);
 					}
 				}
 				pCacheItem->clientMap.clear();
-
-				//store_cache_item_field(msgIdByte, "retryCount", pCacheItem->retryCount);
-				//store_cache_item_field(msgIdByte, "lastRefreshTime", pCacheItem->lastRefreshTime);
-				//store_cache_item_field(msgIdByte, "cachedFlag", pCacheItem->cachedFlag);
-				//store_cache_item_field(msgIdByte, "clientMap", pCacheItem->clientMap);
 
 				return 0;
 			}
@@ -1984,17 +1977,12 @@ public:
 						QString msgId = pCacheItem->clientMap[cliId].msgId;
 						QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
 						writeToClient_(itemId, cliId, pCacheItem->clientMap[cliId].msgId, instanceAddress, orgInstanceId);
-
+1
 						log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
-						gHttpClientMap.remove(cliId);
-						log_debug("[HTTP] Removed http client id=%s", cliId.data());
+						unregister_client(cliId);
 					}
 				}
 				pCacheItem->clientMap.clear();
-
-				//store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
-				//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
-				//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 
 				return 0;
 			}
