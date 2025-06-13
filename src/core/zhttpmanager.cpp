@@ -663,14 +663,17 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QByteArray clientId = packet.ids.first().id;
-		int newSeq = get_client_new_response_seq(clientId);
-		if (newSeq < 0)
+		if (gCacheEnable == true)
 		{
-			log_debug("[WS] failed to get new response seq %s", clientId.constData());
-			return;
+			QByteArray clientId = packet.ids.first().id;
+			int newSeq = get_client_new_response_seq(clientId);
+			if (newSeq < 0)
+			{
+				log_debug("[WS] failed to get new response seq %s", clientId.constData());
+				return;
+			}
+			packet.ids.first().seq = newSeq;
 		}
-		packet.ids.first().seq = newSeq;
 
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
@@ -686,6 +689,11 @@ public:
 		assert(server_out_sock);
 
 		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
+		{
+			log_debug("[WS] failed_ to get new response seq %s", clientId.constData());
+			return;
+		}
 
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instId);
 
