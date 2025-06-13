@@ -574,7 +574,7 @@ void check_old_clients()
 	// lookup clients to delete
 	foreach(QByteArray id, gHttpClientMap.keys())
 	{
-		int diffMSeconds = currMTime - gHttpClientMap[id].lastRequestTime;
+		qint64 diffMSeconds = currMTime - gHttpClientMap[id].lastRequestTime;
 		if (!gDeleteClientList.contains(id) && (diffMSeconds > clientNoRequestTimeoutSeconds))
 		{
 			// delete this client
@@ -585,7 +585,7 @@ void check_old_clients()
 
 	foreach(QByteArray id, gWsClientMap.keys())
 	{
-		int diffMSeconds = currMTime - gWsClientMap[id].lastRequestTime;
+		qint64 diffMSeconds = currMTime - gWsClientMap[id].lastRequestTime;
 		if (!gDeleteClientList.contains(id) && (diffMSeconds > clientNoRequestTimeoutSeconds))
 		{
 			// delete this client
@@ -778,11 +778,11 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 void check_cache_clients()
 {
-	time_t currTime = time(NULL);
+	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
-		int diff = (int)(currTime - gWsCacheClientList[i].lastResponseTime);
-		if (diff > gResponseTimeoutSeconds)
+		qint64 diff = currMTime - gWsCacheClientList[i].lastResponseTime;
+		if (diff > gResponseTimeoutSeconds*1000)
 		{
 			log_debug("[WS] detected cache client %d response timeout %s", i, gWsCacheClientList[i].clientId.data());
 			gWsCacheClientList[i].initFlag = false;
@@ -804,7 +804,7 @@ void check_cache_clients()
 			log_debug("[WS] killing cache client %d process %d, %s", i, gWsCacheClientList[i].processId, gWsCacheClientList[i].clientId.data());
 			kill(gWsCacheClientList[i].processId, SIGTERM);
 			gWsCacheClientList[i].processId = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
-			gWsCacheClientList[i].lastResponseTime = time(NULL);
+			gWsCacheClientList[i].lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 		}			
 	}
 

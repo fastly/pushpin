@@ -553,7 +553,7 @@ public:
 			// update data receive time
 			if (ccIndex >= 0)
 			{
-				gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+				gWsCacheClientList[ccIndex].lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 			}
 
 			if (packet.code == 101) // ws client init response code
@@ -562,7 +562,7 @@ public:
 				{
 					// cache client
 					gWsCacheClientList[ccIndex].initFlag = true;
-					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+					gWsCacheClientList[ccIndex].lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 					gWsCacheClientList[ccIndex].lastResponseSeq = -1;
 					gWsCacheClientList[ccIndex].receiver = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s, from=%s", ccIndex, gWsCacheClientList[ccIndex].clientId.data(),
@@ -1015,7 +1015,7 @@ public:
 					gWsCacheClientList[ccIndex].msgIdCount = -1;
 					gWsCacheClientList[ccIndex].from = p.from;
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
-					gWsCacheClientList[ccIndex].lastRequestTime = time(NULL);
+					gWsCacheClientList[ccIndex].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 					log_debug("[WS] Registered new cache client=%s, from=%s, instanceId=%s", 
 						id.id.data(), p.from.toHex().data(), instanceId.toHex().data());
@@ -1612,8 +1612,8 @@ public:
 		struct ClientItem clientItem;
 		clientItem.lastRequestSeq = 0;
 		clientItem.lastResponseSeq = -1;
-		clientItem.lastRequestTime = time(NULL);
-		clientItem.lastResponseTime = time(NULL);
+		clientItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+		clientItem.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 		clientItem.from = from;
 		clientItem.urlPath = urlPath;
 		gHttpClientMap[packetId] = clientItem;
@@ -1633,8 +1633,8 @@ public:
 		struct ClientItem clientItem;
 		clientItem.lastRequestSeq = 0;
 		clientItem.lastResponseSeq = -1;
-		clientItem.lastRequestTime = time(NULL);
-		clientItem.lastResponseTime = time(NULL);
+		clientItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+		clientItem.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 		clientItem.from = from;
 		clientItem.urlPath = urlPath;
 		gWsClientMap[packetId] = clientItem;
@@ -2887,7 +2887,7 @@ void initCacheClient(int workerNo)
 		cacheClient.initFlag = false;
 		cacheClient.processId = processId;
 		cacheClient.urlPath = gWsBackendUrlList[0];
-		cacheClient.lastResponseTime = time(NULL);
+		cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 
 		gWsCacheClientList.append(cacheClient);
 	}

@@ -68,8 +68,8 @@ struct ClientItem {
 	int msgIdCount;
 	int lastRequestSeq;
 	int lastResponseSeq;
-	time_t lastRequestTime;
-	time_t lastResponseTime;
+	qint64 lastRequestTime;
+	qint64 lastResponseTime;
 	QByteArray receiver;
 	QByteArray from;
 	QByteArray clientId;
