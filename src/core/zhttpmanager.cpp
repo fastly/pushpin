@@ -1161,6 +1161,7 @@ public:
 		for	(int i=0; i<p.ids.count(); i++)
 		{
 			QByteArray packetId = p.ids[i].id;
+			int newSeq = p.ids[i].seq;
 
 			// cache process
 			if (gCacheEnable == true)
@@ -1249,7 +1250,7 @@ public:
 				
 				resume_cache_thread();
 
-				int newSeq = update_request_seq(packetId);
+				newSeq = update_request_seq(packetId);
 				if (newSeq >= 0)
 					p.ids[i].seq = newSeq;
 				else
