@@ -663,17 +663,14 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		if (gCacheEnable == true)
+		QByteArray clientId = packet.ids.first().id;
+		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
 		{
-			QByteArray clientId = packet.ids.first().id;
-			int newSeq = get_client_new_response_seq(clientId);
-			if (newSeq < 0)
-			{
-				log_debug("[WS] failed to get new response seq %s", clientId.constData());
-				return;
-			}
-			packet.ids.first().seq = newSeq;
+			log_debug("[WS] failed to get new response seq %s", clientId.constData());
+			return;
 		}
+		packet.ids.first().seq = newSeq;
 
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
@@ -772,7 +769,10 @@ public:
 		zresp.from = instanceId;
 		zresp.ids = ids;
 		zresp.type = ZhttpResponsePacket::KeepAlive;
-		writeToClient(type, zresp, zhttpAddress);
+		if (gCacheEnable == true)
+			writeToClient(type, zresp, zhttpAddress);
+		else
+			write(type, zresp, zhttpAddress);
 	}
 
 	void client_out_messagesWritten(int count)
@@ -1248,13 +1248,13 @@ public:
 				}
 				
 				resume_cache_thread();
-			}
 
-			int newSeq = update_request_seq(packetId);
-			if (newSeq >= 0)
-				p.ids[i].seq = newSeq;
-			else
-				newSeq = p.ids[i].seq;
+				int newSeq = update_request_seq(packetId);
+				if (newSeq >= 0)
+					p.ids[i].seq = newSeq;
+				else
+					newSeq = p.ids[i].seq;
+			}
 
 			// is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, packetId));
