@@ -2160,8 +2160,10 @@ public:
 
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
+								
+								p.ids[0].id = cliId;
 
-								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient(CacheResponse, p, instanceAddress);
 
 								++it;
 							}
