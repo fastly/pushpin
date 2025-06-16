@@ -2078,7 +2078,10 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
+							log_debug("[1] msgBlockStr=%s", qPrintable(msgBlockStr));
+							log_debug("[2] msgChangesStr=%s", qPrintable(msgChangesStr));
+
+							responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf.indexOf(patternStr);
@@ -2091,6 +2094,8 @@ public:
 							{
 								log_debug("[WS] not found block in subscription cached response");
 							}
+
+							log_debug("[3] %s", responseBuf.constData());
 
 							QStringList changesList = msgChangesStr.split("/");
 							for ( const auto& changes : changesList )
@@ -2129,6 +2134,7 @@ public:
 									}	
 								}
 							}
+							log_debug("[4] %s", responseBuf.constData());
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
