@@ -1,0 +1,88 @@
+/*
+ * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
+ *
+ * This file is part of Pushpin.
+ *
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * $FANOUT_END_LICENSE$
+ */
+
+#include "argsdata.h"
+#include "settings.h"
+#include "config.h"
+#include "log.h"
+#include <QCoreApplication>
+#include <QFile>
+
+
+Settings ArgsData::loadIntoSettings()
+{
+	Settings settings(configFile);
+
+	if(!ipcPrefix.isEmpty())
+		settings.setIpcPrefix(ipcPrefix);
+
+	if(portOffset != -1)
+		settings.setPortOffset(portOffset);
+
+    return settings;
+}
+
+ArgsData::ArgsData(QStringList &extArgs)
+{
+	if(extArgs.isEmpty())
+	{
+		log_error("Error processing arguments. Use --help for usage.");
+		throw std::exception();
+	}
+
+    configFile  = extArgs[0];
+    logFile     = !extArgs[1].isEmpty() ? extArgs[1] : QString();
+    logLevel 	= extArgs[2].toInt();
+    ipcPrefix 	= extArgs[3];
+    portOffset  = !extArgs[4].isEmpty() ? extArgs[4].toInt() : -1;
+    routeLines  = extArgs[5].isEmpty() ? QStringList() : extArgs[5].split(',');
+    quietCheck  = extArgs[6] == "true" ? true : false;
+
+    // Set the log level
+	if(logLevel != -1)
+    log_setOutputLevel(logLevel);
+    else
+        log_setOutputLevel(LOG_LEVEL_INFO);
+
+    // Set the log file if specified
+    if(!logFile.isEmpty())
+    {
+        if(!log_setFile(logFile))
+        {
+            log_error("failed to open log file: %s", qPrintable(logFile));
+            throw std::exception();
+        }
+    }
+
+    log_debug("starting...");
+
+    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
+    {
+        QFile file(configFile);
+        if(!file.open(QIODevice::ReadOnly))
+        {
+            log_error("failed to open %s", qPrintable(configFile));
+            throw std::exception();
+        }
+    }
+}

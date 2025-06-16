@@ -32,7 +32,6 @@ public:
 	~HandlerApp();
 
 	int run();
-	static Settings loadSettingsFromCliArgs();
 
 private:
 	class Private;

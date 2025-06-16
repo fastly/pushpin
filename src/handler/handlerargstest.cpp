@@ -25,50 +25,116 @@
 #include "handlerapp.h"
 #include "settings.h"
 #include "test.h"
+#include "argsdata.h"
 
 void handlerargstest()
 {
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
 
-    // Set up the command line arguments
-    int argc = 5;
+    // Set up valid command line arguments
+    int argc = 7;
     char * argv[] = {
         (char *) configFile.c_str(), // configFile
         (char *) "log.txt",          // logFile
         (char *) "2",                // logLevel
         (char *) "ipc:prefix",       // ipcPrefix
-        (char *) "80"              // portOffset
+        (char *) "80",               // portOffset
+        (char *) "route1,route2",    // routeLines
+        (char *) "true",             // quietCheck
     };
 
-    // Set up the QCoreApplication
+    // Set up QCoreApplication
     QCoreApplication qapp(argc, argv);
     HandlerApp app;
-    QStringList args = qapp.arguments();
+    QStringList extArgs = qapp.arguments();
     
-    // Test the arguments
-    TEST_ASSERT_EQ(args[0], QString("examples/config/pushpin.conf"));
-    TEST_ASSERT_EQ(args[1], QString("log.txt"));
-    TEST_ASSERT_EQ(args[2], QString("2"));
-    TEST_ASSERT_EQ(args[3], QString("ipc:prefix"));
-    TEST_ASSERT_EQ(args[4], QString("80"));
+    // Verify the arguments
+    TEST_ASSERT_EQ(extArgs[0], QString("examples/config/pushpin.conf"));
+    TEST_ASSERT_EQ(extArgs[1], QString("log.txt"));
+    TEST_ASSERT_EQ(extArgs[2], QString("2"));
+    TEST_ASSERT_EQ(extArgs[3], QString("ipc:prefix"));
+    TEST_ASSERT_EQ(extArgs[4], QString("80"));
+    TEST_ASSERT_EQ(extArgs[5], QString("route1,route2"));
+    TEST_ASSERT_EQ(extArgs[6], QString("true"));
 
-    // Set up the correct mock settings
-    Settings mock_settings(args[0]);
-    mock_settings.setIpcPrefix(args[3]);
-    mock_settings.setPortOffset(args[4].toInt());
+    // Verify ArgsData parsing
+    ArgsData args(extArgs);
+    TEST_ASSERT_EQ(args.configFile, QString("examples/config/pushpin.conf"));
+    TEST_ASSERT_EQ(args.logFile, QString("log.txt"));
+    TEST_ASSERT_EQ(args.logLevel, 2);
+    TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
+    TEST_ASSERT_EQ(args.portOffset, 80);
+    TEST_ASSERT_EQ(args.routeLines, QStringList({"route1", "route2"}));
+    TEST_ASSERT_EQ(args.quietCheck, true);
+
+    // Set up mock settings
+    Settings mock_settings(args.configFile);
+    if (!args.ipcPrefix.isEmpty())
+        mock_settings.setIpcPrefix(args.ipcPrefix);;
+    if (args.portOffset != -1)
+        mock_settings.setPortOffset(args.portOffset);
 
     // Load settings from command line arguments
-    Settings settings = app.loadSettingsFromCliArgs();
+    Settings settings = args.loadIntoSettings();
 
-    // This should match
+    // Verify mock settings match the loaded settings
     TEST_ASSERT_EQ(mock_settings, settings);
 
     // Change the port offset to a different value
     mock_settings.setPortOffset(60);
 
-    // This shouldn't match
+    // Verify that the mock settings no longer match the loaded settings
     TEST_ASSERT(!(mock_settings == settings));
+
+    // Set up valid empty command line arguments
+    int argc_empty = 7;
+    char * argv_empty[] = {
+        (char *) configFile.c_str(), // configFile
+        (char *) "",                 // logFile
+        (char *) "2",                // logLevel
+        (char *) "",                 // ipcPrefix
+        (char *) "",                 // portOffset
+        (char *) "",                 // routeLines
+        (char *) "false",            // quietCheck
+    };
+
+    // Set up QCoreApplication with empty arguments
+    QCoreApplication qapp_empty(argc_empty, argv_empty);
+    HandlerApp app_empty;
+    QStringList extArgs_empty = qapp_empty.arguments();
+    
+    // Verify the arguments
+    TEST_ASSERT_EQ(extArgs[0], QString("examples/config/pushpin.conf"));
+    TEST_ASSERT_EQ(extArgs[1], QString(""));
+    TEST_ASSERT_EQ(extArgs[2], QString("2"));
+    TEST_ASSERT_EQ(extArgs[3], QString(""));
+    TEST_ASSERT_EQ(extArgs[4], QString(""));
+    TEST_ASSERT_EQ(extArgs[5], QString(""));
+    TEST_ASSERT_EQ(extArgs[6], QString("false"));
+
+    // Verify ArgsData parsing with empty arguments
+    ArgsData args_empty(extArgs_empty);
+    TEST_ASSERT_EQ(args_empty.configFile, QString("examples/config/pushpin.conf"));
+    TEST_ASSERT_EQ(args_empty.logFile, QString(""));
+    TEST_ASSERT_EQ(args_empty.logLevel, 2);
+    TEST_ASSERT_EQ(args_empty.ipcPrefix, QString(""));
+    TEST_ASSERT_EQ(args_empty.portOffset, -1);
+    TEST_ASSERT_EQ(args_empty.routeLines, QStringList());
+    TEST_ASSERT_EQ(args_empty.quietCheck, false);
+
+    // Load settings from empty command line arguments
+    Settings settings_empty = args_empty.loadIntoSettings();
+
+    // Set up mock settings
+    Settings mock_settings_empty(args_empty.configFile);
+    if (!args_empty.ipcPrefix.isEmpty())
+        mock_settings_empty.setIpcPrefix(args_empty.ipcPrefix);
+    if (args_empty.portOffset != -1)
+        mock_settings_empty.setPortOffset(args_empty.portOffset);
+    
+    // Verify mock settings match the loaded settings
+    TEST_ASSERT_EQ(mock_settings_empty, settings_empty);
 }
 
 extern "C" int handlerargs_test(ffi::TestException *out_ex)

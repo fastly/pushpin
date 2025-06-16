@@ -1,5 +1,10 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
+ *
+ * This file is part of Pushpin.
+ *
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,20 +17,26 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * $FANOUT_END_LICENSE$
  */
 
-use pushpin::core::call_c_main;
-use pushpin::import_cpp;
-use std::process::ExitCode;
-use pushpin::core::ccliargs::CCliArgs;
-use clap::Parser;
+#include <QString>
+#include <QStringList>
+#include "settings.h"
 
-import_cpp! {
-    fn proxy_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-}
+class ArgsData
+{
+	public:
+		QString configFile;
+		QString logFile;
+		int logLevel;
+		QString ipcPrefix;
+		int portOffset;
+		QStringList routeLines;
+		bool quietCheck;
 
-fn main() -> ExitCode {
-    let c_cli_args = CCliArgs::parse().verify();
-    
-    unsafe { ExitCode::from(call_c_main(proxy_main, c_cli_args.into_osstring_vec())) }
-}
+		ArgsData(QStringList &extArgs);
+
+		Settings loadIntoSettings();
+};

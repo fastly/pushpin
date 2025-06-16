@@ -38,7 +38,7 @@ pub struct CCliArgs {
     pub log_file: Option<String>,
 
     /// Set log level (0=error, 1=warn, 2=info, 3=debug, 4=trace)
-    #[arg(short = 'L', long, value_name = "x", default_value = "2", value_parser = clap::value_parser!(u32).range(1..=4))]
+    #[arg(short = 'L', long, value_name = "x", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=4))]
     pub log_level: u32,
 
     /// Override ipc_prefix config option, which is used to add a prefix to all ZeroMQ IPC filenames

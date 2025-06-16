@@ -81,10 +81,12 @@ HEADERS += \
 	$$PWD/simplehttpserver.h \
 	$$PWD/stats.h \
 	$$PWD/statsmanager.h \
-	$$PWD/settings.h
+	$$PWD/settings.h \
+	$$PWD/argsdata.h
 
 SOURCES += \
 	$$PWD/config.cpp \
+	$$PWD/argsdata.cpp \
 	$$PWD/timerwheel.cpp \
 	$$PWD/jwt.cpp \
 	$$PWD/timer.cpp \
