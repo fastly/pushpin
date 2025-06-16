@@ -127,12 +127,12 @@ QList<QString> ttt = {
 	//"chain_subscribeallheads",
 	//"chain_subscribefinalisedheads",
 	//"chain_subscribefinalizedheads",
-	"chain_subscribenewhead",
+	//"chain_subscribenewhead",
 	//"chain_subscribenewheads",
 	//"chain_subscriberuntimeversion",
 	//"grandpa_subscribejustifications",
 	//"state_subscriberuntimeversion",
-	//"state_subscribestorage",
+	"state_subscribestorage",
 	//"transaction_unstable_submitandwatch"
 };
 
