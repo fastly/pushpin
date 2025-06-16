@@ -122,18 +122,18 @@ extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptio
 extern QHash<QString, int> groupMethodCountMap;
 
 QList<QString> ttt = {
-	"author_submitAndWatchExtrinsic",
-	"beefy_subscribeJustifications",
-	"chain_subscribeAllHeads",
-	"chain_subscribeFinalisedHeads",
-	"chain_subscribeFinalizedHeads",
-	"chain_subscribeNewHead",
-	"chain_subscribeNewHeads",
-	"chain_subscribeRuntimeVersion",
-	"grandpa_subscribeJustifications",
-	"state_subscribeRuntimeVersion",
-	"state_subscribeStorage",
-	"transaction_unstable_submitAndWatch"
+	"author_submitandwatchextrinsic",
+	"beefy_subscribejustifications",
+	"chain_subscribeallheads",
+	"chain_subscribefinalisedheads",
+	"chain_subscribefinalizedheads",
+	"chain_subscribenewhead",
+	"chain_subscribenewheads",
+	"chain_subscriberuntimeversion",
+	"grandpa_subscribejustifications",
+	"state_subscriberuntimeversion",
+	"state_subscribestorage",
+	"transaction_unstable_submitandwatch"
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1010,7 +1010,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	{
 		QString subKey = QString("WS+");
 		//if (is_subscribe_method(packetMsg.method))
-		if (ttt.contains(packetMsg.method.toLower()))
+		if (ttt.contains(packetMsg.method))
 		{
 			subKey += instanceId.data();
 			log_debug("[QQQ] %s", qPrintable(subKey));
