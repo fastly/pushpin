@@ -132,7 +132,7 @@ QList<QString> ttt = {
 	//"chain_subscriberuntimeversion",
 	//"grandpa_subscribejustifications",
 	//"state_subscriberuntimeversion",
-	"state_subscribestorage",
+	//"state_subscribestorage",
 	//"transaction_unstable_submitandwatch"
 };
 
