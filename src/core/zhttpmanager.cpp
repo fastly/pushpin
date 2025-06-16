@@ -2030,9 +2030,6 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
-			// store response body
-			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
-
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
@@ -2045,6 +2042,10 @@ public:
 							pCacheItem->cachedFlag = true;
 							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
 								pCacheItem->newMsgId, qPrintable(subscriptionStr));
+							
+							// store response body
+							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+
 							// send update subscribe to all clients
 							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 							while (it != pCacheItem->clientMap.end()) 
@@ -2165,9 +2166,6 @@ public:
 						}
 					}
 
-					//store_cache_item_field(itemId, "cachedFlag", pCacheItem->cachedFlag);
-					//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
-					//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 					return -1;
 				}
 			}
@@ -2185,6 +2183,9 @@ public:
 			QByteArray subscriptionBytes = subscriptionStr.toLatin1();
 			create_cache_item(subscriptionBytes, cacheItem);
 			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(subscriptionStr));
+
+			// store response body
+			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
 
 			// make invalild
 			return -1;
