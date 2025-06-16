@@ -122,18 +122,18 @@ extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptio
 extern QHash<QString, int> groupMethodCountMap;
 
 QList<QString> ttt = {
-	"author_submitandwatchextrinsic",
-	"beefy_subscribejustifications",
-	"chain_subscribeallheads",
-	"chain_subscribefinalisedheads",
-	"chain_subscribefinalizedheads",
+	//"author_submitandwatchextrinsic",
+	//"beefy_subscribejustifications",
+	//"chain_subscribeallheads",
+	//"chain_subscribefinalisedheads",
+	//"chain_subscribefinalizedheads",
 	"chain_subscribenewhead",
-	"chain_subscribenewheads",
-	"chain_subscriberuntimeversion",
-	"grandpa_subscribejustifications",
-	"state_subscriberuntimeversion",
+	//"chain_subscribenewheads",
+	//"chain_subscriberuntimeversion",
+	//"grandpa_subscribejustifications",
+	//"state_subscriberuntimeversion",
 	"state_subscribestorage",
-	"transaction_unstable_submitandwatch"
+	//"transaction_unstable_submitandwatch"
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
