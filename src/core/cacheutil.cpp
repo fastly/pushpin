@@ -352,6 +352,8 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		buff.replace(oldPattern, newPattern);
 	}
 
+	log_debug("[STORE_BUFF] %s", buff.constData());
+
 	if (gRedisEnable == false)
 	{
 		gCacheResponseBuffer[itemId] = buff;
@@ -422,7 +424,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	int buffLen = buff.length();
 	buff = instanceAddress + " T" + QByteArray::number(buffLen-1) + QByteArray(":") + buff;
 
-	log_debug("[BUFF] %s", buff.constData());
+	log_debug("[LOAD_BUFF] %s", buff.constData());
 
 	return buff;
 }
