@@ -121,6 +121,21 @@ extern quint32 numSubscriptionInsert, numSubscriptionHit, numSubscriptionLookup,
 extern quint32 numCacheItem, numAutoRefreshItem, numAREItemCount, numSubscriptionItem, numNeverTimeoutCacheItem;
 extern QHash<QString, int> groupMethodCountMap;
 
+QList<QString> ttt = {
+	"author_submitAndWatchExtrinsic",
+	"beefy_subscribeJustifications",
+	"chain_subscribeAllHeads",
+	"chain_subscribeFinalisedHeads",
+	"chain_subscribeFinalizedHeads",
+	"chain_subscribeNewHead",
+	"chain_subscribeNewHeads",
+	"chain_subscribeRuntimeVersion",
+	"grandpa_subscribeJustifications",
+	"state_subscribeRuntimeVersion",
+	"state_subscribeStorage",
+	"transaction_unstable_submitAndWatch"
+};
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // HiRedis
 void redis_removeall_cache_item() 
@@ -994,9 +1009,10 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	else
 	{
 		QString subKey = QString("WS+");
-		if (is_subscribe_method(packetMsg.method))
+		//if (is_subscribe_method(packetMsg.method))
+		if (ttt.contains(packetMsg.method.toLower()))
 		{
-			//subKey += instanceId.data();
+			subKey += instanceId.data();
 			log_debug("[QQQ] %s", qPrintable(subKey));
 		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
