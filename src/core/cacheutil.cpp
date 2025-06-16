@@ -1050,6 +1050,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 			//subKey += instanceId.data();
 			log_debug("[QQQ] %s", qPrintable(subKey));
 		}
+		log_debug("[PPP] %s", qPrintable(subKey));
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
