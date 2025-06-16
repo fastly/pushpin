@@ -6,4 +6,4 @@ SOURCES += \
 	$$PWD/publishformattest.cpp \
 	$$PWD/publishitemtest.cpp \
 	$$PWD/handlerenginetest.cpp \
-	$$PWD/cliargstest.cpp
+	$$PWD/handlerargstest.cpp

@@ -39,6 +39,7 @@ pub mod timer;
 pub mod tnetstring;
 pub mod waker;
 pub mod zmq;
+pub mod ccliargs;
 
 use std::env;
 use std::ffi::{CString, OsStr};
@@ -152,6 +153,7 @@ mod tests {
         // SAFETY: safe to call
         unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
+
 
     #[test]
     fn httpheaders() {

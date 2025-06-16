@@ -37,6 +37,7 @@ use crate::core::{is_debug_build, version};
     version = version(),
     about = "Reverse proxy for realtime web services."
 )]
+
 pub struct CliArgs {
     #[arg(long, value_name = "file", help = "Config file.")]
     pub config: Option<PathBuf>,

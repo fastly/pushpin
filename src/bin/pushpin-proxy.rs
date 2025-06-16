@@ -18,11 +18,15 @@ use pushpin::core::call_c_main;
 use pushpin::import_cpp;
 use std::env;
 use std::process::ExitCode;
+use pushpin::core::ccliargs::CCliArgs;
+use clap::Parser;
 
 import_cpp! {
     fn proxy_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
+    let c_cli_args = CCliArgs::parse().verify();
+    
     unsafe { ExitCode::from(call_c_main(proxy_main, env::args_os())) }
 }
