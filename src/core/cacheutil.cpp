@@ -996,7 +996,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 		QString subKey = QString("WS+");
 		if (is_subscribe_method(packetMsg.method))
 		{
-			subKey += instanceId.data();
+			//subKey += instanceId.data();
+			log_debug("[QQQ] %s", qPrintable(subKey));
 		}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
@@ -1048,7 +1049,6 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 		if (is_subscribe_method(packetMsg.method))
 		{
 			//subKey += instanceId.data();
-			log_debug("[QQQ] %s", qPrintable(subKey));
 		}
 		log_debug("[PPP] %s", qPrintable(subKey));
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
