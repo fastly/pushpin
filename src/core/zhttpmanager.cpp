@@ -2030,9 +2030,6 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
-			// store response body
-			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
-
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
@@ -2040,33 +2037,34 @@ public:
 				{
 					if (pCacheItem->cachedFlag == false)
 					{
-						if (pCacheItem->newMsgId != -1)
+						pCacheItem->cachedFlag = true;
+
+						// store response body
+						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+
+						log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
+							pCacheItem->newMsgId, qPrintable(subscriptionStr));
+						// send update subscribe to all clients
+						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
+						while (it != pCacheItem->clientMap.end()) 
 						{
-							pCacheItem->cachedFlag = true;
-							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
-								pCacheItem->newMsgId, qPrintable(subscriptionStr));
-							// send update subscribe to all clients
-							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
-							while (it != pCacheItem->clientMap.end()) 
+							QByteArray cliId = it.key();
+							if (gWsClientMap.contains(cliId))
 							{
-								QByteArray cliId = it.key();
-								if (gWsClientMap.contains(cliId))
-								{
-									QString clientMsgId = pCacheItem->clientMap[cliId].msgId;
-									QByteArray clientInstanceId = pCacheItem->clientMap[cliId].instanceId;
+								QString clientMsgId = pCacheItem->clientMap[cliId].msgId;
+								QByteArray clientInstanceId = pCacheItem->clientMap[cliId].instanceId;
 
-									log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, instanceId=%s", 
-											cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
-									
-									writeToClient_(itemId, cliId, clientMsgId, instanceAddress, clientInstanceId);
-									writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								log_debug("[WS] Sending Subscription content to client id=%s, msgId=%s, instanceId=%s", 
+										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
+								
+								writeToClient_(itemId, cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
 
-									++it;
-								}
-								else 
-								{
-									it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
-								}
+								++it;
+							}
+							else 
+							{
+								it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
 							}
 						}
 					}
@@ -2077,14 +2075,14 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
+							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
 							QByteArray patternStr = "\"block\":\"";
-							qsizetype idxStart = responseBuf.indexOf(patternStr);
+							qsizetype idxStart = responseBuf_.indexOf(patternStr);
 							if (idxStart >= 0)
 							{
-								qsizetype idxEnd = responseBuf.indexOf("\"", idxStart+9);
-								responseBuf.replace(idxStart+9, idxEnd-(idxStart+9), QByteArray(qPrintable(msgBlockStr)));
+								qsizetype idxEnd = responseBuf_.indexOf("\"", idxStart+9);
+								responseBuf_.replace(idxStart+9, idxEnd-(idxStart+9), QByteArray(qPrintable(msgBlockStr)));
 							}
 							else
 							{
@@ -2112,14 +2110,14 @@ public:
 								qsizetype idxEnd = 0;
 								while (1)
 								{
-									idxStart = responseBuf.indexOf(patternStr, idxEnd);
+									idxStart = responseBuf_.indexOf(patternStr, idxEnd);
 									if (idxStart < 0)
 										break;
 									
-									idxEnd = responseBuf.indexOf("]", idxStart+changeList[0].length());
+									idxEnd = responseBuf_.indexOf("]", idxStart+changeList[0].length());
 									if (idxEnd > idxStart)
 									{
-										responseBuf.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
+										responseBuf_.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
 									}
 									else
 									{
@@ -2130,16 +2128,16 @@ public:
 							}
 
 							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
-						}
-						else // it`s for non state_subscribeStorage methods
-						{
-							QVariant vpacket = p.toVariant();
-							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
+						// store response body
+						QString updateStr = subscriptionStr;
+						updateStr += "_update";
+						store_cache_response_buffer(updateStr.toUtf8(), responseBuf_, QString(""));
 
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
@@ -2154,7 +2152,7 @@ public:
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 
-								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient_(updateStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
@@ -2179,7 +2177,10 @@ public:
 			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
 
-			QByteArray subscriptionBytes = subscriptionStr.toLatin1();
+			// store response body
+			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+
+			QByteArray subscriptionBytes = subscriptionStr.toUtf8();
 			create_cache_item(subscriptionBytes, cacheItem);
 			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(subscriptionStr));
 
