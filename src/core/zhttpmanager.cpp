@@ -2114,13 +2114,10 @@ public:
 								newPatternStr += newBlockStr.toUtf8();
 								newPatternStr += "\"";
 
-								log_debug("[1-1] %s", oldPatternStr.constData());
-								log_debug("[1-2] %s", newPatternStr.constData());
 								responseBuf_.replace(oldPatternStr, newPatternStr);
 
 								pCacheItem->blockStr = newBlockStr;
 							}
-							log_debug("[2] %s", responseBuf_.constData());
 
 							if (!packetMsg.resultChanges.isEmpty())
 							{
@@ -2151,11 +2148,14 @@ public:
 									newPatternStr += newVal.toUtf8();
 									newPatternStr += "\"]";
 
+									log_debug("[1-1] %s", oldPatternStr.constData());
+									log_debug("[1-2] %s", newPatternStr.constData());
 									responseBuf_.replace(oldPatternStr, newPatternStr);
 
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
 							}
+							log_debug("[2] %s", responseBuf_.constData());
 /*							
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
