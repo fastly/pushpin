@@ -2128,15 +2128,15 @@ public:
 									}	
 								}
 							}
+
+							// store response body
+							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
 							QVariant vpacket = p.toVariant();
 							responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 						}
-
-						// store response body
-						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
