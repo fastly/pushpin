@@ -2128,18 +2128,18 @@ public:
 								QStringList changesList = msgChangesStr.split("/");
 								for ( const auto& changes : changesList )
 								{
-									QStringList changes = changes.split("+");
-									if (changes.size() != 2)
+									QStringList changeList = changes.split("+");
+									if (changeList.size() != 2)
 									{
 										log_debug("[WS] Invalid change list");
 										continue;
 									}
 
-									log_debug("[1-2] %s-%s", qPrintable(changes[0]), qPrintable(changes[1]));
+									log_debug("[1-2] %s-%s", qPrintable(changeList[0]), qPrintable(changeList[1]));
 
-									QString changesKey = changes[0];
-									QString oldVal = pCacheItem->changesMap[changes[0]];
-									QString newVal = changes[1];
+									QString changesKey = changeList[0];
+									QString oldVal = pCacheItem->changesMap[changeList[0]];
+									QString newVal = changeList[1];
 
 									QByteArray oldPatternStr = "[\"";
 									oldPatternStr += changesKey.toUtf8();
