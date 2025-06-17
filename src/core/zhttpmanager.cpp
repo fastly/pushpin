@@ -2128,8 +2128,8 @@ public:
 								QStringList changesList = msgChangesStr.split("/");
 								for ( const auto& changes : changesList )
 								{
-									QStringList changeList = changes.split("+");
-									if (changeList.size() != 2)
+									QStringList changes = changes.split("+");
+									if (changes.size() != 2)
 									{
 										log_debug("[WS] Invalid change list");
 										continue;
