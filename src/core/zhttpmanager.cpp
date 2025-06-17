@@ -2104,8 +2104,14 @@ public:
 								QString newBlockStr = packetMsg.resultBlock.toLower();
 								QString oldBlckStr = pCacheItem->blockStr;
 
-								QByteArray oldPatternStr = "\"block\":\"" + "\"" + oldBlckStr.toUtf8() + "\"";
-								QByteArray newPatternStr = "\"block\":\"" + "\"" + newBlockStr.toUtf8() + "\"";
+								QByteArray oldPatternStr = "\"block\":\"";
+								oldPatternStr += "\"";
+								oldPatternStr += oldBlckStr.toUtf8();
+								oldPatternStr += "\"";
+								QByteArray newPatternStr = "\"block\":\"";
+								newPatternStr += "\"";
+								newPatternStr += newBlockStr.toUtf8();
+								newPatternStr += "\"";
 
 								responseBuf_.replace(oldPatternStr, newBlockStr);
 
@@ -2130,8 +2136,16 @@ public:
 									QString oldVal = pCacheItem->changesMap[changes[0]];
 									QString newVal = changes[1];
 
-									QByteArray oldPatternStr = "[\"" + changesKey.toUtf8() + "," + oldVal.toUtf8() + "\"]";
-									QByteArray newPatternStr = "[\"" + changesKey.toUtf8() + "," + newVal.toUtf8() + "\"]";
+									QByteArray oldPatternStr = "[\"";
+									oldPatternStr += changesKey.toUtf8();
+									oldPatternStr += ",";
+									oldPatternStr += oldVal.toUtf8();
+									oldPatternStr += "\"]";
+									QByteArray newPatternStr = "[\"";
+									newPatternStr += changesKey.toUtf8();
+									newPatternStr += ",";
+									newPatternStr += newVal.toUtf8();
+									newPatternStr += "\"]";
 
 									responseBuf_.replace(oldPatternStr, newBlockStr);
 
