@@ -2123,6 +2123,8 @@ public:
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
 
+								log_debug("[1-1] %s", qPrintable(msgChangesStr));
+
 								QStringList changesList = msgChangesStr.split("/");
 								for ( const auto& changes : changesList )
 								{
@@ -2132,6 +2134,8 @@ public:
 										log_debug("[WS] Invalid change list");
 										continue;
 									}
+
+									log_debug("[1-2] %s-%s", qPrintable(changes[0]), qPrintable(changes[1]));
 
 									QString changesKey = changes[0];
 									QString oldVal = pCacheItem->changesMap[changes[0]];
@@ -2148,8 +2152,8 @@ public:
 									newPatternStr += newVal.toUtf8();
 									newPatternStr += "\"]";
 
-									log_debug("[1-1] %s", oldPatternStr.constData());
-									log_debug("[1-2] %s", newPatternStr.constData());
+									log_debug("[1-3] %s", oldPatternStr.constData());
+									log_debug("[1-4] %s", newPatternStr.constData());
 									responseBuf_.replace(oldPatternStr, newPatternStr);
 
 									pCacheItem->changesMap[changesKey] = newVal;
