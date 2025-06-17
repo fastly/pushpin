@@ -2070,6 +2070,7 @@ public:
 					}
 					else
 					{
+						/*
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
@@ -2130,6 +2131,7 @@ public:
 							// store response body
 							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}
+						*/
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
