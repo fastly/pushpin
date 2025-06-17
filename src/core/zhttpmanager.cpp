@@ -2094,7 +2094,6 @@ public:
 					}
 					else
 					{
-						
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
@@ -2214,7 +2213,7 @@ public:
 							*/
 
 							// store response body
-							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
+							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}
 						else
 						{
