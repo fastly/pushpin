@@ -679,7 +679,6 @@ public:
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 		server_out_sock->write(QList<QByteArray>() << buf);
-		QThread::usleep(1);
 	}
 
 	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instId)
@@ -2164,7 +2163,7 @@ public:
 								
 								p.ids[0].id = cliId;
 
-								writeToClient(CacheResponse, p, instanceAddress);
+								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
