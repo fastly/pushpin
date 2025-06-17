@@ -2105,11 +2105,11 @@ public:
 								QString newBlockStr = packetMsg.resultBlock.toLower();
 								QString oldBlckStr = pCacheItem->blockStr;
 
-								QByteArray oldPatternStr = "\"block\":\"";
+								QByteArray oldPatternStr = "\"block\":";
 								oldPatternStr += "\"";
 								oldPatternStr += oldBlckStr.toUtf8();
 								oldPatternStr += "\"";
-								QByteArray newPatternStr = "\"block\":\"";
+								QByteArray newPatternStr = "\"block\":";
 								newPatternStr += "\"";
 								newPatternStr += newBlockStr.toUtf8();
 								newPatternStr += "\"";
@@ -2142,12 +2142,12 @@ public:
 
 									QByteArray oldPatternStr = "[\"";
 									oldPatternStr += changesKey.toUtf8();
-									oldPatternStr += ",";
+									oldPatternStr += "\",\"";
 									oldPatternStr += oldVal.toUtf8();
 									oldPatternStr += "\"]";
 									QByteArray newPatternStr = "[\"";
 									newPatternStr += changesKey.toUtf8();
-									newPatternStr += ",";
+									newPatternStr += "\",\"";
 									newPatternStr += newVal.toUtf8();
 									newPatternStr += "\"]";
 
