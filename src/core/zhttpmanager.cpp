@@ -2115,7 +2115,7 @@ public:
 
 								responseBuf_.replace(oldPatternStr, newPatternStr);
 
-								pCacheItem->blockStr = msgBlockStr;
+								pCacheItem->blockStr = newBlockStr;
 							}
 
 							if (!packetMsg.resultChanges.isEmpty())
