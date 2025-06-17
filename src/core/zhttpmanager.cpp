@@ -2137,7 +2137,7 @@ public:
 						// store response body
 						QString updateStr = subscriptionStr;
 						updateStr += "_update";
-						store_cache_response_buffer(updateStr.toUtf8(), responseBuf_, QString(""));
+						store_cache_response_buffer(updateStr.toUtf8(), responseBuf, QString(""));
 
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
