@@ -2113,7 +2113,7 @@ public:
 								newPatternStr += newBlockStr.toUtf8();
 								newPatternStr += "\"";
 
-								responseBuf_.replace(oldPatternStr, newBlockStr);
+								responseBuf_.replace(oldPatternStr, newPatternStr);
 
 								pCacheItem->blockStr = msgBlockStr;
 							}
@@ -2147,7 +2147,7 @@ public:
 									newPatternStr += newVal.toUtf8();
 									newPatternStr += "\"]";
 
-									responseBuf_.replace(oldPatternStr, newBlockStr);
+									responseBuf_.replace(oldPatternStr, newPatternStr);
 
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
