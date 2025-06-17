@@ -2098,6 +2098,7 @@ public:
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
+							log_debug("[1] %s", responseBuf_.constData());
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
 							{
@@ -2113,10 +2114,13 @@ public:
 								newPatternStr += newBlockStr.toUtf8();
 								newPatternStr += "\"";
 
+								log_debug("[1-1] %s", oldPatternStr.constData());
+								log_debug("[1-2] %s", newPatternStr.constData());
 								responseBuf_.replace(oldPatternStr, newPatternStr);
 
 								pCacheItem->blockStr = newBlockStr;
 							}
+							log_debug("[2] %s", responseBuf_.constData());
 
 							if (!packetMsg.resultChanges.isEmpty())
 							{
