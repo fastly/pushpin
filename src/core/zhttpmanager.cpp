@@ -2213,7 +2213,8 @@ public:
 							*/
 
 							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
+							gCacheResponseBuffer[subscriptionStr.toUtf8()] = responseBuf_;
+							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}
 						else
 						{
