@@ -2030,6 +2030,9 @@ public:
 		{
 			QString subscriptionStr = packetMsg.subscription;
 
+			// store response body
+			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
@@ -2042,10 +2045,6 @@ public:
 							pCacheItem->cachedFlag = true;
 							log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
 								pCacheItem->newMsgId, qPrintable(subscriptionStr));
-							
-							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
-
 							// send update subscribe to all clients
 							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 							while (it != pCacheItem->clientMap.end()) 
@@ -2078,10 +2077,7 @@ public:
 							QString msgBlockStr = packetMsg.resultBlock.toLower();
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 
-							log_debug("[1] msgBlockStr=%s", qPrintable(msgBlockStr));
-							log_debug("[2] msgChangesStr=%s", qPrintable(msgChangesStr));
-
-							responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
+							QByteArray responseBuf = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf.indexOf(patternStr);
@@ -2094,8 +2090,6 @@ public:
 							{
 								log_debug("[WS] not found block in subscription cached response");
 							}
-
-							log_debug("[3] %s", responseBuf.constData());
 
 							QStringList changesList = msgChangesStr.split("/");
 							for ( const auto& changes : changesList )
@@ -2134,7 +2128,6 @@ public:
 									}	
 								}
 							}
-							log_debug("[4] %s", responseBuf.constData());
 						}
 						else // it`s for non state_subscribeStorage methods
 						{
@@ -2160,8 +2153,6 @@ public:
 
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
-								
-								p.ids[0].id = cliId;
 
 								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
 
@@ -2191,9 +2182,6 @@ public:
 			QByteArray subscriptionBytes = subscriptionStr.toLatin1();
 			create_cache_item(subscriptionBytes, cacheItem);
 			log_debug("[WS] Registered Subscription for \"%s\"", qPrintable(subscriptionStr));
-
-			// store response body
-			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
 
 			// make invalild
 			return -1;
