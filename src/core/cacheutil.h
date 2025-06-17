@@ -115,6 +115,8 @@ struct CacheItem {
 	CacheMethodType methodType;
 	QString subscriptionStr;
 	QHash<QByteArray, ClientInCacheItem> clientMap;
+	QString blockStr;
+	QHash<QString, QString> changesMap;
 };
 
 struct UnsubscribeRequestItem {

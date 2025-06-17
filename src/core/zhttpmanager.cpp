@@ -2039,6 +2039,30 @@ public:
 					{
 						pCacheItem->cachedFlag = true;
 
+						// update block and changes
+						if (!packetMsg.resultBlock.isEmpty())
+						{
+							QString msgBlockStr = packetMsg.resultBlock.toLower();
+							pCacheItem->blockStr = msgBlockStr;
+						}
+
+						if (!packetMsg.resultChanges.isEmpty())
+						{
+							QString msgChangesStr = packetMsg.resultChanges.toLower();
+
+							QStringList changesList = msgChangesStr.split("/");
+							for ( const auto& changes : changesList )
+							{
+								QStringList changeList = changes.split("+");
+								if (changeList.size() != 2)
+								{
+									log_debug("[WS] Invalid change list");
+									continue;
+								}
+								pCacheItem->changesMap[changeList[0]] = changeList[1];
+							}
+						}
+
 						// store response body
 						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
 
@@ -2070,14 +2094,51 @@ public:
 					}
 					else
 					{
-						
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
-							QString msgBlockStr = packetMsg.resultBlock.toLower();
-							QString msgChangesStr = packetMsg.resultChanges.toLower();
-
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
+							// update block and changes
+							if (!packetMsg.resultBlock.isEmpty())
+							{
+								QString newBlockStr = packetMsg.resultBlock.toLower();
+								QString oldBlckStr = pCacheItem->blockStr;
+
+								QByteArray oldPatternStr = "\"block\":\"" + "\"" + oldBlckStr.toUtf8() + "\"";
+								QByteArray newPatternStr = "\"block\":\"" + "\"" + newBlockStr.toUtf8() + "\"";
+
+								responseBuf_.replace(oldPatternStr, newBlockStr);
+
+								pCacheItem->blockStr = msgBlockStr;
+							}
+
+							if (!packetMsg.resultChanges.isEmpty())
+							{
+								QString msgChangesStr = packetMsg.resultChanges.toLower();
+
+								QStringList changesList = msgChangesStr.split("/");
+								for ( const auto& changes : changesList )
+								{
+									QStringList changeList = changes.split("+");
+									if (changeList.size() != 2)
+									{
+										log_debug("[WS] Invalid change list");
+										continue;
+									}
+
+									QString changesKey = changes[0];
+									QString oldVal = pCacheItem->changesMap[changes[0]];
+									QString newVal = changes[1];
+
+									QByteArray oldPatternStr = "[\"" + changesKey.toUtf8() + "," + oldVal.toUtf8() + "\"]";
+									QByteArray newPatternStr = "[\"" + changesKey.toUtf8() + "," + newVal.toUtf8() + "\"]";
+
+									responseBuf_.replace(oldPatternStr, newBlockStr);
+
+									pCacheItem->changesMap[changesKey] = newVal;
+								}
+							}
+/*							
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
 							if (idxStart >= 0)
@@ -2089,7 +2150,7 @@ public:
 							{
 								log_debug("[WS] not found block in subscription cached response");
 							}
-/*
+
 							QStringList changesList = msgChangesStr.split("/");
 							for ( const auto& changes : changesList )
 							{
@@ -2177,6 +2238,30 @@ public:
 			cacheItem.methodType = CacheMethodType::SUBSCRIBE_METHOD;
 			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
+
+			// update block and changes
+			if (!packetMsg.resultBlock.isEmpty())
+			{
+				QString msgBlockStr = packetMsg.resultBlock.toLower();
+				cacheItem.blockStr = msgBlockStr;
+			}
+
+			if (!packetMsg.resultChanges.isEmpty())
+			{
+				QString msgChangesStr = packetMsg.resultChanges.toLower();
+
+				QStringList changesList = msgChangesStr.split("/");
+				for ( const auto& changes : changesList )
+				{
+					QStringList changeList = changes.split("+");
+					if (changeList.size() != 2)
+					{
+						log_debug("[WS] Invalid change list");
+						continue;
+					}
+					cacheItem.changesMap[changeList[0]] = changeList[1];
+				}
+			}
 
 			// store response body
 			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
