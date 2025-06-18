@@ -435,7 +435,7 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
-    const MAX_MSG_LEN: usize = 1048576; // Set your desired message length limit
+    const MAX_MSG_LEN: usize = 1024; // Set your desired message length limit
 
     // Find the position of the 3rd space (' ') in the string
     let index = msg
