@@ -695,7 +695,7 @@ public:
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
-		QThread::usleep(10);
+		QThread::usleep(1);
 	}
 
 	void writeToClient__(SessionType type, ZhttpResponsePacket &packet, const QByteArray &clientId, const QByteArray &instanceAddress, const QByteArray &instanceId)
@@ -2123,6 +2123,10 @@ public:
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
 
+							if (responseBuf_.length() > 130000)
+							{
+								qDebug() << responseBuf_.constData();
+							}
 							int diffLen = 0;
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
