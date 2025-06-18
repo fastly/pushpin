@@ -2124,7 +2124,7 @@ public:
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
 
 							int diffLen = 0;
-							/*
+							
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
 							{
@@ -2146,7 +2146,7 @@ public:
 
 								pCacheItem->blockStr = newBlockStr;
 							}
-
+							/*
 							if (!packetMsg.resultChanges.isEmpty())
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
@@ -2183,7 +2183,7 @@ public:
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
 							}
-*/
+							*/
 							/*
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
