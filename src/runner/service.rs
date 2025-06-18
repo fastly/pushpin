@@ -445,7 +445,9 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
         .map(|(i, _)| i)
         .unwrap_or_else(|| 0);
 
-    // Truncate the message to MAX_MSG_LEN
+	println!("{}", str);
+	/*
+	// Truncate the message to MAX_MSG_LEN
     let truncated_msg = if msg.len() > MAX_MSG_LEN {
         format!("{}...", &msg[..MAX_MSG_LEN])
     } else {
@@ -464,6 +466,7 @@ fn log_message(name: &str, level: log::Level, msg: &str) {
             ))
             .build(),
     );
+	*/
 }
 /*
 fn log_message(name: &str, level: log::Level, msg: &str) {
