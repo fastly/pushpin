@@ -2185,6 +2185,7 @@ public:
 							}
 							*/
 							///*
+							QString msgChangesStr = packetMsg.resultChanges.toLower();
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
 							if (idxStart >= 0)
