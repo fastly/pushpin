@@ -105,13 +105,13 @@ void handlerargstest()
     QStringList extArgs_empty = qapp_empty.arguments();
     
     // Verify the arguments
-    TEST_ASSERT_EQ(extArgs[0], QString("examples/config/pushpin.conf"));
-    TEST_ASSERT_EQ(extArgs[1], QString(""));
-    TEST_ASSERT_EQ(extArgs[2], QString("2"));
-    TEST_ASSERT_EQ(extArgs[3], QString(""));
-    TEST_ASSERT_EQ(extArgs[4], QString(""));
-    TEST_ASSERT_EQ(extArgs[5], QString(""));
-    TEST_ASSERT_EQ(extArgs[6], QString("false"));
+    TEST_ASSERT_EQ(extArgs_empty[0], QString("examples/config/pushpin.conf"));
+    TEST_ASSERT_EQ(extArgs_empty[1], QString(""));
+    TEST_ASSERT_EQ(extArgs_empty[2], QString("2"));
+    TEST_ASSERT_EQ(extArgs_empty[3], QString(""));
+    TEST_ASSERT_EQ(extArgs_empty[4], QString(""));
+    TEST_ASSERT_EQ(extArgs_empty[5], QString(""));
+    TEST_ASSERT_EQ(extArgs_empty[6], QString("false"));
 
     // Verify ArgsData parsing with empty arguments
     ArgsData args_empty(extArgs_empty);

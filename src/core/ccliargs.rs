@@ -49,9 +49,9 @@ pub struct CCliArgs {
     #[arg(long, value_name = "offset", value_parser = clap::value_parser!(u32))]
     pub port_offset: Option<u32>,
 
-    /// Add route (overrides routes file)
-    #[arg(long, value_name = "route")]
-    pub route: Option<Vec<String>>,
+    /// Add routes (overrides routes file)
+    #[arg(long, value_name = "routes")]
+    pub routes: Option<Vec<String>>,
 
     /// Log update checks in Zurl as debug level
     #[arg(long, value_name = "quiet-check", default_value_t = false)]
@@ -117,7 +117,7 @@ impl IntoIterator for CCliArgs {
 
         args.push((
             "routes".to_string(),
-            self.route.iter().map(|r| r.join(",")).collect::<String>(),
+            self.routes.iter().map(|r| r.join(",")).collect::<String>(),
         ));
 
         args.push((
@@ -148,7 +148,7 @@ mod tests {
             log_level: 3,
             ipc_prefix: Some("ipc".to_string()),
             port_offset: Some(8080),
-            route: Some(vec!["route1".to_string(), "route2".to_string()]),
+            routes: Some(vec!["route1".to_string(), "route2".to_string()]),
             quiet_check: true,
         };
 
@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(verified_args.log_level, 3);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
-        assert_eq!(verified_args.route, Some(vec!["route1".to_string(), "route2".to_string()]));
+        assert_eq!(verified_args.routes, Some(vec!["route1".to_string(), "route2".to_string()]));
         assert_eq!(verified_args.quiet_check, true);
         
         // Verify conversion to OsString vector
@@ -180,7 +180,7 @@ mod tests {
             log_level: 2,
             ipc_prefix: None,
             port_offset: None,
-            route: None,
+            routes: None,
             quiet_check: false,
         };
 
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.port_offset, None);
-        assert_eq!(verified_empty_args.route, None);
+        assert_eq!(verified_empty_args.routes, None);
         assert_eq!(verified_empty_args.quiet_check, false);
 
         // Verify conversion to OsString vector
