@@ -2123,10 +2123,8 @@ public:
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
 
-							if (responseBuf_.length() > 130000)
-							{
-								qDebug() << responseBuf_.constData();
-							}
+							qDebug() << responseBuf_.constData();
+
 							int diffLen = 0;
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
