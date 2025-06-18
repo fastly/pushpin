@@ -2146,7 +2146,7 @@ public:
 
 								pCacheItem->blockStr = newBlockStr;
 							}
-							///*
+							/*
 							if (!packetMsg.resultChanges.isEmpty())
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
@@ -2183,7 +2183,7 @@ public:
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
 							}
-							//*/
+							*/
 							///*
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
