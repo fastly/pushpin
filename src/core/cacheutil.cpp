@@ -566,7 +566,8 @@ static void remove_old_cache_items()
 
 				if (pCacheItem->updatedLength != std::numeric_limits<qint32>::max())
 				{
-					store_cache_response_buffer(pCacheItem->subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""), pCacheItem->updatedLength);
+					int addLength = pCacheItem->updatedLength;
+					store_cache_response_buffer(pCacheItem->subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""), addLength);
 					pCacheItem->updatedLength = std::numeric_limits<qint32>::max();
 				}
 			}
