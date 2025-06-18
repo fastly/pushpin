@@ -2083,7 +2083,6 @@ public:
 									continue;
 								}
 								pCacheItem->changesMap[changeList[0]] = changeList[1];
-								log_debug("[PPP] %s,%s", qPrintable(changeList[0]), qPrintable(changeList[1]));
 							}
 						}
 
