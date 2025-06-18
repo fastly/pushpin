@@ -692,7 +692,7 @@ public:
 			return;
 		}
 
-		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instId);
+		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instId, 0);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 		QThread::usleep(1);
@@ -1918,7 +1918,7 @@ public:
 				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
 				// store response body
-				store_cache_response_buffer(msgIdByte, responseBuf, packetMsg.id);
+				store_cache_response_buffer(msgIdByte, responseBuf, packetMsg.id, 0);
 
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 				{
@@ -1971,7 +1971,7 @@ public:
 				log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
 				// store response body
-				store_cache_response_buffer(itemId, responseBuf, packetMsg.id);
+				store_cache_response_buffer(itemId, responseBuf, packetMsg.id, 0);
 
 				// send response to all clients
 				foreach(QByteArray cliId, pCacheItem->clientMap.keys())
@@ -2064,7 +2064,7 @@ public:
 						}
 
 						// store response body
-						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""), 0);
 
 						log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
 							pCacheItem->newMsgId, qPrintable(subscriptionStr));
@@ -2096,7 +2096,7 @@ public:
 					{
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
-							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
+							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
 
 							int diffLen = 0;
 							// update block and changes
@@ -2217,12 +2217,12 @@ public:
 							// store response body
 							pCacheItem->updatedLength = diffLen;
 							pCacheItem->updatedSubscription = responseBuf_;
-							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
+							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""), 0);
 						}
 						else
 						{
 							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""), 0);
 						}
 
 						// update subscription last update time
@@ -2231,7 +2231,7 @@ public:
 						// store response body
 						QString updateStr = subscriptionStr;
 						updateStr += "_update";
-						store_cache_response_buffer(updateStr.toUtf8(), responseBuf, QString(""));
+						store_cache_response_buffer(updateStr.toUtf8(), responseBuf, QString(""), 0);
 
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
@@ -2296,7 +2296,7 @@ public:
 			}
 
 			// store response body
-			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""));
+			store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""), 0);
 
 			QByteArray subscriptionBytes = subscriptionStr.toUtf8();
 			create_cache_item(subscriptionBytes, cacheItem);
@@ -2349,7 +2349,7 @@ public:
 					pCacheItem->cachedFlag = true;
 
 					// store response body
-					store_cache_response_buffer(itemId, responseBuf, packetMsg.id);
+					store_cache_response_buffer(itemId, responseBuf, packetMsg.id, 0);
 
 					// send response to all clients
 					QString urlPath = "";
@@ -2396,7 +2396,7 @@ public:
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
 					// store response body
-					store_cache_response_buffer(itemId, responseBuf, packetMsg.id);
+					store_cache_response_buffer(itemId, responseBuf, packetMsg.id, 0);
 
 					// Search temp teim in SubscriptionItemMap
 					QByteArray resultBytes = msgResultStr.toUtf8();

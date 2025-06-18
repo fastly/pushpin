@@ -269,7 +269,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	return response;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen=0)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen)
 {
 	QByteArray buff = responseBuf;
 
@@ -567,7 +567,7 @@ static void remove_old_cache_items()
 				if (pCacheItem->updatedLength != std::numeric_limits<qint32>::max())
 				{
 					pCacheItem->updatedLength = std::numeric_limits<qint32>::max();
-					store_cache_response_buffer(pCacheItem->subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""));
+					store_cache_response_buffer(pCacheItem->subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""), pCacheItem->updatedLength);
 				}
 			}
 		}
