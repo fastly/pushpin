@@ -2211,6 +2211,7 @@ public:
 							*/
 
 							// store response body
+							log_debug("TTT %d", diffLen);
 							pCacheItem->updatedLength = diffLen;
 							pCacheItem->updatedSubscription = responseBuf_;
 							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""), diffLen);
