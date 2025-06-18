@@ -362,6 +362,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	{
 		redis_store_cache_response(itemId, buff);
 	}
+	QThread::usleep(10);
 }
 
 QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int addLen=0)
