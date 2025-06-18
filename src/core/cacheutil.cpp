@@ -394,21 +394,6 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
 	buff.replace(oldPattern, newPattern);
 
-	// replace bodyLen
-	int msgIdLen = msgId.length();
-	int newLen = 0;
-	int startIndex = buff.indexOf("4:body,__BODY__");
-	if (startIndex >= 0)
-	{
-		startIndex += 15;
-		int endIndex = buff.indexOf(':', startIndex);
-		QByteArray part = buff.mid(startIndex, endIndex-startIndex);
-		int orgLen = part.toInt();
-		newLen = orgLen + msgIdLen;
-		newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
-		buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
-	}
-
 	// replace msgId/bodyLen
 	startIndex = buff.indexOf("\"id\":__MSGID__");
 	if (startIndex >= 0)
@@ -418,11 +403,40 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 		newPattern = QByteArray("\"id\":") + msgId.toUtf8();
 		buff.replace(oldPattern, newPattern);
 
+		// replace bodyLen
+		int msgIdLen = msgId.length();
+		startIndex = buff.indexOf("4:body,__BODY__");
+		if (startIndex >= 0)
+		{
+			startIndex += 15;
+			int endIndex = buff.indexOf(':', startIndex);
+			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
+			int orgLen = part.toInt();
+			int newLen = orgLen + msgIdLen;
+			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
+			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
+		}
+
 		// replace Content-Length header
 		oldPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
 		int bodyLenNumLength = QString::number(newLen).length();
 		newPattern = QByteArray("14:Content-Length,") + QByteArray::number(bodyLenNumLength) + QByteArray(":") + QByteArray::number(newLen);
 		buff.replace(oldPattern, newPattern);
+	}
+	else
+	{
+		// replace bodyLen
+		startIndex = buff.indexOf("4:body,__BODY__");
+		if (startIndex >= 0)
+		{
+			startIndex += 15;
+			int endIndex = buff.indexOf(':', startIndex);
+			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
+			int orgLen = part.toInt();
+			int newLen = orgLen;
+			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
+			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
+		}
 	}
 
 	// add connmgr Txxx:
