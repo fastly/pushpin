@@ -59,7 +59,7 @@ extern QStringList gHttpBackendUrlList;
 extern QStringList gWsBackendUrlList;
 
 // Response Body for cache item
-QHash<QByteArray, QByteArray> gCacheResponseBuffer;
+QMap<QByteArray, QByteArray> gCacheResponseBuffer;
 
 QHash<QByteArray, CacheItem> gCacheItemMap;
 
