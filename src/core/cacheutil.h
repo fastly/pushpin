@@ -117,7 +117,7 @@ struct CacheItem {
 	QHash<QByteArray, ClientInCacheItem> clientMap;
 	QString blockStr;
 	QHash<QString, QString> changesMap;
-	bool updatedFlag;
+	qint32 updatedLength;
 	QByteArray updatedSubscription;
 };
 
@@ -161,8 +161,8 @@ void create_cache_item(const QByteArray& itemId, const CacheItem& cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_ids();
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId);
-QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from);
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen=0);
+QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int addLen=0);
 
 bool is_convertible_to_int(const QString &str);
 bool is_cache_method(QString methodStr);

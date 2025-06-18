@@ -2098,7 +2098,7 @@ public:
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__");
 
-							log_debug("[1] %s", responseBuf_.constData());
+							int diffLen = 0;
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
 							{
@@ -2116,8 +2116,7 @@ public:
 
 								responseBuf_.replace(oldPatternStr, newPatternStr);
 
-								log_debug("[1-1] %s", qPrintable(oldPatternStr));
-								log_debug("[1-2] %s", qPrintable(newPatternStr));
+								diffLen += newPatternStr.length() - oldPatternStr.length();
 
 								pCacheItem->blockStr = newBlockStr;
 							}
@@ -2156,6 +2155,8 @@ public:
 									log_debug("[1-3] %s", oldPatternStr.constData());
 									log_debug("[1-4] %s", newPatternStr.constData());
 									responseBuf_.replace(oldPatternStr, newPatternStr);
+
+									diffLen += newPatternStr.length() - oldPatternStr.length();
 
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
@@ -2214,7 +2215,7 @@ public:
 							*/
 
 							// store response body
-							pCacheItem->updatedFlag = true;
+							pCacheItem->updatedLength = diffLen;
 							pCacheItem->updatedSubscription = responseBuf_;
 							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}

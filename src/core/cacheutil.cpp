@@ -269,7 +269,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 	return response;
 }
 
-void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId)
+void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen=0)
 {
 	QByteArray buff = responseBuf;
 
@@ -331,7 +331,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		int end = buff.indexOf(':', start + prefix.length());
 		QByteArray part = buff.mid(start + prefix.length(), end-start-prefix.length());
 		bodyLen = part.toInt();
-		QByteArray newPattern = QByteArray("4:body,__BODY__") + QByteArray::number(bodyLen-msgIdLen);
+		QByteArray newPattern = QByteArray("4:body,__BODY__") + QByteArray::number(bodyLen-msgIdLen+addLen);
 		if (end != -1) 
 		{
 			buff.replace(start, end - start, newPattern);  // Replace
@@ -364,7 +364,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	}
 }
 
-QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from)
+QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int addLen=0)
 {
 	QByteArray buff = "";
 	if (gRedisEnable == false)
@@ -413,7 +413,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 			int endIndex = buff.indexOf(':', startIndex);
 			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 			int orgLen = part.toInt();
-			newLen = orgLen + msgIdLen;
+			newLen = orgLen + msgIdLen + addLen;
 			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
 			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
 		}
@@ -435,7 +435,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 			int endIndex = buff.indexOf(':', startIndex);
 			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 			int orgLen = part.toInt();
-			newLen = orgLen;
+			newLen = orgLen + addLen;
 			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
 			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
 		}
@@ -564,9 +564,9 @@ static void remove_old_cache_items()
 					continue;
 				}
 
-				if (pCacheItem->updatedFlag == true)
+				if (pCacheItem->updatedLength != std::numeric_limits<qint32>::max())
 				{
-					pCacheItem->updatedFlag = false;
+					pCacheItem->updatedLength = std::numeric_limits<qint32>::max();
 					store_cache_response_buffer(pCacheItem->subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""));
 				}
 			}
