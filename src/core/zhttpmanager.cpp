@@ -1704,6 +1704,7 @@ public:
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
+		cacheItem.updatedLength = std::numeric_limits<qint32>::max();
 
 		create_cache_item(packetMsg.paramsHash, cacheItem);
 
@@ -1760,7 +1761,7 @@ public:
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
-
+		cacheItem.updatedLength = std::numeric_limits<qint32>::max();
 		cacheItem.methodName = methodName;
 
 		// check cache/subscribe method
@@ -2270,6 +2271,7 @@ public:
 			cacheItem.methodType = CacheMethodType::SUBSCRIBE_METHOD;
 			cacheItem.subscriptionStr = subscriptionStr;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
+			cacheItem.updatedLength = std::numeric_limits<qint32>::max();
 
 			// update block and changes
 			if (!packetMsg.resultBlock.isEmpty())
