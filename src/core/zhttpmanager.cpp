@@ -695,7 +695,7 @@ public:
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instId, 0);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
-		QThread::usleep(1);
+		QThread::usleep(10);
 	}
 
 	static const char *logPrefixForType(SessionType type)
