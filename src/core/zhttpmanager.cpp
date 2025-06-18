@@ -2214,7 +2214,7 @@ public:
 							*/
 
 							// store response body
-							updatedFlag = true;
+							pCacheItem->updatedFlag = true;
 							pCacheItem->updatedSubscription = responseBuf_;
 							//store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""));
 						}
