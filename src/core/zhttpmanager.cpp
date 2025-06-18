@@ -2136,8 +2136,6 @@ public:
 										continue;
 									}
 
-									log_debug("[1-2] %s-%s", qPrintable(changeList[0]), qPrintable(changeList[1]));
-
 									QString changesKey = changeList[0];
 									QString oldVal = pCacheItem->changesMap[changeList[0]];
 									QString newVal = changeList[1];
@@ -2153,8 +2151,6 @@ public:
 									newPatternStr += newVal.toUtf8();
 									newPatternStr += "\"]";
 
-									log_debug("[1-3] %s", oldPatternStr.constData());
-									log_debug("[1-4] %s", newPatternStr.constData());
 									responseBuf_.replace(oldPatternStr, newPatternStr);
 
 									diffLen += newPatternStr.length() - oldPatternStr.length();
@@ -2162,7 +2158,6 @@ public:
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
 							}
-							log_debug("[2] %s", responseBuf_.constData());
 							/*
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
