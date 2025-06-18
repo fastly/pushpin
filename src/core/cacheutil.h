@@ -117,8 +117,6 @@ struct CacheItem {
 	QHash<QByteArray, ClientInCacheItem> clientMap;
 	QString blockStr;
 	QHash<QString, QString> changesMap;
-	qint32 updatedLength;
-	QByteArray updatedSubscription;
 };
 
 struct UnsubscribeRequestItem {
