@@ -405,6 +405,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 
 		// replace bodyLen
 		int msgIdLen = msgId.length();
+		int newLen = 0;
 		startIndex = buff.indexOf("4:body,__BODY__");
 		if (startIndex >= 0)
 		{
@@ -412,7 +413,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 			int endIndex = buff.indexOf(':', startIndex);
 			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 			int orgLen = part.toInt();
-			int newLen = orgLen + msgIdLen;
+			newLen = orgLen + msgIdLen;
 			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
 			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
 		}
@@ -426,6 +427,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	else
 	{
 		// replace bodyLen
+		int newLen = 0;
 		startIndex = buff.indexOf("4:body,__BODY__");
 		if (startIndex >= 0)
 		{
@@ -433,7 +435,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 			int endIndex = buff.indexOf(':', startIndex);
 			QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 			int orgLen = part.toInt();
-			int newLen = orgLen;
+			newLen = orgLen;
 			newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
 			buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
 		}
