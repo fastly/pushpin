@@ -542,6 +542,12 @@ static void remove_old_cache_items()
 					deleteIdList.append(itemId);  // Safely erase and move to the next item
 					continue;
 				}
+
+				if (pCacheItem->updatedFlag == true)
+				{
+					pCacheItem->updatedFlag = false;
+					gCacheResponseBuffer[itemId] = pCacheItem->updatedSubscription;
+				}
 			}
 		}
 
