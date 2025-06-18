@@ -2144,7 +2144,7 @@ public:
 
 								pCacheItem->blockStr = newBlockStr;
 							}
-							/*
+							///*
 							if (!packetMsg.resultChanges.isEmpty())
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
@@ -2165,23 +2165,25 @@ public:
 
 									QByteArray oldPatternStr = "[\"";
 									oldPatternStr += changesKey.toUtf8();
-									oldPatternStr += "\",\"";
+									oldPatternStr += (oldVal != "null") ? "\",\"" : "\",";
 									oldPatternStr += oldVal.toUtf8();
-									oldPatternStr += "\"]";
+									oldPatternStr += (oldVal != "null") ? "\"]" : "]";
 									QByteArray newPatternStr = "[\"";
 									newPatternStr += changesKey.toUtf8();
-									newPatternStr += "\",\"";
+									newPatternStr += (newVal != "null") ? "\",\"" : "\",";
 									newPatternStr += newVal.toUtf8();
-									newPatternStr += "\"]";
+									newPatternStr += (newVal != "null") ? "\"]" : "]";
 
-									responseBuf_.replace(oldPatternStr, newPatternStr);
-
-									diffLen += newPatternStr.length() - oldPatternStr.length();
-
-									pCacheItem->changesMap[changesKey] = newVal;
+									qsizetype idxStart = responseBuf_.indexOf(oldPatternStr);
+									if (idxStart >= 0)
+									{
+										responseBuf_.replace(idxStart, oldPatternStr.length(), newPatternStr);
+										diffLen += newPatternStr.length() - oldPatternStr.length();
+										pCacheItem->changesMap[changesKey] = newVal;
+									}
 								}
 							}
-							*/
+							//*/
 							
 							/*
 							QByteArray patternStr = "\"block\":\"";
@@ -2195,7 +2197,7 @@ public:
 							{
 								log_debug("[WS] not found block in subscription cached response");
 							}
-							*/
+
 							QString msgChangesStr = packetMsg.resultChanges.toLower();
 							QStringList changesList = msgChangesStr.split("/");
 							for ( const auto& changes : changesList )
@@ -2237,7 +2239,7 @@ public:
 									}	
 								}
 							}
-							//*/
+							*/
 
 							// store response body
 							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""), diffLen);
