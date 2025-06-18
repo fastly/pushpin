@@ -2262,7 +2262,7 @@ public:
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 
-								writeToClient__(CacheResponse, cliId, instanceAddress, clientInstanceId);
+								writeToClient__(CacheResponse, p, cliId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
