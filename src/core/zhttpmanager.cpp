@@ -681,7 +681,7 @@ public:
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instId)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 
@@ -692,10 +692,34 @@ public:
 			return;
 		}
 
-		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instId, 0);
+		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 		QThread::usleep(10);
+	}
+
+	void writeToClient__(SessionType type, ZhttpResponsePacket &packet, const QByteArray &clientId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	{
+		assert(server_out_sock);
+		const char *logprefix = logPrefixForType(type);
+
+		packet.ids.first().id = clientId;
+		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
+		{
+			log_debug("[WS] failed to get new response seq %s", clientId.constData());
+			return;
+		}
+		packet.ids.first().seq = newSeq;
+		packet.from = instanceId;
+
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
 	static const char *logPrefixForType(SessionType type)
@@ -2225,11 +2249,6 @@ public:
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 
-						// store response body
-						QString updateStr = subscriptionStr;
-						updateStr += "_update";
-						store_cache_response_buffer(updateStr.toUtf8(), responseBuf, QString(""), 0);
-
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 						while (it != pCacheItem->clientMap.end()) 
@@ -2243,7 +2262,7 @@ public:
 								log_debug("[WS] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 
-								writeToClient_(updateStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient__(CacheResponse, cliId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
