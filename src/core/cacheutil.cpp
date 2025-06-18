@@ -321,28 +321,28 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		}
 	}
 
+	// replace body length
+	int msgIdLen = !msgId.isEmpty() ? msgId.length() : 0;
+	int bodyLen = 0;
+	prefix = "4:body,";
+	start = buff.indexOf(prefix);
+	if (start != -1) 
+	{
+		int end = buff.indexOf(':', start + prefix.length());
+		QByteArray part = buff.mid(start + prefix.length(), end-start-prefix.length());
+		bodyLen = part.toInt();
+		QByteArray newPattern = QByteArray("4:body,__BODY__") + QString::number(bodyLen-msgIdLen);
+		if (end != -1) 
+		{
+			buff.replace(start, end - start, newPattern);  // Replace
+		}
+	}
+
 	if (!msgId.isEmpty())
 	{
-		int bodyLen = 0;
-
-		// replace body length
-		prefix = "4:body,";
-		start = buff.indexOf(prefix);
-		if (start != -1) 
-		{
-			int end = buff.indexOf(':', start + prefix.length());
-			QByteArray part = buff.mid(start + prefix.length(), end-start-prefix.length());
-			bodyLen = part.toInt();
-			if (end != -1) 
-			{
-				buff.replace(start, end - start, "4:body,__BODY__");  // Replace
-			}
-		}
-
 		// replace msgId
 		QByteArray oldPattern = QByteArray("\"id\":") + msgId.toUtf8();
-		QString newMsgId = QString("__MSGID__") + QString::number(bodyLen-msgId.length());
-		QByteArray newPattern = QByteArray("\"id\":") + newMsgId.toUtf8();
+		QByteArray newPattern = QByteArray("\"id\":__MSGID__");
 		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
@@ -394,24 +394,28 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	newPattern = QByteArray("4:from,") + QByteArray::number(fromLen) + QByteArray(":") + from;
 	buff.replace(oldPattern, newPattern);
 
-	// replace msgId/bodyLen
-	int startIndex = buff.indexOf("\"id\":__MSGID__");
+	// replace bodyLen
+	int msgIdLen = msgId.length();
+	int newLen = 0;
+	int startIndex = buff.indexOf("4:body,__BODY__");
 	if (startIndex >= 0)
 	{
-		startIndex += 14;
-		int endIndex = buff.indexOf(',', startIndex);
+		startIndex += 15;
+		int endIndex = buff.indexOf(':', startIndex);
 		QByteArray part = buff.mid(startIndex, endIndex-startIndex);
 		int orgLen = part.toInt();
-		int newLen = orgLen + msgId.length();
+		newLen = orgLen + msgIdLen;
+		newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
+		buff.replace(startIndex-15, endIndex-startIndex+15, newPattern);
+	}
 
+	// replace msgId/bodyLen
+	startIndex = buff.indexOf("\"id\":__MSGID__");
+	if (startIndex >= 0)
+	{
 		// replace msgId
 		newPattern = QByteArray("\"id\":") + msgId.toUtf8();
 		buff.replace(startIndex-14, endIndex-startIndex+14, newPattern);
-
-		// replace bodyLen
-		oldPattern = QByteArray("4:body,__BODY__");
-		newPattern = QByteArray("4:body,") + QByteArray::number(newLen);
-		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
 		oldPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
