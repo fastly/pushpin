@@ -331,7 +331,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 		int end = buff.indexOf(':', start + prefix.length());
 		QByteArray part = buff.mid(start + prefix.length(), end-start-prefix.length());
 		bodyLen = part.toInt();
-		QByteArray newPattern = QByteArray("4:body,__BODY__") + QString::number(bodyLen-msgIdLen);
+		QByteArray newPattern = QByteArray("4:body,__BODY__") + QByteArray::number(bodyLen-msgIdLen);
 		if (end != -1) 
 		{
 			buff.replace(start, end - start, newPattern);  // Replace
@@ -414,8 +414,9 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	if (startIndex >= 0)
 	{
 		// replace msgId
+		oldPattern = QByteArray("\"id\":__MSGID__");
 		newPattern = QByteArray("\"id\":") + msgId.toUtf8();
-		buff.replace(startIndex-14, endIndex-startIndex+14, newPattern);
+		buff.replace(oldPattern, newPattern);
 
 		// replace Content-Length header
 		oldPattern = QByteArray("14:Content-Length,__CONTENT_LENGTH__");
