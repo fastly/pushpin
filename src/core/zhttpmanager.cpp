@@ -2184,8 +2184,8 @@ public:
 								}
 							}
 							*/
-							///*
-							QString msgChangesStr = packetMsg.resultChanges.toLower();
+							
+							/*
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
 							if (idxStart >= 0)
@@ -2197,7 +2197,8 @@ public:
 							{
 								log_debug("[WS] not found block in subscription cached response");
 							}
-
+							*/
+							QString msgChangesStr = packetMsg.resultChanges.toLower();
 							QStringList changesList = msgChangesStr.split("/");
 							for ( const auto& changes : changesList )
 							{
