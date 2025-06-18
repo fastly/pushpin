@@ -395,7 +395,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	buff.replace(oldPattern, newPattern);
 
 	// replace msgId/bodyLen
-	startIndex = buff.indexOf("\"id\":__MSGID__");
+	int startIndex = buff.indexOf("\"id\":__MSGID__");
 	if (startIndex >= 0)
 	{
 		// replace msgId
