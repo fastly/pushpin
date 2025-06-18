@@ -2122,8 +2122,9 @@ public:
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
 							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
-/*
+
 							int diffLen = 0;
+							/*
 							// update block and changes
 							if (!packetMsg.resultBlock.isEmpty())
 							{
