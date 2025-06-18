@@ -2116,14 +2116,15 @@ public:
 
 								responseBuf_.replace(oldPatternStr, newPatternStr);
 
+								log_debug("[1-1] %s", qPrintable(oldPatternStr));
+								log_debug("[1-2] %s", qPrintable(newPatternStr));
+
 								pCacheItem->blockStr = newBlockStr;
 							}
 
 							if (!packetMsg.resultChanges.isEmpty())
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
-
-								log_debug("[1-1] %s", qPrintable(msgChangesStr));
 
 								QStringList changesList = msgChangesStr.split("/");
 								for ( const auto& changes : changesList )
