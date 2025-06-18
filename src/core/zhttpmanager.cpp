@@ -2146,7 +2146,7 @@ public:
 
 								pCacheItem->blockStr = newBlockStr;
 							}
-							/*
+							///*
 							if (!packetMsg.resultChanges.isEmpty())
 							{
 								QString msgChangesStr = packetMsg.resultChanges.toLower();
@@ -2183,8 +2183,8 @@ public:
 									pCacheItem->changesMap[changesKey] = newVal;
 								}
 							}
-							*/
-							/*
+							//*/
+							///*
 							QByteArray patternStr = "\"block\":\"";
 							qsizetype idxStart = responseBuf_.indexOf(patternStr);
 							if (idxStart >= 0)
@@ -2226,6 +2226,7 @@ public:
 									if (idxEnd > idxStart)
 									{
 										responseBuf_.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
+										diffLen += idxEnd-idxStart+1 + newPattern.length();
 									}
 									else
 									{
@@ -2234,7 +2235,7 @@ public:
 									}	
 								}
 							}
-							*/
+							//*/
 
 							// store response body
 							log_debug("TTT %d", diffLen);
