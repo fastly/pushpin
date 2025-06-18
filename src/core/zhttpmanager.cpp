@@ -2228,7 +2228,7 @@ public:
 									if (idxEnd > idxStart)
 									{
 										responseBuf_.replace(idxStart, idxEnd-idxStart+1, qPrintable(newPattern));
-										diffLen += idxEnd-idxStart+1 + newPattern.length();
+										diffLen += idxEnd-idxStart+1 - newPattern.length();
 									}
 									else
 									{
