@@ -546,7 +546,7 @@ static void remove_old_cache_items()
 				if (pCacheItem->updatedFlag == true)
 				{
 					pCacheItem->updatedFlag = false;
-					gCacheResponseBuffer[pCacheItem->subscriptionStr.toUtf8()] = pCacheItem->updatedSubscription;
+					store_cache_response_buffer(subscriptionStr.toUtf8(), pCacheItem->updatedSubscription, QString(""));
 				}
 			}
 		}
