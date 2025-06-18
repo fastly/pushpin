@@ -272,7 +272,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen)
 {
 	QByteArray buff = responseBuf;
-	log_debug("[__STORE_BUFF] %s", buff.constData());
+	log_warning("[__STORE_BUFF] %s", buff.constData());
 
 	// remove connmgr Txxx:
 	QByteArray prefix = " T";
