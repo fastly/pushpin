@@ -2207,7 +2207,7 @@ public:
 									continue;
 								}
 
-								log_debug("[QQQ] %s,%s", qPrintable(changeList[0]), qPrintable(changeList[1]);
+								log_debug("[QQQ] %s,%s", qPrintable(changeList[0]), qPrintable(changeList[1]));
 
 								QString patternStr(qPrintable("[\"" + changeList[0] + "\""));
 								QString newPattern = "[\"";
