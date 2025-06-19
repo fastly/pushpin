@@ -2413,6 +2413,10 @@ public:
 					{
 						pCacheItem->subscriptionStr = msgResultStr;
 					}
+					else
+					{
+						return -1;
+					}
 					
 					log_debug("[WS] Registered Subscription result for \"%s\"", qPrintable(msgResultStr));
 
@@ -2567,11 +2571,11 @@ public:
 			p.from = reqItem.from;
 
 			char bodyStr[1024];
+			gWsCacheClientList[ccIndex].msgIdCount++;
 			int msgId = gWsCacheClientList[ccIndex].msgIdCount;
 			QString methodName = reqItem.unsubscribeMethodName;
 			qsnprintf(bodyStr, 1024, "{\"id\":%d,\"jsonrpc\":\"2.0\",\"method\":\"%s\",\"params\":[\"%s\"]}", 
 				msgId, qPrintable(methodName), qPrintable(reqItem.subscriptionStr));
-			gWsCacheClientList[ccIndex].msgIdCount++;
 			p.body = QByteArray(bodyStr);
 
 			log_debug("[WS] send_unsubscribeRequest: %s", qPrintable(TnetString::variantToString(p.toVariant(), -1)));
