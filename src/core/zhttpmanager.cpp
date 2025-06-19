@@ -2138,11 +2138,14 @@ public:
 								newPatternStr += newBlockStr.toUtf8();
 								newPatternStr += "\"";
 
-								responseBuf_.replace(oldPatternStr, newPatternStr);
-
-								diffLen += newPatternStr.length() - oldPatternStr.length();
-
-								pCacheItem->blockStr = newBlockStr;
+								qsizetype idxStart = responseBuf_.indexOf(oldPatternStr);
+								if (idxStart >= 0)
+								{
+									log_debug("[PPP-1] %s,%s", oldPatternStr.constData(), newPatternStr.constData());
+									responseBuf_.replace(idxStart, oldPatternStr.length(), newPatternStr);
+									diffLen += newPatternStr.length() - oldPatternStr.length();
+									pCacheItem->blockStr = newBlockStr;
+								}
 							}
 							///*
 							if (!packetMsg.resultChanges.isEmpty())
@@ -2177,6 +2180,7 @@ public:
 									qsizetype idxStart = responseBuf_.indexOf(oldPatternStr);
 									if (idxStart >= 0)
 									{
+										log_debug("[PPP-2] %s,%s", oldPatternStr.constData(), newPatternStr.constData());
 										responseBuf_.replace(idxStart, oldPatternStr.length(), newPatternStr);
 										diffLen += newPatternStr.length() - oldPatternStr.length();
 										pCacheItem->changesMap[changesKey] = newVal;
