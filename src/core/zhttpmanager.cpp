@@ -1230,16 +1230,16 @@ public:
 				}
 				else if (gWsClientMap.contains(packetId))
 				{
-					switch (packet.type)
+					switch (p.type)
 					{
 					case ZhttpRequestPacket::Cancel:
 					case ZhttpRequestPacket::Close:
 					case ZhttpRequestPacket::Error:
 						{
-							log_debug("[WS] switching client of request error, condition=%s", packet.condition.data());
+							log_debug("[WS] switching client of request error, condition=%s", p.condition.data());
 
 							// get error type
-							QString conditionStr = QString(packet.condition);
+							QString conditionStr = QString(p.condition);
 							if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
 								conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
 							{
