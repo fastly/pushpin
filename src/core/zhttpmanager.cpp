@@ -1230,6 +1230,49 @@ public:
 				}
 				else if (gWsClientMap.contains(packetId))
 				{
+					log_debug("[WS] received ws request from real client=%s", packetId.data());
+
+					// update client last request time
+					gWsClientMap[packetId].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+
+					// if cancel/close request, remove client from the subscription client list
+					switch (p.type)
+					{
+					case ZhttpRequestPacket::Cancel:
+						unregister_client(packetId);
+						//send_wsCloseResponse(packetId);
+						break;
+					case ZhttpRequestPacket::Close:
+						send_response_to_client(ZhttpResponsePacket::Close, packetId, p.from);
+						unregister_client(packetId);
+						break;
+					case ZhttpRequestPacket::KeepAlive:
+						log_debug("[WS] received KeepAlive, ignoring");
+						//send_pingResponse(packetId);
+						break;
+					case ZhttpRequestPacket::Pong:
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, 0);
+						break;
+					case ZhttpRequestPacket::Ping:
+						send_response_to_client(ZhttpResponsePacket::Pong, packetId, p.from);
+						break;
+					case ZhttpRequestPacket::Credit:
+						log_debug("[WS] received Credit, ignoring");
+						break;
+					case ZhttpRequestPacket::Data:
+						// Send new credit packet
+						send_response_to_client(ZhttpResponsePacket::Credit, packetId, p.from, static_cast<int>(p.body.size()));
+						process_ws_stream_request(packetId, p);
+						break;
+					default:
+						break;
+					}
+
+					resume_cache_thread();
+					continue;
+				}
+				else // cache client
+				{
 					switch (p.type)
 					{
 					case ZhttpRequestPacket::Cancel:
@@ -1258,32 +1301,8 @@ public:
 							}
 						}
 						break;
-					}
-					
-					resume_cache_thread();
-					continue;
-				}
-				else
-				{
-					log_debug("[WS] switching client of request error, condition=%s", packet.condition.data());
-
-					// get error type
-					QString conditionStr = QString(packet.condition);
-					if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
-						conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
-					{
-						log_debug("[WS] Sleeping for 10 seconds");
-						sleep(10);
-					}
-
-					// if cache client0 is ON, start cache client1
-					int ccIndex = get_cc_index_from_clientId(packetId);
-					if (ccIndex >= 0)
-					{
-						log_debug("[WS] disabled cache client %d", ccIndex);
-						QString urlPath = gWsBackendUrlList[ccIndex];
-						wsCacheClientConnectFailedCountMap[urlPath]++;
-						gWsCacheClientList[ccIndex].initFlag = false;
+					default:
+						break;
 					}
 				}
 				
