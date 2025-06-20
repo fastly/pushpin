@@ -717,6 +717,8 @@ int get_cc_next_index_from_clientId(QByteArray clientId, QByteArray instanceId)
 	if (ccIndex >= gWsCacheClientList.count())
 		ccIndex = 0;
 
+	log_debug("QQQQQ %d, %s, %s", ccIndex, gWsCacheClientList[ccIndex].instanceId.constData(), instanceId.constData());
+
 	for (int i = ccIndex; i < gWsCacheClientList.count(); i++)
 	{
 		if (gWsCacheClientList[i].initFlag == true && gWsCacheClientList[i].instanceId == instanceId)
