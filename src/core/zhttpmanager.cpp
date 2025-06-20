@@ -1957,7 +1957,6 @@ public:
 		}
 
 		// send response to clients.
-		pCacheItem->retryCount = 0;
 		pCacheItem->newMsgId = 0;
 		pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		pCacheItem->cachedFlag = true;
