@@ -3016,12 +3016,11 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 
 void initCacheClient(int workerNo)
 {
-	log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
-
 	if (gWorkersCount == 1)
 	{
 		for	(int i=0; i<gWsBackendUrlList.count(); i++)
 		{
+			log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[i]));
 			// create processes for cache client
 			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], workerNo);
 			if (processId > 0)
@@ -3038,6 +3037,21 @@ void initCacheClient(int workerNo)
 	}
 	else
 	{
+		log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
+
+		// create processes for cache client
+		pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[0], workerNo);
+		if (processId > 0)
+		{
+			ClientItem cacheClient;
+			cacheClient.initFlag = false;
+			cacheClient.processId = processId;
+			cacheClient.urlPath = gWsBackendUrlList[i];
+			cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
+
+			gWsCacheClientList.append(cacheClient);
+		}
+
 		workerNo++;
 		if (workerNo < gWorkersCount)
 		{
