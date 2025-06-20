@@ -1602,6 +1602,7 @@ public:
 
 				// Send client cache request packet for auto-refresh
 				int ccIndex = get_cc_next_index_from_clientId(pCacheItem->cacheClientId, instanceId);
+				log_debug("QQQQQ %d", ccIndex);
 				pCacheItem->cacheClientId = gWsCacheClientList[ccIndex].clientId;
 				urlPath = gWsCacheClientList[ccIndex].urlPath;
 				pCacheItem->newMsgId = send_ws_request_over_cacheclient(pCacheItem->requestPacket, QString("__MSGID__"), ccIndex);
