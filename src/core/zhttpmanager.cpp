@@ -3046,7 +3046,7 @@ void initCacheClient(int workerNo)
 			ClientItem cacheClient;
 			cacheClient.initFlag = false;
 			cacheClient.processId = processId;
-			cacheClient.urlPath = gWsBackendUrlList[i];
+			cacheClient.urlPath = gWsBackendUrlList[0];
 			cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 
 			gWsCacheClientList.append(cacheClient);
