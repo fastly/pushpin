@@ -1900,7 +1900,7 @@ public:
 		if (parse_packet_msg(Scheme::http, p, packetMsg, instanceId) < 0)
 			bodyParseSucceed = false;
 
-		CacheItem *pCacheItem = null;
+		CacheItem *pCacheItem = NULL;
 		QByteArray itemId = QByteArray();
 		if (bodyParseSucceed == true)
 		{
@@ -1925,7 +1925,7 @@ public:
 					(pCacheItem->cachedFlag == false)
 				)
 				{
-					itemId = msgIdByte;
+					itemId = _itemId;
 					break;
 				}
 			}
@@ -1972,7 +1972,7 @@ public:
 			{
 				QString msgId = pCacheItem->clientMap[cliId].msgId;
 				QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
-				writeToClient_(msgIdByte, cliId, msgId, instanceAddress, orgInstanceId);
+				writeToClient_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
 
 				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				unregister_client(cliId);
