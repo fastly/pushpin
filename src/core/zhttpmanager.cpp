@@ -3022,7 +3022,7 @@ void initCacheClient(int workerNo)
 		{
 			log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[i]));
 			// create processes for cache client
-			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], workerNo);
+			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], i);
 			if (processId > 0)
 			{
 				ClientItem cacheClient;
