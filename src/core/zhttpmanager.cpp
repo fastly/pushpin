@@ -1041,8 +1041,8 @@ public:
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
 					gWsCacheClientList[ccIndex].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
-					log_debug("[WS] Registered new cache client=%s, from=%s, instanceId=%s", 
-						id.id.data(), p.from.toHex().data(), instanceId.toHex().data());
+					log_debug("[WS] Registered new cache %d client=%s, from=%s, instanceId=%s", 
+						ccIndex, id.id.constData(), p.from.constData(), instanceId.constData());
 				}
 				else // if request from real client
 				{
