@@ -1039,6 +1039,7 @@ public:
 					gWsCacheClientList[ccIndex].msgIdCount = -1;
 					gWsCacheClientList[ccIndex].from = p.from;
 					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
+					gWsCacheClientList[ccIndex].lastResponseSeq = -1;
 					gWsCacheClientList[ccIndex].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 
 					log_debug("[WS] Registered new cache %d client=%s, from=%s, instanceId=%s", 
