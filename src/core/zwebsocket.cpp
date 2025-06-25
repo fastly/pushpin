@@ -500,7 +500,7 @@ public:
 
 		if(seq != inSeq)
 		{
-			log_warning("zws server: error id=%s received message out of sequence, canceling", id.data());
+			log_warning("zws server: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
 			tryRespondCancel(packet);
 
@@ -608,7 +608,7 @@ public:
 
 		if(seq != inSeq)
 		{
-			log_warning("zws client: error id=%s received message out of sequence, canceling", id.data());
+			log_warning("zws client: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
 			tryRespondCancel(packet);
 
