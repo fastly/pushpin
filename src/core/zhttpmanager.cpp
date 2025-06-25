@@ -3240,7 +3240,7 @@ void ZhttpManager::setCacheParameters(
 	gRedisPort = redisPort;
 	gRedisPoolCount = redisPoolCount;
 	gRedisKeyHeader = redisKeyHeader;
-	log_debug("[CONFIG] redis %s, host=%s, port=%d, pool=%d, keyHeader", gRedisEnable ? "enabled" : "disabled",
+	log_debug("[CONFIG] redis %s, host=%s, port=%d, pool=%d, keyHeader=%s", gRedisEnable ? "enabled" : "disabled",
 		qPrintable(gRedisHostAddr), gRedisPort, gRedisPoolCount, qPrintable(gRedisKeyHeader));
 	if (gRedisEnable == true)
 	{
