@@ -112,6 +112,7 @@ public:
 		QString redisHostAddr;
 		int redisPort;
 		int redisPoolCount;
+		QString redisKeyHeader;
 		QMap<QString, QStringList> countMethodGroupMap;
 
 		Configuration() :
@@ -138,7 +139,8 @@ public:
 			redisEnable(false),
 			redisHostAddr("127.0.0.1"),
 			redisPort(6379),
-			redisPoolCount(10)
+			redisPoolCount(10),
+			redisKeyHeader(""),
 		{
 		}
 	};

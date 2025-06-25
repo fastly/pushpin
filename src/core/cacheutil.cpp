@@ -97,14 +97,13 @@ extern int gCacheItemMaxCount;
 
 // redis
 extern bool gRedisEnable;
+extern QString gRedisKeyHeader;
 
 // count method group
 extern QHash<QString, QStringList> gCountMethodGroupMap;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-
-#define REDIS_CACHE_ID_HEADER	"PUSHPIN : "
 
 // prometheus status
 extern QList<QString> gCacheMethodRequestCountList;
@@ -229,7 +228,7 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 		return;
 	}
 
-	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
+	QByteArray key = gRedisKeyHeader.toUtf8() + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"SET %s %b",
@@ -251,7 +250,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 		return QByteArray();
 	}
 
-	QByteArray key = REDIS_CACHE_ID_HEADER + itemId;
+	QByteArray key = gRedisKeyHeader.toUtf8() + itemId;
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"GET %s",

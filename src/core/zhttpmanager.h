@@ -80,6 +80,7 @@ public:
 		const QString &redisHostAddr,
 		const int redisPort,
 		const int redisPoolCount,
+		const QString &redisKeyHeader,
 		QMap<QString, QStringList> countMethodGroupMap);
 	
 	int create_wsCacheClientProcesses();
