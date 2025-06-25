@@ -140,7 +140,7 @@ public:
 			redisHostAddr("127.0.0.1"),
 			redisPort(6379),
 			redisPoolCount(10),
-			redisKeyHeader(""),
+			redisKeyHeader("")
 		{
 		}
 	};
