@@ -1018,10 +1018,10 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	else
 	{
 		QString subKey = QString("WS+");
-		if (is_subscribe_method(packetMsg.method) == true)
-		{
-			subKey += instanceId.constData();
-		}
+		//if (is_subscribe_method(packetMsg.method) == true)
+		//{
+		//	subKey += instanceId.constData();
+		//}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";
@@ -1069,10 +1069,10 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	else
 	{
 		QString subKey = QString("WS+");
-		if (is_subscribe_method(packetMsg.method) == true)
-		{
-			subKey += instanceId.constData();
-		}
+		//if (is_subscribe_method(packetMsg.method) == true)
+		//{
+		//	subKey += instanceId.constData();
+		//}
 		packetMsg.paramsHash = build_hash_key(jsonMap, subKey);
 	}
 	packetMsg.subscription = jsonMap.contains(gSubscriptionAttrName) ? jsonMap[gSubscriptionAttrName].toString() : "";

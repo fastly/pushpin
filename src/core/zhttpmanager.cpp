@@ -2462,10 +2462,6 @@ public:
 							}
 						}
 					}
-
-					//store_cache_item_field(itemId, "subscriptionStr", pCacheItem->subscriptionStr);
-					//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
-					//store_cache_item_field(itemId, "clientMap", pCacheItem->clientMap);
 				}
 				return -1;
 			}
