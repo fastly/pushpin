@@ -360,7 +360,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	else
 	{
 		redis_store_cache_response(itemId, buff);
-		QThread::usleep(10);
+		QThread::usleep(100);
 	}
 }
 
