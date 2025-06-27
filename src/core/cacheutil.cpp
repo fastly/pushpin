@@ -232,7 +232,7 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"SET %s %b",
-		key.constData(),
+		key.toHex().constData(),
 		response.constData(), response.size()
 	);
 	
@@ -254,7 +254,7 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"GET %s",
-		key.constData()
+		key.toHex().constData()
 	);
 
 	if (reply == nullptr)
@@ -360,7 +360,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	else
 	{
 		redis_store_cache_response(itemId, buff);
-		QThread::usleep(100);
+		QThread::usleep(1);
 	}
 }
 
@@ -631,7 +631,7 @@ void cache_thread()
 		while (gMainThreadRunning)
 		{
 			gCacheThreadRunning = false;
-			QThread::usleep(1);
+			QThread::usleep(10);
 		}
 		gCacheThreadRunning = true;
 
