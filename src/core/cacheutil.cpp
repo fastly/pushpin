@@ -228,11 +228,11 @@ void redis_store_cache_response(const QByteArray& itemId, const QByteArray& resp
 		return;
 	}
 
-	QByteArray key = gRedisKeyHeader.toUtf8() + itemId;
+	QString key = gRedisKeyHeader + itemId.toHex().constData();
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"SET %s %b",
-		key.toHex().constData(),
+		qPrintable(key),
 		response.constData(), response.size()
 	);
 	
@@ -250,11 +250,11 @@ QByteArray redis_load_cache_response(const QByteArray& itemId)
 		return QByteArray();
 	}
 
-	QByteArray key = gRedisKeyHeader.toUtf8() + itemId;
+	QString key = gRedisKeyHeader + itemId.toHex().constData();
 
 	redisReply* reply = (redisReply*)redisCommand(conn.data(),
 		"GET %s",
-		key.toHex().constData()
+		qPrintable(key)
 	);
 
 	if (reply == nullptr)
