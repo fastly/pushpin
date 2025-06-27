@@ -359,6 +359,7 @@ void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& res
 	}
 	else
 	{
+		gCacheResponseBuffer[itemId] = buff;
 		redis_store_cache_response(itemId, buff);
 		QThread::usleep(1);
 	}
@@ -374,6 +375,12 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	else
 	{
 		buff = redis_load_cache_response(itemId);
+		if (buff.length == 0)
+		{
+			log_debug("[REDIS] missed response buffer");
+			buff = gCacheResponseBuffer[itemId];
+			store_cache_response_buffer(itemId, buff, QString(""), 0);
+		}
 	}
 
 	// replace id
