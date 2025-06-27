@@ -375,7 +375,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 	else
 	{
 		buff = redis_load_cache_response(itemId);
-		if (buff.length == 0)
+		if (buff.length() == 0)
 		{
 			log_debug("[REDIS] missed response buffer");
 			buff = gCacheResponseBuffer[itemId];
