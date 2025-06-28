@@ -379,7 +379,7 @@ QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const Q
 		{
 			log_debug("[REDIS] missed response buffer");
 			buff = gCacheResponseBuffer[itemId];
-			store_cache_response_buffer(itemId, buff, QString(""), 0);
+			redis_store_cache_response(itemId, buff);
 		}
 	}
 
