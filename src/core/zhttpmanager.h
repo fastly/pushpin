@@ -69,6 +69,8 @@ public:
 		const QStringList &cacheMethodList,
 		const QStringList &subscribeMethodList,
 		const QStringList &neverTimeoutMethodList,
+		const QStringList &refreshShorterMethodList,
+		const QStringList &refreshLongerMethodList,
 		const QStringList &refreshUneraseMethodList,
 		const QStringList &refreshExcludeMethodList,
 		const QStringList &refreshPassthroughMethodList,

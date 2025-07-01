@@ -124,7 +124,7 @@ extern QHash<QString, int> groupMethodCountMap;
 // HiRedis
 void redis_removeall_cache_item() 
 {
-	log_debug("[QQQ] redis_removeall_cache_item");
+	log_debug("[REDIS] redis_removeall_cache_item");
 	auto conn = RedisPool::instance()->acquire();
 
 	if (!conn)

@@ -634,6 +634,8 @@ public:
 		QStringList cacheMethodList = settings.value("cache/ws_cache_methods").toStringList();
 		QStringList subscribeMethodList = settings.value("cache/ws_subscribe_methods").toStringList();
 		QStringList neverTimeoutMethodList = settings.value("cache/ws_never_timeout_methods").toStringList();
+		QStringList refreshShorterMethodList = settings.value("cache/ws_refresh_shorter_methods").toStringList();
+		QStringList refreshLongerMethodList = settings.value("cache/ws_refresh_longer_methods").toStringList();
 		QStringList refreshUneraseMethodList = settings.value("cache/ws_refresh_unerase_methods").toStringList();
 		QStringList refreshExcludeMethodList = settings.value("cache/ws_refresh_exclude_methods").toStringList();
 		QStringList refreshPassthroughMethodList = settings.value("cache/ws_refresh_passthrough_methods").toStringList();
@@ -714,6 +716,8 @@ public:
 		config.cacheMethodList = cacheMethodList;
 		config.subscribeMethodList = subscribeMethodList;
 		config.neverTimeoutMethodList = neverTimeoutMethodList;
+		config.refreshShorterMethodList = refreshShorterMethodList;
+		config.refreshLongerMethodList = refreshLongerMethodList;
 		config.refreshUneraseMethodList = refreshUneraseMethodList;
 		config.refreshExcludeMethodList = refreshExcludeMethodList;
 		config.refreshPassthroughMethodList = refreshPassthroughMethodList;

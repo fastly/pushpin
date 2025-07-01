@@ -110,6 +110,8 @@ QHash<QString, QString> gSubscribeMethodMap;
 QHash<QByteArray, QList<UnsubscribeRequestItem>> gUnsubscribeRequestMap;
 QList<QByteArray> gDeleteClientList;
 QStringList gNeverTimeoutMethodList;
+QStringList gRefreshShorterMethodList;
+QStringList gRefreshLongerMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
@@ -506,14 +508,14 @@ public:
 
 		if(client_out_sock)
 		{
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			if(log_outputLevel() > LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			if(log_outputLevel() > LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
@@ -528,7 +530,7 @@ public:
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+		if(log_outputLevel() > LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
 
 		QList<QByteArray> msg;
@@ -1617,11 +1619,6 @@ public:
 				refresh_cache(itemId, urlPath, refreshCount);
 			});
 		}
-
-		//store_cache_item_field(itemId, "cacheClientId", pCacheItem->cacheClientId);
-		//store_cache_item_field(itemId, "lastRefreshTime", pCacheItem->lastRefreshTime);
-		//store_cache_item_field(itemId, "lastRefreshCount", pCacheItem->lastRefreshCount);
-		//store_cache_item_field(itemId, "retryCount", pCacheItem->retryCount);
 	}
 
 	void register_cache_refresh(QByteArray itemId, QString urlPath)
@@ -1722,6 +1719,16 @@ public:
 			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
 			log_debug("[HTTP] added refresh never timeout method");
 		}
+		if (gRefreshShorterMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_SHORTER_TIMEOUT;
+			log_debug("[HTTP] added refresh shorter method");
+		}
+		if (gRefreshLongerMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_LONGER_TIMEOUT;
+			log_debug("[HTTP] added refresh longer method");
+		}
 		if (gRefreshUneraseMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_UNERASE;
@@ -1790,6 +1797,16 @@ public:
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
 			log_debug("[WS] added refresh never timeout method");
+		}
+		if (gRefreshShorterMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_SHORTER_TIMEOUT;
+			log_debug("[WS] added refresh shorter method");
+		}
+		if (gRefreshLongerMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= AUTO_REFRESH_LONGER_TIMEOUT;
+			log_debug("[WS] added refresh longer method");
 		}
 		if (gRefreshUneraseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
@@ -2526,10 +2543,6 @@ public:
 
 				continue;
 			}
-			else
-			{
-				log_debug("[QQQ]");
-			}
 		}
 		return msgId;
 	}
@@ -3070,6 +3083,8 @@ void ZhttpManager::setCacheParameters(
 	const QStringList &cacheMethodList,
 	const QStringList &subscribeMethodList,
 	const QStringList &neverTimeoutMethodList,
+	const QStringList &refreshShorterMethodList,
+	const QStringList &refreshLongerMethodList,
 	const QStringList &refreshUneraseMethodList,
 	const QStringList &refreshExcludeMethodList,
 	const QStringList &refreshPassthroughMethodList,
@@ -3111,6 +3126,14 @@ void ZhttpManager::setCacheParameters(
 	foreach (QString method, neverTimeoutMethodList)
 	{
 		gNeverTimeoutMethodList.append(method.toLower());
+	}
+	foreach (QString method, refreshShorterMethodList)
+	{
+		gRefreshShorterMethodList.append(method.toLower());
+	}
+	foreach (QString method, refreshLongerMethodList)
+	{
+		gRefreshLongerMethodList.append(method.toLower());
 	}
 	foreach (QString method, refreshUneraseMethodList)
 	{
@@ -3186,6 +3209,16 @@ void ZhttpManager::setCacheParameters(
 	log_debug("[CONFIG] gNeverTimeoutMethodList");
 	for (int i = 0; i < gNeverTimeoutMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gNeverTimeoutMethodList[i]));
+	}
+
+	log_debug("[CONFIG] gRefreshShorterMethodList");
+	for (int i = 0; i < gRefreshShorterMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gRefreshShorterMethodList[i]));
+	}
+
+	log_debug("[CONFIG] gRefreshLongerMethodList");
+	for (int i = 0; i < gRefreshLongerMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gRefreshLongerMethodList[i]));
 	}
 
 	log_debug("[CONFIG] gRefreshUneraseMethodList");

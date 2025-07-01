@@ -240,6 +240,8 @@ public:
 			config.cacheMethodList,
 			config.subscribeMethodList,
 			config.neverTimeoutMethodList,
+			config.refreshShorterMethodList,
+			config.refreshLongerMethodList,
 			config.refreshUneraseMethodList,
 			config.refreshExcludeMethodList,
 			config.refreshPassthroughMethodList,

@@ -101,6 +101,8 @@ public:
 		QStringList cacheMethodList;
 		QStringList subscribeMethodList;
 		QStringList neverTimeoutMethodList;
+		QStringList refreshShorterMethodList;
+		QStringList refreshLongerMethodList;
 		QStringList refreshUneraseMethodList;
 		QStringList refreshExcludeMethodList;
 		QStringList refreshPassthroughMethodList;
