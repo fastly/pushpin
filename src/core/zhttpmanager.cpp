@@ -1798,12 +1798,12 @@ public:
 			cacheItem.refreshFlag |= AUTO_REFRESH_NEVER_TIMEOUT;
 			log_debug("[WS] added refresh never timeout method");
 		}
-		if (gRefreshShorterMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		if (gRefreshShorterMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_SHORTER_TIMEOUT;
 			log_debug("[WS] added refresh shorter method");
 		}
-		if (gRefreshLongerMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		if (gRefreshLongerMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_LONGER_TIMEOUT;
 			log_debug("[WS] added refresh longer method");
