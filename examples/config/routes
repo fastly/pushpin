@@ -1,1 +1,2 @@
-* test
+*,proto=ws,no_grip,debug localhost:8999
+*,proto=http,no_grip,debug localhost:8999

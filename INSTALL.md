@@ -23,6 +23,19 @@ Optionally, you can install:
 ```sh
 sudo make install
 ```
+### Configuration
+Pushpin has two primary configuration files: `pushpin.conf` and routes. The `pushpin.conf` file refers to the routes file via the routesfile field:
+```sh
+[proxy]
+routesfile=routes
+```
+If a relative path is used, then the file is looked up relative to the location of `pushpin.conf`.
+```sh
+sudo cp examples/config/pushpin.conf /usr/local/etc/pushpin/pushpin.conf
+```
+```sh
+sudo cp examples/config/routes /usr/local/etc/pushpin/routes
+```
 ## Running
 Running on Debian and Ubuntu
 ```sh
