@@ -29,7 +29,7 @@ Running on Debian and Ubuntu
 ```sh
 sudo pushpin --loglevel=2,proxy:3 --logfile=/var/log/pushpin/pushpin.log
 ```
-loglevel=2 : only show warnings. 3 : show debug infos
+loglevel=2 : only show warnings, infos. 3 : show debug messages
 
 ## Configuration
 Pushpin has two primary configuration files: `pushpin.conf` and routes. The `pushpin.conf` file refers to the routes file via the routesfile field:
@@ -47,9 +47,9 @@ sudo cp examples/config/routes /usr/local/etc/pushpin/routes
 ### pushpin.conf file
 For general options, please refer to [this](https://pushpin.org/docs/configuration/#pushpinconf-file).
 Options for cache are added into this file.
-* <a name="ws_cache_enable_flag"></a>cache enable flag (false=disable, true=enable)
+* <a name="cache_enable"></a>cache enable flag (false=disable, true=enable)
 	```
-	ws_cache_enable_flag=true
+	cache_enable=true
 	```
 #### backends
 * <a name="http_backend_urls"></a>http url path list of backends when failed to get response
