@@ -98,5 +98,4 @@ mod tests {
     fn handlerargs() {
         run_serial(handlerargs_test);
     }
-
 }

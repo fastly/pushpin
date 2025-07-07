@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-use std::env;
-use std::ffi::{OsString};
-use std::path::PathBuf;
-use clap::{Parser, arg};
-use crate::core::version;
 use crate::core::config::get_config_file;
+use crate::core::version;
+use clap::{arg, Parser};
+use std::env;
+use std::ffi::OsString;
+use std::path::PathBuf;
 
 // Struct to hold the command line arguments
 #[derive(Parser, Debug)]
@@ -63,7 +63,7 @@ impl CCliArgs {
     pub fn verify(mut self) -> Self {
         let work_dir = env::current_dir().unwrap_or_default();
         let config_path: Option<PathBuf> = self.config_file.as_ref().map(PathBuf::from);
-        
+
         // Resolve the config file path using get_config_file
         self.config_file = match get_config_file(&work_dir, config_path) {
             Ok(path) => Some(path.to_string_lossy().to_string()),
@@ -89,15 +89,27 @@ impl IntoIterator for CCliArgs {
 
     fn into_iter(self) -> Self::IntoIter {
         let args: Vec<(String, String)> = vec![
-            ("config-file".to_string(), self.config_file.unwrap_or_default()),
+            (
+                "config-file".to_string(),
+                self.config_file.unwrap_or_default(),
+            ),
             ("log-file".to_string(), self.log_file.unwrap_or_default()),
             ("log-level".to_string(), self.log_level.to_string()),
-            ("ipc-prefix".to_string(), self.ipc_prefix.unwrap_or_default()),
-            ("port-offset".to_string(), self.port_offset.map_or("".to_string(), |p| p.to_string())),
-            ("routes".to_string(), self.routes.map_or("".to_string(), |r| r.join(","))),
+            (
+                "ipc-prefix".to_string(),
+                self.ipc_prefix.unwrap_or_default(),
+            ),
+            (
+                "port-offset".to_string(),
+                self.port_offset.map_or("".to_string(), |p| p.to_string()),
+            ),
+            (
+                "routes".to_string(),
+                self.routes.map_or("".to_string(), |r| r.join(",")),
+            ),
             ("quiet-check".to_string(), self.quiet_check.to_string()),
         ];
-        
+
         args.into_iter()
     }
 }
@@ -131,9 +143,12 @@ mod tests {
         assert_eq!(verified_args.log_level, 3);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
-        assert_eq!(verified_args.routes, Some(vec!["route1".to_string(), "route2".to_string()]));
+        assert_eq!(
+            verified_args.routes,
+            Some(vec!["route1".to_string(), "route2".to_string()])
+        );
         assert_eq!(verified_args.quiet_check, true);
-        
+
         // Test OsString conversion
         let osstring_vec = verified_args.into_osstring_vec();
         assert_eq!(osstring_vec.len(), expected_arg_count);
@@ -144,7 +159,7 @@ mod tests {
         assert_eq!(osstring_vec[4], OsString::from("8080"));
         assert_eq!(osstring_vec[5], OsString::from("route1,route2"));
         assert_eq!(osstring_vec[6], OsString::from("true"));
-        
+
         // Test with empty/default values
         let empty_args = CCliArgs {
             config_file: None,
@@ -157,8 +172,14 @@ mod tests {
         };
 
         let verified_empty_args = empty_args.verify();
-        let default_config_file = get_config_file(&env::current_dir().unwrap(), None).unwrap().to_string_lossy().to_string();
-        assert_eq!(verified_empty_args.config_file, Some(default_config_file.clone()));
+        let default_config_file = get_config_file(&env::current_dir().unwrap(), None)
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(
+            verified_empty_args.config_file,
+            Some(default_config_file.clone())
+        );
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);

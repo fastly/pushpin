@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+use clap::Parser;
 use pushpin::core::call_c_main;
+use pushpin::core::ccliargs::CCliArgs;
 use pushpin::import_cpp;
 use std::process::ExitCode;
-use pushpin::core::ccliargs::CCliArgs;
-use clap::Parser;
 
 import_cpp! {
     fn handler_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
@@ -27,7 +27,5 @@ import_cpp! {
 fn main() -> ExitCode {
     let c_cli_args = CCliArgs::parse().verify();
 
-    unsafe { 
-        ExitCode::from(call_c_main(handler_main, c_cli_args.into_osstring_vec()))
-    }
+    unsafe { ExitCode::from(call_c_main(handler_main, c_cli_args.into_osstring_vec())) }
 }
