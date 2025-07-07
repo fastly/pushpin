@@ -61,13 +61,10 @@ pub struct CCliArgs {
 impl CCliArgs {
     /// Verifies the command line arguments.
     pub fn verify(mut self) -> Self {
-        // Get current working directory
-        let work_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let work_dir = env::current_dir().unwrap_or_default();
+        let config_path: Option<PathBuf> = self.config_file.as_ref().map(PathBuf::from);
         
-        // Convert config_file Option<String> to Option<PathBuf>
-        let config_path = self.config_file.as_ref().map(|s| PathBuf::from(s));
-        
-        // Use get_config_file to find the config file
+        // Resolve the config file path using get_config_file
         self.config_file = match get_config_file(&work_dir, config_path) {
             Ok(path) => Some(path.to_string_lossy().to_string()),
             Err(e) => {
@@ -91,40 +88,16 @@ impl IntoIterator for CCliArgs {
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut args: Vec<(String, String)> = vec![];
-
-        args.push((
-            "config-file".to_string(), 
-            self.config_file.unwrap_or_else(|| "".to_string())
-        ));
-
-        args.push((
-            "log-file".to_string(),
-            self.log_file.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
-        ));
-
-        args.push(("log-level".to_string(), self.log_level.to_string()));
-
-        args.push((
-            "ipc-prefix".to_string(),
-            self.ipc_prefix.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
-        ));
-
-        args.push((
-            "port-offset".to_string(),
-            self.port_offset.as_ref().map(|s| s.to_string()).unwrap_or_else(|| "".to_string()),
-        ));
-
-        args.push((
-            "routes".to_string(),
-            self.routes.iter().map(|r| r.join(",")).collect::<String>(),
-        ));
-
-        args.push((
-            "quiet-check".to_string(),
-            self.quiet_check.to_string(),
-        ));
-
+        let args: Vec<(String, String)> = vec![
+            ("config-file".to_string(), self.config_file.unwrap_or_default()),
+            ("log-file".to_string(), self.log_file.unwrap_or_default()),
+            ("log-level".to_string(), self.log_level.to_string()),
+            ("ipc-prefix".to_string(), self.ipc_prefix.unwrap_or_default()),
+            ("port-offset".to_string(), self.port_offset.map_or("".to_string(), |p| p.to_string())),
+            ("routes".to_string(), self.routes.map_or("".to_string(), |r| r.join(","))),
+            ("quiet-check".to_string(), self.quiet_check.to_string()),
+        ];
+        
         args.into_iter()
     }
 }
@@ -136,12 +109,11 @@ mod tests {
 
     #[test]
     fn test_ccli_args() {
-        // Create mock config file
+        // Create mock values
         let file = NamedTempFile::new().unwrap();
         let config_test_file = file.path().to_str().unwrap().to_string();
         let expected_arg_count = 7;
 
-        // Create valid CCliArgs
         let args = CCliArgs {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
@@ -152,7 +124,7 @@ mod tests {
             quiet_check: true,
         };
 
-        // Verify verify()
+        // Test verify() method
         let verified_args = args.verify();
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
@@ -162,7 +134,7 @@ mod tests {
         assert_eq!(verified_args.routes, Some(vec!["route1".to_string(), "route2".to_string()]));
         assert_eq!(verified_args.quiet_check, true);
         
-        // Verify conversion to OsString vector
+        // Test OsString conversion
         let osstring_vec = verified_args.into_osstring_vec();
         assert_eq!(osstring_vec.len(), expected_arg_count);
         assert_eq!(osstring_vec[0], OsString::from(config_test_file));
@@ -173,7 +145,7 @@ mod tests {
         assert_eq!(osstring_vec[5], OsString::from("route1,route2"));
         assert_eq!(osstring_vec[6], OsString::from("true"));
         
-        // Create valid empty CCliArgs
+        // Test with empty/default values
         let empty_args = CCliArgs {
             config_file: None,
             log_file: None,
@@ -184,7 +156,6 @@ mod tests {
             quiet_check: false,
         };
 
-        // Verify verify()
         let verified_empty_args = empty_args.verify();
         let default_config_file = get_config_file(&env::current_dir().unwrap(), None).unwrap().to_string_lossy().to_string();
         assert_eq!(verified_empty_args.config_file, Some(default_config_file.clone()));
@@ -195,7 +166,6 @@ mod tests {
         assert_eq!(verified_empty_args.routes, None);
         assert_eq!(verified_empty_args.quiet_check, false);
 
-        // Verify conversion to OsString vector
         let empty_osstring_vec = verified_empty_args.into_osstring_vec();
         assert_eq!(empty_osstring_vec.len(), expected_arg_count);
         assert_eq!(empty_osstring_vec[0], OsString::from(default_config_file));
