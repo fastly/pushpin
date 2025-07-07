@@ -1850,7 +1850,7 @@ void restore_prometheusStatFromFile()
 			readLen += fread(&numResponseMultiPart, sizeof(unsigned long long), 1, in);
 
 			// user-defined method group count
-			foreach(QString groupKey, config.cacheConfig.countMethodGroupMap.keys())
+			foreach(QString groupKey, groupMethodCountMap.keys())
 			{
 				readLen += fread(&groupMethodCountMap[groupKey], sizeof(unsigned long long), 1, in);
 			}
