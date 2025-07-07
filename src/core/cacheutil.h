@@ -209,4 +209,7 @@ void count_methods();
 
 void update_prometheus_hit_count(const CacheItem &cacheItem);
 
+void restore_prometheusStatFromFile();
+void save_prometheusStatIntoFile();
+
 #endif

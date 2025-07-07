@@ -1238,7 +1238,7 @@ void replace_subscription_field(QByteArray &body, QString oldSubscription, QStri
 		return;
 	}
 
-	idx = body.indexOf(oldPattern1);
+	idx = body.indexOf(oldPattern1.toLatin1());
 	if (idx >= 0)
 	{
 		body.replace(idx, oldPattern1.length(), newPattern1);
@@ -1793,7 +1793,7 @@ void restore_prometheusStatFromFile()
 	// get last modified time
 	QFileInfo fileInfo(prometheusBackupFile);
 	int diffTime = 0xFFFFFF;
-	int restoreAllowSeconds = config.cacheConfig.prometheusRestoreAllowSeconds;
+	int restoreAllowSeconds = gPrometheusRestoreAllowSeconds;
 	if (fileInfo.exists())
 	{
 		QDateTime lastModifiedTime = fileInfo.lastModified();
@@ -1918,7 +1918,7 @@ void save_prometheusStatIntoFile()
 			fwrite(&numResponseMultiPart, sizeof(unsigned long long), 1, out);
 
 			// user-defined method group count
-			foreach(QString groupKey, config.cacheConfig.countMethodGroupMap.keys())
+			foreach(QString groupKey, groupMethodCountMap.keys())
 			{
 				fwrite(&groupMethodCountMap[groupKey], sizeof(unsigned long long), 1, out);
 			}
