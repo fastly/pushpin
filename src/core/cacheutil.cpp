@@ -1115,7 +1115,7 @@ void replace_id_field(QByteArray &body, QString oldId, int newId)
 				jSpace += " ";
 			}
 			QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
-			int idx = body.indexOf(oldPattern);
+			int idx = body.indexOf(oldPattern.toLatin1());
 			if (idx >= 0)
 			{
 				body.replace(idx, oldPattern.length(), newPattern);
@@ -1147,7 +1147,7 @@ void replace_id_field(QByteArray &body, QString oldId, QString newId)
 				jSpace += " ";
 			}
 			QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
-			int idx = body.indexOf(oldPattern);
+			int idx = body.indexOf(oldPattern.toLatin1());
 			if (idx >= 0)
 			{
 				body.replace(idx, oldPattern.length(), newPattern);
@@ -1179,7 +1179,7 @@ void replace_id_field(QByteArray &body, int oldId, QString newId)
 				jSpace += " ";
 			}
 			QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + QString::number(oldId);
-			int idx = body.indexOf(oldPattern);
+			int idx = body.indexOf(oldPattern.toLatin1());
 			if (idx >= 0)
 			{
 				body.replace(idx, oldPattern.length(), newPattern);
@@ -1203,14 +1203,14 @@ void replace_result_field(QByteArray &body, QString oldResult, QString newResult
 	qsnprintf(newPattern0, 64, "\"result\":\"%s\"", qPrintable(newResult));
 	qsnprintf(newPattern1, 64, "\"result\": \"%s\"", qPrintable(newResult));
 
-	int idx = body.indexOf(oldPattern0);
+	int idx = body.indexOf(oldPattern0.toLatin1());
 	if (idx >= 0)
 	{
 		body.replace(idx, oldPattern0.length(), newPattern0);
 		return;
 	}
 
-	idx = body.indexOf(oldPattern1);
+	idx = body.indexOf(oldPattern1.toLatin1());
 	if (idx >= 0)
 	{
 		body.replace(idx, oldPattern1.length(), newPattern1);
@@ -1231,7 +1231,7 @@ void replace_subscription_field(QByteArray &body, QString oldSubscription, QStri
 	qsnprintf(newPattern0, 64, "\"subscription\":\"%s\"", qPrintable(newSubscription));
 	qsnprintf(newPattern1, 64, "\"subscription\": \"%s\"", qPrintable(newSubscription));
 
-	int idx = body.indexOf(oldPattern0);
+	int idx = body.indexOf(oldPattern0.toLatin1());
 	if (idx >= 0)
 	{
 		body.replace(idx, oldPattern0.length(), newPattern0);
