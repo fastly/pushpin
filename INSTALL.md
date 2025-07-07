@@ -155,9 +155,9 @@ Options for cache are added into this file.
 
 ## Appendix
 ### Installing redis-server
-```sh
+	```
 	sudo apt update
 	sudo apt install redis-server -y
 	sudo systemctl enable redis-server
 	sudo systemctl start redis-server
-```
+	```
