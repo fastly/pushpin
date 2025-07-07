@@ -797,6 +797,9 @@ private slots:
 	{
 		log_info("stopping...");
 
+		gCacheThreadAllowFlag = false;
+		save_prometheusStatIntoFile();
+
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -807,10 +810,6 @@ private slots:
 			delete t;
 
 		threads.clear();
-
-		gCacheThreadAllowFlag = false;
-		
-		save_prometheusStatIntoFile();
 
 		log_debug("stopped");
 		q->quit(0);
