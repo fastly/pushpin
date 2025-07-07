@@ -95,6 +95,10 @@ extern int gShorterTimeoutSeconds;
 extern int gLongerTimeoutSeconds;
 extern int gCacheItemMaxCount;
 
+// path of prometheus backup file
+static QString gPrometheusBackupDir = "/var/log/";
+extern int gPrometheusRestoreAllowSeconds;
+
 // redis
 extern bool gRedisEnable;
 extern QString gRedisKeyHeader;
@@ -1776,5 +1780,150 @@ void update_prometheus_hit_count(const CacheItem &cacheItem)
 	else if (cacheItem.methodType == SUBSCRIBE_METHOD)
 	{
 		numSubscriptionHit++;
+	}
+}
+
+void restore_prometheusStatFromFile()
+{
+	QString prometheusBackupFile = QDir::cleanPath(gPrometheusBackupDir + "/prometheus_pushpin.bin");
+
+	if(prometheusBackupFile.isEmpty())
+		return;
+	
+	// get last modified time
+	QFileInfo fileInfo(prometheusBackupFile);
+	int diffTime = 0xFFFFFF;
+	int restoreAllowSeconds = config.cacheConfig.prometheusRestoreAllowSeconds;
+	if (fileInfo.exists())
+	{
+		QDateTime lastModifiedTime = fileInfo.lastModified();
+		diffTime = (int)(lastModifiedTime.msecsTo(QDateTime::currentDateTime())/1000);
+	}
+
+	char fName[256];
+	sprintf(fName, "%s", qPrintable(prometheusBackupFile));
+
+	log_info("filename=%s, diffTime=%d, confSeconds=%d", fName, diffTime, restoreAllowSeconds);
+	if (diffTime < restoreAllowSeconds)
+	{
+		FILE *in = fopen(fName, "rb");
+		if (in)
+		{
+			size_t readLen = 0;
+			readLen += fread(&numRequestReceived, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numMessageSent, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numWsConnect, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numClientCount, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numHttpClientCount, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numWsClientCount, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcAuthor, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcBabe, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcBeefy, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcChain, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcChildState, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcContracts, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcDev, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcEngine, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcEth, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcNet, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcWeb3, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcGrandpa, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcMmr, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcOffchain, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcPayment, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcRpc, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcState, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcSyncstate, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcSystem, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRpcSubscribe, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numCacheInsert, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numCacheHit, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numNeverTimeoutCacheInsert, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numNeverTimeoutCacheHit, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numCacheLookup, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numCacheExpiry, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numRequestMultiPart, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numSubscriptionInsert, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numSubscriptionHit, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numSubscriptionLookup, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numSubscriptionExpiry, sizeof(unsigned long long), 1, in);
+			readLen += fread(&numResponseMultiPart, sizeof(unsigned long long), 1, in);
+
+			// user-defined method group count
+			foreach(QString groupKey, config.cacheConfig.countMethodGroupMap.keys())
+			{
+				readLen += fread(&groupMethodCountMap[groupKey], sizeof(unsigned long long), 1, in);
+			}
+
+			log_info("requestReceived = %d, restoreItemCount=%d", numRequestReceived, readLen);
+
+			fclose(in);
+		}
+	}
+}
+
+void save_prometheusStatIntoFile()
+{
+	// backup prometheus stat
+	QString prometheusBackupFile = QDir::cleanPath(gPrometheusBackupDir + "/prometheus_pushpin.bin");
+	
+	char fName[256];
+	sprintf(fName, "%s", qPrintable(prometheusBackupFile));
+
+	log_info(fName);
+	if (fName)
+	{
+		log_info("requestReceived = %d", numRequestReceived);
+
+		FILE *out = fopen(fName, "wb");
+		if (out)
+		{
+			fwrite(&numRequestReceived, sizeof(unsigned long long), 1, out);
+			fwrite(&numMessageSent, sizeof(unsigned long long), 1, out);
+			fwrite(&numWsConnect, sizeof(unsigned long long), 1, out);
+			fwrite(&numClientCount, sizeof(unsigned long long), 1, out);
+			fwrite(&numHttpClientCount, sizeof(unsigned long long), 1, out);
+			fwrite(&numWsClientCount, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcAuthor, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcBabe, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcBeefy, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcChain, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcChildState, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcContracts, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcDev, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcEngine, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcEth, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcNet, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcWeb3, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcGrandpa, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcMmr, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcOffchain, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcPayment, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcRpc, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcState, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcSyncstate, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcSystem, sizeof(unsigned long long), 1, out);
+			fwrite(&numRpcSubscribe, sizeof(unsigned long long), 1, out);
+			fwrite(&numCacheInsert, sizeof(unsigned long long), 1, out);
+			fwrite(&numCacheHit, sizeof(unsigned long long), 1, out);
+			fwrite(&numNeverTimeoutCacheInsert, sizeof(unsigned long long), 1, out);
+			fwrite(&numNeverTimeoutCacheHit, sizeof(unsigned long long), 1, out);
+			fwrite(&numCacheLookup, sizeof(unsigned long long), 1, out);
+			fwrite(&numCacheExpiry, sizeof(unsigned long long), 1, out);
+			fwrite(&numRequestMultiPart, sizeof(unsigned long long), 1, out);
+			fwrite(&numSubscriptionInsert, sizeof(unsigned long long), 1, out);
+			fwrite(&numSubscriptionHit, sizeof(unsigned long long), 1, out);
+			fwrite(&numSubscriptionLookup, sizeof(unsigned long long), 1, out);
+			fwrite(&numSubscriptionExpiry, sizeof(unsigned long long), 1, out);
+			fwrite(&numResponseMultiPart, sizeof(unsigned long long), 1, out);
+
+			// user-defined method group count
+			foreach(QString groupKey, config.cacheConfig.countMethodGroupMap.keys())
+			{
+				fwrite(&groupMethodCountMap[groupKey], sizeof(unsigned long long), 1, out);
+			}
+			
+			fclose(out);
+		}
 	}
 }

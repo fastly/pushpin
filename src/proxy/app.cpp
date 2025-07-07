@@ -694,6 +694,8 @@ public:
 		QString msgIdFieldName = settings.value("cache/message_id_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
+		// prometheus restore allow seconds (default 300)
+		int prometheusRestoreAllowSeconds = settings.value("cache/prometheus_restore_allow_seconds", 300).toInt();
 		// redis
 		bool redisEnable = settings.value("cache/redis_enable").toBool();
 		QString redisHostAddr = settings.value("cache/redis_host_addr").toString();
@@ -724,7 +726,8 @@ public:
 		config.cacheKeyItemList = cacheKeyItemList;
 		config.msgIdFieldName = msgIdFieldName;
 		config.msgMethodFieldName = msgMethodFieldName;
-		config.msgParamsFieldName = msgParamsFieldName;
+		config.prometheusRestoreAllowSeconds = prometheusRestoreAllowSeconds;
+		config.redisEnable = redisEnable;
 		config.redisEnable = redisEnable;
 		config.redisHostAddr = redisHostAddr;
 		config.redisPort = redisPort;
@@ -806,6 +809,8 @@ private slots:
 		threads.clear();
 
 		gCacheThreadAllowFlag = false;
+		
+		save_prometheusStatIntoFile();
 
 		log_debug("stopped");
 		q->quit(0);

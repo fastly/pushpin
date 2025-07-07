@@ -249,6 +249,7 @@ public:
 			config.msgIdFieldName,
 			config.msgMethodFieldName,
 			config.msgParamsFieldName,
+			config.prometheusRestoreAllowSeconds,
 			config.redisEnable,
 			config.redisHostAddr,
 			config.redisPort,

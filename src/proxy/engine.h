@@ -110,6 +110,7 @@ public:
 		QString msgIdFieldName;
 		QString msgMethodFieldName;
 		QString msgParamsFieldName;
+		int prometheusRestoreAllowSeconds;
 		bool redisEnable;
 		QString redisHostAddr;
 		int redisPort;
@@ -138,6 +139,7 @@ public:
 			statsConnectionsMaxTtl(-1),
 			statsReportInterval(-1),
 			cacheEnable(false),
+			prometheusRestoreAllowSeconds(300),
 			redisEnable(false),
 			redisHostAddr("127.0.0.1"),
 			redisPort(6379),

@@ -121,6 +121,9 @@ QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
 QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
+// prometheus restore allow seconds (default 300)
+int gPrometheusRestoreAllowSeconds = 300;
+
 // redis
 bool gRedisEnable = false;
 QString gRedisHostAddr = "127.0.0.1";
@@ -3092,6 +3095,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
+	int prometheusRestoreAllowSeconds,
 	bool redisEnable,
 	const QString &redisHostAddr,
 	const int redisPort,
@@ -3263,6 +3267,9 @@ void ZhttpManager::setCacheParameters(
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}
 
+	// prometheus restore allow seconds (default 300)
+	gPrometheusRestoreAllowSeconds=prometheusRestoreAllowSeconds;
+
 	// init redis
 	gRedisEnable = redisEnable;
 	gRedisHostAddr = redisHostAddr;
@@ -3289,6 +3296,8 @@ void ZhttpManager::setCacheParameters(
 		log_debug("%s", qPrintable(groupTotalStr));
 		gCountMethodGroupMap[groupKey] = groupStrList;
 	}
+
+	restore_prometheusStatFromFile();
 }
 
 #include "zhttpmanager.moc"
