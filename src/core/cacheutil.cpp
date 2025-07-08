@@ -787,19 +787,18 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	}
 	else if (processId == 0) // child process
 	{
-		char *bin = (char*)"/usr/bin/env";
+		char *bin = (char*)"wscat";
 		char *envp[] = {NULL};
 		
 		// create wscat
 		char * argv_list[] = {
 			bin, 
-			(char*)"wscat",
 			(char*)"-H", socketHeaderStr, 
 			(char*)"-c", (char*)qPrintable(urlPath), 
 			NULL
 		};
 		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
-		execve(bin, argv_list, envp);
+		execvp(bin, argv_list, envp);
 		
 		//set_debugLogLevel(true);
 		log_debug("failed to start wscat error=%d", errno);
