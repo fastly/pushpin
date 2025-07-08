@@ -794,7 +794,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		char * argv_list[] = {
 			bin, 
 			(char*)"-H", socketHeaderStr, 
-			(char*)"-c", (char*)qPrintable(urlPath), 
+			(char*)"-c", (char*)urlPath.toUtf8().constData(), 
 			NULL
 		};
 		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
