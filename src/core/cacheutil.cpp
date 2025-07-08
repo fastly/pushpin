@@ -798,7 +798,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 			NULL
 		};
 		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
-		execvp(bin, argv_list, envp);
+		execvp(bin, argv_list);
 		
 		//set_debugLogLevel(true);
 		log_debug("failed to start wscat error=%d", errno);
