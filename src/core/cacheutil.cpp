@@ -796,6 +796,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 			(char*)"-c", (char*)qPrintable(urlPath), 
 			NULL
 		};
+		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
 		execve(bin, argv_list, NULL);
 		
 		//set_debugLogLevel(true);
