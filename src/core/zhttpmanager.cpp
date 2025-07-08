@@ -3297,7 +3297,7 @@ void ZhttpManager::setCacheParameters(
 		gCountMethodGroupMap[groupKey] = groupStrList;
 	}
 
-	restore_prometheusStatFromFile();
+	//restore_prometheusStatFromFile();
 }
 
 #include "zhttpmanager.moc"
