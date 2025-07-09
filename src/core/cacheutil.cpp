@@ -805,7 +805,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 		//system("wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws");
 		QString cmdStr = "wscat -H Socket-Owner:Cache_Client";
-		cmdStr += _no;
+		cmdStr += QString::number(_no);
 		cmdStr += " -c ";
 		cmdStr += urlPath;
 		log_debug("%s", qPrintable(cmdStr));
