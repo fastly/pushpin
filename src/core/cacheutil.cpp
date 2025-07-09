@@ -809,7 +809,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		cmdStr += " -c ";
 		cmdStr += urlPath;
 		log_debug("%s", qPrintable(cmdStr));
-		char *args[] = {"bash", "-c", qPrintable(cmdStr), NULL};
+		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
 		execvp("bash", args);
 		
 		//set_debugLogLevel(true);
