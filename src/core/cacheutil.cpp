@@ -811,7 +811,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		//execvp("bash", args);
 
 		log_debug("%s", cmdStr.toUtf8().data());
-		system("which wscat");
+		system("ping www.google.com");
 		system(cmdStr.toUtf8().data());
 		
 		//set_debugLogLevel(true);
