@@ -803,14 +803,13 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		execve(bin, argv_list, envp);
 		*/
 
-		/*
 		QString cmdStr = "wscat -H Socket-Owner:Cache_Client";
 		cmdStr += QString::number(_no);
 		cmdStr += " -c ";
 		cmdStr += urlPath;
-		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
-		execvp("bash", args);
-		*/
+		//char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
+		//execvp("bash", args);
+
 		system(cmdStr.toUtf8().data());
 		
 		//set_debugLogLevel(true);
