@@ -776,9 +776,6 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 
 pid_t create_process_for_cacheclient(QString urlPath, int _no)
 {
-	char socketHeaderStr[64];
-	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", _no);
-
 	pid_t processId = fork();
 	if (processId == -1)
 	{
@@ -811,7 +808,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		//execvp("bash", args);
 
 		log_debug("%s", cmdStr.toUtf8().data());
-		system("wscat -c ws://localhost:7102/ws1");
+		system("/usr/bin/wscat -c ws://localhost:7102/ws1");
 		system(cmdStr.toUtf8().data());
 		
 		//set_debugLogLevel(true);
