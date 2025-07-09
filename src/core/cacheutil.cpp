@@ -810,6 +810,8 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		//char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
 		//execvp("bash", args);
 
+		log_debug("%s", cmdStr.toUtf8().data());
+		system("which wscat");
 		system(cmdStr.toUtf8().data());
 		
 		//set_debugLogLevel(true);
