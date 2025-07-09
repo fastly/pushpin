@@ -804,14 +804,10 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		cmdStr += QString::number(_no);
 		cmdStr += " -c ";
 		cmdStr += urlPath;
-		//char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
-		//execvp("bash", args);
-
 		log_debug("%s", cmdStr.toUtf8().data());
-		system("nano");
-		system("/usr/bin/wscat -c ws://localhost:7102/ws1");
-		system(cmdStr.toUtf8().data());
-		
+		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
+		execvp("bash", args);
+
 		//set_debugLogLevel(true);
 		log_debug("failed to start wscat error=%d", errno);
 
