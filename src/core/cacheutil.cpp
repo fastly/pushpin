@@ -809,7 +809,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		cmdStr += " -c ";
 		cmdStr += urlPath;
 		log_debug("%s", qPrintable(cmdStr));
-		char *args[] = {"bash", "-c", "wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws", NULL};
+		char *args[] = {"bash", "-c", qPrintable(cmdStr), NULL};
 		execvp("bash", args);
 		
 		//set_debugLogLevel(true);
