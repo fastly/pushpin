@@ -23,6 +23,7 @@
 
 #include "cacheutil.h"
 
+#include <pty.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -776,7 +777,9 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 
 pid_t create_process_for_cacheclient(QString urlPath, int _no)
 {
-	pid_t processId = fork();
+	int master_fd;
+    pid_t processId = forkpty(&master_fd, NULL, NULL, NULL);
+	//pid_t processId = fork();
 	if (processId == -1)
 	{
 		// processId == -1 means error occurred
