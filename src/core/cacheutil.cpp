@@ -803,7 +803,9 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		execve(bin, argv_list, envp);
 		*/
 
-		system("wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws");
+		//system("wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws");
+		char *args[] = {"bash", "-c", "wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws", NULL};
+		execvp("bash", args);
 		
 		//set_debugLogLevel(true);
 		log_debug("failed to start wscat error=%d", errno);
