@@ -3256,7 +3256,7 @@ void ZhttpManager::setCacheParameters(
 			log_debug("[WS] not defined ws backend url, exiting");
 			exit(0);
 		}
-		QTimer::singleShot(5 * 1000, [=]() {
+		QTimer::singleShot(2 * 1000, [=]() {
 			initCacheClient(0);
 		});
 

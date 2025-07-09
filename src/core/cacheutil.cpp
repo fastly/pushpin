@@ -24,6 +24,7 @@
 #include "cacheutil.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <signal.h>
 #include <unistd.h>
@@ -787,6 +788,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	}
 	else if (processId == 0) // child process
 	{
+		/*
 		char *bin = (char*)"/usr/bin/wscat";
 		char *envp[] = {NULL};
 		
@@ -799,6 +801,9 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 		};
 		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
 		execve(bin, argv_list, envp);
+		*/
+
+		system("wscat -H Socket-Owner:Cache_Client0 -c ws://localhost:7999/ws");
 		
 		//set_debugLogLevel(true);
 		log_debug("failed to start wscat error=%d", errno);
