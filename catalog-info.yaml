@@ -1,0 +1,74 @@
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    github.com/project-slug: fastly/fst-pushpin
+    pagerduty.com/service-id: PAXCETC
+  description: Manages HTTP/WebSocket client connections for pub/sub message delivery or passthrough to origin
+  labels: {}
+  links:
+    - icon: docs
+      title: Pushpin Runbook
+      type: runbooks
+      url: https://github.com/fastly/fst-pushpin/blob/main/RUNBOOK.md
+    - icon: build
+      title: Jenkins CI
+      type: continuous_integration
+      url: https://ci.secretcdn.net/job/teamc/job/fst-pushpin/
+    - icon: dashboard
+      title: Pushpin Dashboard
+      type: metrics
+      url: https://observability.secretcdn.net/grafana-playground/d/JJuqpU04k/pushpin?orgId=1&var-datasource=thanos&var-site=All&var-segment=&var-hostname=All&var-group_by=hostname&var-cdn=fastly&var-varsion=All
+    - icon: developerBoard
+      title: JIRA
+      type: issue_tracking
+      url: https://fastly.atlassian.net/jira/software/c/projects/EDATA/issues/?jql=project%20%3D%20%22EDATA%22%20AND%20labels%20%3D%20fanout%20ORDER%20BY%20created%20DESC
+    - icon: notifications
+      title: PagerDuty
+      type: incidents
+      url: https://fastly.pagerduty.com/schedules#PPWSU0O
+  name: pushpin
+  tags:
+    - alias:fanout
+  title: Pushpin
+spec:
+  dependsOn: []
+  fastly:
+    compliance:
+      customerFacingIfCompromised: true
+      customerTraffic: true
+      endUserTraffic: true
+      hasSensitiveData:
+        - customer secrets
+        - Fastly secrets
+        - personal data
+        - subscriber data
+      inScopeForAudit: true
+      internetAccessible: true
+      isAuthoritativeSource: false
+      propagatesToEdge: true
+      requiresAccessToPlatformSpecificApisForConfig: true
+      tier: tier_1
+      whereDataIsStored:
+        - not applicable
+      whereServiceIsRunning:
+        - fleet
+  lifecycle: generally-available
+  owner: group:fanout
+  type: service
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    github.com/project-slug: fastly/fst-pushpin
+  description: ""
+  name: fst-pushpin
+  title: fastly/fst-pushpin
+spec:
+  lifecycle: source
+  owner: group:fanout
+  type: repository
