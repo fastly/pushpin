@@ -26,16 +26,28 @@ use std::thread::JoinHandle;
 use std::{process::Command, thread};
 use url::Url;
 
+/// Service errors that can be sent between threads.
 pub enum ServiceError {
+    /// Received termination signal (SIGINT/SIGTERM).
     TermSignal(String),
+    /// Service thread encountered an error.
     ThreadError(String),
 }
 
+/// Individual service instance with its own process and log handling.
 pub struct Service {
     pub name: String,
     pub log_level: u8,
 }
 
+/// Starts and manages Pushpin services with graceful shutdown handling.
+///
+/// Normalizes legacy service names, starts the requested services in separate threads,
+/// and blocks until any service fails or a termination signal (SIGINT/SIGTERM) is received.
+///
+/// # Panics
+///
+/// Panics if thread joining fails during shutdown.
 pub fn start_services(mut settings: Settings) {
     if let Some(value) = settings.log_levels.get("pushpin-proxy") {
         settings.log_levels.insert(String::from("proxy"), *value);
@@ -82,7 +94,7 @@ pub fn start_services(mut settings: Settings) {
         threads.extend(service.start(sender.clone()));
     }
 
-    // Spawn a signal handling thread
+    // Spawn a signal handling thread for graceful shutdown
     threads.push(Some(thread::spawn(move || {
         for signal in Signals::new(TERM_SIGNALS)
             .expect("Error creating signal iterator")
@@ -132,6 +144,9 @@ impl Service {
     fn new(name: String, log_level: u8) -> Self {
         Self { name, log_level }
     }
+
+    /// Starts the service with the provided arguments and sends handles back to the main thread.
+    /// Returns a vector of thread handles for the service and its log handlers.
     pub fn start(
         &mut self,
         args: Vec<String>,
@@ -155,6 +170,7 @@ impl Service {
         let mut result: Vec<Option<JoinHandle<()>>> = Vec::new();
 
         result.push(Some(thread::spawn(move || {
+            // Start the service
             let mut command = Command::new(&args[0]);
             command.args(&args[1..]);
 
@@ -221,6 +237,10 @@ pub trait RunnerService {
     fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>>;
 }
 
+/// Connection manager service - handles client connections and ZeroMQ streams.
+///
+/// This builds command-line arguments for the connmgr binary based on settings
+/// like ports, SSL configuration, buffer sizes, and IPC paths.
 pub struct ConnmgrService {
     args: Vec<String>,
     pub service: Service,
@@ -255,7 +275,7 @@ impl ConnmgrService {
         args.push("--deny-out-internal".to_string());
 
         if !settings.ports.is_empty() {
-            //server mode
+            // Server mode
             let mut using_ssl = false;
 
             for port in &settings.ports {
@@ -312,6 +332,11 @@ impl RunnerService for ConnmgrService {
     }
 }
 
+/// Pushpin proxy service - handles HTTP routing and WebSocket connections.
+///
+/// This handles all message handling, including non-push messages from web
+/// servers. It should be stable and rarely modified so if/when other services
+/// fail, regular traffic can still flow.
 pub struct PushpinProxyService {
     args: Vec<String>,
     pub service: Service,
@@ -351,6 +376,7 @@ impl RunnerService for PushpinProxyService {
     }
 }
 
+///
 pub struct PushpinHandlerService {
     args: Vec<String>,
     pub service: Service,

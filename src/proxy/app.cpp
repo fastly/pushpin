@@ -391,6 +391,8 @@ public:
 class App::Private
 {
 public:
+	// Main entry point for the proxy component - handles initialization and starts the event loop.
+	// Parses CLI args, loads config, validates settings, and spawns worker threads.
 	static int run()
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
@@ -645,6 +647,9 @@ public:
 	}
 
 private:
+	// Sets up domain routing, signal handlers, and worker threads.
+	// Runs the main event loop that processes HTTP packets/messages and routes traffic.
+	// Handles SIGQUIT/SIGHUP for graceful shutdown and config reload.
 	static int runLoop(const Engine::Configuration &config, const QStringList &routeLines, const QString &routesFile, int workerCount, bool newEventLoop)
 	{
 		// plenty for the main thread
