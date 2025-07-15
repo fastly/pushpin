@@ -700,6 +700,9 @@ public:
 
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 
+		// count methods
+		numMessageSent++;
+
 		server_out_sock->write(QList<QByteArray>() << buf);
 		QThread::usleep(1);
 	}
@@ -2702,10 +2705,6 @@ public:
 					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdStr), packetId.data());
 					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
-
-				//store_cache_item_field(paramsHash, "lastAccessTime", pCacheItem->lastAccessTime);
-				//store_cache_item_field(paramsHash, "clientMap", pCacheItem->clientMap);
-				//store_cache_item_field(paramsHash, "lastRefreshTime", pCacheItem->lastRefreshTime);
 				return -1;
 			}
 			else
