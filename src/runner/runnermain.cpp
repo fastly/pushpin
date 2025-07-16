@@ -48,7 +48,6 @@ extern "C" {
 int runner_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
-	printf("This gets called\n");
 
 	RunnerAppMain appMain;
 	QTimer::singleShot(0, [&appMain]() {appMain.start();});
