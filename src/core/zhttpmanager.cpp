@@ -2112,7 +2112,8 @@ public:
 						}
 
 						// store response body
-						store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""), 0);
+						QByteArray subscriptionKey = itemId + "-sub";
+						store_cache_response_buffer(subscriptionKey, responseBuf, QString(""), 0);
 
 						log_debug("[WS] Added Subscription content for subscription method id=%d subscription=%s", 
 							pCacheItem->newMsgId, qPrintable(subscriptionStr));
@@ -2130,7 +2131,7 @@ public:
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 								
 								writeToClient_(itemId, cliId, clientMsgId, instanceAddress, clientInstanceId);
-								writeToClient_(subscriptionStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient_(subscriptionKey, cliId, clientMsgId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
@@ -2142,9 +2143,10 @@ public:
 					}
 					else
 					{
+						QByteArray subscriptionKey = itemId + "-sub";
 						if (!packetMsg.resultBlock.isEmpty() || !packetMsg.resultChanges.isEmpty())
 						{
-							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionStr.toUtf8(), packetId, 0, QString("__ID__"), "__FROM__", 0);
+							QByteArray responseBuf_ = load_cache_response_buffer(instanceAddress, subscriptionKey, packetId, 0, QString("__ID__"), "__FROM__", 0);
 
 							int diffLen = 0;
 							
@@ -2271,12 +2273,12 @@ public:
 							*/
 
 							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf_, QString(""), diffLen);
+							store_cache_response_buffer(subscriptionKey, responseBuf_, QString(""), diffLen);
 						}
 						else
 						{
 							// store response body
-							store_cache_response_buffer(subscriptionStr.toUtf8(), responseBuf, QString(""), 0);
+							store_cache_response_buffer(subscriptionKey, responseBuf, QString(""), 0);
 						}
 
 						// update subscription last update time
@@ -2463,6 +2465,7 @@ public:
 
 					if (pCacheItem->cachedFlag == true)
 					{
+						QByteArray subscriptionKey = itemId + "-sub";
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
 						while (it != pCacheItem->clientMap.end()) 
@@ -2477,7 +2480,7 @@ public:
 										cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 								
 								writeToClient_(itemId, cliId, clientMsgId, instanceAddress, clientInstanceId);
-								writeToClient_(msgResultStr.toUtf8(), cliId, clientMsgId, instanceAddress, clientInstanceId);
+								writeToClient_(subscriptionKey, cliId, clientMsgId, instanceAddress, clientInstanceId);
 
 								++it;
 							}
@@ -2687,8 +2690,9 @@ public:
 					}
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
+						QByteArray subscriptionKey = paramsHash + "-sub";
 						writeToClient_(paramsHash, packetId, packetMsg.id, p.from, instanceId);
-						writeToClient_(pCacheItem->subscriptionStr.toUtf8(), packetId, packetMsg.id, p.from, instanceId);
+						writeToClient_(subscriptionKey, packetId, packetMsg.id, p.from, instanceId);
 						// add client to list
 						pCacheItem->clientMap[packetId].msgId = msgIdStr;
 						pCacheItem->clientMap[packetId].from = p.from;
