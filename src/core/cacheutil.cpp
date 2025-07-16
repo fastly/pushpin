@@ -162,18 +162,23 @@ bool is_cache_item(const QByteArray& itemId)
 
 	if (ret == false && gRedisEnable == true)
 	{
-		// create new cache item
-		struct CacheItem cacheItem;
+		// try to read from redis
+		QByteArray buff = redis_load_cache_response(itemId);
+		if (buff.length() == 0)
+		{
+			// create new cache item
+			struct CacheItem cacheItem;
 
-		cacheItem.refreshFlag = 0x00;
-		cacheItem.cachedFlag = true;
-		cacheItem.proto = Scheme::none;
-		cacheItem.retryCount = 0;
-		cacheItem.cacheClientId = QByteArray("");
-		cacheItem.methodName = "";
+			cacheItem.refreshFlag = 0x00;
+			cacheItem.cachedFlag = true;
+			cacheItem.proto = Scheme::none;
+			cacheItem.retryCount = 0;
+			cacheItem.cacheClientId = QByteArray("");
+			cacheItem.methodName = "";
 
-		create_cache_item(itemId, cacheItem);
-		ret = gCacheItemMap.contains(itemId);
+			create_cache_item(itemId, cacheItem);
+			ret = gCacheItemMap.contains(itemId);
+		}
 	}
 	
 	return ret;
