@@ -104,6 +104,8 @@ extern int gPrometheusRestoreAllowSeconds;
 // redis
 extern bool gRedisEnable;
 extern QString gRedisKeyHeader;
+extern QString gReplicaMasterAddr;
+extern int gReplicaMasterPort;
 
 // count method group
 extern QHash<QString, QStringList> gCountMethodGroupMap;
@@ -144,6 +146,43 @@ void redis_removeall_cache_item()
 	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
 	{
 		log_debug("[REDIS] Database cleared successfully.");
+	}
+
+	if (reply != nullptr)
+		freeReplyObject(reply);
+	//pool.release(conn);
+
+	return;
+}
+
+void redis_reset_replica() 
+{
+	log_debug("[REDIS] redis_reset_replica");
+	auto conn = RedisPool::instance()->acquire();
+
+	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
+		return;
+	}
+
+	redisReply* reply = (redisReply*)redisCommand(conn.data(), "REPLICAOF NO ONE");
+
+	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
+	{
+		log_debug("[REDIS] REPLICAOF NO ONE.");
+	}
+
+	if (reply != nullptr)
+		freeReplyObject(reply);
+
+	char cmdStr[256];
+	sprintf(cmdStr, "REPLICAOF %s %d", qPrintable(gReplicaMasterAddr), gReplicaMasterPort);
+	reply = (redisReply*)redisCommand(conn.data(), cmdStr);
+
+	if (reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK") 
+	{
+		log_debug("[REDIS] %s.", cmdStr);
 	}
 
 	if (reply != nullptr)

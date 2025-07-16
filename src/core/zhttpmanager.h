@@ -84,6 +84,8 @@ public:
 		const int redisPort,
 		const int redisPoolCount,
 		const QString &redisKeyHeader,
+		const QString &replicaMasterAddr,
+		const int replicaMasterPort,
 		QMap<QString, QStringList> countMethodGroupMap);
 	
 	int create_wsCacheClientProcesses();

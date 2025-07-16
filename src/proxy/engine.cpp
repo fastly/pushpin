@@ -255,6 +255,8 @@ public:
 			config.redisPort,
 			config.redisPoolCount,
 			config.redisKeyHeader,
+			config.replicaMasterAddr,
+			config.replicaMasterPort,
 			config.countMethodGroupMap);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())

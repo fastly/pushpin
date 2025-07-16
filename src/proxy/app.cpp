@@ -702,6 +702,8 @@ public:
 		int redisPort = settings.value("cache/redis_port", 6379).toInt();
 		int redisPoolCount = settings.value("cache/redis_pool_count", 10).toInt();
 		QString redisKeyHeader = settings.value("cache/redis_key_header").toString();
+		QString replicaMasterAddr = settings.value("cache/replica_master_addr").toString();
+		int replicaMasterPort = settings.value("cache/replica_master_port", 6379).toInt();
 		// count method group
 		QStringList countMethodGroups = settings.value("cache/ws_count_groups").toStringList();
 		QMap<QString, QStringList> countMethodGroupMap;
@@ -733,6 +735,8 @@ public:
 		config.redisPort = redisPort;
 		config.redisPoolCount = redisPoolCount;
 		config.redisKeyHeader = redisKeyHeader;
+		config.replicaMasterAddr = replicaMasterAddr;
+		config.replicaMasterPort = replicaMasterPort;
 		config.countMethodGroupMap = countMethodGroupMap;
 
 		for(int n = 0; n < workerCount; ++n)
