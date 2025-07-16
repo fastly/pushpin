@@ -130,6 +130,7 @@ QString gRedisHostAddr = "127.0.0.1";
 int gRedisPort = 6379;
 int gRedisPoolCount = 10;
 QString gRedisKeyHeader = "";
+bool gReplicaFlag = false;
 QString gReplicaMasterAddr = "";
 int gReplicaMasterPort = 6379;
 
@@ -729,6 +730,9 @@ public:
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+		// count methods
+		numMessageSent++;
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -2055,7 +2059,8 @@ public:
 		QByteArray packetId = p.ids[0].id;
 
 		QVariant vpacket = p.toVariant();
-		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+		QByteArray packetBuf = TnetString::fromVariant(vpacket);
+		QByteArray responseBuf = instanceAddress + " T" + packetBuf;
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", "[CacheClient]", instanceAddress.data());
@@ -2283,6 +2288,14 @@ public:
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+						/*
+						// save update packet into redis
+						if (gRedisEnable == true && gReplicaFlag == false)
+						{
+							QByteArray updateKey = itemId + "-update";
+							redis_store_cache_response(updateKey, packetBuf);
+						}
+						*/
 
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
@@ -3293,7 +3306,10 @@ void ZhttpManager::setCacheParameters(
 			redis_removeall_cache_item();
 
 		if (!gReplicaMasterAddr.isEmpty())
+		{
+			gReplicaFlag = true;
 			redis_reset_replica();
+		}
 	}
 	
 	// count method group

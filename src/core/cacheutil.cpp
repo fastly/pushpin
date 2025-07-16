@@ -104,6 +104,7 @@ extern int gPrometheusRestoreAllowSeconds;
 // redis
 extern bool gRedisEnable;
 extern QString gRedisKeyHeader;
+extern bool gReplicaFlag;
 extern QString gReplicaMasterAddr;
 extern int gReplicaMasterPort;
 
@@ -222,7 +223,8 @@ bool is_cache_item(const QByteArray& itemId, QString methodName)
 			}
 			else if (is_subscribe_method(methodName))
 			{
-				cacheItem.methodType = SUBSCRIBE_METHOD;
+				//cacheItem.methodType = SUBSCRIBE_METHOD;
+				return false;
 			}
 
 			create_cache_item(itemId, cacheItem);
