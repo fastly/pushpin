@@ -155,7 +155,7 @@ void redis_removeall_cache_item()
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-bool is_cache_item(const QByteArray& itemId)
+bool is_cache_item(const QByteArray& itemId, const QString &methodName="")
 {
 	// global cache item map
 	bool ret = gCacheItemMap.contains(itemId);
@@ -184,12 +184,12 @@ bool is_cache_item(const QByteArray& itemId)
 	return ret;
 }
 
-CacheItem* load_cache_item(const QByteArray& itemId)
+CacheItem* load_cache_item(const QByteArray& itemId, const QString &methodName="")
 {
 	CacheItem* ret = NULL;
 
 	// global cache item map
-	if (!is_cache_item(itemId))
+	if (!is_cache_item(itemId, methodName))
 	{
 		log_debug("[CACHE] not found cache item %s", itemId.toHex().data());
 		return NULL;

@@ -2656,7 +2656,7 @@ public:
 
 		if (is_cache_method(methodName) || is_subscribe_method(methodName))
 		{
-			CacheItem* pCacheItem = load_cache_item(paramsHash);
+			CacheItem* pCacheItem = load_cache_item(paramsHash, methodName);
 			if (pCacheItem != NULL)
 			{
 				pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
