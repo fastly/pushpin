@@ -3283,9 +3283,13 @@ void ZhttpManager::setCacheParameters(
 	gReplicaMasterPort = replicaMasterPort;
 	log_debug("[CONFIG] redis %s, host=%s, port=%d, pool=%d, keyHeader=%s", gRedisEnable ? "enabled" : "disabled",
 		qPrintable(gRedisHostAddr), gRedisPort, gRedisPoolCount, qPrintable(gRedisKeyHeader));
-	if (gRedisEnable == true && gRedisHostAddr == "127.0.0.1")
+	if (gRedisEnable == true)
 	{
-		redis_removeall_cache_item();
+		if (gRedisHostAddr == "127.0.0.1")
+			redis_removeall_cache_item();
+
+		if (!gReplicaMasterAddr.isEmpty())
+			redis_reset_replica();
 	}
 	
 	// count method group
