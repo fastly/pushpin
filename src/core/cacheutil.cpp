@@ -164,7 +164,7 @@ bool is_cache_item(const QByteArray& itemId)
 	{
 		// try to read from redis
 		QByteArray buff = redis_load_cache_response(itemId);
-		if (buff.length() == 0)
+		if (buff.length() > 0)
 		{
 			// create new cache item
 			struct CacheItem cacheItem;
