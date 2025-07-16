@@ -158,7 +158,25 @@ void redis_removeall_cache_item()
 bool is_cache_item(const QByteArray& itemId)
 {
 	// global cache item map
-	return gCacheItemMap.contains(itemId);
+	bool ret = gCacheItemMap.contains(itemId);
+
+	if (ret == false && gRedisEnable == true)
+	{
+		// create new cache item
+		struct CacheItem cacheItem;
+
+		cacheItem.refreshFlag = 0x00;
+		cacheItem.cachedFlag = true;
+		cacheItem.proto = Scheme::none;
+		cacheItem.retryCount = 0;
+		cacheItem.cacheClientId = QByteArray("");
+		cacheItem.methodName = "";
+
+		create_cache_item(itemId, cacheItem);
+		ret = gCacheItemMap.contains(itemId);
+	}
+	
+	return ret;
 }
 
 CacheItem* load_cache_item(const QByteArray& itemId)
@@ -516,23 +534,17 @@ static void remove_old_cache_items()
 		for	(int i=0; i < itemCount; i++)
 		{
 			QByteArray itemId = cacheItemIdList[i];
-			CacheItem *pCacheItem = &gCacheItemMap[itemId];//load_cache_item(itemId);
-			// prometheus status
-			if (pCacheItem->methodType == CACHE_METHOD)
+			CacheItem *pCacheItem = &gCacheItemMap[itemId];
+
+			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
 			{
+				// prometheus status
 				cacheItemCount++;
 				if ((pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT) != 0)
 					neverTimeoutCacheItemCount++;
 				else
 					autoRefreshItemCount++;
-			}
-			else if (pCacheItem->methodType == SUBSCRIBE_METHOD)
-			{
-				subscribeItemCount++;
-			}
 
-			if (pCacheItem->methodType == CacheMethodType::CACHE_METHOD)
-			{
 				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
 				{
 					//log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
@@ -549,6 +561,9 @@ static void remove_old_cache_items()
 			}
 			else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 			{
+				// prometheus status
+				subscribeItemCount++;
+
 				qint64 refreshDiff = currMTime - pCacheItem->lastRefreshTime;
 				
 				if (pCacheItem->clientMap.count() == 0 || refreshDiff > responseTimeoutMSeconds)
