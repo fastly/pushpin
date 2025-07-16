@@ -160,6 +160,8 @@ void create_cache_item(const QByteArray& itemId, const CacheItem& cacheItem);
 void remove_cache_item(const QByteArray& itemId);
 QList<QByteArray> get_cache_item_ids();
 
+void redis_store_cache_response(const QByteArray& itemId, const QByteArray& response);
+QByteArray redis_load_cache_response(const QByteArray& itemId);
 void store_cache_response_buffer(const QByteArray& itemId, const QByteArray& responseBuf, QString msgId, int addLen);
 QByteArray load_cache_response_buffer(const QByteArray& instanceAddress, const QByteArray& itemId, QByteArray packetId, int seqNum, QString msgId, QByteArray from, int addLen);
 
