@@ -174,7 +174,17 @@ bool is_cache_item(const QByteArray& itemId, const QString &methodName="")
 			cacheItem.proto = Scheme::none;
 			cacheItem.retryCount = 0;
 			cacheItem.cacheClientId = QByteArray("");
-			cacheItem.methodName = "";
+			cacheItem.methodName = methodName;
+
+			// check cache/subscribe method
+			if (is_cache_method(methodName))
+			{
+				cacheItem.methodType = CACHE_METHOD;
+			}
+			else if (is_subscribe_method(methodName))
+			{
+				cacheItem.methodType = SUBSCRIBE_METHOD;
+			}
 
 			create_cache_item(itemId, cacheItem);
 			ret = gCacheItemMap.contains(itemId);
