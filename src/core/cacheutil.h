@@ -149,8 +149,8 @@ void redis_removeall_cache_item();
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Cache Item
-bool is_cache_item(const QByteArray& itemId, QString methodName);
-CacheItem* load_cache_item(const QByteArray& itemId, QString methodName);
+bool is_cache_item(const QByteArray& itemId, QString methodName="");
+CacheItem* load_cache_item(const QByteArray& itemId, QString methodName="");
 void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const int& value);
 void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QByteArray& value);
 void store_cache_item_field(const QByteArray& itemId, const char* fieldName, const QString& value);
