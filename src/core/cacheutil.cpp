@@ -2062,5 +2062,13 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 	log_debug("[WS] started cache client %d", _no);
 
+	QThread::msleep(2000);
+
+	// Later, when you want to stop:
+	worker->requestStop();
+	worker->quit();      // Asks the thread to exit its event loop
+	worker->wait();      // Blocks until thread is actually done
+	delete worker;
+
 	return _no+1;
 }
