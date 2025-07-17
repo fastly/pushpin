@@ -236,7 +236,7 @@ public:
 
 		process.start("wscat", args);
 		if (!process.waitForStarted()) {
-			qWarning() << "Failed to start wscat";
+			log_debug("Failed to start wscat");
 			return;
 		}
 
