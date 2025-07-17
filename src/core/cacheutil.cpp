@@ -2080,10 +2080,6 @@ WscatWorker * create_process_for_cacheclient(QString urlPath, int _no)
 		worker->startWscat(args);
 	});
 
-	QObject::connect(worker, &WscatWorker::finished, thread, &QThread::quit);
-	QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
-	QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-
 	thread->start();
 
 	log_debug("[WS] started cache client %d", _no);

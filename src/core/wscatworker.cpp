@@ -21,24 +21,17 @@ void WscatWorker::startWscat(const QStringList &args) {
 	log_debug("3");
 
 	process = new QProcess(this);
-	connect(process, &QProcess::readyReadStandardOutput, [=]() {
-		//qDebug() << "[wscat out]" << process->readAllStandardOutput();
-	});
-	connect(process, &QProcess::readyReadStandardError, [=]() {
-		//qDebug() << "[wscat err]" << process->readAllStandardError();
-	});
-	connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-			this, [=](int exitCode, QProcess::ExitStatus status) {
-		//qDebug() << "[wscat finished]" << exitCode << status;
-		emit finished();
-	});
+
+	log_debug("4");
 
 	process->start("wscat", args);
+	log_debug("5");
 	if (!process->waitForStarted()) {
 		log_debug("[WS] Failed to start wscat");
 		delete process;
 		process = nullptr;
 	}
+	log_debug("6");
 }
 
 void WscatWorker::stopWscat() {
