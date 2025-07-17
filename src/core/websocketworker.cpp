@@ -1,4 +1,4 @@
-#include "WebSocketWorker.h"
+#include "websocketworker.h"
 #include <QDebug>
 
 WebSocketWorker::WebSocketWorker(const QUrl& url, const QMap<QString, QString>& headers, QObject* parent)
