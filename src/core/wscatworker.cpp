@@ -14,15 +14,10 @@ WscatWorker::~WscatWorker() {
 void WscatWorker::startWscat(const QString &url, const QStringList &headers) {
 
 	QThread::msleep(100);
-	log_debug("1");
 	QMutexLocker locker(&mutex);
-	log_debug("2");
 	if (process) return;
-	log_debug("3");
 
 	process = new QProcess(this);
-
-	log_debug("4");
 
 	QStringList args;
 	for (const QString& h : headers) {
@@ -31,22 +26,18 @@ void WscatWorker::startWscat(const QString &url, const QStringList &headers) {
 	args << "-c" << url;
 
 	process->start("wscat", args);
-	log_debug("5");
 	if (!process->waitForStarted()) {
 		log_debug("[WS] Failed to start wscat");
 		delete process;
 		process = nullptr;
 	}
-	log_debug("6");
 
 	process->waitForFinished(-1); // Wait until wscat exits
-	log_debug("7");
 }
 
 void WscatWorker::stopWscat() {
 	QMutexLocker locker(&mutex);
 	if (process) {
-		log_debug("8");
 		process->kill();     // or process->terminate() for graceful
 		process->waitForFinished(3000);
 		process->deleteLater();
