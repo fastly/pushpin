@@ -290,12 +290,39 @@ void remove_cache_item(const QByteArray& itemId)
 		gCacheItemMap.remove(itemId);
 	}
 
+	if (gRedisEnable == true)
+	{
+		log_debug("[REDIS] remove cache item %s", itemId.toHex().data());
+		redis_remove_item(itemId);
+	}
+
 	return;
 }
 
 QList<QByteArray> get_cache_item_ids()
 {
 	return gCacheItemMap.keys();
+}
+
+void redis_remove_item(const QByteArray& itemId) 
+{
+	auto conn = RedisPool::instance()->acquire();
+
+	if (!conn)
+	{
+		log_debug("[REDIS] CONN failed\n");
+		return;
+	}
+
+	QString key = gRedisKeyHeader + itemId.toHex().constData();
+
+	redisReply* reply = (redisReply*)redisCommand(conn.data(),
+		"DEL %s",
+		qPrintable(key)
+	);
+	
+	if (reply != nullptr) 
+		freeReplyObject(reply);
 }
 
 void redis_store_cache_response(const QByteArray& itemId, const QByteArray& response) 
