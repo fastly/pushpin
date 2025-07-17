@@ -40,6 +40,7 @@ void WscatWorker::startWscat(const QStringList &args) {
 void WscatWorker::stopWscat() {
 	QMutexLocker locker(&mutex);
 	if (process) {
+		log_debug("8");
 		process->kill();     // or process->terminate() for graceful
 		process->waitForFinished(3000);
 		process->deleteLater();
