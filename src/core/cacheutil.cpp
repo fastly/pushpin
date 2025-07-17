@@ -2060,7 +2060,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	worker->headers << headerStr;
 	worker->start();
 
-	log_debug("3");
+	log_debug("[WS] started cache client %d", _no);
 
 	return _no+1;
 }

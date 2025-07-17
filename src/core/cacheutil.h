@@ -225,7 +225,9 @@ public:
 	QString url;
 	QStringList headers;
 
-	void run() override {
+	void run() override 
+	{
+		QThread::msleep(100);
 		QProcess process;
 
 		QStringList args;
@@ -240,9 +242,7 @@ public:
 			return;
 		}
 
-		log_debug("1");
 		process.waitForFinished(-1); // Wait until wscat exits
-		log_debug("2");
 	}
 };
 
