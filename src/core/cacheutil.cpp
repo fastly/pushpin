@@ -885,76 +885,6 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 	return -1;
 }
 
-pid_t create_process_for_cacheclient_(QString urlPath, int _no)
-{
-	int master_fd;
-    pid_t processId = forkpty(&master_fd, NULL, NULL, NULL);
-	//pid_t processId = fork();
-	if (processId == -1)
-	{
-		// processId == -1 means error occurred
-		log_debug("can't fork to start wscat");
-		return -1;
-	}
-	else if (processId == 0) // child process
-	{
-		/*
-		char *bin = (char*)"/usr/bin/wscat";
-		char *envp[] = {NULL};
-		
-		// create wscat
-		char * argv_list[] = {
-			bin, 
-			(char*)"-H", socketHeaderStr, 
-			(char*)"-c", (char*)qPrintable(urlPath), 
-			NULL
-		};
-		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
-		execve(bin, argv_list, envp);
-		*/
-
-		QString cmdStr = "wscat -H Socket-Owner:Cache_Client";
-		cmdStr += QString::number(_no);
-		cmdStr += " -c ";
-		cmdStr += urlPath;
-		log_debug("%s", cmdStr.toUtf8().data());
-		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
-		execvp("bash", args);
-
-		//set_debugLogLevel(true);
-		log_debug("failed to start wscat error=%d", errno);
-
-		exit(0);
-	}
-
-	// parent process
-	log_debug("[WS] created new cache client%d parent=%d processId=%d", _no, getpid(), processId);
-
-	return processId;
-}
-
-pid_t create_process_for_cacheclient(QString urlPath, int _no)
-{
-	QThread* thread = new QThread;
-	QMap<QString, QString> headers;
-
-	QString headerStr = "Cache_Client";
-	cmdStr += QString::number(_no);
-	headers["Socket-Owner"] = cmdStr.toUtf8().data();
-
-	WebSocketWorker* worker = new WebSocketWorker(QUrl(urlPath.toUtf8().data()), headers);
-	worker->moveToThread(thread);
-
-	QObject::connect(thread, &QThread::started, worker, &WebSocketWorker::start);
-	QObject::connect(worker, &WebSocketWorker::finished, thread, &QThread::quit);
-	QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
-	QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-
-	thread->start();
-
-	return _no;
-}
-
 void check_cache_clients()
 {
 	qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
@@ -2071,4 +2001,90 @@ void save_prometheusStatIntoFile()
 			fclose(out);
 		}
 	}
+}
+
+class WebSocketWorker : public QThread {
+    Q_OBJECT
+public:
+    QString url;
+    QStringList headers;
+
+    void run() override {
+        QProcess process;
+
+        QStringList args;
+        for (const QString& h : headers) {
+            args << "--header" << h;
+        }
+        args << "-c" << url;
+
+        process.start("wscat", args);
+        if (!process.waitForStarted()) {
+            qWarning() << "Failed to start wscat";
+            return;
+        }
+
+        process.waitForFinished(-1); // Wait until wscat exits
+    }
+};
+
+pid_t create_process_for_cacheclient_(QString urlPath, int _no)
+{
+	int master_fd;
+    pid_t processId = forkpty(&master_fd, NULL, NULL, NULL);
+	//pid_t processId = fork();
+	if (processId == -1)
+	{
+		// processId == -1 means error occurred
+		log_debug("can't fork to start wscat");
+		return -1;
+	}
+	else if (processId == 0) // child process
+	{
+		/*
+		char *bin = (char*)"/usr/bin/wscat";
+		char *envp[] = {NULL};
+		
+		// create wscat
+		char * argv_list[] = {
+			bin, 
+			(char*)"-H", socketHeaderStr, 
+			(char*)"-c", (char*)qPrintable(urlPath), 
+			NULL
+		};
+		log_debug("%s %s %s", bin, socketHeaderStr, (char*)qPrintable(urlPath));
+		execve(bin, argv_list, envp);
+		*/
+
+		QString cmdStr = "wscat -H Socket-Owner:Cache_Client";
+		cmdStr += QString::number(_no);
+		cmdStr += " -c ";
+		cmdStr += urlPath;
+		log_debug("%s", cmdStr.toUtf8().data());
+		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
+		execvp("bash", args);
+
+		//set_debugLogLevel(true);
+		log_debug("failed to start wscat error=%d", errno);
+
+		exit(0);
+	}
+
+	// parent process
+	log_debug("[WS] created new cache client%d parent=%d processId=%d", _no, getpid(), processId);
+
+	return processId;
+}
+
+pid_t create_process_for_cacheclient(QString urlPath, int _no)
+{
+	WebSocketWorker* worker = new WebSocketWorker;
+	worker->url = urlPath.toUtf8().data();
+
+	QString headerStr = "wscat -H Socket-Owner:Cache_Client";
+	headerStr += QString::number(_no);
+	worker->headers << headerStr.toUtf8().data();
+	worker->start();
+
+	return _no;
 }
