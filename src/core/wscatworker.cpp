@@ -1,6 +1,9 @@
 // wscatworker.cpp
 #include "wscatworker.h"
 #include <QDebug>
+#include <QThread>
+
+#include "log.h"
 
 WscatWorker::WscatWorker(QObject *parent) : QObject(parent), process(nullptr) {}
 
