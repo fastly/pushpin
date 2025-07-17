@@ -12,10 +12,11 @@ WscatWorker::~WscatWorker() {
 }
 
 void WscatWorker::startWscat(const QStringList &args) {
-	QMutexLocker locker(&mutex);
-	if (process) return;
 
 	QThread::msleep(100);
+	
+	QMutexLocker locker(&mutex);
+	if (process) return;
 
 	process = new QProcess(this);
 	connect(process, &QProcess::readyReadStandardOutput, [=]() {
