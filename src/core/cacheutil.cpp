@@ -2053,11 +2053,11 @@ pid_t create_process_for_cacheclient_(QString urlPath, int _no)
 pid_t create_process_for_cacheclient(QString urlPath, int _no)
 {
 	WebSocketWorker* worker = new WebSocketWorker;
-	worker->url = urlPath.toUtf8().data();
+	worker->url = urlPath;
 
 	QString headerStr = "Socket-Owner:Cache_Client";
 	headerStr += QString::number(_no);
-	worker->headers << headerStr.toUtf8().data();
+	worker->headers << headerStr;
 	worker->start();
 
 	return _no;
