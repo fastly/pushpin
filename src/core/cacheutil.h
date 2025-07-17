@@ -42,6 +42,7 @@
 #include "packet/httpresponsedata.h"
 
 #include "redispool.h"
+#include "wscatworker.h"
 
 #define AUTO_REFRESH_SHORTER_TIMEOUT	0x01
 #define AUTO_REFRESH_LONGER_TIMEOUT		0x02

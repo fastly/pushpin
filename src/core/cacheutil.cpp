@@ -55,7 +55,6 @@
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
-#include "wscatworker.h"
 
 extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
