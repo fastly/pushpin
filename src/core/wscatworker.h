@@ -12,7 +12,7 @@ public:
 	~WscatWorker();
 
 public slots:
-	void startWscat(const QStringList &args);
+	void startWscat(const QString &url, const QStringList &args);
 	void stopWscat();
 
 signals:
