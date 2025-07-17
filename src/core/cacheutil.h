@@ -240,7 +240,9 @@ public:
 			return;
 		}
 
+		log_debug("1");
 		process.waitForFinished(-1); // Wait until wscat exits
+		log_debug("2");
 	}
 };
 
