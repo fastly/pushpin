@@ -14,9 +14,11 @@ WscatWorker::~WscatWorker() {
 void WscatWorker::startWscat(const QStringList &args) {
 
 	QThread::msleep(100);
-	
+	log_debug("1");
 	QMutexLocker locker(&mutex);
+	log_debug("2");
 	if (process) return;
+	log_debug("3");
 
 	process = new QProcess(this);
 	connect(process, &QProcess::readyReadStandardOutput, [=]() {
