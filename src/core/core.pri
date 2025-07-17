@@ -57,6 +57,7 @@ HEADERS += \
 	$$PWD/defercall.h \
 	$$PWD/socketnotifier.h \
 	$$PWD/eventloop.h \
+	$$PWD/websocketworker.h \
 	$$PWD/cacheutil.h \
 	$$PWD/redispool.h \
 	$$PWD/logutil.h \
@@ -85,6 +86,7 @@ SOURCES += \
 	$$PWD/defercall.cpp \
 	$$PWD/socketnotifier.cpp \
 	$$PWD/eventloop.cpp \
+	$$PWD/websocketworker.cpp \
 	$$PWD/cacheutil.cpp \
 	$$PWD/redispool.cpp \
 	$$PWD/logutil.cpp \

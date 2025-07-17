@@ -291,8 +291,11 @@ void remove_cache_item(const QByteArray& itemId)
 
 		if (gCacheItemMap[itemId].methodType == SUBSCRIBE_METHOD)
 		{
+			// remove subscription
 			QByteArray subscriptionKey = itemId + "-sub";
 			redis_remove_item(subscriptionKey);
+
+			// remove update
 			QByteArray updateKey = itemId + "-update";
 			redis_remove_item(updateKey);
 		}
@@ -881,7 +884,7 @@ int get_cc_index_from_init_request(ZhttpRequestPacket &p)
 	return -1;
 }
 
-pid_t create_process_for_cacheclient(QString urlPath, int _no)
+pid_t create_process_for_cacheclient_(QString urlPath, int _no)
 {
 	int master_fd;
     pid_t processId = forkpty(&master_fd, NULL, NULL, NULL);
@@ -927,6 +930,28 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 	log_debug("[WS] created new cache client%d parent=%d processId=%d", _no, getpid(), processId);
 
 	return processId;
+}
+
+pid_t create_process_for_cacheclient(QString urlPath, int _no)
+{
+	QThread* thread = new QThread;
+	QMap<QString, QString> headers;
+
+	QString headerStr = "Cache_Client";
+	cmdStr += QString::number(_no);
+	headers["Socket-Owner"] = cmdStr.toUtf8().data();
+
+	WebSocketWorker* worker = new WebSocketWorker(QUrl(urlPath.toUtf8().data()), headers);
+	worker->moveToThread(thread);
+
+	QObject::connect(thread, &QThread::started, worker, &WebSocketWorker::start);
+	QObject::connect(worker, &WebSocketWorker::finished, thread, &QThread::quit);
+	QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+	QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+	thread->start();
+
+	return _no;
 }
 
 void check_cache_clients()
