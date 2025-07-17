@@ -33,7 +33,7 @@ void WscatWorker::startWscat(const QStringList &args) {
 	}
 	log_debug("6");
 
-	process.waitForFinished(-1); // Wait until wscat exits
+	process->waitForFinished(-1); // Wait until wscat exits
 	log_debug("7");
 }
 
