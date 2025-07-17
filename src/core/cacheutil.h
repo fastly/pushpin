@@ -65,7 +65,7 @@ enum Scheme {
 // cache client params
 struct ClientItem {
 	QString urlPath;
-	pid_t processId;
+	WscatWorker *wscatWorker;
 	bool initFlag;
 	QString resultStr;
 	int msgIdCount;
@@ -174,7 +174,7 @@ bool is_cache_method(QString methodStr);
 bool is_subscribe_method(QString methodStr);
 bool is_never_timeout_method(QString methodStr, QString paramsStr);
 
-pid_t create_process_for_cacheclient(QString urlPath, int _no);
+WscatWorker * create_process_for_cacheclient(QString urlPath, int _no);
 
 int get_main_cc_index(QByteArray instanceId);
 int get_cc_index_from_clientId(QByteArray clientId);

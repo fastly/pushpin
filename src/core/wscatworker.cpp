@@ -12,22 +12,24 @@ void WscatWorker::startWscat(const QStringList &args) {
 	QMutexLocker locker(&mutex);
 	if (process) return;
 
+	QThread::msleep(100);
+
 	process = new QProcess(this);
 	connect(process, &QProcess::readyReadStandardOutput, [=]() {
-		qDebug() << "[wscat out]" << process->readAllStandardOutput();
+		//qDebug() << "[wscat out]" << process->readAllStandardOutput();
 	});
 	connect(process, &QProcess::readyReadStandardError, [=]() {
-		qDebug() << "[wscat err]" << process->readAllStandardError();
+		//qDebug() << "[wscat err]" << process->readAllStandardError();
 	});
 	connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
 			this, [=](int exitCode, QProcess::ExitStatus status) {
-		qDebug() << "[wscat finished]" << exitCode << status;
+		//qDebug() << "[wscat finished]" << exitCode << status;
 		emit finished();
 	});
 
 	process->start("wscat", args);
 	if (!process->waitForStarted()) {
-		qWarning() << "Failed to start wscat";
+		log_debug("[WS] Failed to start wscat");
 		delete process;
 		process = nullptr;
 	}

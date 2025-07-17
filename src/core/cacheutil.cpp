@@ -910,9 +910,9 @@ void check_cache_clients()
 				}
 			}
 
-			log_debug("[WS] killing cache client %d process %d, %s", i, gWsCacheClientList[i].processId, gWsCacheClientList[i].clientId.data());
-			kill(gWsCacheClientList[i].processId, SIGTERM);
-			gWsCacheClientList[i].processId = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
+			log_debug("[WS] killing cache client %d %s", i, gWsCacheClientList[i].clientId.data());
+			gWsCacheClientList[i].wscatWorker->stopWscat();
+			gWsCacheClientList[i].wscatWorker = create_process_for_cacheclient(gWsCacheClientList[i].urlPath, i);
 			gWsCacheClientList[i].lastResponseSeq = -1;
 			gWsCacheClientList[i].lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 		}			
@@ -2066,7 +2066,7 @@ pid_t create_process_for_cacheclient__(QString urlPath, int _no)
 	return _no+1;
 }
 
-pid_t create_process_for_cacheclient(QString urlPath, int _no)
+WscatWorker * create_process_for_cacheclient(QString urlPath, int _no)
 {
 	// mainwindow.cpp (example)
 	QThread *thread = new QThread;
@@ -2087,10 +2087,7 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 	thread->start();
 
-	QThread::msleep(2000);
+	log_debug("[WS] started cache client %d", _no);
 
-	// Later, when you want to stop wscat:
-	worker->stopWscat();  // stops process and thread will exit cleanly
-
-	return _no+1;
+	return worker;
 }
