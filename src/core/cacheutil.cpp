@@ -55,6 +55,7 @@
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
+#include "wscatworker.h"
 
 extern bool gCacheEnable;
 extern QStringList gHttpBackendUrlList;
@@ -2050,7 +2051,7 @@ pid_t create_process_for_cacheclient_(QString urlPath, int _no)
 	return processId;
 }
 
-pid_t create_process_for_cacheclient(QString urlPath, int _no)
+pid_t create_process_for_cacheclient__(QString urlPath, int _no)
 {
 	WebSocketWorker* worker = new WebSocketWorker;
 	worker->url = urlPath;
@@ -2062,12 +2063,34 @@ pid_t create_process_for_cacheclient(QString urlPath, int _no)
 
 	log_debug("[WS] started cache client %d", _no);
 
+	return _no+1;
+}
+
+pid_t create_process_for_cacheclient(QString urlPath, int _no)
+{
+	// mainwindow.cpp (example)
+	QThread *thread = new QThread;
+	WscatWorker *worker = new WscatWorker;
+
+	worker->moveToThread(thread);
+
+	QString headerStr = "Socket-Owner:Cache_Client";
+	headerStr += QString::number(_no);
+	QObject::connect(thread, &QThread::started, [=]() {
+		QStringList args = {"-c", urlPath, "-h", headerStr};  // Example
+		worker->startWscat(args);
+	});
+
+	QObject::connect(worker, &WscatWorker::finished, thread, &QThread::quit);
+	QObject::connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+	QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+	thread->start();
+
 	QThread::msleep(2000);
 
-	// Later, when you want to stop:
-	worker->quit();      // Asks the thread to exit its event loop
-	worker->wait();      // Blocks until thread is actually done
-	delete worker;
+	// Later, when you want to stop wscat:
+	worker->stopWscat();  // stops process and thread will exit cleanly
 
 	return _no+1;
 }

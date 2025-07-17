@@ -1,0 +1,44 @@
+// wscatworker.cpp
+#include "wscatworker.h"
+#include <QDebug>
+
+WscatWorker::WscatWorker(QObject *parent) : QObject(parent), process(nullptr) {}
+
+WscatWorker::~WscatWorker() {
+	stopWscat();
+}
+
+void WscatWorker::startWscat(const QStringList &args) {
+	QMutexLocker locker(&mutex);
+	if (process) return;
+
+	process = new QProcess(this);
+	connect(process, &QProcess::readyReadStandardOutput, [=]() {
+		qDebug() << "[wscat out]" << process->readAllStandardOutput();
+	});
+	connect(process, &QProcess::readyReadStandardError, [=]() {
+		qDebug() << "[wscat err]" << process->readAllStandardError();
+	});
+	connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+			this, [=](int exitCode, QProcess::ExitStatus status) {
+		qDebug() << "[wscat finished]" << exitCode << status;
+		emit finished();
+	});
+
+	process->start("wscat", args);
+	if (!process->waitForStarted()) {
+		qWarning() << "Failed to start wscat";
+		delete process;
+		process = nullptr;
+	}
+}
+
+void WscatWorker::stopWscat() {
+	QMutexLocker locker(&mutex);
+	if (process) {
+		process->kill();     // or process->terminate() for graceful
+		process->waitForFinished(3000);
+		process->deleteLater();
+		process = nullptr;
+	}
+}
