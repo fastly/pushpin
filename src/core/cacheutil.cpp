@@ -284,16 +284,24 @@ void remove_cache_item(const QByteArray& itemId)
 			numSubscriptionExpiry++;
 	}
 
-	if (is_cache_item(itemId))
-	{
-		log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
-		gCacheItemMap.remove(itemId);
-	}
-
 	if (gRedisEnable == true)
 	{
 		log_debug("[REDIS] remove cache item %s", itemId.toHex().data());
 		redis_remove_item(itemId);
+
+		if (gCacheItemMap[itemId].methodType == SUBSCRIBE_METHOD)
+		{
+			QByteArray subscriptionKey = itemId + "-sub";
+			redis_remove_item(subscriptionKey);
+			QByteArray updateKey = itemId + "-update";
+			redis_remove_item(updateKey);
+		}
+	}
+
+	if (is_cache_item(itemId))
+	{
+		log_debug("[CACHE] remove cache item %s", itemId.toHex().data());
+		gCacheItemMap.remove(itemId);
 	}
 
 	return;
