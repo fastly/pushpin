@@ -2076,7 +2076,8 @@ WscatWorker * create_process_for_cacheclient(QString urlPath, int _no)
 	QString headerStr = "Socket-Owner:Cache_Client";
 	headerStr += QString::number(_no);
 	QObject::connect(thread, &QThread::started, [=]() {
-		QStringList headers << headerStr;
+		QStringList headers;
+		headers << headerStr;
 		worker->startWscat(urlPath, headers);
 	});
 
