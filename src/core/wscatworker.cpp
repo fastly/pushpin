@@ -11,7 +11,7 @@ WscatWorker::~WscatWorker() {
 	stopWscat();
 }
 
-void WscatWorker::startWscat(const QStringList &args) {
+void WscatWorker::startWscat(const QString &url, const QStringList &params) {
 
 	QThread::msleep(100);
 	log_debug("1");
@@ -23,6 +23,12 @@ void WscatWorker::startWscat(const QStringList &args) {
 	process = new QProcess(this);
 
 	log_debug("4");
+
+	QStringList args;
+	for (const QString& p : params) {
+		args << "--header" << p;
+	}
+	args << "-c" << url;
 
 	process->start("wscat", args);
 	log_debug("5");
