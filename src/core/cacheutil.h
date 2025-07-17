@@ -217,4 +217,29 @@ void update_prometheus_hit_count(const CacheItem &cacheItem);
 void restore_prometheusStatFromFile();
 void save_prometheusStatIntoFile();
 
+class WebSocketWorker : public QThread {
+	Q_OBJECT
+public:
+	QString url;
+	QStringList headers;
+
+	void run() override {
+		QProcess process;
+
+		QStringList args;
+		for (const QString& h : headers) {
+			args << "--header" << h;
+		}
+		args << "-c" << url;
+
+		process.start("wscat", args);
+		if (!process.waitForStarted()) {
+			qWarning() << "Failed to start wscat";
+			return;
+		}
+
+		process.waitForFinished(-1); // Wait until wscat exits
+	}
+};
+
 #endif

@@ -2002,31 +2002,6 @@ void save_prometheusStatIntoFile()
 	}
 }
 
-class WebSocketWorker : public QThread {
-    Q_OBJECT
-public:
-    QString url;
-    QStringList headers;
-
-    void run() override {
-        QProcess process;
-
-        QStringList args;
-        for (const QString& h : headers) {
-            args << "--header" << h;
-        }
-        args << "-c" << url;
-
-        process.start("wscat", args);
-        if (!process.waitForStarted()) {
-            qWarning() << "Failed to start wscat";
-            return;
-        }
-
-        process.waitForFinished(-1); // Wait until wscat exits
-    }
-};
-
 pid_t create_process_for_cacheclient_(QString urlPath, int _no)
 {
 	int master_fd;
