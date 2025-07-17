@@ -28,6 +28,8 @@
 #include <QObject>
 #include <hiredis.h>
 #include <stdexcept>
+#include <QThread>
+#include <QProcess>
 #include <QQueue>
 #include <QMutex>
 #include <QWaitCondition>
