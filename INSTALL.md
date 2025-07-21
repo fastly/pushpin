@@ -143,6 +143,14 @@ Options for cache are added into this file.
 	```
 	redis_key_header="pushpin1:"
 	```
+* <a name="replica_master_addr"></a>IP address of the replication master. If this is set to a valid IP address, Redis will act as a replica and attempt to connect to the specified master.
+	```
+	replica_master_addr=""
+	```
+* <a name="replica_master_port"></a>replication master port number (default 6379). Specifies the port Redis should use to connect to the master.
+	```
+	replica_master_port=6379
+	```
 #### Counts
 * <a name="prometheus_count"></a>groups for promethus count
 	```
