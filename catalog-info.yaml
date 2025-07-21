@@ -33,7 +33,7 @@ metadata:
   title: Pushpin
 spec:
   dependsOn:
-    - component:fst-pushpin
+    - component:fst-pushpin-repo
   fastly:
     compliance:
       customerFacingIfCompromised: true
