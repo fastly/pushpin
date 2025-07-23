@@ -1666,14 +1666,16 @@ public:
 
 	void scan_subscribe_update()
 	{
+		log_debug("[SCAN]");
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
-			if ((pCacheItem->proto == Scheme::none) && (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD))
+			if ((cacheItem.cachedFlag == true) && (pCacheItem->proto == Scheme::none) && (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD))
 			{
 				QByteArray updateCountKey = itemId + "-updateCount";
 				QByteArray countBytes = redis_load_cache_response(updateCountKey);
 				int updateCount = countBytes.toInt();
+				log_debug("[SCAN] %d, %d", pCacheItem->subscriptionUpdateCount, updateCount);
 				if (pCacheItem->subscriptionUpdateCount != updateCount)
 				{
 					pCacheItem->subscriptionUpdateCount = updateCount;
@@ -1713,6 +1715,7 @@ public:
 						}
 					}
 				}
+				break;
 			}
 		}
 

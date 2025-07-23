@@ -215,6 +215,7 @@ bool is_cache_item(const QByteArray& itemId, QString methodName)
 			cacheItem.retryCount = 0;
 			cacheItem.cacheClientId = QByteArray("");
 			cacheItem.methodName = methodName;
+			cacheItem.subscriptionUpdateCount = 0;
 
 			// check cache/subscribe method
 			if (is_cache_method(methodName))
