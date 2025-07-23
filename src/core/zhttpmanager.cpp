@@ -2288,14 +2288,18 @@ public:
 
 						// update subscription last update time
 						pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-						/*
+
 						// save update packet into redis
 						if (gRedisEnable == true && gReplicaFlag == false)
 						{
 							QByteArray updateKey = itemId + "-update";
 							redis_store_cache_response(updateKey, packetBuf);
+
+							QByteArray updateCountKey = itemId + "-updateCount";
+							pCacheItem->subscriptionUpdateCount++;
+							QByteArray countBytes = QByteArray::number(pCacheItem->subscriptionUpdateCount);
+							redis_store_cache_response(updateCountKey, countBytes);
 						}
-						*/
 
 						// send update subscribe to all clients
 						QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
@@ -2333,6 +2337,7 @@ public:
 			cacheItem.cachedFlag = false;
 			cacheItem.methodType = CacheMethodType::SUBSCRIBE_METHOD;
 			cacheItem.subscriptionStr = subscriptionStr;
+			cacheItem.subscriptionUpdateCount = 0;
 			cacheItem.cacheClientId = gWsCacheClientList[cacheClientNumber].clientId;
 
 			// update block and changes
@@ -2471,6 +2476,7 @@ public:
 						if (pResultCacheItem->newMsgId == -1)
 						{
 							pCacheItem->cachedFlag = true;
+							pCacheItem->subscriptionUpdateCount = 0;
 							remove_cache_item(resultBytes);
 							log_debug("[WS] Added Subscription content for subscription method id=%d result=%s", msgIdValue, qPrintable(msgResultStr));
 						}
