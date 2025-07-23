@@ -133,6 +133,7 @@ QString gRedisKeyHeader = "";
 bool gReplicaFlag = false;
 QString gReplicaMasterAddr = "";
 int gReplicaMasterPort = 6379;
+bool gReplicaTimerStarted = false;
 
 // count method group
 QHash<QString, QStringList> gCountMethodGroupMap;
@@ -1212,6 +1213,14 @@ public:
 				send_unsubscribe_request_over_cacheclient();
 				delete_old_clients();
 
+				if (gReplicaFlag == true && gReplicaTimerStarted == false)
+				{
+					gReplicaTimerStarted = true;
+					QTimer::singleShot(1 * 1000, [=]() {
+						scan_subscribe_update();
+					});
+				}
+
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(packetId))
 				{
@@ -1686,11 +1695,12 @@ public:
 								{
 									QString clientMsgId = pCacheItem->clientMap[cliId].msgId;
 									QByteArray clientInstanceId = pCacheItem->clientMap[cliId].instanceId;
+									QByteArray clientFrom = pCacheItem->clientMap[cliId].from;
 
 									log_debug("[SUBSCRIBE] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
 											cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
 
-									writeToClient__(CacheResponse, p, cliId, instanceAddress, clientInstanceId);
+									writeToClient__(CacheResponse, p, cliId, clientFrom, clientInstanceId);
 
 									++it;
 								}
@@ -3373,9 +3383,6 @@ void ZhttpManager::setCacheParameters(
 		{
 			gReplicaFlag = true;
 			redis_reset_replica();
-			QTimer::singleShot(1 * 1000, [=]() {
-				scan_subscribe_update();
-			});
 		}
 	}
 	
