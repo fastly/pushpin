@@ -1850,6 +1850,7 @@ public:
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[ccIndex].clientId;
 		cacheItem.methodName = methodName;
+		cacheItem.subscriptionUpdateCount = 0;
 
 		// check cache/subscribe method
 		if (is_cache_method(methodName))
