@@ -1714,11 +1714,9 @@ public:
 									it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
 								}
 							}
-							break;
 						}
 					}
 				}
-				break;
 			}
 		}
 
