@@ -1655,6 +1655,62 @@ public:
 		//store_cache_item_field(itemId, "lastRefreshCount", 0);
 	}
 
+	void scan_subscribe_update()
+	{
+		foreach(QByteArray itemId, get_cache_item_ids())
+		{
+			CacheItem* pCacheItem = load_cache_item(itemId);
+			if ((pCacheItem->proto == Scheme::websocket) && (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD))
+			{
+				QByteArray updateCountKey = itemId + "-updateCount";
+				QByteArray countBytes = redis_load_cache_response(updateCountKey);
+				int updateCount = countBytes.toInt();
+				if (pCacheItem->subscriptionUpdateCount != updateCount)
+				{
+					pCacheItem->subscriptionUpdateCount = updateCount;
+					QByteArray updateKey = itemId + "-update";
+					QByteArray packetBuf = redis_load_cache_response(updateKey);
+					QVariant data = TnetString::toVariant(packetBuf);
+					if(!data.isNull())
+					{
+						ZhttpResponsePacket p;
+						if(p.fromVariant(data))
+						{
+							log_debug("[SUBSCRIBE] sending update to replica");
+							// send update subscribe to all clients
+							QHash<QByteArray, ClientInCacheItem>::iterator it = pCacheItem->clientMap.begin();
+							while (it != pCacheItem->clientMap.end()) 
+							{
+								QByteArray cliId = it.key();
+								if (gWsClientMap.contains(cliId))
+								{
+									QString clientMsgId = pCacheItem->clientMap[cliId].msgId;
+									QByteArray clientInstanceId = pCacheItem->clientMap[cliId].instanceId;
+
+									log_debug("[SUBSCRIBE] Sending Subscription update to client id=%s, msgId=%s, instanceId=%s", 
+											cliId.data(), qPrintable(clientMsgId), clientInstanceId.data());
+
+									writeToClient__(CacheResponse, p, cliId, instanceAddress, clientInstanceId);
+
+									++it;
+								}
+								else 
+								{
+									it = pCacheItem->clientMap.erase(it);  // erase returns the next valid iterator
+								}
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		QTimer::singleShot(1 * 1000, [=]() {
+			scan_subscribe_update();
+		});
+	}
+
 	void unregister_client(const QByteArray& clientId)
 	{
 		if (gHttpClientMap.contains(clientId))
@@ -3317,6 +3373,9 @@ void ZhttpManager::setCacheParameters(
 		{
 			gReplicaFlag = true;
 			redis_reset_replica();
+			QTimer::singleShot(1 * 1000, [=]() {
+				scan_subscribe_update();
+			});
 		}
 	}
 	
