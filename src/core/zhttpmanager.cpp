@@ -1670,7 +1670,8 @@ public:
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
-			if ((cacheItem.cachedFlag == true) && (pCacheItem->proto == Scheme::none) && (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD))
+			if ((cacheItem.cachedFlag == true) && (pCacheItem->proto == Scheme::none) && 
+				(pCacheItem->methodType == SUBSCRIBE_METHOD))
 			{
 				QByteArray updateCountKey = itemId + "-updateCount";
 				QByteArray countBytes = redis_load_cache_response(updateCountKey);
