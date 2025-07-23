@@ -223,8 +223,8 @@ bool is_cache_item(const QByteArray& itemId, QString methodName)
 			}
 			else if (is_subscribe_method(methodName))
 			{
-				//cacheItem.methodType = SUBSCRIBE_METHOD;
-				return false;
+				cacheItem.methodType = SUBSCRIBE_METHOD;
+				//return false;
 			}
 
 			create_cache_item(itemId, cacheItem);
