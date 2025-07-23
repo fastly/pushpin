@@ -298,6 +298,10 @@ void remove_cache_item(const QByteArray& itemId)
 			// remove update
 			QByteArray updateKey = itemId + "-update";
 			redis_remove_item(updateKey);
+
+			// remove updateCount
+			QByteArray updateCountKey = itemId + "-updateCount";
+			redis_remove_item(updateCountKey);
 		}
 	}
 

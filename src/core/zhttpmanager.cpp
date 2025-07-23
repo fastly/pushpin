@@ -2091,6 +2091,7 @@ public:
 					if (pCacheItem->cachedFlag == false)
 					{
 						pCacheItem->cachedFlag = true;
+						pCacheItem->subscriptionUpdateCount = 0;
 
 						// update block and changes
 						if (!packetMsg.resultBlock.isEmpty())
