@@ -1670,7 +1670,7 @@ public:
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
-			if ((cacheItem.cachedFlag == true) && (pCacheItem->proto == Scheme::none) && 
+			if ((pCacheItem->cachedFlag == true) && (pCacheItem->proto == Scheme::none) && 
 				(pCacheItem->methodType == SUBSCRIBE_METHOD))
 			{
 				QByteArray updateCountKey = itemId + "-updateCount";
@@ -1680,6 +1680,8 @@ public:
 				if (pCacheItem->subscriptionUpdateCount != updateCount)
 				{
 					pCacheItem->subscriptionUpdateCount = updateCount;
+					pCacheItem->lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+
 					QByteArray updateKey = itemId + "-update";
 					QByteArray packetBuf = redis_load_cache_response(updateKey);
 					QVariant data = TnetString::toVariant(packetBuf);
