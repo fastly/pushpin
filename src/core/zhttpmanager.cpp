@@ -1670,6 +1670,11 @@ public:
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
+			if (pCacheItem == NULL)
+			{
+				log_debug("[SCAN] not found cache item %s", itemId.toHex().data());
+				continue;
+			}
 			if ((pCacheItem->cachedFlag == true) && (pCacheItem->proto == Scheme::none) && 
 				(pCacheItem->methodType == SUBSCRIBE_METHOD))
 			{
@@ -2056,6 +2061,11 @@ public:
 			foreach(QByteArray _itemId, get_cache_item_ids())
 			{
 				pCacheItem = load_cache_item(_itemId);
+				if (pCacheItem == NULL)
+				{
+					log_debug("[HTTP] not found cache item %s", _itemId.toHex().data());
+					continue;
+				}
 				if ((pCacheItem->proto == Scheme::http) && 
 					(pCacheItem->requestPacket.ids[0].id == packetId) &&
 					(pCacheItem->cachedFlag == false)
@@ -2157,6 +2167,11 @@ public:
 			foreach(QByteArray itemId, get_cache_item_ids())
 			{
 				CacheItem* pCacheItem = load_cache_item(itemId);
+				if (pCacheItem == NULL)
+				{
+					log_debug("[WS] not found cache item %s", itemId.toHex().data());
+					continue;
+				}
 				if (pCacheItem->subscriptionStr == subscriptionStr)
 				{
 					if (pCacheItem->cachedFlag == false)
@@ -2457,6 +2472,11 @@ public:
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
+			if (pCacheItem == NULL)
+			{
+				log_debug("[SCAN] not found cache item %s", itemId.toHex().data());
+				continue;
+			}
 			if ((pCacheItem->proto == Scheme::websocket) && 
 				(pCacheItem->newMsgId == msgIdValue) &&
 				(pCacheItem->cacheClientId == packetId))
@@ -2820,6 +2840,11 @@ public:
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 				
 				pCacheItem = load_cache_item(paramsHash);
+				if (pCacheItem == NULL)
+				{
+					log_debug("[WS_REQ] not found cache item %s", paramsHash.toHex().data());
+					return -1;
+				}
 				// Send new client cache request packet
 				pCacheItem->newMsgId = send_ws_request_over_cacheclient(p, msgIdStr, ccIndex);
 				pCacheItem->lastRequestTime = QDateTime::currentMSecsSinceEpoch();
