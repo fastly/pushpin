@@ -2782,7 +2782,7 @@ public:
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
 						QByteArray subscriptionKey = paramsHash + "-sub";
-						QByteArray updateCountKey = itemId + "-updateCount";
+						QByteArray updateCountKey = paramsHash + "-updateCount";
 						QByteArray countBytes = redis_load_cache_response(updateCountKey);
 						int updateCount = countBytes.toInt();
 						pCacheItem->subscriptionUpdateCount = updateCount;
