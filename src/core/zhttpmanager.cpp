@@ -2782,6 +2782,10 @@ public:
 					else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
 					{
 						QByteArray subscriptionKey = paramsHash + "-sub";
+						QByteArray updateCountKey = itemId + "-updateCount";
+						QByteArray countBytes = redis_load_cache_response(updateCountKey);
+						int updateCount = countBytes.toInt();
+						pCacheItem->subscriptionUpdateCount = updateCount;
 						writeToClient_(paramsHash, packetId, packetMsg.id, p.from, instanceId);
 						writeToClient_(subscriptionKey, packetId, packetMsg.id, p.from, instanceId);
 						// add client to list
