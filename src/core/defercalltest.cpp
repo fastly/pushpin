@@ -86,8 +86,6 @@ static void deferCall()
 
 	TEST_ASSERT_EQ(pendingCount, 0);
 	TEST_ASSERT_EQ(count, 2);
-
-	DeferCall::cleanup();
 }
 
 static void deferCallQt()
@@ -121,8 +119,6 @@ static void nonLocal()
 
 	TEST_ASSERT_EQ(pendingCount, 0);
 	TEST_ASSERT_EQ(count, 1);
-
-	DeferCall::cleanup();
 }
 
 static void nonLocalQt()
