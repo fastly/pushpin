@@ -644,8 +644,6 @@ static void runWithEventLoop(std::function<void (TestState &, std::function<void
 
 		f(state, loop_wait);
 	}
-
-	DeferCall::cleanup();
 }
 
 static void passthrough(TestState &state, std::function<void (int)> loop_wait)
