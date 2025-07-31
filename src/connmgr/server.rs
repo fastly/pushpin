@@ -36,6 +36,7 @@ use crate::core::net::{
     set_socket_opts, AsyncTcpStream, AsyncUnixStream, NetListener, NetStream, SocketAddr,
 };
 use crate::core::reactor::Reactor;
+use crate::core::security;
 use crate::core::select::{
     select_2, select_3, select_6, select_8, select_option, Select2, Select3, Select6, Select8,
 };
@@ -1928,6 +1929,7 @@ impl Server {
         listen_addrs: &[ListenConfig],
         certs_dir: &Path,
         allow_compression: bool,
+        limit_permissions: bool,
         zsockman: zhttpsocket::ClientSocketManager,
         handle_bound: usize,
     ) -> Result<Self, String> {
@@ -2032,8 +2034,9 @@ impl Server {
             }
         }
 
-        #[cfg(all(target_os = "linux", not(test)))]
-        crate::core::seccomp::install_seccomp_connect_filter();
+        if limit_permissions {
+            security::limit_permissions();
+        }
 
         let blocks_avail = Arc::new(Counter::new(blocks_max - (stream_maxconn * 2)));
 
@@ -2305,6 +2308,7 @@ impl TestServer {
                 },
             ],
             Path::new("."),
+            false,
             false,
             zsockman,
             100,

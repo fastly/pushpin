@@ -147,6 +147,8 @@ impl App {
 
         let maxconn = config.req_maxconn + config.stream_maxconn;
 
+        let enable_client = !config.zserver_req.is_empty() || !config.zserver_stream.is_empty();
+
         let server = if !config.listen.is_empty() {
             let mut any_req = false;
             let mut any_stream = false;
@@ -237,6 +239,9 @@ impl App {
                 }
             }
 
+            // if running as a server only, install seccomp filter
+            let limit_permissions = !enable_client;
+
             Some(Server::new(
                 &config.instance_id,
                 config.workers,
@@ -252,6 +257,7 @@ impl App {
                 &config.listen,
                 config.certs_dir.as_path(),
                 config.allow_compression,
+                limit_permissions,
                 zsockman,
                 handle_bound,
             )?)
@@ -259,7 +265,7 @@ impl App {
             None
         };
 
-        let client = if !config.zserver_req.is_empty() || !config.zserver_stream.is_empty() {
+        let client = if enable_client {
             let mut zsockman = zhttpsocket::ServerSocketManager::new(
                 Arc::clone(&zmq_context),
                 &config.instance_id,
