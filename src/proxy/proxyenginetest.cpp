@@ -152,12 +152,12 @@ public:
 		zhttpClientOutStreamSock->setIdentity("test-client");
 		zhttpClientOutStreamSock->setProbeRouterEnabled(true);
 
-		zhttpClientOutSock->bind("ipc://" + workDir.filePath("client-out"));
-		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
-		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
-		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
-		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("server-in-stream"));
-		zhttpServerOutSock->bind("ipc://" + workDir.filePath("server-out"));
+		zhttpClientOutSock->bind("ipc://" + workDir.filePath("prxtst-client-out"));
+		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("prxtst-client-out-stream"));
+		zhttpClientInSock->bind("ipc://" + workDir.filePath("prxtst-client-in"));
+		zhttpServerInSock->bind("ipc://" + workDir.filePath("prxtst-server-in"));
+		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("prxtst-server-in-stream"));
+		zhttpServerOutSock->bind("ipc://" + workDir.filePath("prxtst-server-out"));
 
 		zhttpClientInSock->subscribe("test-client ");
 
@@ -169,9 +169,9 @@ public:
 
 	void startHandler()
 	{
-		handlerInspectSock->connectToAddress("ipc://" + workDir.filePath("inspect"));
-		handlerAcceptSock->connectToAddress("ipc://" + workDir.filePath("accept"));
-		handlerRetryOutSock->connectToAddress("ipc://" + workDir.filePath("retry-out"));
+		handlerInspectSock->connectToAddress("ipc://" + workDir.filePath("prxtst-inspect"));
+		handlerAcceptSock->connectToAddress("ipc://" + workDir.filePath("prxtst-accept"));
+		handlerRetryOutSock->connectToAddress("ipc://" + workDir.filePath("prxtst-retry-in"));
 
 		handlerInspectValve->open();
 		handlerAcceptValve->open();
@@ -620,16 +620,16 @@ public:
 
 		Engine::Configuration config;
 		config.clientId = "proxy";
-		config.serverInSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out"));
-		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out-stream"));
-		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("client-in"));
-		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
-		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
-		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
-		config.inspectSpec = ("ipc://" + workDir.filePath("inspect"));
-		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
-		config.retryInSpec = ("ipc://" + workDir.filePath("retry-out"));
-		config.statsSpec = ("ipc://" + workDir.filePath("stats"));
+		config.serverInSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-client-out"));
+		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-client-out-stream"));
+		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-client-in"));
+		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-server-in"));
+		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-server-in-stream"));
+		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("prxtst-server-out"));
+		config.inspectSpec = ("ipc://" + workDir.filePath("prxtst-inspect"));
+		config.acceptSpec = ("ipc://" + workDir.filePath("prxtst-accept"));
+		config.retryInSpec = ("ipc://" + workDir.filePath("prxtst-retry-in"));
+		config.statsSpec = ("ipc://" + workDir.filePath("prxtst-stats"));
 		config.sessionsMax = 20;
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;

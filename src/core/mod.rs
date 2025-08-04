@@ -115,7 +115,7 @@ mod ffi {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::test::{run_serial, TestException};
+    use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
 
     fn httpheaders_test(out_ex: &mut TestException) -> bool {
@@ -155,36 +155,36 @@ mod tests {
 
     #[test]
     fn httpheaders() {
-        run_serial(httpheaders_test);
+        run_cpp(httpheaders_test);
     }
 
     #[test]
     fn jwt() {
-        run_serial(jwt_test);
+        run_cpp(jwt_test);
     }
 
     #[test]
     fn timer() {
-        run_serial(timer_test);
+        run_cpp(timer_test);
     }
 
     #[test]
     fn defercall() {
-        run_serial(defercall_test);
+        run_cpp(defercall_test);
     }
 
     #[test]
     fn tcpstream() {
-        run_serial(tcpstream_test);
+        run_cpp(tcpstream_test);
     }
 
     #[test]
     fn unixstream() {
-        run_serial(unixstream_test);
+        run_cpp(unixstream_test);
     }
 
     #[test]
     fn eventloop() {
-        run_serial(eventloop_test);
+        run_cpp(eventloop_test);
     }
 }

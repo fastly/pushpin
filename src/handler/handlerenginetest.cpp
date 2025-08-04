@@ -119,11 +119,11 @@ public:
 		zhttpClientOutStreamSock->setIdentity("test-client");
 		zhttpClientOutStreamSock->setProbeRouterEnabled(true);
 
-		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
-		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
-		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
-		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("server-in-stream"));
-		zhttpServerOutSock->bind("ipc://" + workDir.filePath("server-out"));
+		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("hndtst-client-out-stream"));
+		zhttpClientInSock->bind("ipc://" + workDir.filePath("hndtst-client-in"));
+		zhttpServerInSock->bind("ipc://" + workDir.filePath("hndtst-server-in"));
+		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("hndtst-server-in-stream"));
+		zhttpServerOutSock->bind("ipc://" + workDir.filePath("hndtst-server-out"));
 
 		zhttpClientInSock->subscribe("test-client ");
 
@@ -135,14 +135,14 @@ public:
 
 	void startProxy()
 	{
-		proxyAcceptSock->bind("ipc://" + workDir.filePath("accept"));
+		proxyAcceptSock->bind("ipc://" + workDir.filePath("hndtst-accept"));
 
 		proxyAcceptValve->open();
 	}
 
 	void startPublish()
 	{
-		publishPushSock->connectToAddress("ipc://" + workDir.filePath("publish-pull"));
+		publishPushSock->connectToAddress("ipc://" + workDir.filePath("hndtst-publish-pull"));
 	}
 
 	void reset()
@@ -315,13 +315,13 @@ public:
 
 		HandlerEngine::Configuration config;
 		config.instanceId = "handler";
-		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out-stream"));
-		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("client-in"));
-		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
-		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
-		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
-		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("accept"));
-		config.pushInSpec = ("ipc://" + workDir.filePath("publish-pull"));
+		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-client-out-stream"));
+		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-client-in"));
+		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-in"));
+		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-in-stream"));
+		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-out"));
+		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-accept"));
+		config.pushInSpec = ("ipc://" + workDir.filePath("hndtst-publish-pull"));
 		config.connectionSubscriptionMax = 20;
 		config.connectionsMax = 20;
 		TEST_ASSERT(engine->start(config));
