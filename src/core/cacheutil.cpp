@@ -1099,6 +1099,8 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	packetMsg.isResultNull = false;
 	if (jsonMap.contains(gResultAttrName) && packetMsg.result.isEmpty())
 		packetMsg.isResultNull = true;
+	else if (jsonMap.contains(gErrorAttrName))
+		packetMsg.isResultNull = true;
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
 	{
