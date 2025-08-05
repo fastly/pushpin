@@ -2072,7 +2072,6 @@ pid_t create_process_for_cacheclient__(QString urlPath, int _no)
 
 WscatWorker * create_process_for_cacheclient(QString urlPath, int _no)
 {
-	// mainwindow.cpp (example)
 	QThread *thread = new QThread;
 	WscatWorker *worker = new WscatWorker;
 
