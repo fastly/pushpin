@@ -22,6 +22,7 @@
 #include "test.h"
 
 #include <chrono>
+#include <thread>
 #include "eventloop.h"
 
 using namespace std::chrono_literals;

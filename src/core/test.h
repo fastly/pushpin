@@ -26,8 +26,6 @@
 #include <QtTest/QtTest>
 #include "rust/bindings.h"
 
-using namespace std::chrono_literals;
-
 class TestException
 {
 public:
