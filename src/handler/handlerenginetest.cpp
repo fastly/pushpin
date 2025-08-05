@@ -327,8 +327,6 @@ static void runWithEventLoops(std::function<void (Wrapper *, std::function<void 
 
 			f(state.wrapper, loop_wait);
 		}
-
-		DeferCall::cleanup();
 	}
 
 	{

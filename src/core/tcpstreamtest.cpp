@@ -274,8 +274,6 @@ static void accept()
 		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
-
-	DeferCall::cleanup();
 }
 
 static void acceptQt()
@@ -297,8 +295,6 @@ static void io()
 		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
-
-	DeferCall::cleanup();
 }
 
 static void ioQt()
