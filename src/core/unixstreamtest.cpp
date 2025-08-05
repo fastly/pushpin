@@ -24,8 +24,6 @@
 #include <thread>
 #include <QHostAddress>
 #include "test.h"
-#include "timer.h"
-#include "defercall.h"
 #include "eventloop.h"
 #include "unixlistener.h"
 #include "unixstream.h"
@@ -284,17 +282,6 @@ static void accept()
 	});
 }
 
-static void acceptQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(100);
-
-	runAccept([] { QTest::qWait(10); });
-
-	DeferCall::cleanup();
-	Timer::deinit();
-}
-
 static void io()
 {
 	EventLoop loop(100);
@@ -305,23 +292,10 @@ static void io()
 	});
 }
 
-static void ioQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(100);
-
-	runIo([] { QTest::qWait(10); });
-
-	DeferCall::cleanup();
-	Timer::deinit();
-}
-
 extern "C" int unixstream_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(accept());
-	TEST_CATCH(acceptQt());
 	TEST_CATCH(io());
-	TEST_CATCH(ioQt());
 
 	return 0;
 }

@@ -19,12 +19,12 @@
  *
  */
 
+#ifndef PUSHPIN_TEST_H
+#define PUSHPIN_TEST_H
+
 #include "string.h"
 #include <QtTest/QtTest>
 #include "rust/bindings.h"
-
-#ifndef PUSHPIN_TEST_H
-#define PUSHPIN_TEST_H
 
 class TestException
 {
@@ -75,26 +75,9 @@ do {\
 // for running a test and catching an exception if any. expects local variable ffi::TestException* out_ex to exist
 #define TEST_CATCH(statement) try { statement; } catch(const TestException &ex) { ex.toFfi(out_ex); return 1; }
 
-class TestQCoreApplication
-{
-public:
-    TestQCoreApplication()
-    {
-        argc_ = 1;
-        argv_[0] = strdup("qt-test");
-        qapp_ = new QCoreApplication(argc_, argv_);
-    }
-
-    ~TestQCoreApplication()
-    {
-        delete qapp_;
-        free(argv_[0]);
-    }
-
-private:
-    int argc_;
-    char *argv_[1];
-    QCoreApplication *qapp_;
-};
+// expects a test function that takes a wait function as an argument. the wait
+// function can be used by the test to wait for a number of milliseconds while
+// the event loop runs.
+void test_with_event_loop(std::function<void (std::function<void (int)>)> f);
 
 #endif

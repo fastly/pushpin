@@ -22,12 +22,9 @@
 
 #include <unordered_map>
 #include <QDir>
-#include <qtestsupport_core.h>
 #include <boost/signals2.hpp>
 #include "test.h"
 #include "log.h"
-#include "timer.h"
-#include "defercall.h"
 #include "zhttpmanager.h"
 #include "websocketoverhttp.h"
 
@@ -164,14 +161,12 @@ public:
 	std::unique_ptr<WohServer> wohServer;
 	std::unique_ptr<ZhttpManager> zhttpOut;
 
-	TestState()
+	TestState(std::function<void (int)> loop_wait)
 	{
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-
-		Timer::init(100);
 
 		wohServer = std::make_unique<WohServer>(workDir);
 
@@ -181,7 +176,7 @@ public:
 		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("woh-test-in-stream")));
 		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("woh-test-out")));
 
-		QTest::qWait(500);
+		loop_wait(500);
 	}
 
 	~TestState()
@@ -190,12 +185,6 @@ public:
 
 		zhttpOut.reset();
 		wohServer.reset();
-
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
-
-		DeferCall::cleanup();
-		Timer::deinit();
 	}
 };
 
@@ -252,10 +241,9 @@ static void removePartial()
 	TEST_ASSERT(frames.isEmpty());
 }
 
-static void io()
+static void io(std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
+	TestState state(loop_wait);
 
 	WebSocketOverHttp client(state.zhttpOut.get());
 
@@ -289,7 +277,7 @@ static void io()
 	client.start(QUrl("ws://localhost/ws"), HttpHeaders());
 
 	while(!clientConnected && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientConnected);
@@ -297,7 +285,7 @@ static void io()
 	client.writeFrame(WebSocket::Frame(WebSocket::Frame::Text, "hello", false));
 
 	while(!clientReadyRead && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientReadyRead);
@@ -312,16 +300,15 @@ static void io()
 	client.close();
 
 	while(!clientClosed && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientClosed);
 }
 
-static void replay()
+static void replay(std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
+	TestState state(loop_wait);
 
 	WebSocketOverHttp client(state.zhttpOut.get());
 
@@ -360,7 +347,7 @@ static void replay()
 	client.start(QUrl("ws://localhost/ws"), HttpHeaders());
 
 	while(!clientConnected && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientConnected);
@@ -370,7 +357,7 @@ static void replay()
 	TEST_ASSERT_EQ(client.writeBytesAvailable(), maxAvail - 11);
 
 	while(!clientWriteBytesChanged && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientWriteBytesChanged);
@@ -381,7 +368,7 @@ static void replay()
 	client.writeFrame(WebSocket::Frame(WebSocket::Frame::Text, " world]", false));
 
 	while(!clientReadyRead && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	WebSocket::Frame f = client.readFrame();
 	TEST_ASSERT_EQ(f.type, WebSocket::Frame::Text);
@@ -394,7 +381,7 @@ static void replay()
 	client.close();
 
 	while(!clientClosed && !clientError)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	TEST_ASSERT(!clientError);
 	TEST_ASSERT(clientClosed);
@@ -404,8 +391,8 @@ extern "C" int websocketoverhttp_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(convertFrames());
 	TEST_CATCH(removePartial());
-	TEST_CATCH(io());
-	TEST_CATCH(replay());
+	TEST_CATCH(test_with_event_loop(io));
+	TEST_CATCH(test_with_event_loop(replay));
 
 	return 0;
 }

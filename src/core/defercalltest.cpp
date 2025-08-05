@@ -22,7 +22,6 @@
 
 #include <thread>
 #include "test.h"
-#include "timer.h"
 #include "defercall.h"
 #include "eventloop.h"
 
@@ -88,26 +87,6 @@ static void deferCall()
 	TEST_ASSERT_EQ(count, 2);
 }
 
-static void deferCallQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(2);
-
-	auto [pendingCount, count] = runDeferCall([&] {
-		// the underlying timer's qt-based implementation will process
-		// both timeouts during a single timer processing pass.
-		// therefore, both calls should run within a single event loop
-		// pass
-		QCoreApplication::processEvents(QEventLoop::AllEvents);
-	});
-
-	TEST_ASSERT_EQ(pendingCount, 0);
-	TEST_ASSERT_EQ(count, 2);
-
-	DeferCall::cleanup();
-	Timer::deinit();
-}
-
 static void nonLocal()
 {
 	EventLoop loop(2);
@@ -121,27 +100,9 @@ static void nonLocal()
 	TEST_ASSERT_EQ(count, 1);
 }
 
-static void nonLocalQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(2);
-
-	auto [pendingCount, count] = runNonLocal([&] {
-		// process the underlying invokeMethod
-		QCoreApplication::processEvents(QEventLoop::AllEvents);
-	});
-
-	TEST_ASSERT_EQ(pendingCount, 0);
-	TEST_ASSERT_EQ(count, 1);
-
-	DeferCall::cleanup();
-	Timer::deinit();
-}
-
 static void retract()
 {
-	TestQCoreApplication qapp;
-	Timer::init(2);
+	EventLoop loop(2);
 
 	bool called = false;
 
@@ -155,14 +116,11 @@ static void retract()
 
 	DeferCall::cleanup();
 	TEST_ASSERT(!called);
-
-	Timer::deinit();
 }
 
 static void managerCleanup()
 {
-	TestQCoreApplication qapp;
-	Timer::init(2);
+	EventLoop loop(2);
 
 	int count = 0;
 
@@ -178,16 +136,12 @@ static void managerCleanup()
 	// those queued during processing
 	DeferCall::cleanup();
 	TEST_ASSERT_EQ(count, 2);
-
-	Timer::deinit();
 }
 
 extern "C" int defercall_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(deferCall());
-	TEST_CATCH(deferCallQt());
 	TEST_CATCH(nonLocal());
-	TEST_CATCH(nonLocalQt());
 	TEST_CATCH(retract());
 	TEST_CATCH(managerCleanup());
 

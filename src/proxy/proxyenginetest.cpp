@@ -39,8 +39,6 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "packet/statspacket.h"
-#include "timer.h"
-#include "defercall.h"
 #include "eventloop.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"

@@ -34,8 +34,6 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
-#include "timer.h"
-#include "defercall.h"
 #include "eventloop.h"
 #include "handlerengine.h"
 
@@ -309,46 +307,22 @@ public:
 
 }
 
-static void runWithEventLoops(std::function<void (Wrapper *, std::function<void (int)>)> f)
+static void runWithEventLoop(std::function<void (Wrapper *, std::function<void (int)>)> f)
 {
-	{
-		EventLoop loop(100);
+	EventLoop loop(100);
 
-		auto loop_wait = [&](int ms) {
-			for(int i = ms; i > 0; i -= 10)
-			{
-				std::this_thread::sleep_for(10ms);
-				loop.step();
-			}
-		};
-
+	auto loop_wait = [&](int ms) {
+		for(int i = ms; i > 0; i -= 10)
 		{
-			TestState state(loop_wait);
-
-			f(state.wrapper, loop_wait);
+			std::this_thread::sleep_for(10ms);
+			loop.step();
 		}
-	}
+	};
 
 	{
-		TestQCoreApplication qapp;
+		TestState state(loop_wait);
 
-		Timer::init(100);
-
-		auto loop_wait = [](int ms) {
-			QTest::qWait(ms);
-		};
-
-		{
-			TestState state(loop_wait);
-
-			f(state.wrapper, loop_wait);
-		}
-
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
-
-		DeferCall::cleanup();
-		Timer::deinit();
+		f(state.wrapper, loop_wait);
 	}
 }
 
@@ -875,13 +849,13 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 
 extern "C" int handlerengine_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(runWithEventLoops(acceptNoHold));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldResponseSent));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldNext));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldNextResponseSent));
-	TEST_CATCH(runWithEventLoops(publishResponse));
-	TEST_CATCH(runWithEventLoops(publishStream));
-	TEST_CATCH(runWithEventLoops(publishStreamReorder));
+	TEST_CATCH(runWithEventLoop(acceptNoHold));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldResponseSent));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldNext));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldNextResponseSent));
+	TEST_CATCH(runWithEventLoop(publishResponse));
+	TEST_CATCH(runWithEventLoop(publishStream));
+	TEST_CATCH(runWithEventLoop(publishStreamReorder));
 
 	return 0;
 }
