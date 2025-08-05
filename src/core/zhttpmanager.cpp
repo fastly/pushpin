@@ -3180,7 +3180,7 @@ void initCacheClient(int workerNo)
 		log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
 
 		// create processes for cache client
-		WscatWorker * wscatWorker = create_process_for_cacheclient(gWsBackendUrlList[0], workerNo);
+		WscatWorker * wscatWorker = create_process_for_cacheclient(gWsBackendUrlList[workerNo], workerNo);
 		if (wscatWorker != NULL)
 		{
 			ClientItem cacheClient;
@@ -3194,7 +3194,7 @@ void initCacheClient(int workerNo)
 		}
 
 		workerNo++;
-		if (workerNo < gWorkersCount)
+		if (workerNo < gWsBackendUrlList.count())
 		{
 			QTimer::singleShot(1 * 100, [=]() {
 				initCacheClient(workerNo);
