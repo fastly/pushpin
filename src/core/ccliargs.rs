@@ -83,6 +83,87 @@ impl CCliArgs {
     }
 }
 
+mod ffi {
+    use std::ffi::CString;
+
+    #[repr(C)]
+    pub struct CCliArgsFfi {
+        config_file: *mut libc::c_char,
+        log_file: *mut libc::c_char,
+        log_level: libc::c_uint,
+        ipc_prefix: *mut libc::c_char,
+        port_offset: libc::c_uint,
+        routes: *mut libc::c_char, // Changed to single string instead of array
+        quiet_check: libc::c_int,
+    }
+
+    // Converts CCliArgs to a C++-compatible struct
+    pub fn c_cli_args_to_ffi(args: &super::CCliArgs) -> CCliArgsFfi {
+        let config_file = args
+            .config_file
+            .as_ref()
+            .map_or_else(
+                || CString::new("").unwrap(),
+                |s| CString::new(s.as_str()).unwrap(),
+            )
+            .into_raw();
+
+        let log_file = args
+            .log_file
+            .as_ref()
+            .map_or_else(
+                || CString::new("").unwrap(),
+                |s| CString::new(s.as_str()).unwrap(),
+            )
+            .into_raw();
+
+        let ipc_prefix = args
+            .ipc_prefix
+            .as_ref()
+            .map_or_else(
+                || CString::new("").unwrap(),
+                |s| CString::new(s.as_str()).unwrap(),
+            )
+            .into_raw();
+
+        let routes = args
+            .routes
+            .as_ref()
+            .map_or_else(
+                || CString::new("").unwrap(),
+                |r| CString::new(r.join(",")).unwrap(),
+            )
+            .into_raw();
+
+        CCliArgsFfi {
+            config_file,
+            log_file,
+            log_level: args.log_level,
+            ipc_prefix,
+            port_offset: args.port_offset.unwrap_or(0),
+            routes,
+            quiet_check: if args.quiet_check { 1 } else { 0 },
+        }
+    }
+
+    /// Frees the memory allocated by c_cli_args_to_ffi
+    /// MUST be called by C++ code when done with the CCliArgsFfi struct
+    pub unsafe fn destroy_c_cli_args(ffi_args: CCliArgsFfi) {
+        if !ffi_args.config_file.is_null() {
+            let _ = CString::from_raw(ffi_args.config_file);
+        }
+        if !ffi_args.log_file.is_null() {
+            let _ = CString::from_raw(ffi_args.log_file);
+        }
+        if !ffi_args.ipc_prefix.is_null() {
+            let _ = CString::from_raw(ffi_args.ipc_prefix);
+        }
+        if !ffi_args.routes.is_null() {
+            let _ = CString::from_raw(ffi_args.routes);
+        }
+    }
+}
+
 impl IntoIterator for CCliArgs {
     type Item = (String, String);
     type IntoIter = std::vec::IntoIter<Self::Item>;
