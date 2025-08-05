@@ -88,6 +88,7 @@ public:
 
 	void setImmediateEnabled(bool on);
 	void setRouterMandatoryEnabled(bool on);
+	void setProbeRouterEnabled(bool on);
 
 	void setTcpKeepAliveEnabled(bool on);
 	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
