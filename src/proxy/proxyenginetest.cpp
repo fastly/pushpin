@@ -59,6 +59,7 @@ class Wrapper
 public:
 	std::unique_ptr<QZmq::Socket> zhttpClientOutSock;
 	std::unique_ptr<QZmq::Socket> zhttpClientOutStreamSock;
+	std::unique_ptr<QZmq::Valve> zhttpClientOutStreamValve;
 	std::unique_ptr<QZmq::Socket> zhttpClientInSock;
 	std::unique_ptr<QZmq::Valve> zhttpClientInValve;
 	std::unique_ptr<QZmq::Socket> zhttpServerInSock;
@@ -90,6 +91,7 @@ public:
 	QByteArray requestBody;
 	QHash<QByteArray, HttpResponseData> responses;
 	Connection zhttpClientInValveConnection;
+	Connection zhttpClientOutStreamValveConnection;
 	Connection zhttpServerInValveConnection;
 	Connection zhttpServerInStreamValveConnection;
 	Connection handlerAcceptValveConnection;
@@ -111,6 +113,8 @@ public:
 		zhttpClientOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
 
 		zhttpClientOutStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		zhttpClientOutStreamValve = std::make_unique<QZmq::Valve>(zhttpClientOutStreamSock.get());
+		zhttpClientOutStreamValveConnection = zhttpClientOutStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientOutStream_readyRead, this, boost::placeholders::_1));
 
 		zhttpClientInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 		zhttpClientInValve = std::make_unique<QZmq::Valve>(zhttpClientInSock.get());
@@ -143,6 +147,8 @@ public:
 
 	void startHttp()
 	{
+		zhttpClientOutStreamSock->setIdentity("test-client");
+
 		zhttpClientOutSock->bind("ipc://" + workDir.filePath("client-out"));
 		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
 		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
@@ -153,6 +159,7 @@ public:
 		zhttpClientInSock->subscribe("test-client ");
 
 		zhttpClientInValve->open();
+		zhttpClientOutStreamValve->open();
 		zhttpServerInValve->open();
 		zhttpServerInStreamValve->open();
 	}
@@ -187,11 +194,10 @@ public:
 	}
 
 private:
-	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	void processClientIn(const QByteArray &message)
 	{
 		log_debug("client in");
-		int at = message[0].indexOf(' ');
-		QVariant v = TnetString::toVariant(message[0].mid(at + 2));
+		QVariant v = TnetString::toVariant(message);
 		ZhttpResponsePacket zresp;
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
@@ -233,6 +239,18 @@ private:
 			finished = true;
 			++clientReqsFinished;
 		}
+	}
+
+	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	{
+		int at = message[0].indexOf(' ');
+
+		processClientIn(message[0].mid(at + 2));
+	}
+
+	void zhttpClientOutStream_readyRead(const QList<QByteArray> &message)
+	{
+		processClientIn(message[2].mid(1));
 	}
 
 	void zhttpServerIn_readyRead(const QList<QByteArray> &message)
@@ -658,6 +676,7 @@ static void passthrough(TestState &state, std::function<void (int)> loop_wait)
 	zreq.headers += HttpHeader("Host", "example");
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -698,6 +717,7 @@ static void passthroughWithoutInspect(TestState &state, std::function<void (int)
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -719,6 +739,7 @@ static void passthroughJsonp(TestState &state, std::function<void (int)> loop_wa
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -752,6 +773,7 @@ static void passthroughJsonpBasic(TestState &state, std::function<void (int)> lo
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -776,6 +798,7 @@ static void passthroughPostStream(TestState &state, std::function<void (int)> lo
 	zreq.body = "hello"; // enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
@@ -837,6 +860,7 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 	zreq.body = "hello"; // enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
@@ -893,6 +917,7 @@ static void acceptResponse(TestState &state, std::function<void (int)> loop_wait
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -933,6 +958,7 @@ static void acceptStream(TestState &state, std::function<void (int)> loop_wait)
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -973,6 +999,7 @@ static void acceptResponseBodyInstruct(TestState &state, std::function<void (int
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -995,6 +1022,7 @@ static void acceptNoHold(TestState &state, std::function<void (int)> loop_wait)
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -1032,6 +1060,7 @@ static void acceptNoHoldBodyInstruct(TestState &state, std::function<void (int)>
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -1054,6 +1083,7 @@ static void passthroughThenAcceptStream(TestState &state, std::function<void (in
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -1096,6 +1126,7 @@ static void passthroughThenAcceptNext(TestState &state, std::function<void (int)
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -1137,6 +1168,7 @@ static void acceptWithRetry(TestState &state, std::function<void (int)> loop_wai
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -1189,6 +1221,7 @@ static void passthroughShared(TestState &state, std::function<void (int)> loop_w
 	zreq.method = "GET";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 
 	QByteArray buf;
 
@@ -1249,6 +1282,7 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	zreq.body = "hello"; // enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 
 	QByteArray buf;
 
@@ -1334,6 +1368,7 @@ static void passthroughWs(TestState &state, std::function<void (int)> loop_wait)
 	zreq.uri = "ws://example/path";
 	zreq.stream = true;
 	zreq.credits = 200000;
+	zreq.routerResp = true;
 	QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
