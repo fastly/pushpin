@@ -101,5 +101,7 @@ test = false
 bench = false
 
 [lints.rust]
-
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))'] }
+
+[lints.clippy]
+uninlined_format_args = "allow"
