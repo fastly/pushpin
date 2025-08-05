@@ -69,6 +69,7 @@ extern QString gMsgIdAttrName;
 extern QString gMsgMethodAttrName;
 extern QString gMsgParamsAttrName;
 extern QString gResultAttrName;
+extern QString gErrorAttrName;
 extern QString gSubscriptionAttrName;
 extern QString gSubscribeBlockAttrName;
 extern QString gSubscribeChangesAttrName;

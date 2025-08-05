@@ -91,6 +91,7 @@ QString gMsgIdAttrName = "id";
 QString gMsgMethodAttrName = "method";
 QString gMsgParamsAttrName = "params";
 QString gResultAttrName = "result";
+QString gErrorAttrName = "error";
 QString gSubscriptionAttrName = "params>>subscription";
 QString gSubscribeBlockAttrName = "params>>result>>block";
 QString gSubscribeChangesAttrName = "params>>result>>changes";
