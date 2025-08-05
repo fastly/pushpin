@@ -3177,7 +3177,7 @@ void initCacheClient(int workerNo)
 	}
 	else
 	{
-		log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[0]));
+		log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[workerNo]));
 
 		// create processes for cache client
 		WscatWorker * wscatWorker = create_process_for_cacheclient(gWsBackendUrlList[workerNo], workerNo);
