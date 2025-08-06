@@ -3310,7 +3310,7 @@ void ZhttpManager::setCacheParameters(
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
-	if (!string.IsNullOrEmpty(msgErrorFieldName))
+	if (!msgErrorFieldName.isEmpty())
 	{
 		gErrorAttrName = msgErrorFieldName;
 	}
