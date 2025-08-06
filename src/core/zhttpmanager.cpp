@@ -3310,7 +3310,10 @@ void ZhttpManager::setCacheParameters(
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
-	gErrorAttrName = msgErrorFieldName;
+	if (!string.IsNullOrEmpty(msgErrorFieldName))
+	{
+		gErrorAttrName = msgErrorFieldName;
+	}
 
 	log_debug("[CONFIG] cache %s", gCacheEnable ? "enabled" : "disabled");
 	log_debug("[CONFIG] error-attr %s", qPrintable(gErrorAttrName));
