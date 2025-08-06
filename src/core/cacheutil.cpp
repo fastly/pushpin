@@ -1162,7 +1162,19 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	packetMsg.result = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : "";
 	packetMsg.isResultNull = false;
 	if (jsonMap.contains(gResultAttrName) && packetMsg.result.isEmpty())
+	{
 		packetMsg.isResultNull = true;
+	}
+	else
+	{
+		for (auto it = jsonMap.constBegin(); it != jsonMap.constEnd(); ++it) 
+		{
+			if (it.key().startsWith(gErrorAttrName, Qt::CaseInsensitive)) 
+			{
+				packetMsg.isResultNull = true;
+			}
+		}
+	}
 	packetMsg.params = jsonMap.contains(gMsgParamsAttrName) ? jsonMap[gMsgParamsAttrName].toString() : "";
 	if (scheme == Scheme::http)
 	{
