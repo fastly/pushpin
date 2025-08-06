@@ -3221,6 +3221,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
+	const QString &msgErrorFieldName,
 	int prometheusRestoreAllowSeconds,
 	bool redisEnable,
 	const QString &redisHostAddr,
@@ -3309,6 +3310,7 @@ void ZhttpManager::setCacheParameters(
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
+	gErrorAttrName = msgErrorFieldName;
 
 	log_debug("[CONFIG] cache %s", gCacheEnable ? "enabled" : "disabled");
 

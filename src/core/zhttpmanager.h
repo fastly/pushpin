@@ -78,6 +78,7 @@ public:
 		const QString &msgIdFieldName,
 		const QString &msgMethodFieldName,
 		const QString &msgParamsFieldName,
+		const QString &msgErrorFieldName,
 		const int prometheusRestoreAllowSeconds,
 		bool redisEnable,
 		const QString &redisHostAddr,
