@@ -91,7 +91,7 @@ QString gMsgIdAttrName = "id";
 QString gMsgMethodAttrName = "method";
 QString gMsgParamsAttrName = "params";
 QString gResultAttrName = "result";
-QString gErrorAttrName = "error";
+QStringList gErrorAttrList;
 QString gSubscriptionAttrName = "params>>subscription";
 QString gSubscribeBlockAttrName = "params>>result>>block";
 QString gSubscribeChangesAttrName = "params>>result>>changes";
@@ -3222,7 +3222,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
-	const QString &msgErrorFieldName,
+	const QStringList &msgErrorFieldList,
 	int prometheusRestoreAllowSeconds,
 	bool redisEnable,
 	const QString &redisHostAddr,
@@ -3311,13 +3311,16 @@ void ZhttpManager::setCacheParameters(
 	gMsgIdAttrName = msgIdFieldName;
 	gMsgMethodAttrName = msgMethodFieldName;
 	gMsgParamsAttrName = msgParamsFieldName;
-	if (!msgErrorFieldName.isEmpty())
+	foreach (QString attr, msgErrorFieldList)
 	{
-		gErrorAttrName = msgErrorFieldName;
+		gErrorAttrList.append(attr.toLower());
 	}
 
 	log_debug("[CONFIG] cache %s", gCacheEnable ? "enabled" : "disabled");
-	log_debug("[CONFIG] error-attr %s", qPrintable(gErrorAttrName));
+	log_debug("[CONFIG] error attributes:");
+	for (int i = 0; i < gErrorAttrList.size(); ++i) {
+		log_debug("%s", qPrintable(gErrorAttrList[i]));
+	}
 
 	log_debug("[CONFIG] gHttpBackendUrlList");
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {

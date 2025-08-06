@@ -69,7 +69,7 @@ extern QString gMsgIdAttrName;
 extern QString gMsgMethodAttrName;
 extern QString gMsgParamsAttrName;
 extern QString gResultAttrName;
-extern QString gErrorAttrName;
+extern QStringList gErrorAttrList;
 extern QString gSubscriptionAttrName;
 extern QString gSubscribeBlockAttrName;
 extern QString gSubscribeChangesAttrName;
@@ -1106,9 +1106,12 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	{
 		for (auto it = jsonMap.constBegin(); it != jsonMap.constEnd(); ++it) 
 		{
-			if (it.key().startsWith(gErrorAttrName, Qt::CaseInsensitive)) 
+			foreach (QString attr, gErrorAttrList)
 			{
-				packetMsg.isResultNull = true;
+				if (it.key().startsWith(attr, Qt::CaseInsensitive)) 
+				{
+					packetMsg.isResultNull = true;
+				}
 			}
 		}
 	}
@@ -1169,9 +1172,12 @@ int parse_packet_msg(Scheme scheme, const ZhttpResponsePacket& packet, PacketMsg
 	{
 		for (auto it = jsonMap.constBegin(); it != jsonMap.constEnd(); ++it) 
 		{
-			if (it.key().startsWith(gErrorAttrName, Qt::CaseInsensitive)) 
+			foreach (QString attr, gErrorAttrList)
 			{
-				packetMsg.isResultNull = true;
+				if (it.key().startsWith(attr, Qt::CaseInsensitive)) 
+				{
+					packetMsg.isResultNull = true;
+				}
 			}
 		}
 	}
