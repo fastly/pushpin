@@ -2486,6 +2486,7 @@ public:
 				{
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(pCacheItem->methodName));
 
+					log_debug("[QQQ] %s, %s, %d", pCacheItem->cachedFlag==false?"F":"T", pCacheItem->isResultNull==false?"F":"T", pCacheItem->retryCount);
 					if (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true && pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 					{
 						log_debug("[WS] get NULL response, retrying %d", pCacheItem->retryCount);
