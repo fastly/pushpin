@@ -429,7 +429,11 @@ public:
 
 		QStringList services = settings.value("runner/services").toStringList();
 
+		bool cacheEnable = settings.value("cache/cache_enable").toBool();
+		
 		int workerCount = settings.value("proxy/workers", 1).toInt();
+		if (cacheEnable == true)
+			workerCount = 1;
 		QStringList connmgr_in_specs = settings.value("proxy/connmgr_in_specs").toStringList();
 		trimlist(&connmgr_in_specs);
 		QStringList connmgr_in_stream_specs = settings.value("proxy/connmgr_in_stream_specs").toStringList();
@@ -628,7 +632,6 @@ public:
 		config.prometheusPrefix = prometheusPrefix;
 
 		// Cache config
-		bool cacheEnable = settings.value("cache/cache_enable").toBool();
 		QStringList httpBackendUrlList = settings.value("cache/http_backend_urls").toStringList();
 		QStringList wsBackendUrlList = settings.value("cache/ws_backend_urls").toStringList();
 		QStringList cacheMethodList = settings.value("cache/ws_cache_methods").toStringList();

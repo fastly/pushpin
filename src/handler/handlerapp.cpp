@@ -268,7 +268,12 @@ public:
 		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
 		trimlist(&condure_out_specs);
 		connmgr_out_specs += condure_out_specs;
+
+		bool cacheEnable = settings.value("cache/cache_enable").toBool();
+		
 		int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
+		if (cacheEnable == true)
+			proxyWorkerCount = 1;
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
