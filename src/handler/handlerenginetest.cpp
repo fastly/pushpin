@@ -45,6 +45,7 @@ class Wrapper
 {
 public:
 	std::unique_ptr<QZmq::Socket> zhttpClientOutStreamSock;
+	std::unique_ptr<QZmq::Valve> zhttpClientOutStreamValve;
 	std::unique_ptr<QZmq::Socket> zhttpClientInSock;
 	std::unique_ptr<QZmq::Valve> zhttpClientInValve;
 	std::unique_ptr<QZmq::Socket> zhttpServerInSock;
@@ -66,6 +67,7 @@ public:
 	int serverOutSeq;
 	QByteArray requestBody;
 	Connection zhttpClientInValveConnection;
+	Connection zhttpClientOutStreamValveConnection;
 	Connection zhttpServerInValveConnection;
 	Connection zhttpServerInStreamValveConnection;
 	Connection proxyAcceptValveConnection;
@@ -81,6 +83,8 @@ public:
 		// http sockets
 
 		zhttpClientOutStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		zhttpClientOutStreamValve = std::make_unique<QZmq::Valve>(zhttpClientOutStreamSock.get());
+		zhttpClientOutStreamValveConnection = zhttpClientOutStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientOutStream_readyRead, this, boost::placeholders::_1));
 
 		zhttpClientInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 		zhttpClientInValve = std::make_unique<QZmq::Valve>(zhttpClientInSock.get());
@@ -110,6 +114,8 @@ public:
 
 	void startHttp()
 	{
+		zhttpClientOutStreamSock->setIdentity("test-client");
+
 		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
 		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
 		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
@@ -119,6 +125,7 @@ public:
 		zhttpClientInSock->subscribe("test-client ");
 
 		zhttpClientInValve->open();
+		zhttpClientOutStreamValve->open();
 		zhttpServerInValve->open();
 		zhttpServerInStreamValve->open();
 	}
@@ -147,12 +154,11 @@ public:
 		requestBody.clear();
 	}
 
-	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	void processClientIn(const QByteArray &message)
 	{
 		log_debug("client in");
 
-		int at = message[0].indexOf(' ');
-		QVariant v = TnetString::toVariant(message[0].mid(at + 2));
+		QVariant v = TnetString::toVariant(message);
 		ZhttpResponsePacket zresp;
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
@@ -171,6 +177,18 @@ public:
 			if(!zresp.more)
 				finished = true;
 		}
+	}
+
+	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	{
+		int at = message[0].indexOf(' ');
+
+		processClientIn(message[0].mid(at + 2));
+	}
+
+	void zhttpClientOutStream_readyRead(const QList<QByteArray> &message)
+	{
+		processClientIn(message[2].mid(1));
 	}
 
 	void zhttpServerIn_readyRead(const QList<QByteArray> &message)
@@ -341,6 +359,7 @@ static void acceptNoHold(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -392,6 +411,7 @@ static void acceptNoHoldResponseSent(Wrapper *wrapper, std::function<void (int)>
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -444,6 +464,7 @@ static void acceptNoHoldNext(Wrapper *wrapper, std::function<void (int)> loop_wa
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -501,6 +522,7 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (i
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 	reqState["response-code"] = 200;
 
 	QVariantHash req;
@@ -560,6 +582,7 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -629,6 +652,7 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -717,6 +741,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
