@@ -171,7 +171,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
-		initSock->write(QList<AcByteArray>() << buf);
+		initSock->write(QList<QByteArray>() << buf);
 	}
 
 	void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress)
@@ -184,9 +184,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s", instanceAddress.data());
 
-		QList<AcByteArray> msg;
+		QList<QByteArray> msg;
 		msg += instanceAddress;
-		msg += AcByteArray();
+		msg += QByteArray();
 		msg += buf;
 		streamSock->write(msg);
 	}
@@ -263,7 +263,7 @@ private:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0]);
+		QVariant data = TnetString::toVariant(req.content()[0].asQByteArray());
 		if(data.isNull())
 		{
 			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");

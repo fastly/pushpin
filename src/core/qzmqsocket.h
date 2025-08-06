@@ -25,7 +25,6 @@
 #ifndef QZMQSOCKET_H
 #define QZMQSOCKET_H
 
-#include <QList>
 #include <boost/signals2.hpp>
 #include "acbytearray.h"
 
@@ -104,8 +103,8 @@ public:
 	//   needing to be queued, if the conditions change in between.
 	bool canWriteImmediately() const;
 
-	QList<AcByteArray> read();
-	void write(const QList<AcByteArray> &message);
+	AcByteArrayList read();
+	void write(const AcByteArrayList &message);
 
 	Signal readyRead;
 	SignalInt messagesWritten;

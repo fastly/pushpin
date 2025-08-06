@@ -18,6 +18,7 @@
 #define ACBYTEARRAY_H
 
 #include <QByteArray>
+#include <QList>
 
 class AcByteArray
 {
@@ -45,6 +46,36 @@ public:
 
 private:
     QByteArray inner_;
+};
+
+class AcByteArrayList
+{
+public:
+    AcByteArrayList() = default;
+    AcByteArrayList(const QList<QByteArray> &other) : inner_(other) {}
+
+    bool isEmpty() const { return inner_.isEmpty(); }
+    qsizetype count() const { return inner_.count(); }
+
+    AcByteArrayList operator+=(const AcByteArray &a) { inner_ += a.asQByteArray(); return *this; }
+
+    const AcByteArray & operator[](int index) const
+    {
+        // SAFETY: AcByteArray and QByteArray have identical layouts
+        return reinterpret_cast<const AcByteArray &>(inner_[index]);
+    }
+
+    AcByteArray & operator[](int index)
+    {
+        // SAFETY: AcByteArray and QByteArray have identical layouts
+        return reinterpret_cast<AcByteArray &>(inner_[index]);
+    }
+
+    const QList<QByteArray> & asQByteArrayList() const { return inner_; }
+    QList<QByteArray> & asQByteArrayList() { return inner_; }
+
+private:
+    QList<QByteArray> inner_;
 };
 
 #endif

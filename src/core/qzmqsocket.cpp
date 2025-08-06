@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <QList>
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
@@ -378,7 +379,7 @@ public:
 	void *sock;
 	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
-	QList<QList<AcByteArray>> pendingWrites;
+	QList<AcByteArrayList> pendingWrites;
 	int pendingWritten;
 	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
@@ -461,11 +462,11 @@ public:
 		}
 	}
 
-	QList<AcByteArray> read()
+	AcByteArrayList read()
 	{
 		if(canRead)
 		{
-			QList<AcByteArray> out;
+			AcByteArrayList out;
 
 			bool ok = true;
 
@@ -507,13 +508,13 @@ public:
 			if(ok)
 				return out;
 			else
-				return QList<AcByteArray>();
+				return AcByteArrayList();
 		}
 		else
-			return QList<AcByteArray>();
+			return AcByteArrayList();
 	}
 
-	void write(const QList<AcByteArray> &message)
+	void write(const AcByteArrayList &message)
 	{
 		assert(!message.isEmpty());
 
@@ -554,7 +555,7 @@ public:
 		return (canWrite != canWriteOld || canRead != canReadOld);
 	}
 
-	bool zmqWrite(const QList<AcByteArray> &message)
+	bool zmqWrite(const AcByteArrayList &message)
 	{
 		for(int n = 0; n < message.count(); ++n)
 		{
@@ -775,12 +776,12 @@ bool Socket::canWriteImmediately() const
 	return d->canWrite;
 }
 
-QList<AcByteArray> Socket::read()
+AcByteArrayList Socket::read()
 {
 	return d->read();
 }
 
-void Socket::write(const QList<AcByteArray> &message)
+void Socket::write(const AcByteArrayList &message)
 {
 	d->write(message);
 }

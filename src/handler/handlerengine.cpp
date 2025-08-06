@@ -1652,9 +1652,9 @@ private:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("OUT retry: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		QList<AcByteArray> msg;
+		QList<QByteArray> msg;
 		msg += instanceAddress;
-		msg += AcByteArray();
+		msg += QByteArray();
 		msg += TnetString::fromVariant(vout);
 		retrySock->write(msg);
 	}
@@ -1676,9 +1676,9 @@ private:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("OUT wscontrol: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		QList<AcByteArray> msg;
+		QList<QByteArray> msg;
 		msg += instanceAddress;
-		msg += AcByteArray();
+		msg += QByteArray();
 		msg += TnetString::fromVariant(vout);
 		wsControlStreamSock->write(msg);
 	}
@@ -2547,7 +2547,7 @@ private:
 			return;
 		}
 
-		wsControlIn_readyRead(req.content()[0]);
+		wsControlIn_readyRead(req.content()[0].asQByteArray());
 	}
 
 	void wsControlIn_readyRead(const QByteArray &message)

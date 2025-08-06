@@ -27,7 +27,6 @@
 #include <QStringList>
 #include <QFile>
 #include "acbytearray.h"
-#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -150,7 +149,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-		clientSock->write(QList<AcByteArray>() << AcByteArray() << buf);
+		clientSock->write(QList<QByteArray>() << QByteArray() << buf);
 	}
 
 	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet)
@@ -163,9 +162,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-		QList<AcByteArray> message;
-		message += AcUtil::to(headers);
-		message += AcByteArray();
+		QList<QByteArray> message;
+		message += headers;
+		message += QByteArray();
 		message += buf;
 		serverSock->write(message);
 	}
@@ -221,7 +220,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0]);
+		QVariant data = TnetString::toVariant(req.content()[0].asQByteArray());
 		if(data.isNull())
 		{
 			log_warning("zrpc server: received message with invalid format (tnetstring parse failed), skipping");
@@ -239,7 +238,7 @@ public:
 		}
 
 		PendingItem i;
-		i.headers = req.headers();
+		i.headers = req.headers().asQByteArrayList();
 		i.packet = p;
 		pending += i;
 

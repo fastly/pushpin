@@ -27,7 +27,6 @@
 #include <QStringList>
 #include <QHash>
 #include "acbytearray.h"
-#include "acutil.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -377,14 +376,14 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT", logprefix);
 
-			client_out_sock->write(QList<AcByteArray>() << buf);
+			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT", logprefix);
 
-			client_req_sock->write(QList<AcByteArray>() << QByteArray() << buf);
+			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
 	}
 
@@ -399,9 +398,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s", logprefix, instanceAddress.data());
 
-		QList<AcByteArray> msg;
+		QList<QByteArray> msg;
 		msg += instanceAddress;
-		msg += AcByteArray();
+		msg += QByteArray();
 		msg += buf;
 		client_out_stream_sock->write(msg);
 	}
@@ -420,9 +419,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT (router) %s", logprefix, instanceAddress.data());
 
-			QList<AcByteArray> msg;
+			QList<QByteArray> msg;
 			msg += instanceAddress;
-			msg += AcByteArray();
+			msg += QByteArray();
 			msg += buf;
 			server_in_stream_sock->write(msg);
 		}
@@ -433,7 +432,7 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
-			server_out_sock->write(QList<AcByteArray>() << buf);
+			server_out_sock->write(QList<QByteArray>() << buf);
 		}
 	}
 
@@ -539,7 +538,7 @@ public:
 
 		while(client_req_sock->canRead())
 		{
-			QList<QByteArray> msg = AcUtil::from(client_req_sock->read());
+			QList<QByteArray> msg = client_req_sock->read().asQByteArrayList();
 			if(msg.count() != 2)
 			{
 				log_warning("zhttp/zws client req: received message with parts != 2, skipping");

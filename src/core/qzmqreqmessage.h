@@ -24,7 +24,7 @@
 #ifndef QZMQREQMESSAGE_H
 #define QZMQREQMESSAGE_H
 
-#include "acutil.h"
+#include "acbytearray.h"
 
 namespace QZmq {
 
@@ -35,9 +35,9 @@ public:
 	{
 	}
 
-	ReqMessage(const QList<AcByteArray> &headers, const QList<AcByteArray> &content) :
-		headers_(AcUtil::from(headers)),
-		content_(AcUtil::from(content))
+	ReqMessage(const AcByteArrayList &headers, const AcByteArrayList &content) :
+		headers_(headers),
+		content_(content)
 	{
 	}
 
@@ -47,15 +47,10 @@ public:
 	{
 	}
 
-	ReqMessage(const QList<AcByteArray> &rawMessage) :
-		ReqMessage(AcUtil::from(rawMessage))
-	{
-	}
-
-	ReqMessage(const QList<QByteArray> &rawMessage)
+	ReqMessage(const AcByteArrayList &rawMessage)
 	{
 		bool collectHeaders = true;
-		foreach(const QByteArray &part, rawMessage)
+		foreach(const QByteArray &part, rawMessage.asQByteArrayList())
 		{
 			if(part.isEmpty())
 			{
@@ -70,10 +65,15 @@ public:
 		}
 	}
 
+	ReqMessage(const QList<QByteArray> &rawMessage) :
+		ReqMessage(AcByteArrayList(rawMessage))
+	{
+	}
+
 	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
 
-	QList<QByteArray> headers() const { return headers_; }
-	QList<QByteArray> content() const { return content_; }
+	AcByteArrayList headers() const { return headers_; }
+	AcByteArrayList content() const { return content_; }
 
 	ReqMessage createReply(const QList<QByteArray> &content)
 	{
@@ -83,15 +83,15 @@ public:
 	QList<QByteArray> toRawMessage() const
 	{
 		QList<QByteArray> out;
-		out += headers_;
+		out += headers_.asQByteArrayList();
 		out += QByteArray();
-		out += content_;
+		out += content_.asQByteArrayList();
 		return out;
 	}
 
 private:
-	QList<QByteArray> headers_;
-	QList<QByteArray> content_;
+	AcByteArrayList headers_;
+	AcByteArrayList content_;
 };
 
 }

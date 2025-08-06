@@ -24,7 +24,6 @@
 
 #include "qzmqvalve.h"
 
-#include "acutil.h"
 #include "qzmqsocket.h"
 #include "defercall.h"
 
@@ -78,11 +77,11 @@ public:
 				return;
 			}
 
-			QList<AcByteArray> msg = sock->read();
+			AcByteArrayList msg = sock->read();
 
 			if(!msg.isEmpty())
 			{
-				q->readyRead(AcUtil::from(msg));
+				q->readyRead(msg.asQByteArrayList());
 				if(self.expired())
 					return;
 			}
