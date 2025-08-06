@@ -171,12 +171,20 @@ public:
 		wohServer = std::make_unique<WohServer>(workDir);
 
 		zhttpOut = std::make_unique<ZhttpManager>();
+
+		bool connected = false;
+		zhttpOut->probeAcked.connect([&] {
+			connected = true;
+		});
+
 		zhttpOut->setInstanceId("woh-test-client");
+		zhttpOut->setProbe(true);
 		zhttpOut->setClientOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("woh-test-in")));
 		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("woh-test-in-stream")));
 		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("woh-test-out")));
 
-		loop_wait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()

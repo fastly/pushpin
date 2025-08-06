@@ -97,6 +97,8 @@ public:
 	Connection handlerAcceptValveConnection;
 	Connection handlerInspectValveConnection;
 
+	boost::signals2::signal<void()> connected;
+
 	Wrapper(QDir _workDir) :
 		workDir(_workDir),
 		isWs(false),
@@ -148,6 +150,7 @@ public:
 	void startHttp()
 	{
 		zhttpClientOutStreamSock->setIdentity("test-client");
+		zhttpClientOutStreamSock->setProbeRouterEnabled(true);
 
 		zhttpClientOutSock->bind("ipc://" + workDir.filePath("client-out"));
 		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
@@ -250,6 +253,12 @@ private:
 
 	void zhttpClientOutStream_readyRead(const QList<QByteArray> &message)
 	{
+		if(message[2] == "probe-ack")
+		{
+			connected();
+			return;
+		}
+
 		processClientIn(message[2].mid(1));
 	}
 
@@ -597,6 +606,12 @@ public:
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(workDir);
+
+		bool connected = false;
+		wrapper->connected.connect([&] {
+			connected = true;
+		});
+
 		wrapper->startHttp();
 
 		domainMap = new DomainMap(configDir.filePath("routes.test"), true);
@@ -630,7 +645,8 @@ public:
 			trackedPackets.append(packets);
 		});
 
-		loop_wait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()

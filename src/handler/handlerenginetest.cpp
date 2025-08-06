@@ -72,6 +72,8 @@ public:
 	Connection zhttpServerInStreamValveConnection;
 	Connection proxyAcceptValveConnection;
 
+	boost::signals2::signal<void()> connected;
+
 	Wrapper(QDir _workDir) :
 		workDir(_workDir),
 		acceptSuccess(false),
@@ -115,6 +117,7 @@ public:
 	void startHttp()
 	{
 		zhttpClientOutStreamSock->setIdentity("test-client");
+		zhttpClientOutStreamSock->setProbeRouterEnabled(true);
 
 		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
 		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
@@ -188,6 +191,12 @@ public:
 
 	void zhttpClientOutStream_readyRead(const QList<QByteArray> &message)
 	{
+		if(message[2] == "probe-ack")
+		{
+			connected();
+			return;
+		}
+
 		processClientIn(message[2].mid(1));
 	}
 
@@ -293,6 +302,12 @@ public:
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(workDir);
+
+		bool connected = false;
+		wrapper->connected.connect([&] {
+			connected = true;
+		});
+
 		wrapper->startHttp();
 		wrapper->startProxy();
 
@@ -313,7 +328,8 @@ public:
 
 		wrapper->startPublish();
 
-		loop_wait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()

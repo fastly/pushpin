@@ -94,6 +94,7 @@ public:
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
+	bool doProbe;
 	QHash<ZhttpRequest::Rid, ZhttpRequest*> clientReqsByRid;
 	QHash<ZhttpRequest::Rid, ZhttpRequest*> serverReqsByRid;
 	QList<ZhttpRequest*> serverPendingReqs;
@@ -118,6 +119,7 @@ public:
 		q(_q),
 		ipcFileMode(-1),
 		doBind(false),
+		doProbe(false),
 		currentSessionRefreshBucket(0)
 	{
 		refreshTimer = std::make_unique<Timer>();
@@ -186,6 +188,9 @@ public:
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
 		client_out_stream_sock->setShutdownWaitTime(CLIENT_STREAM_WAIT_TIME);
 		client_out_stream_sock->setImmediateEnabled(true);
+
+		if(doProbe)
+			client_out_stream_sock->setProbeRouterEnabled(true);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(client_out_stream_sock.get(), client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
@@ -430,6 +435,15 @@ public:
 		}
 	}
 
+	void writeProbeAck(const QByteArray &toAddress)
+	{
+		QList<QByteArray> msg;
+		msg += toAddress;
+		msg += QByteArray();
+		msg += "probe-ack";
+		server_in_stream_sock->write(msg);
+	}
+
 	static const char *logPrefixForType(SessionType type)
 	{
 		switch(type)
@@ -646,6 +660,12 @@ public:
 			return;
 		}
 
+		if(msg[2] == "probe-ack")
+		{
+			q->probeAcked();
+			return;
+		}
+
 		processClientIn(QByteArray(), msg[2]);
 	}
 
@@ -779,9 +799,16 @@ public:
 
 	void server_in_stream_readyRead(const QList<QByteArray> &msg)
 	{
-		if(msg.count() != 3)
+		if(msg.count() < 2 || msg.count() > 3)
 		{
-			log_warning("zhttp/zws server: received message with parts != 3, skipping");
+			log_warning("zhttp/zws server: received message with parts != 2 or 3, skipping");
+			return;
+		}
+
+		if(msg.count() < 3)
+		{
+			// reply to probe
+			writeProbeAck(msg[0]);
 			return;
 		}
 
@@ -1041,6 +1068,11 @@ void ZhttpManager::setIpcFileMode(int mode)
 void ZhttpManager::setBind(bool enable)
 {
 	d->doBind = enable;
+}
+
+void ZhttpManager::setProbe(bool enable)
+{
+	d->doProbe = enable;
 }
 
 bool ZhttpManager::setClientOutSpecs(const QStringList &specs)
