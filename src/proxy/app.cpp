@@ -697,7 +697,7 @@ public:
 		QString msgIdFieldName = settings.value("cache/message_id_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
-		QStringList msgErrorFieldList = settings.value("cache/message_error_attributes", "error").toString().simplified().remove("'").remove("\"").toLower();
+		QStringList msgErrorFieldList = settings.value("cache/message_error_attributes").toStringList();
 		// prometheus restore allow seconds (default 300)
 		int prometheusRestoreAllowSeconds = settings.value("cache/prometheus_restore_allow_seconds", 300).toInt();
 		// redis
