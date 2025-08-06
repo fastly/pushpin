@@ -110,7 +110,7 @@ public:
 		QString msgIdFieldName;
 		QString msgMethodFieldName;
 		QString msgParamsFieldName;
-		QString msgErrorFieldName;
+		QStringList msgErrorFieldList;
 		int prometheusRestoreAllowSeconds;
 		bool redisEnable;
 		QString redisHostAddr;

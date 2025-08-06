@@ -117,9 +117,9 @@ Options for cache are added into this file.
 	```
 	message_params_attribute="params"
 	```
-* <a name="message_error_attribute"></a>field name is used as Error in Response
+* <a name="message_error_attributes"></a>field names are used as Error in Response
 	```
-	message_error_attribute="error"
+	message_error_attributes=error,fault,bug
 	```
 #### prometheus
 * <a name="prometheus_restore_allow_seconds"></a>prometheus restore allow seconds (default 300)
