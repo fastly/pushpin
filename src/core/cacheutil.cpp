@@ -1106,7 +1106,7 @@ int parse_packet_msg(Scheme scheme, const ZhttpRequestPacket& packet, PacketMsg&
 	{
 		for (auto it = jsonMap.constBegin(); it != jsonMap.constEnd(); ++it) 
 		{
-			if (it.key().startsWith(gErrorAttrName+">>", Qt::CaseInsensitive)) 
+			if (it.key().startsWith(gErrorAttrName, Qt::CaseInsensitive)) 
 			{
 				packetMsg.isResultNull = true;
 			}
