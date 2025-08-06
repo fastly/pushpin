@@ -3313,6 +3313,7 @@ void ZhttpManager::setCacheParameters(
 	gErrorAttrName = msgErrorFieldName;
 
 	log_debug("[CONFIG] cache %s", gCacheEnable ? "enabled" : "disabled");
+	log_debug("[CONFIG] error-attr %s", qPrintable(gErrorAttrName));
 
 	log_debug("[CONFIG] gHttpBackendUrlList");
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
