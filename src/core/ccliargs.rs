@@ -136,7 +136,12 @@ pub mod ffi {
             .config_file
             .as_ref()
             .map_or_else(
-                || CString::new("").unwrap(),
+                || {
+                    let work_dir = std::env::current_dir().unwrap_or_default();
+                    let default_config = super::get_config_file(&work_dir, None)
+                        .unwrap_or_else(|_| "examples/config/pushpin.conf".into());
+                    CString::new(default_config.to_string_lossy().to_string()).unwrap()
+                },
                 |s| CString::new(s.as_str()).unwrap(),
             )
             .into_raw();
@@ -263,7 +268,6 @@ mod tests {
         // Create mock values
         let file = NamedTempFile::new().unwrap();
         let config_test_file = file.path().to_str().unwrap().to_string();
-        let expected_arg_count = 7;
 
         let args = CCliArgs {
             config_file: Some(config_test_file.clone()),
@@ -342,6 +346,8 @@ mod tests {
             quiet_check: false,
         };
 
+        let empty_args_ffi = ffi::c_cli_args_to_ffi(&empty_args);
+
         // Test verify() with empty args
         let verified_empty_args = empty_args.verify();
         let default_config_file = get_config_file(&env::current_dir().unwrap(), None)
@@ -362,27 +368,27 @@ mod tests {
         // Test conversion to C++-compatible struct
         unsafe {
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.config_file())
+                std::ffi::CStr::from_ptr(empty_args_ffi.config_file())
                     .to_str()
                     .unwrap(),
                 default_config_file
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.log_file())
+                std::ffi::CStr::from_ptr(empty_args_ffi.log_file())
                     .to_str()
                     .unwrap(),
                 ""
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.ipc_prefix())
+                std::ffi::CStr::from_ptr(empty_args_ffi.ipc_prefix())
                     .to_str()
                     .unwrap(),
                 ""
             );
-            assert_eq!(args_ffi.routes_count(), 0);
-            assert_eq!(args_ffi.log_level(), 2);
-            assert_eq!(args_ffi.port_offset(), -1);
-            assert_eq!(args_ffi.quiet_check(), false);
+            assert_eq!(empty_args_ffi.routes_count(), 0);
+            assert_eq!(empty_args_ffi.log_level(), 2);
+            assert_eq!(empty_args_ffi.port_offset(), -1);
+            assert_eq!(empty_args_ffi.quiet_check(), false);
         }
     }
 }
