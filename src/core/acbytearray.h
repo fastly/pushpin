@@ -20,28 +20,6 @@
 #include <QByteArray>
 #include <QList>
 
-class AcByteArray
-{
-public:
-    AcByteArray() = default;
-    AcByteArray(const char *data, qsizetype size = -1) : inner_(data, size) {}
-    AcByteArray(qsizetype size, char ch) : inner_(size, ch) {}
-    AcByteArray(const QByteArray &other) : inner_(other) {}
-
-    bool isEmpty() const { return inner_.isEmpty(); }
-    qsizetype size() const { return inner_.size(); }
-    const char *data() const { return inner_.data(); }
-    char *data() { return inner_.data(); }
-
-    void resize(qsizetype size) { inner_.resize(size); }
-
-    const QByteArray & asQByteArray() const { return inner_; }
-    QByteArray & asQByteArray() { return inner_; }
-
-private:
-    QByteArray inner_;
-};
-
 class AcByteArrayConstRef
 {
 public:
@@ -54,6 +32,8 @@ public:
     const QByteArray & asQByteArray() const { return inner_; }
 
 private:
+    friend class AcByteArray;
+
     const QByteArray &inner_;
 };
 
@@ -73,7 +53,33 @@ public:
     QByteArray & asQByteArray() { return inner_; }
 
 private:
+    friend class AcByteArray;
+
     QByteArray &inner_;
+};
+
+class AcByteArray
+{
+public:
+    AcByteArray() = default;
+    AcByteArray(AcByteArrayConstRef ref): inner_(ref.inner_) {}
+    AcByteArray(AcByteArrayRef ref): inner_(ref.inner_) {}
+    AcByteArray(const char *data, qsizetype size = -1) : inner_(data, size) {}
+    AcByteArray(qsizetype size, char ch) : inner_(size, ch) {}
+    AcByteArray(const QByteArray &other) : inner_(other) {}
+
+    bool isEmpty() const { return inner_.isEmpty(); }
+    qsizetype size() const { return inner_.size(); }
+    const char *data() const { return inner_.data(); }
+    char *data() { return inner_.data(); }
+
+    void resize(qsizetype size) { inner_.resize(size); }
+
+    const QByteArray & asQByteArray() const { return inner_; }
+    QByteArray & asQByteArray() { return inner_; }
+
+private:
+    QByteArray inner_;
 };
 
 class AcByteArrayList
