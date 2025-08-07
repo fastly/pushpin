@@ -32,9 +32,10 @@ class QSettings;
 class Settings
 {
 public:
-	Settings(const ArgsData *args);
-	~Settings();
 
+	Settings(const ArgsData *args);
+	Settings(const QString &fileName);
+	~Settings();
 	bool contains(const QString &key) const;
 	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
@@ -52,6 +53,7 @@ private:
 	QString ipcPrefix_;
 	int portOffset_;
 
+	void loadSettings(const QString &fileName);
 	QString resolveVars(const QString &in) const;
 };
 
