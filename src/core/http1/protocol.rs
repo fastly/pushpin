@@ -270,7 +270,7 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
 }
 
 // parse a header value into parts
-pub fn parse_header_value(s: &[u8]) -> HeaderValueIterator {
+pub fn parse_header_value(s: &[u8]) -> HeaderValueIterator<'_> {
     match str::from_utf8(s) {
         Ok(s) => HeaderValueIterator { s, done: false },
         Err(_) => HeaderValueIterator { s: "", done: false },
@@ -606,7 +606,7 @@ pub struct OwnedRequest<'s, const N: usize> {
 }
 
 impl<const N: usize> OwnedRequest<'_, N> {
-    pub fn get(&self) -> Request {
+    pub fn get(&self) -> Request<'_, '_> {
         let req = self.req.get();
 
         Request {
@@ -641,7 +641,7 @@ pub struct OwnedResponse<'s, const N: usize> {
 }
 
 impl<const N: usize> OwnedResponse<'_, N> {
-    pub fn get(&self) -> Response {
+    pub fn get(&self) -> Response<'_, '_> {
         let resp = self.resp.get();
 
         Response {

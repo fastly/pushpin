@@ -576,7 +576,7 @@ impl StreamSharedData {
         s.to_addr = addr;
     }
 
-    pub fn to_addr(&self) -> AddrRef {
+    pub fn to_addr(&self) -> AddrRef<'_> {
         AddrRef {
             s: Ref::map(self.inner.borrow(), |s| &s.to_addr),
         }
