@@ -171,14 +171,22 @@ public:
 		filterServer = std::make_unique<HttpFilterServer>(workDir);
 
 		zhttpOut = std::make_unique<ZhttpManager>();
+
+		limiter = std::make_shared<RateLimiter>();
+
+		bool connected = false;
+		zhttpOut->probeAcked.connect([&] {
+			connected = true;
+		});
+
 		zhttpOut->setInstanceId("filter-test-client");
+		zhttpOut->setProbe(true);
 		zhttpOut->setClientOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
 		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
 		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
 
-		limiter = std::make_shared<RateLimiter>();
-
-		loop_wait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()
