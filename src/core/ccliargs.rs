@@ -173,7 +173,10 @@ mod ffi {
 
                 (routes_array, routes_vec.len() as libc::c_uint)
             }
-            _ => (std::ptr::null_mut(), 0),
+            _ => {
+                let routes_array = unsafe { libc::malloc(0) as *mut *mut libc::c_char };
+                (routes_array, 0)
+            }
         };
 
         CCliArgsFfi {
