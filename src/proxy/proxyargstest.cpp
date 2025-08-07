@@ -26,10 +26,10 @@
  #include "settings.h"
  #include "test.h"
  #include "argsdata.h"
+ #include "log.cpp"
  
  void proxyargstest()
  {
-
     // Create dummy argc/argv for QCoreApplication
 	    int argc = 1;
 		char appName[] = "pushpin-handler";
@@ -49,9 +49,9 @@
     ffi::CCliArgsFfi argsFfi = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>("log.txt"),           // log_file
-        2,                                      // log_level
+        3,                                      // log_level
         const_cast<char*>("ipc:prefix"),        // ipc_prefix
-        80,                                     // port_offset
+        81,                                     // port_offset
         const_cast<char**>(routes),             // routes
         2,                                      // routes_count
         1                                       // quiet_check
@@ -61,14 +61,18 @@
     ArgsData args(&argsFfi);
     TEST_ASSERT_EQ(args.configFile, QString("examples/config/pushpin.conf"));
     TEST_ASSERT_EQ(args.logFile, QString("log.txt"));
-    TEST_ASSERT_EQ(args.logLevel, 2);
+    TEST_ASSERT_EQ(args.logLevel, 3);
     TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
-    TEST_ASSERT_EQ(args.portOffset, 80);
+    TEST_ASSERT_EQ(args.portOffset, 81);
     TEST_ASSERT_EQ(args.routeLines, QStringList({"route1", "route2"}));
     TEST_ASSERT_EQ(args.quietCheck, true);
 
-    // Load settings from command line arguments
     Settings settings(&args);
+
+    // Test command-line overrides were applied
+    TEST_ASSERT_EQ(settings.getPortOffset(), 81);
+    TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
+    TEST_ASSERT_EQ(log_outputLevel(), 3);
 
     // Create empty routes array for testing
     static const char* routesEmpty[] = {};
@@ -95,8 +99,12 @@
     TEST_ASSERT_EQ(argsEmpty.routeLines, QStringList());
     TEST_ASSERT_EQ(argsEmpty.quietCheck, false);
 
-    // Load settings from empty command line arguments
     Settings settingsEmpty(&argsEmpty);
+
+    // Test that no overrides were applied (should use config file defaults)
+    TEST_ASSERT_EQ(settingsEmpty.getPortOffset(), 0);
+    TEST_ASSERT_EQ(settingsEmpty.getIpcPrefix(), QString("pushpin-")); 
+    TEST_ASSERT_EQ(log_outputLevel(), 2);
  }
  
  extern "C" int proxyargs_test(ffi::TestException *out_ex)
