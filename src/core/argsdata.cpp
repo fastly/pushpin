@@ -30,15 +30,13 @@
 
 ArgsData::ArgsData(const ffi::CCliArgsFfi *argsFfi)
 {
-
-
     configFile  = QString(argsFfi->config_file);
     logFile     = QString(argsFfi->log_file);
     logLevel 	= argsFfi->log_level;
     ipcPrefix 	= QString(argsFfi->ipc_prefix);
     portOffset  = argsFfi->port_offset;
     routeLines = QStringList();
-    for (int i = 0; i < argsFfi->routes_count; ++i)
+    for (unsigned int i = 0; i < argsFfi->routes_count; ++i)
     {
         routeLines << QString::fromUtf8(argsFfi->routes[i]);
     }
