@@ -1917,7 +1917,7 @@ public:
 			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
 			log_debug("[WS] added refresh passthrough method");
 		}
-		if (gNullResponseMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		if (gNullResponseMethodList.contains(methodName, Qt::CaseInsensitive))
 		{
 			cacheItem.refreshFlag |= ACCEPT_NULL_RESPONSE;
 			log_debug("[WS] added null response method");

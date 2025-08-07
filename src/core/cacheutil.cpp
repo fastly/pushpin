@@ -2071,7 +2071,7 @@ pid_t create_process_for_cacheclient_(QString urlPath, int _no)
 		cmdStr += " -c ";
 		cmdStr += urlPath;
 		log_debug("%s", cmdStr.toUtf8().data());
-		char *args[] = {"bash", "-c", cmdStr.toUtf8().data(), NULL};
+		char *args[] = {(char *)"bash", (char *)"-c", cmdStr.toUtf8().data(), NULL};
 		execvp("bash", args);
 
 		//set_debugLogLevel(true);
