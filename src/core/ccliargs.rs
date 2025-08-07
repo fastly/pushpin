@@ -74,9 +74,13 @@ impl CCliArgs {
 
         self
     }
+
+    pub fn to_ffi(&self) -> ffi::CCliArgsFfi {
+        ffi::c_cli_args_to_ffi(self)
+    }
 }
 
-mod ffi {
+pub mod ffi {
     use std::ffi::CString;
 
     #[repr(C)]
@@ -165,7 +169,7 @@ mod ffi {
 
                 // Convert each route to CString and store pointer in array
                 for i in 0..routes_vec.len() {
-                    let c_string = CString::new(&routes_vec[i]).unwrap().into_raw();
+                    let c_string = CString::new(routes_vec[i].to_string()).unwrap().into_raw();
                     unsafe {
                         *routes_array.add(i) = c_string;
                     }
@@ -184,7 +188,7 @@ mod ffi {
             log_file,
             log_level: args.log_level,
             ipc_prefix,
-            port_offset: args.port_offset.unwrap_or(-1),
+            port_offset: args.port_offset.map_or(-1, |p| p as i32),
             routes,
             routes_count,
             quiet_check: if args.quiet_check { 1 } else { 0 },
