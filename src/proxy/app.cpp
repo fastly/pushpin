@@ -310,16 +310,15 @@ public:
 class App::Private
 {
 public:
-	static int run(const ffi::CCliArgsFfi *args)
+	static int run(const ffi::CCliArgsFfi *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
 		QCoreApplication::setApplicationVersion(Config::get().version);
 
-		// QStringList extArgs = QCoreApplication::arguments();
-		// ArgsData args(extArgs);
-		Settings settings = loadArgs(args);
+		ArgsData args(argsFfi);
+		Settings settings(&args);
 
-		QDir configDir = QFileInfo(args->config_file).absoluteDir();
+		QDir configDir = QFileInfo(args.configFile).absoluteDir();
 		QStringList services = settings.value("runner/services").toStringList();
 
 		int workerCount = settings.value("proxy/workers", 1).toInt();
@@ -499,7 +498,7 @@ public:
 		config.sockJsUrl = sockJsUrl;
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
-		config.quietCheck = args->quiet_check;
+		config.quietCheck = args.quietCheck;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
@@ -507,7 +506,7 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, QString(args->routes).split(","), routesFile, workerCount, true);
+		return runLoop(config, args.routeLines, routesFile, workerCount, true);
 	}
 
 private:
@@ -654,7 +653,7 @@ App::App() = default;
 
 App::~App() = default;
 
-int App::run(const ffi::CCliArgsFfi *args)
+int App::run(const ffi::CCliArgsFfi *argsFfi)
 {
-	return Private::run(args);
+	return Private::run(argsFfi);
 }

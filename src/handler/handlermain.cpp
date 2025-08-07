@@ -27,7 +27,7 @@
 
 extern "C" {
 
-	int handler_main(const ffi::CCliArgsFfi *args)
+	int handler_main(const ffi::CCliArgsFfi *argsFfi)
 	{
 		// Create dummy argc/argv for QCoreApplication
 		int argc = 1;
@@ -37,7 +37,7 @@ extern "C" {
 		QCoreApplication qapp(argc, argv);
 
 		HandlerApp app;
-		return app.run(args);
+		return app.run(argsFfi);
 	}
 
 }

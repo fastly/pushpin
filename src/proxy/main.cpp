@@ -27,7 +27,7 @@
 
 extern "C" {
 
-int proxy_main(const ffi::CCliArgsFfi *args)
+int proxy_main(const ffi::CCliArgsFfi *argsFfi)
 {	
 	// Create dummy argc/argv for QCoreApplication
 	int argc = 1;
@@ -37,7 +37,7 @@ int proxy_main(const ffi::CCliArgsFfi *args)
 	QCoreApplication qapp(argc, argv);
 
 	App app;
-	return app.run(args);
+	return app.run(argsFfi);
 }
 
 }

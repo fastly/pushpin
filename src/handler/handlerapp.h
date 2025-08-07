@@ -31,7 +31,7 @@ public:
 	HandlerApp();
 	~HandlerApp();
 
-	int run(const ffi::CCliArgsFfi *args);
+	int run(const ffi::CCliArgsFfi *argsFfi);
 
 private:
 	class Private;

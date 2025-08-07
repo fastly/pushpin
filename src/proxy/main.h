@@ -3,6 +3,6 @@
 
 #include "rust/bindings.h"
 
-int proxy_main(const ffi::CCliArgsFfi *args);
+int proxy_main(const ffi::CCliArgsFfi *argsFfi);
 
 #endif
