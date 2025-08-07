@@ -559,7 +559,7 @@ public:
 	{
 		for(int n = 0; n < message.count(); ++n)
 		{
-			const AcByteArray &buf = message[n];
+			AcByteArrayConstRef buf = message[n];
 
 			wzmq_msg_t msg;
 

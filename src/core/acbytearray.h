@@ -23,13 +23,7 @@
 class AcByteArray
 {
 public:
-    AcByteArray()
-    {
-        // ensure layout is transparent
-        static_assert(sizeof(AcByteArray) == sizeof(QByteArray));
-        static_assert(offsetof(AcByteArray, inner_) == 0);
-    }
-
+    AcByteArray() = default;
     AcByteArray(const char *data, qsizetype size = -1) : inner_(data, size) {}
     AcByteArray(qsizetype size, char ch) : inner_(size, ch) {}
     AcByteArray(const QByteArray &other) : inner_(other) {}
@@ -48,6 +42,40 @@ private:
     QByteArray inner_;
 };
 
+class AcByteArrayConstRef
+{
+public:
+    AcByteArrayConstRef(const QByteArray &a) : inner_(a) {}
+
+    bool isEmpty() const { return inner_.isEmpty(); }
+    qsizetype size() const { return inner_.size(); }
+    const char *data() const { return inner_.data(); }
+
+    const QByteArray & asQByteArray() const { return inner_; }
+
+private:
+    const QByteArray &inner_;
+};
+
+class AcByteArrayRef
+{
+public:
+    AcByteArrayRef(QByteArray &a) : inner_(a) {}
+
+    bool isEmpty() const { return inner_.isEmpty(); }
+    qsizetype size() const { return inner_.size(); }
+    const char *data() const { return inner_.data(); }
+    char *data() { return inner_.data(); }
+
+    void resize(qsizetype size) { inner_.resize(size); }
+
+    const QByteArray & asQByteArray() const { return inner_; }
+    QByteArray & asQByteArray() { return inner_; }
+
+private:
+    QByteArray &inner_;
+};
+
 class AcByteArrayList
 {
 public:
@@ -59,17 +87,8 @@ public:
 
     AcByteArrayList operator+=(const AcByteArray &a) { inner_ += a.asQByteArray(); return *this; }
 
-    const AcByteArray & operator[](int index) const
-    {
-        // SAFETY: AcByteArray and QByteArray have identical layouts
-        return reinterpret_cast<const AcByteArray &>(inner_[index]);
-    }
-
-    AcByteArray & operator[](int index)
-    {
-        // SAFETY: AcByteArray and QByteArray have identical layouts
-        return reinterpret_cast<AcByteArray &>(inner_[index]);
-    }
+    AcByteArrayConstRef operator[](int index) const { return AcByteArrayConstRef(inner_[index]); }
+    AcByteArrayRef operator[](int index) { return AcByteArrayRef(inner_[index]); }
 
     const QList<QByteArray> & asQByteArrayList() const { return inner_; }
     QList<QByteArray> & asQByteArrayList() { return inner_; }
