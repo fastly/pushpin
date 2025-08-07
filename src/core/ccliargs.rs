@@ -18,7 +18,6 @@ use crate::core::config::get_config_file;
 use crate::core::version;
 use clap::{arg, Parser};
 use std::env;
-use std::ffi::OsString;
 use std::path::PathBuf;
 
 // Struct to hold the command line arguments
@@ -75,12 +74,6 @@ impl CCliArgs {
 
         self
     }
-
-    pub fn into_osstring_vec(self) -> Vec<OsString> {
-        self.into_iter()
-            .map(|(_, value)| OsString::from(value))
-            .collect()
-    }
 }
 
 mod ffi {
@@ -93,8 +86,43 @@ mod ffi {
         log_level: libc::c_uint,
         ipc_prefix: *mut libc::c_char,
         port_offset: libc::c_int,
-        routes: *mut libc::c_char,
+        routes: *mut *mut libc::c_char,
+        routes_count: libc::c_uint,
         quiet_check: libc::c_int,
+    }
+
+    impl CCliArgsFfi {
+        pub fn config_file(&self) -> *mut libc::c_char {
+            self.config_file
+        }
+
+        pub fn log_file(&self) -> *mut libc::c_char {
+            self.log_file
+        }
+
+        pub fn log_level(&self) -> u32 {
+            self.log_level
+        }
+
+        pub fn ipc_prefix(&self) -> *mut libc::c_char {
+            self.ipc_prefix
+        }
+
+        pub fn port_offset(&self) -> i32 {
+            self.port_offset
+        }
+
+        pub fn routes(&self) -> *mut *mut libc::c_char {
+            self.routes
+        }
+
+        pub fn routes_count(&self) -> u32 {
+            self.routes_count
+        }
+
+        pub fn quiet_check(&self) -> bool {
+            self.quiet_check != 0
+        }
     }
 
     // Converts CCliArgs to a C++-compatible struct
@@ -127,14 +155,26 @@ mod ffi {
             )
             .into_raw();
 
-        let routes = args
-            .routes
-            .as_ref()
-            .map_or_else(
-                || CString::new("").unwrap(),
-                |r| CString::new(r.join(",")).unwrap(),
-            )
-            .into_raw();
+        let (routes, routes_count) = match &args.routes {
+            Some(routes_vec) if !routes_vec.is_empty() => {
+                // Allocate array of string pointers
+                let routes_array = unsafe {
+                    libc::malloc(routes_vec.len() * std::mem::size_of::<*mut libc::c_char>())
+                        as *mut *mut libc::c_char
+                };
+
+                // Convert each route to CString and store pointer in array
+                for i in 0..routes_vec.len() {
+                    let c_string = CString::new(&routes_vec[i]).unwrap().into_raw();
+                    unsafe {
+                        *routes_array.add(i) = c_string;
+                    }
+                }
+
+                (routes_array, routes_vec.len() as libc::c_uint)
+            }
+            _ => (std::ptr::null_mut(), 0),
+        };
 
         CCliArgsFfi {
             config_file,
@@ -143,6 +183,7 @@ mod ffi {
             ipc_prefix,
             port_offset: args.port_offset.unwrap_or(-1),
             routes,
+            routes_count,
             quiet_check: if args.quiet_check { 1 } else { 0 },
         }
     }
@@ -161,7 +202,15 @@ mod ffi {
             let _ = CString::from_raw(ffi_args.ipc_prefix);
         }
         if !ffi_args.routes.is_null() {
-            let _ = CString::from_raw(ffi_args.routes);
+            // Free each individual route string
+            for i in 0..ffi_args.routes_count {
+                let route_ptr = *ffi_args.routes.add(i as usize);
+                if !route_ptr.is_null() {
+                    let _ = CString::from_raw(route_ptr);
+                }
+            }
+
+            libc::free(ffi_args.routes as *mut libc::c_void);
         }
     }
 }
@@ -219,6 +268,8 @@ mod tests {
             quiet_check: true,
         };
 
+        let args_ffi = ffi::c_cli_args_to_ffi(&args);
+
         // Test verify() method
         let verified_args = args.verify();
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
@@ -232,16 +283,46 @@ mod tests {
         );
         assert_eq!(verified_args.quiet_check, true);
 
-        // Test OsString conversion
-        let osstring_vec = verified_args.into_osstring_vec();
-        assert_eq!(osstring_vec.len(), expected_arg_count);
-        assert_eq!(osstring_vec[0], OsString::from(config_test_file));
-        assert_eq!(osstring_vec[1], OsString::from("pushpin.log"));
-        assert_eq!(osstring_vec[2], OsString::from("3"));
-        assert_eq!(osstring_vec[3], OsString::from("ipc"));
-        assert_eq!(osstring_vec[4], OsString::from("8080"));
-        assert_eq!(osstring_vec[5], OsString::from("route1,route2"));
-        assert_eq!(osstring_vec[6], OsString::from("true"));
+        // Test conversion to C++-compatible struct
+        unsafe {
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.config_file())
+                    .to_str()
+                    .unwrap(),
+                config_test_file
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.log_file())
+                    .to_str()
+                    .unwrap(),
+                "pushpin.log"
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.ipc_prefix())
+                    .to_str()
+                    .unwrap(),
+                "ipc"
+            );
+
+            // Test routes array
+            assert_eq!(args_ffi.routes_count(), 2);
+            let routes_array = args_ffi.routes();
+            assert_eq!(
+                std::ffi::CStr::from_ptr(*routes_array.add(0))
+                    .to_str()
+                    .unwrap(),
+                "route1"
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(*routes_array.add(1))
+                    .to_str()
+                    .unwrap(),
+                "route2"
+            );
+        }
+        assert_eq!(args_ffi.log_level(), 3);
+        assert_eq!(args_ffi.port_offset(), 8080);
+        assert_eq!(args_ffi.quiet_check(), true);
 
         // Test with empty/default values
         let empty_args = CCliArgs {
@@ -254,6 +335,7 @@ mod tests {
             quiet_check: false,
         };
 
+        // Test verify() with empty args
         let verified_empty_args = empty_args.verify();
         let default_config_file = get_config_file(&env::current_dir().unwrap(), None)
             .unwrap()
@@ -270,14 +352,30 @@ mod tests {
         assert_eq!(verified_empty_args.routes, None);
         assert_eq!(verified_empty_args.quiet_check, false);
 
-        let empty_osstring_vec = verified_empty_args.into_osstring_vec();
-        assert_eq!(empty_osstring_vec.len(), expected_arg_count);
-        assert_eq!(empty_osstring_vec[0], OsString::from(default_config_file));
-        assert_eq!(empty_osstring_vec[1], OsString::from(""));
-        assert_eq!(empty_osstring_vec[2], OsString::from("2"));
-        assert_eq!(empty_osstring_vec[3], OsString::from(""));
-        assert_eq!(empty_osstring_vec[4], OsString::from(""));
-        assert_eq!(empty_osstring_vec[5], OsString::from(""));
-        assert_eq!(empty_osstring_vec[6], OsString::from("false"));
+        // Test conversion to C++-compatible struct
+        unsafe {
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.config_file())
+                    .to_str()
+                    .unwrap(),
+                default_config_file
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.log_file())
+                    .to_str()
+                    .unwrap(),
+                ""
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(args_ffi.ipc_prefix())
+                    .to_str()
+                    .unwrap(),
+                ""
+            );
+            assert_eq!(args_ffi.routes_count(), 0);
+            assert_eq!(args_ffi.log_level(), 2);
+            assert_eq!(args_ffi.port_offset(), -1);
+            assert_eq!(args_ffi.quiet_check(), false);
+        }
     }
 }
