@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef CowString_H
-#define CowString_H
+#ifndef COWSTRING_H
+#define COWSTRING_H
 
 #include <QString>
 #include "cowbytearray.h"
@@ -23,22 +23,15 @@
 class CowString
 {
 public:
-    CowString()
-    {
-        // ensure layout is transparent
-        static_assert(sizeof(CowString) == sizeof(QString));
-        static_assert(offsetof(CowString, inner_) == 0);
-    }
+	CowString(const QString &other) : inner_(other) {}
 
-    CowString(const QString &other) : inner_(other) {}
+	CowByteArray toUtf8() const { return inner_.toUtf8(); }
 
-    CowByteArray toUtf8() const { return inner_.toUtf8(); }
-
-    const QString & asQString() const { return inner_; }
-    QString & asQString() { return inner_; }
+	const QString & asQString() const { return inner_; }
+	QString & asQString() { return inner_; }
 
 private:
-    QString inner_;
+	QString inner_;
 };
 
 #endif

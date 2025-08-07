@@ -23,7 +23,7 @@
 
 #include "qzmqreprouter.h"
 
-#include "acstring.h"
+#include "cowstring.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
 

@@ -24,7 +24,7 @@
 #ifndef QZMQREQMESSAGE_H
 #define QZMQREQMESSAGE_H
 
-#include "acbytearray.h"
+#include "cowbytearray.h"
 
 namespace QZmq {
 
@@ -35,7 +35,7 @@ public:
 	{
 	}
 
-	ReqMessage(const AcByteArrayList &headers, const AcByteArrayList &content) :
+	ReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content) :
 		headers_(headers),
 		content_(content)
 	{
@@ -47,7 +47,7 @@ public:
 	{
 	}
 
-	ReqMessage(const AcByteArrayList &rawMessage)
+	ReqMessage(const CowByteArrayList &rawMessage)
 	{
 		bool collectHeaders = true;
 		foreach(const QByteArray &part, rawMessage.asQByteArrayList())
@@ -66,14 +66,14 @@ public:
 	}
 
 	ReqMessage(const QList<QByteArray> &rawMessage) :
-		ReqMessage(AcByteArrayList(rawMessage))
+		ReqMessage(CowByteArrayList(rawMessage))
 	{
 	}
 
 	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
 
-	AcByteArrayList headers() const { return headers_; }
-	AcByteArrayList content() const { return content_; }
+	CowByteArrayList headers() const { return headers_; }
+	CowByteArrayList content() const { return content_; }
 
 	ReqMessage createReply(const QList<QByteArray> &content)
 	{
@@ -90,8 +90,8 @@ public:
 	}
 
 private:
-	AcByteArrayList headers_;
-	AcByteArrayList content_;
+	CowByteArrayList headers_;
+	CowByteArrayList content_;
 };
 
 }

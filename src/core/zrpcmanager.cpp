@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <QStringList>
 #include <QFile>
-#include "acbytearray.h"
+#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"

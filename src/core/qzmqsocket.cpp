@@ -30,7 +30,7 @@
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
-#include "acstring.h"
+#include "cowstring.h"
 #include "qzmqcontext.h"
 #include "timer.h"
 #include "socketnotifier.h"
@@ -379,7 +379,7 @@ public:
 	void *sock;
 	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
-	QList<AcByteArrayList> pendingWrites;
+	QList<CowByteArrayList> pendingWrites;
 	int pendingWritten;
 	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
@@ -462,11 +462,11 @@ public:
 		}
 	}
 
-	AcByteArrayList read()
+	CowByteArrayList read()
 	{
 		if(canRead)
 		{
-			AcByteArrayList out;
+			CowByteArrayList out;
 
 			bool ok = true;
 
@@ -492,7 +492,7 @@ public:
 					break;
 				}
 
-				AcByteArray buf((const char *)wzmq_msg_data(&msg), wzmq_msg_size(&msg));
+				CowByteArray buf((const char *)wzmq_msg_data(&msg), wzmq_msg_size(&msg));
 
 				ret = wzmq_msg_close(&msg);
 				assert(ret == 0);
@@ -508,13 +508,13 @@ public:
 			if(ok)
 				return out;
 			else
-				return AcByteArrayList();
+				return CowByteArrayList();
 		}
 		else
-			return AcByteArrayList();
+			return CowByteArrayList();
 	}
 
-	void write(const AcByteArrayList &message)
+	void write(const CowByteArrayList &message)
 	{
 		assert(!message.isEmpty());
 
@@ -555,11 +555,11 @@ public:
 		return (canWrite != canWriteOld || canRead != canReadOld);
 	}
 
-	bool zmqWrite(const AcByteArrayList &message)
+	bool zmqWrite(const CowByteArrayList &message)
 	{
 		for(int n = 0; n < message.count(); ++n)
 		{
-			AcByteArrayConstRef buf = message[n];
+			CowByteArrayConstRef buf = message[n];
 
 			wzmq_msg_t msg;
 
@@ -672,24 +672,24 @@ void Socket::setWriteQueueEnabled(bool enable)
 	d->writeQueueEnabled = enable;
 }
 
-void Socket::subscribe(const AcByteArray &filter)
+void Socket::subscribe(const CowByteArray &filter)
 {
 	set_subscribe(d->sock, filter.data(), filter.size());
 }
 
-void Socket::unsubscribe(const AcByteArray &filter)
+void Socket::unsubscribe(const CowByteArray &filter)
 {
 	set_unsubscribe(d->sock, filter.data(), filter.size());
 }
 
-AcByteArray Socket::identity() const
+CowByteArray Socket::identity() const
 {
-	AcByteArray buf(255, 0);
+	CowByteArray buf(255, 0);
 	buf.resize(get_identity(d->sock, buf.data(), buf.size()));
 	return buf;
 }
 
-void Socket::setIdentity(const AcByteArray &id)
+void Socket::setIdentity(const CowByteArray &id)
 {
 	set_identity(d->sock, id.data(), id.size());
 }
@@ -751,13 +751,13 @@ void Socket::setTcpKeepAliveParameters(int idle, int count, int interval)
 	set_tcp_keepalive_intvl(d->sock, interval);
 }
 
-void Socket::connectToAddress(const AcString &addr)
+void Socket::connectToAddress(const CowString &addr)
 {
 	int ret = wzmq_connect(d->sock, addr.toUtf8().data());
 	assert(ret == 0);
 }
 
-bool Socket::bind(const AcString &addr)
+bool Socket::bind(const CowString &addr)
 {
 	int ret = wzmq_bind(d->sock, addr.toUtf8().data());
 	if(ret != 0)
@@ -776,12 +776,12 @@ bool Socket::canWriteImmediately() const
 	return d->canWrite;
 }
 
-AcByteArrayList Socket::read()
+CowByteArrayList Socket::read()
 {
 	return d->read();
 }
 
-void Socket::write(const AcByteArrayList &message)
+void Socket::write(const CowByteArrayList &message)
 {
 	d->write(message);
 }

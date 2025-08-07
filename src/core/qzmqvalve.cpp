@@ -77,7 +77,7 @@ public:
 				return;
 			}
 
-			AcByteArrayList msg = sock->read();
+			CowByteArrayList msg = sock->read();
 
 			if(!msg.isEmpty())
 			{

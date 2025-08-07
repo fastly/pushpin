@@ -26,9 +26,9 @@
 #define QZMQSOCKET_H
 
 #include <boost/signals2.hpp>
-#include "acbytearray.h"
+#include "cowbytearray.h"
 
-class AcString;
+class CowString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -70,11 +70,11 @@ public:
 	//   blocking policy.
 	void setWriteQueueEnabled(bool enable);
 
-	void subscribe(const AcByteArray &filter);
-	void unsubscribe(const AcByteArray &filter);
+	void subscribe(const CowByteArray &filter);
+	void unsubscribe(const CowByteArray &filter);
 
-	AcByteArray identity() const;
-	void setIdentity(const AcByteArray &id);
+	CowByteArray identity() const;
+	void setIdentity(const CowByteArray &id);
 
 	// deprecated, zmq 2.x
 	int hwm() const;
@@ -92,8 +92,8 @@ public:
 	void setTcpKeepAliveEnabled(bool on);
 	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
 
-	void connectToAddress(const AcString &addr);
-	bool bind(const AcString &addr);
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
 
 	bool canRead() const;
 
@@ -103,8 +103,8 @@ public:
 	//   needing to be queued, if the conditions change in between.
 	bool canWriteImmediately() const;
 
-	AcByteArrayList read();
-	void write(const AcByteArrayList &message);
+	CowByteArrayList read();
+	void write(const CowByteArrayList &message);
 
 	Signal readyRead;
 	SignalInt messagesWritten;

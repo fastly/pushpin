@@ -25,7 +25,7 @@
 
 #include <QFile>
 #include "qzmqsocket.h"
-#include "acstring.h"
+#include "cowstring.h"
 
 namespace ZUtil {
 

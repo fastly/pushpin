@@ -1,6 +1,6 @@
 HEADERS += \
-	$$PWD/acbytearray.h \
-	$$PWD/acstring.h
+	$$PWD/cowbytearray.h \
+	$$PWD/cowstring.h
 
 HEADERS += \
 	$$PWD/qzmqcontext.h \

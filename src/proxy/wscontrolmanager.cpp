@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <QDateTime>
 #include <boost/signals2.hpp>
-#include "acbytearray.h"
+#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"

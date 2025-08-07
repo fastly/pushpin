@@ -25,7 +25,7 @@
 #include <thread>
 #include <QDir>
 #include "test.h"
-#include "acstring.h"
+#include "cowstring.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"

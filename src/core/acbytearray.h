@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef ACBYTEARRAY_H
-#define ACBYTEARRAY_H
+#ifndef COWBYTEARRAY_H
+#define COWBYTEARRAY_H
 
 #include <QByteArray>
 #include <QList>
 
-class AcByteArrayConstRef
+class CowByteArrayConstRef
 {
 public:
-    AcByteArrayConstRef(const QByteArray &a) : inner_(a) {}
+    CowByteArrayConstRef(const QByteArray &a) : inner_(a) {}
 
     bool isEmpty() const { return inner_.isEmpty(); }
     qsizetype size() const { return inner_.size(); }
@@ -32,15 +32,15 @@ public:
     const QByteArray & asQByteArray() const { return inner_; }
 
 private:
-    friend class AcByteArray;
+    friend class CowByteArray;
 
     const QByteArray &inner_;
 };
 
-class AcByteArrayRef
+class CowByteArrayRef
 {
 public:
-    AcByteArrayRef(QByteArray &a) : inner_(a) {}
+    CowByteArrayRef(QByteArray &a) : inner_(a) {}
 
     bool isEmpty() const { return inner_.isEmpty(); }
     qsizetype size() const { return inner_.size(); }
@@ -53,20 +53,20 @@ public:
     QByteArray & asQByteArray() { return inner_; }
 
 private:
-    friend class AcByteArray;
+    friend class CowByteArray;
 
     QByteArray &inner_;
 };
 
-class AcByteArray
+class CowByteArray
 {
 public:
-    AcByteArray() = default;
-    AcByteArray(AcByteArrayConstRef ref): inner_(ref.inner_) {}
-    AcByteArray(AcByteArrayRef ref): inner_(ref.inner_) {}
-    AcByteArray(const char *data, qsizetype size = -1) : inner_(data, size) {}
-    AcByteArray(qsizetype size, char ch) : inner_(size, ch) {}
-    AcByteArray(const QByteArray &other) : inner_(other) {}
+    CowByteArray() = default;
+    CowByteArray(CowByteArrayConstRef ref): inner_(ref.inner_) {}
+    CowByteArray(CowByteArrayRef ref): inner_(ref.inner_) {}
+    CowByteArray(const char *data, qsizetype size = -1) : inner_(data, size) {}
+    CowByteArray(qsizetype size, char ch) : inner_(size, ch) {}
+    CowByteArray(const QByteArray &other) : inner_(other) {}
 
     bool isEmpty() const { return inner_.isEmpty(); }
     qsizetype size() const { return inner_.size(); }
@@ -82,19 +82,19 @@ private:
     QByteArray inner_;
 };
 
-class AcByteArrayList
+class CowByteArrayList
 {
 public:
-    AcByteArrayList() = default;
-    AcByteArrayList(const QList<QByteArray> &other) : inner_(other) {}
+    CowByteArrayList() = default;
+    CowByteArrayList(const QList<QByteArray> &other) : inner_(other) {}
 
     bool isEmpty() const { return inner_.isEmpty(); }
     qsizetype count() const { return inner_.count(); }
 
-    AcByteArrayList operator+=(const AcByteArray &a) { inner_ += a.asQByteArray(); return *this; }
+    CowByteArrayList operator+=(const CowByteArray &a) { inner_ += a.asQByteArray(); return *this; }
 
-    AcByteArrayConstRef operator[](int index) const { return AcByteArrayConstRef(inner_[index]); }
-    AcByteArrayRef operator[](int index) { return AcByteArrayRef(inner_[index]); }
+    CowByteArrayConstRef operator[](int index) const { return CowByteArrayConstRef(inner_[index]); }
+    CowByteArrayRef operator[](int index) { return CowByteArrayRef(inner_[index]); }
 
     const QList<QByteArray> & asQByteArrayList() const { return inner_; }
     QList<QByteArray> & asQByteArrayList() { return inner_; }

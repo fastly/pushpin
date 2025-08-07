@@ -33,8 +33,8 @@
 #include <QTimer>
 #include <QDir>
 #include <QSettings>
-#include "acstring.h"
-#include "acbytearray.h"
+#include "cowstring.h"
+#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qtcompat.h"
