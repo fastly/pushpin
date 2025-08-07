@@ -642,6 +642,7 @@ public:
 		QStringList refreshUneraseMethodList = settings.value("cache/ws_refresh_unerase_methods").toStringList();
 		QStringList refreshExcludeMethodList = settings.value("cache/ws_refresh_exclude_methods").toStringList();
 		QStringList refreshPassthroughMethodList = settings.value("cache/ws_refresh_passthrough_methods").toStringList();
+		QStringList nullResponseMethodList = settings.value("cache/ws_null_response_methods").toStringList();
 		QString cacheKeyConfig = settings.value("cache/ws_cache_key", "").toString().simplified().remove("'").remove("\"").toLower();
 		QStringList cacheKeyParts = cacheKeyConfig.split(u'+', QString::SkipEmptyParts);
 		QStringList cacheKeyItemList;
@@ -729,6 +730,7 @@ public:
 		config.refreshUneraseMethodList = refreshUneraseMethodList;
 		config.refreshExcludeMethodList = refreshExcludeMethodList;
 		config.refreshPassthroughMethodList = refreshPassthroughMethodList;
+		config.nullResponseMethodList = nullResponseMethodList;
 		config.cacheKeyItemList = cacheKeyItemList;
 		config.msgIdFieldName = msgIdFieldName;
 		config.msgMethodFieldName = msgMethodFieldName;

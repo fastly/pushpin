@@ -116,6 +116,7 @@ QStringList gRefreshLongerMethodList;
 QStringList gRefreshUneraseMethodList;
 QStringList gRefreshExcludeMethodList;
 QStringList gRefreshPassthroughMethodList;
+QStringList gNullResponseMethodList;
 
 // multi packets params
 QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
@@ -1832,6 +1833,11 @@ public:
 			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
 			log_debug("[HTTP] added refresh passthrough method");
 		}
+		if (gNullResponseMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= ACCEPT_NULL_RESPONSE;
+			log_debug("[HTTP] added null response method");
+		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRefreshCount = 0;
 		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
@@ -1910,6 +1916,11 @@ public:
 		{
 			cacheItem.refreshFlag |= AUTO_REFRESH_PASSTHROUGH;
 			log_debug("[WS] added refresh passthrough method");
+		}
+		if (gNullResponseMethodList.contains(packetMsg.method, Qt::CaseInsensitive))
+		{
+			cacheItem.refreshFlag |= ACCEPT_NULL_RESPONSE;
+			log_debug("[WS] added null response method");
 		}
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 		cacheItem.lastRefreshCount = 0;
@@ -2085,7 +2096,8 @@ public:
 		}
 
 		// if invalid response?
-		if ((bodyParseSucceed == false || (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true)) && 
+		if ((bodyParseSucceed == false || (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true)) &&
+			!(pCacheItem->refreshFlag & ACCEPT_NULL_RESPONSE) && 
 			pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 		{
 			// prometheus status
@@ -2487,7 +2499,10 @@ public:
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(pCacheItem->methodName));
 
 					log_debug("[QQQ] %s, %s, %d", (pCacheItem->cachedFlag==false)?"F":"T", (packetMsg.isResultNull==false)?"F":"T", pCacheItem->retryCount);
-					if (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true && pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
+					if (pCacheItem->cachedFlag == false && 
+						!(pCacheItem->refreshFlag & ACCEPT_NULL_RESPONSE) &&
+						packetMsg.isResultNull == true && 
+						pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
 					{
 						log_debug("[WS] get NULL response, retrying %d", pCacheItem->retryCount);
 						pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
@@ -3218,6 +3233,7 @@ void ZhttpManager::setCacheParameters(
 	const QStringList &refreshUneraseMethodList,
 	const QStringList &refreshExcludeMethodList,
 	const QStringList &refreshPassthroughMethodList,
+	const QStringList &nullResponseMethodList,
 	const QStringList &cacheKeyItemList,
 	const QString &msgIdFieldName,
 	const QString &msgMethodFieldName,
@@ -3280,6 +3296,10 @@ void ZhttpManager::setCacheParameters(
 	foreach (QString method, refreshPassthroughMethodList)
 	{
 		gRefreshPassthroughMethodList.append(method.toLower());
+	}
+	foreach (QString method, nullResponseMethodList)
+	{
+		gNullResponseMethodList.append(method.toLower());
 	}
 
 	// cache key item list
@@ -3376,6 +3396,11 @@ void ZhttpManager::setCacheParameters(
 	log_debug("[CONFIG] gRefreshPassthroughMethodList");
 	for (int i = 0; i < gRefreshPassthroughMethodList.size(); ++i) {
 		log_debug("%s", qPrintable(gRefreshPassthroughMethodList[i]));
+	}
+
+	log_debug("[CONFIG] gNullResponseMethodList");
+	for (int i = 0; i < gNullResponseMethodList.size(); ++i) {
+		log_debug("%s", qPrintable(gNullResponseMethodList[i]));
 	}
 
 	log_debug("[CONFIG] gCacheKeyItemList");

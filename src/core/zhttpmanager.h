@@ -74,6 +74,7 @@ public:
 		const QStringList &refreshUneraseMethodList,
 		const QStringList &refreshExcludeMethodList,
 		const QStringList &refreshPassthroughMethodList,
+		const QStringList &nullResponseMethodList,
 		const QStringList &cacheKeyItemList,
 		const QString &msgIdFieldName,
 		const QString &msgMethodFieldName,

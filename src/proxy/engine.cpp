@@ -245,6 +245,7 @@ public:
 			config.refreshUneraseMethodList,
 			config.refreshExcludeMethodList,
 			config.refreshPassthroughMethodList,
+			config.nullResponseMethodList,
 			config.cacheKeyItemList,
 			config.msgIdFieldName,
 			config.msgMethodFieldName,

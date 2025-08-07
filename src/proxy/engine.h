@@ -106,6 +106,7 @@ public:
 		QStringList refreshUneraseMethodList;
 		QStringList refreshExcludeMethodList;
 		QStringList refreshPassthroughMethodList;
+		QStringList nullResponseMethodList;
 		QStringList cacheKeyItemList;
 		QString msgIdFieldName;
 		QString msgMethodFieldName;
