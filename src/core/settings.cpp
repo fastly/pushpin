@@ -29,13 +29,13 @@
 #include <QSettings>
 #include "qtcompat.h"
 #include "config.h"
-#include "rust/bindings.h"
+#include "argsdata.h"
 
-Settings::Settings(const QString &fileName) :
+Settings::Settings(const ArgsData *args) :
 	include_(0),
 	portOffset_(0)
 {
-	main_ = new QSettings(fileName, QSettings::IniFormat);
+	main_ = new QSettings(args->configFile, QSettings::IniFormat);
 
 	libdir_ = valueRaw("global/libdir").toString();
 	if(libdir_.isEmpty())
@@ -76,10 +76,16 @@ Settings::Settings(const QString &fileName) :
 		// if include is a relative path, then use it relative to the config file location
 		QFileInfo fi(includeFile);
 		if(fi.isRelative())
-			includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
+			includeFile = QFileInfo(QFileInfo(args->configFile).absoluteDir(), includeFile).filePath();
 
 		include_ = new QSettings(includeFile, QSettings::IniFormat);
 	}
+
+	if(args->ipcPrefix.isEmpty())
+		ipcPrefix_ = args->ipcPrefix;
+
+	if(args->portOffset != -1)
+		portOffset_ = args->portOffset;
 }
 
 Settings::~Settings()
@@ -196,17 +202,4 @@ bool Settings::operator==(const Settings& other) const {
            portOffset_ == other.portOffset_ &&
            libdir_ == other.libdir_ &&
            rundir_ == other.rundir_;
-}
-
-Settings loadArgs(const ffi::CCliArgsFfi *args)
-{
-	Settings settings(QString(args->config_file));
-
-	if(QString(args->ipc_prefix).isEmpty())
-		settings.setIpcPrefix(QString(args->ipc_prefix));
-
-	if(args->port_offset != -1)
-		settings.setPortOffset(args->port_offset);
-
-	return settings;
 }

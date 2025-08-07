@@ -32,7 +32,7 @@ class QSettings;
 class Settings
 {
 public:
-	Settings(const QString &fileName);
+	Settings(const ArgsData *args);
 	~Settings();
 
 	bool contains(const QString &key) const;
@@ -54,7 +54,5 @@ private:
 
 	QString resolveVars(const QString &in) const;
 };
-
-Settings loadArgs(const ffi::CCliArgsFfi *args);
 
 #endif
