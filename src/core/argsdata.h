@@ -34,7 +34,8 @@ class ArgsData
 		QString ipcPrefix;
 		int portOffset;
 		QStringList routeLines;
+		uint routesCount;
 		bool quietCheck;
 
-		ArgsData(QStringList &extArgs);
+		ArgsData(const ffi::CCliArgsFfi *argsFfi);
 };

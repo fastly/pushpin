@@ -28,25 +28,26 @@
 #include <QCoreApplication>
 #include <QFile>
 
-ArgsData::ArgsData(QStringList &extArgs)
+ArgsData::ArgsData(const ffi::CCliArgsFfi *argsFfi)
 {
-	if(extArgs.isEmpty())
-	{
-		log_error("Error processing arguments. Use --help for usage.");
-		throw std::exception();
-	}
 
-    configFile  = extArgs[0];
-    logFile     = !extArgs[1].isEmpty() ? extArgs[1] : QString();
-    logLevel 	= extArgs[2].toInt();
-    ipcPrefix 	= extArgs[3];
-    portOffset  = !extArgs[4].isEmpty() ? extArgs[4].toInt() : -1;
-    routeLines  = extArgs[5].isEmpty() ? QStringList() : extArgs[5].split(',');
-    quietCheck  = extArgs[6] == "true" ? true : false;
+
+    configFile  = QString(argsFfi->config_file);
+    logFile     = QString(argsFfi->log_file);
+    logLevel 	= argsFfi->log_level;
+    ipcPrefix 	= QString(argsFfi->ipc_prefix);
+    portOffset  = argsFfi->port_offset;
+    routeLines = QStringList();
+    for (int i = 0; i < argsFfi->routes_count; ++i)
+    {
+        routeLines << QString::fromUtf8(argsFfi->routes[i]);
+    }
+    routesCount = argsFfi->routes_count;
+    quietCheck  = argsFfi->quiet_check == 1;
 
     // Set the log level
 	if(logLevel != -1)
-    log_setOutputLevel(logLevel);
+        log_setOutputLevel(logLevel);
     else
         log_setOutputLevel(LOG_LEVEL_INFO);
 
