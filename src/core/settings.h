@@ -25,6 +25,7 @@
 
 #include <QString>
 #include <QVariant>
+#include "rust/bindings.h"
 
 class QSettings;
 
@@ -53,5 +54,7 @@ private:
 
 	QString resolveVars(const QString &in) const;
 };
+
+Settings loadArgs(const ffi::CCliArgsFfi *args);
 
 #endif

@@ -24,13 +24,15 @@
 #ifndef APP_H
 #define APP_H
 
+#include "rust/bindings.h"
+
 class App
 {
 public:
 	App();
 	~App();
 
-	int run();
+	int run(const ffi::CCliArgsFfi *args);
 
 private:
 	class Private;

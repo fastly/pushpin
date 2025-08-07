@@ -29,6 +29,7 @@
 #include <QSettings>
 #include "qtcompat.h"
 #include "config.h"
+#include "rust/bindings.h"
 
 Settings::Settings(const QString &fileName) :
 	include_(0),
@@ -195,4 +196,17 @@ bool Settings::operator==(const Settings& other) const {
            portOffset_ == other.portOffset_ &&
            libdir_ == other.libdir_ &&
            rundir_ == other.rundir_;
+}
+
+Settings loadArgs(const ffi::CCliArgsFfi *args)
+{
+	Settings settings(QString(args->config_file));
+
+	if(QString(args->ipc_prefix).isEmpty())
+		settings.setIpcPrefix(QString(args->ipc_prefix));
+
+	if(args->port_offset != -1)
+		settings.setPortOffset(args->port_offset);
+
+	return settings;
 }

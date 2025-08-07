@@ -92,13 +92,14 @@ mod ffi {
         log_file: *mut libc::c_char,
         log_level: libc::c_uint,
         ipc_prefix: *mut libc::c_char,
-        port_offset: libc::c_uint,
-        routes: *mut libc::c_char, // Changed to single string instead of array
+        port_offset: libc::c_int,
+        routes: *mut libc::c_char,
         quiet_check: libc::c_int,
     }
 
     // Converts CCliArgs to a C++-compatible struct
-    pub fn c_cli_args_to_ffi(args: &super::CCliArgs) -> CCliArgsFfi {
+    #[no_mangle]
+    pub extern "C" fn c_cli_args_to_ffi(args: &super::CCliArgs) -> CCliArgsFfi {
         let config_file = args
             .config_file
             .as_ref()
@@ -140,7 +141,7 @@ mod ffi {
             log_file,
             log_level: args.log_level,
             ipc_prefix,
-            port_offset: args.port_offset.unwrap_or(0),
+            port_offset: args.port_offset.unwrap_or(-1),
             routes,
             quiet_check: if args.quiet_check { 1 } else { 0 },
         }
@@ -148,7 +149,8 @@ mod ffi {
 
     /// Frees the memory allocated by c_cli_args_to_ffi
     /// MUST be called by C++ code when done with the CCliArgsFfi struct
-    pub unsafe fn destroy_c_cli_args(ffi_args: CCliArgsFfi) {
+    #[no_mangle]
+    pub unsafe extern "C" fn destroy_c_cli_args(ffi_args: CCliArgsFfi) {
         if !ffi_args.config_file.is_null() {
             let _ = CString::from_raw(ffi_args.config_file);
         }

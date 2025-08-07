@@ -37,6 +37,4 @@ class ArgsData
 		bool quietCheck;
 
 		ArgsData(QStringList &extArgs);
-
-		Settings loadIntoSettings();
 };

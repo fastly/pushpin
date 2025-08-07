@@ -28,20 +28,6 @@
 #include <QCoreApplication>
 #include <QFile>
 
-
-Settings ArgsData::loadIntoSettings()
-{
-	Settings settings(configFile);
-
-	if(!ipcPrefix.isEmpty())
-		settings.setIpcPrefix(ipcPrefix);
-
-	if(portOffset != -1)
-		settings.setPortOffset(portOffset);
-
-    return settings;
-}
-
 ArgsData::ArgsData(QStringList &extArgs)
 {
 	if(extArgs.isEmpty())
