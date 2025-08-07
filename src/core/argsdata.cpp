@@ -25,6 +25,7 @@
 #include "settings.h"
 #include "config.h"
 #include "log.h"
+#include "rust/bindings.h"
 #include <QCoreApplication>
 #include <QFile>
 

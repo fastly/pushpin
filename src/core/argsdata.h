@@ -21,9 +21,12 @@
  * $FANOUT_END_LICENSE$
  */
 
+#ifndef ARGSDATA_H
+#define ARGSDATA_H
+
 #include <QString>
 #include <QStringList>
-#include "settings.h"
+#include "rust/bindings.h"
 
 class ArgsData
 {
@@ -39,3 +42,5 @@ class ArgsData
 
 		ArgsData(const ffi::CCliArgsFfi *argsFfi);
 };
+
+#endif
