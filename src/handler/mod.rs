@@ -96,6 +96,6 @@ mod tests {
 
     #[test]
     fn handlerargs() {
-        run_serial(handlerargs_test);
+        run_cpp(handlerargs_test);
     }
 }

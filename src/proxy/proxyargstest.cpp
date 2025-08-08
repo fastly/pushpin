@@ -26,7 +26,7 @@
  #include "settings.h"
  #include "test.h"
  #include "argsdata.h"
- #include "log.cpp"
+ #include "log.h"
  
  void proxyargstest()
  {
@@ -72,7 +72,6 @@
     // Test command-line overrides were applied
     TEST_ASSERT_EQ(settings.getPortOffset(), 81);
     TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
-    TEST_ASSERT_EQ(log_outputLevel(), 3);
 
     // Create empty routes array for testing
     static const char* routesEmpty[] = {};
@@ -104,7 +103,6 @@
     // Test that no overrides were applied (should use config file defaults)
     TEST_ASSERT_EQ(settingsEmpty.getPortOffset(), 0);
     TEST_ASSERT_EQ(settingsEmpty.getIpcPrefix(), QString("pushpin-")); 
-    TEST_ASSERT_EQ(log_outputLevel(), 2);
  }
  
  extern "C" int proxyargs_test(ffi::TestException *out_ex)

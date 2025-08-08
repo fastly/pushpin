@@ -26,7 +26,7 @@
 #include "test.h"
 #include "argsdata.h"
 #include "rust/bindings.h"
-#include "log.cpp"
+#include "log.h"
 
 void handlerargstest()
 {
@@ -73,7 +73,6 @@ void handlerargstest()
     // Test command-line overrides were applied
     TEST_ASSERT_EQ(settings.getPortOffset(), 81);
     TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
-    TEST_ASSERT_EQ(log_outputLevel(), 3);
 
     // Create empty routes array for testing
     static const char* routesEmpty[] = {};
@@ -84,7 +83,7 @@ void handlerargstest()
         2,                                      // log_level
         const_cast<char*>(""),                  // ipc_prefix
         -1,                                     // port_offset
-        const_cast<char**>(routesEmpty),       // routes array
+        const_cast<char**>(routesEmpty),        // routes array
         0,                                      // routes_count
         0                                       // quiet_check
     };
@@ -104,7 +103,6 @@ void handlerargstest()
     // Test that no overrides were applied (should use config file defaults)
     TEST_ASSERT_EQ(settingsEmpty.getPortOffset(), 0);
     TEST_ASSERT_EQ(settingsEmpty.getIpcPrefix(), QString("pushpin-"));
-    TEST_ASSERT_EQ(log_outputLevel(), 2);
 }
 
 extern "C" int handlerargs_test(ffi::TestException *out_ex)

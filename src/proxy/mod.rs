@@ -56,6 +56,6 @@ mod tests {
 
     #[test]
     fn proxyargs() {
-        run_serial(proxyargs_test);
+        run_cpp(proxyargs_test);
     }
 }
