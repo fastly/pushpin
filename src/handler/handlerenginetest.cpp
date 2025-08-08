@@ -273,7 +273,7 @@ public:
 	void proxyAccept_readyRead(const QList<QByteArray> &_message)
 	{
 		QZmq::ReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0].asQByteArray());
+		QVariant v = TnetString::toVariant(message.content()[0]);
 
 		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);
 		QVariantHash vresp = v.toHash();

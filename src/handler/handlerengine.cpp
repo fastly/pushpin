@@ -29,7 +29,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -2547,7 +2546,7 @@ private:
 			return;
 		}
 
-		wsControlIn_readyRead(req.content()[0].asQByteArray());
+		wsControlIn_readyRead(req.content()[0]);
 	}
 
 	void wsControlIn_readyRead(const QByteArray &message)

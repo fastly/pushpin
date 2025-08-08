@@ -26,7 +26,6 @@
 #include <assert.h>
 #include <QStringList>
 #include <QFile>
-#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -220,7 +219,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0].asQByteArray());
+		QVariant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("zrpc server: received message with invalid format (tnetstring parse failed), skipping");
@@ -238,7 +237,7 @@ public:
 		}
 
 		PendingItem i;
-		i.headers = req.headers().asQByteArrayList();
+		i.headers = req.headers();
 		i.packet = p;
 		pending += i;
 

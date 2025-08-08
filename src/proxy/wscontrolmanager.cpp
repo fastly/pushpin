@@ -26,7 +26,6 @@
 #include <assert.h>
 #include <QDateTime>
 #include <boost/signals2.hpp>
-#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -263,7 +262,7 @@ private:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0].asQByteArray());
+		QVariant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");

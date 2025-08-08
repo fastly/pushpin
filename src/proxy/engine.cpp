@@ -847,7 +847,7 @@ private:
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(req.content()[0].asQByteArray(), 0, &ok);
+		QVariant data = TnetString::toVariant(req.content()[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");

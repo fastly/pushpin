@@ -471,7 +471,7 @@ private:
 	void handlerInspect_readyRead(const QList<QByteArray> &_message)
 	{
 		QZmq::ReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0].asQByteArray());
+		QVariant v = TnetString::toVariant(message.content()[0]);
 		log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		inspected = true;
@@ -496,7 +496,7 @@ private:
 	void handlerAccept_readyRead(const QList<QByteArray> &_message)
 	{
 		QZmq::ReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0].asQByteArray());
+		QVariant v = TnetString::toVariant(message.content()[0]);
 		log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		QVariantHash vreq = v.toHash();
