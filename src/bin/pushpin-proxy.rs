@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
-use pushpin::core::call_c_main;
+use clap::Parser;
+use pushpin::core::ccliargs::ffi::CCliArgsFfi;
+use pushpin::core::ccliargs::CCliArgs;
 use pushpin::import_cpp;
-use std::env;
 use std::process::ExitCode;
 
 import_cpp! {
-    fn proxy_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn proxy_main(args: *const CCliArgsFfi) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
-    unsafe { ExitCode::from(call_c_main(proxy_main, env::args_os())) }
+    let c_cli_args = CCliArgs::parse().verify();
+    let c_cli_args_ffi = c_cli_args.to_ffi();
+
+    unsafe { ExitCode::from(proxy_main(&c_cli_args_ffi) as u8) }
 }

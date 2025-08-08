@@ -54,6 +54,11 @@ mod tests {
         unsafe { ffi::handlerengine_test(out_ex) == 0 }
     }
 
+    fn handlerargs_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::handlerargs_test(out_ex) == 0 }
+    }
+
     #[test]
     fn filter() {
         run_cpp(filter_test);
@@ -87,5 +92,10 @@ mod tests {
     #[test]
     fn handlerengine() {
         run_cpp(handlerengine_test);
+    }
+
+    #[test]
+    fn handlerargs() {
+        run_cpp(handlerargs_test);
     }
 }

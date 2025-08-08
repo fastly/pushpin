@@ -25,15 +25,18 @@
 
 #include <QString>
 #include <QVariant>
+#include "rust/bindings.h"
+#include "argsdata.h"
 
 class QSettings;
 
 class Settings
 {
 public:
+
+	Settings(const ArgsData *args);
 	Settings(const QString &fileName);
 	~Settings();
-
 	bool contains(const QString &key) const;
 	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
@@ -41,6 +44,9 @@ public:
 
 	void setIpcPrefix(const QString &s);
 	void setPortOffset(int x);
+	QString getIpcPrefix() const;
+	int getPortOffset() const;
+	bool operator==(const Settings& other) const;
 
 private:
 	QSettings *main_;
@@ -50,6 +56,7 @@ private:
 	QString ipcPrefix_;
 	int portOffset_;
 
+	void loadSettings(const QString &fileName);
 	QString resolveVars(const QString &in) const;
 };
 

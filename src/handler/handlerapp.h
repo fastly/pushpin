@@ -23,6 +23,7 @@
 
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
+#include "settings.h"
 
 class HandlerApp
 {
@@ -30,7 +31,7 @@ public:
 	HandlerApp();
 	~HandlerApp();
 
-	int run();
+	int run(const ffi::CCliArgsFfi *argsFfi);
 
 private:
 	class Private;

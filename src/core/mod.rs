@@ -16,6 +16,7 @@
 
 pub mod arena;
 pub mod buffer;
+pub mod ccliargs;
 pub mod channel;
 pub mod config;
 pub mod defer;
