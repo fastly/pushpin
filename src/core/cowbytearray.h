@@ -58,6 +58,9 @@ private:
 	QByteArray &inner_;
 };
 
+// QByteArray-like class that currently forwards to an inner QByteArray, to
+// assist with reducing direct dependency on Qt. The API is designed to allow
+// cheap conversion to/from QByteArray.
 class CowByteArray
 {
 public:
@@ -82,6 +85,11 @@ private:
 	QByteArray inner_;
 };
 
+// QList-like class for working with CowByteArray that currently forwards to
+// an inner QList<QByteArray>, to assist with reducing direct dependency on
+// Qt. The API is designed to allow cheap conversion to/from
+// QList<QByteArray> and to allow cheap conversions of inserts/lookups
+// to/from QByteArray.
 class CowByteArrayList
 {
 public:
@@ -91,7 +99,8 @@ public:
 	bool isEmpty() const { return inner_.isEmpty(); }
 	qsizetype count() const { return inner_.count(); }
 
-	CowByteArrayList operator+=(const CowByteArray &a) { inner_ += a.asQByteArray(); return *this; }
+	CowByteArrayList & operator+=(const CowByteArray &a) { inner_ += a.asQByteArray(); return *this; }
+	CowByteArrayList & operator+=(const QByteArray &a) { inner_ += a; return *this; }
 
 	CowByteArrayConstRef operator[](int index) const { return CowByteArrayConstRef(inner_[index]); }
 	CowByteArrayRef operator[](int index) { return CowByteArrayRef(inner_[index]); }
