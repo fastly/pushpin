@@ -16,7 +16,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::core::test::{run_serial, TestException};
+    use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
 
     fn websocketoverhttp_test(out_ex: &mut TestException) -> bool {
@@ -41,17 +41,17 @@ mod tests {
 
     #[test]
     fn websocketoverhttp() {
-        run_serial(websocketoverhttp_test);
+        run_cpp(websocketoverhttp_test);
     }
 
     #[test]
     fn routesfile() {
-        run_serial(routesfile_test);
+        run_cpp(routesfile_test);
     }
 
     #[test]
     fn proxyengine() {
-        run_serial(proxyengine_test);
+        run_cpp(proxyengine_test);
     }
 
     #[test]

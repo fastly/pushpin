@@ -24,8 +24,6 @@
 #include <thread>
 #include <QHostAddress>
 #include "test.h"
-#include "timer.h"
-#include "defercall.h"
 #include "eventloop.h"
 #include "tcplistener.h"
 #include "tcpstream.h"
@@ -274,19 +272,6 @@ static void accept()
 		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
-
-	DeferCall::cleanup();
-}
-
-static void acceptQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(100);
-
-	runAccept([] { QTest::qWait(10); });
-
-	DeferCall::cleanup();
-	Timer::deinit();
 }
 
 static void io()
@@ -297,27 +282,12 @@ static void io()
 		std::this_thread::sleep_for(10ms);
 		loop.step();
 	});
-
-	DeferCall::cleanup();
-}
-
-static void ioQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(100);
-
-	runIo([] { QTest::qWait(10); });
-
-	DeferCall::cleanup();
-	Timer::deinit();
 }
 
 extern "C" int tcpstream_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(accept());
-	TEST_CATCH(acceptQt());
 	TEST_CATCH(io());
-	TEST_CATCH(ioQt());
 
 	return 0;
 }

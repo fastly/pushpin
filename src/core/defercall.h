@@ -91,6 +91,8 @@ private:
 
 	static std::unordered_map<std::thread::id, std::shared_ptr<Manager>> managerByThread;
 	static std::mutex managerByThreadMutex;
+
+	static void eventloop_cleanup_handler(void *ctx);
 };
 
 #endif

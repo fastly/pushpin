@@ -246,6 +246,15 @@ DeferCall::DeferCall() :
 
 		std::lock_guard<std::mutex> guard(managerByThreadMutex);
 		managerByThread[thread_] = localManager;
+
+		EventLoop *loop = EventLoop::instance();
+		if(loop)
+		{
+			// we use the manager pointer to uniquely identify the handler
+			// registration even though the handler function doesn't do
+			// anything with it
+			loop->addCleanupHandler(eventloop_cleanup_handler, localManager.get());
+		}
 	}
 }
 
@@ -291,11 +300,20 @@ void DeferCall::cleanup()
 
 	if(localManager)
 	{
+		EventLoop *loop = EventLoop::instance();
+		if(loop)
+			loop->removeCleanupHandler(eventloop_cleanup_handler, localManager.get());
+
 		std::lock_guard<std::mutex> guard(managerByThreadMutex);
 		managerByThread.erase(std::this_thread::get_id());
 
 		localManager.reset();
 	}
+}
+
+void DeferCall::eventloop_cleanup_handler(void *)
+{
+	cleanup();
 }
 
 thread_local std::shared_ptr<DeferCall::Manager> DeferCall::localManager = std::shared_ptr<DeferCall::Manager>();

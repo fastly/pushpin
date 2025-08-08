@@ -515,7 +515,7 @@ impl<T> RecvScratch<T> {
     fn get<'a>(
         &mut self,
     ) -> (
-        arena::ReusableVecHandle<RecvWrapperFuture<'a, T>>,
+        arena::ReusableVecHandle<'_, RecvWrapperFuture<'a, T>>,
         &mut Vec<usize>,
     ) {
         (self.tasks.get_as_new(), &mut self.slice_scratch)
@@ -540,7 +540,7 @@ impl<T> CheckSendScratch<T> {
     fn get<'a>(
         &mut self,
     ) -> (
-        arena::ReusableVecHandle<WaitWritableFuture<'a, T>>,
+        arena::ReusableVecHandle<'_, WaitWritableFuture<'a, T>>,
         &mut Vec<usize>,
     ) {
         (self.tasks.get_as_new(), &mut self.slice_scratch)
