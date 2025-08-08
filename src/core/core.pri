@@ -1,4 +1,8 @@
 HEADERS += \
+	$$PWD/cowbytearray.h \
+	$$PWD/cowstring.h
+
+HEADERS += \
 	$$PWD/qzmqcontext.h \
 	$$PWD/qzmqsocket.h \
 	$$PWD/qzmqvalve.h \

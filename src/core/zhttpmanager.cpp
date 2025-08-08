@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <QStringList>
 #include <QHash>
+#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -537,7 +538,7 @@ public:
 
 		while(client_req_sock->canRead())
 		{
-			QList<QByteArray> msg = client_req_sock->read();
+			QList<QByteArray> msg = client_req_sock->read().asQByteArrayList();
 			if(msg.count() != 2)
 			{
 				log_warning("zhttp/zws client req: received message with parts != 2, skipping");

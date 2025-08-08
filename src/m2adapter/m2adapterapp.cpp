@@ -33,6 +33,8 @@
 #include <QTimer>
 #include <QDir>
 #include <QSettings>
+#include "cowstring.h"
+#include "cowbytearray.h"
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qtcompat.h"
@@ -2753,7 +2755,7 @@ public:
 
 		while(sock->canRead())
 		{
-			QList<QByteArray> message = sock->read();
+			QList<QByteArray> message = sock->read().asQByteArrayList();
 
 			if(message.count() != 2)
 			{
