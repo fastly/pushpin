@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2021 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,8 +24,9 @@
 #include "sequencer.h"
 
 #include <QDateTime>
-#include <QTimer>
 #include "log.h"
+#include "timer.h"
+#include "defercall.h"
 #include "publishitem.h"
 #include "publishlastids.h"
 
@@ -32,10 +34,8 @@
 #define DEFAULT_PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
-class Sequencer::Private : public QObject
+class Sequencer::Private
 {
-	Q_OBJECT
-
 public:
 	class PendingItem
 	{
@@ -67,29 +67,24 @@ public:
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
-	QTimer *expireTimer;
+	std::unique_ptr<Timer> expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
 	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
 
 	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
-		QObject(_q),
 		q(_q),
 		lastIds(_publishLastIds),
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
-		expireTimer = new QTimer(this);
-		connect(expireTimer, &QTimer::timeout, this, &Private::expireTimer_timeout);
+		expireTimer = std::make_unique<Timer>();
+		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
 	}
 
 	~Private()
 	{
-		expireTimer->disconnect(this);
-		expireTimer->setParent(0);
-		expireTimer->deleteLater();
-
 		qDeleteAll(idCacheById);
 	}
 
@@ -229,7 +224,6 @@ public:
 		}
 	}
 
-private slots:
 	void expireTimer_timeout()
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -264,8 +258,7 @@ private slots:
 	}
 };
 
-Sequencer::Sequencer(PublishLastIds *publishLastIds, QObject *parent) :
-	QObject(parent)
+Sequencer::Sequencer(PublishLastIds *publishLastIds)
 {
 	d = new Private(this, publishLastIds);
 }
@@ -294,5 +287,3 @@ void Sequencer::clearPendingForChannel(const QString &channel)
 {
 	d->clear(channel);
 }
-
-#include "sequencer.moc"

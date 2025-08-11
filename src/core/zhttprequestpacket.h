@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -70,6 +71,7 @@ public:
 	int credits;
 	bool more;
 	bool stream;
+	bool routerResp;
 	int maxSize;
 	int timeout;
 
@@ -101,6 +103,7 @@ public:
 		credits(-1),
 		more(false),
 		stream(false),
+		routerResp(false),
 		maxSize(-1),
 		timeout(-1),
 		code(-1),

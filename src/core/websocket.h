@@ -24,7 +24,6 @@
 #ifndef WEBSOCKET_H
 #define WEBSOCKET_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
@@ -32,10 +31,8 @@
 
 using Signal = boost::signals2::signal<void()>;
 
-class WebSocket : public QObject
+class WebSocket
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -81,7 +78,7 @@ public:
 		}
 	};
 
-	WebSocket(QObject *parent = 0) : QObject(parent) {}
+	virtual ~WebSocket() = default;
 
 	virtual QHostAddress peerAddress() const = 0;
 

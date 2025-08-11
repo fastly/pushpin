@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,40 +24,14 @@
 #include <QCoreApplication>
 #include "app.h"
 
-class AppMain : public QObject
-{
-	Q_OBJECT
-
-public:
-	App *app;
-
-public slots:
-	void start()
-	{
-		app = new App;
-		app->quit.connect(boost::bind(&AppMain::app_quit, this, boost::placeholders::_1));
-		app->start();
-	}
-
-private:
-	void app_quit(int returnCode)
-	{
-		delete app;
-		QCoreApplication::exit(returnCode);
-	}
-};
-
 extern "C" {
 
 int proxy_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	AppMain appMain;
-	QMetaObject::invokeMethod(&appMain, "start", Qt::QueuedConnection);
-	return qapp.exec();
+	App app;
+	return app.run();
 }
 
 }
-
-#include "main.moc"

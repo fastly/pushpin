@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,8 +24,10 @@
 #include "testhttprequest.h"
 
 #include <assert.h>
+#include <QSet>
 #include <QUrlQuery>
 #include "log.h"
+#include "defercall.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -32,10 +35,8 @@
 
 #define MAX_REQUEST_SIZE 100000
 
-class TestHttpRequest::Private : public QObject
+class TestHttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -53,9 +54,9 @@ public:
 	bool requestBodyFinished;
 	BufferList responseBody;
 	ErrorCondition errorCondition;
+	DeferCall deferCall;
 
 	Private(TestHttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		requestBodyFinished(false),
@@ -63,7 +64,6 @@ public:
 	{
 	}
 
-public slots:
 	void doBytesWritten(int cnt){
 		q->bytesWritten(cnt);
 	}
@@ -139,8 +139,7 @@ public slots:
 	}
 };
 
-TestHttpRequest::TestHttpRequest(QObject *parent) :
-	HttpRequest(parent)
+TestHttpRequest::TestHttpRequest()
 {
 	d = new Private(this);
 }
@@ -181,6 +180,11 @@ void TestHttpRequest::setIgnoreTlsErrors(bool on)
 	Q_UNUSED(on);
 }
 
+void TestHttpRequest::setTimeout(int msecs)
+{
+	Q_UNUSED(msecs);
+}
+
 void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);
@@ -209,7 +213,7 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		if(d->requestBody.size() + body.size() > MAX_REQUEST_SIZE)
 		{
 			d->state = Private::Responding;
-			QMetaObject::invokeMethod(d, "processRequest", Qt::QueuedConnection);
+			d->deferCall.defer([=] { d->processRequest(); });
 			return;
 		}
 
@@ -219,7 +223,8 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		{
 			d->requestBody += buf;
 
-			QMetaObject::invokeMethod(this, "doBytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
+			int written = buf.size();
+			d->deferCall.defer([=] { d->doBytesWritten(written); });
 		}
 	}
 }
@@ -231,7 +236,7 @@ void TestHttpRequest::endBody()
 		d->requestBodyFinished = true;
 
 		d->state = Private::Responding;
-		QMetaObject::invokeMethod(d, "processRequest", Qt::QueuedConnection);
+		d->deferCall.defer([=] { d->processRequest(); });
 	}
 }
 
@@ -305,5 +310,3 @@ QByteArray TestHttpRequest::readBody(int size)
 {
 	return d->responseBody.take(size);
 }
-
-#include "testhttprequest.moc"

@@ -1,12 +1,13 @@
 [package]
 name = "pushpin"
-version = "1.40.1-dev"
+version = "1.41.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
 license = "Apache-2.0"
 edition = "2018"
+rust-version = "1.75"
 default-run = "pushpin"
 
 [profile.dev]
@@ -21,16 +22,17 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 arrayvec = "0.7"
 base64 = "0.13"
-clap = { version = "=4.2.1", features = ["cargo", "string", "wrap_help", "derive"] }
-config = "0.13.3"
+clap = { version = "=4.3.24", features = ["cargo", "string", "wrap_help", "derive"] }
+config = "0.14"
 httparse = "1.7"
 ipnet = "2"
-jsonwebtoken = "8"
+jsonwebtoken = "9"
 libc = "0.2"
 log = "0.4"
 miniz_oxide = "0.6"
 mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
-openssl = "=0.10.66"
+notify = "7"
+openssl = "=0.10.72"
 paste = "1.0"
 rustls = "0.21"
 rustls-native-certs = "0.6"
@@ -53,7 +55,7 @@ test-log = "0.2"
 [build-dependencies]
 pkg-config = "0.3"
 time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
-cbindgen = "0.26"
+cbindgen = "0.27"
 
 [[bench]]
 name = "server"
@@ -92,3 +94,9 @@ bench = false
 name = "pushpin-publish"
 test = false
 bench = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))'] }
+
+[lints.clippy]
+uninlined_format_args = "allow"

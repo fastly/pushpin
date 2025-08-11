@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+mod batch;
 mod counter;
 mod listener;
 mod pool;

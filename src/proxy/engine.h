@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,13 +24,29 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include <QObject>
 #include <QStringList>
 #include <QHostAddress>
-#include "jwt.h"
-#include "xffrule.h"
 #include <boost/signals2.hpp>
 #include <map>
+#include "jwt.h"
+#include "xffrule.h"
+
+// each session can have a bunch of timers:
+// 2 per incoming zhttprequest/zwebsocket
+// 2 per outgoing zhttprequest/zwebsocket
+// 1 per wsproxysession
+// 2 per websocketoverhttp
+// 1 per inspect/accept request
+#define TIMERS_PER_SESSION 10
+
+// each zroute has a zhttpmanager, which has up to 8 timers
+#define TIMERS_PER_ZROUTE 10
+
+// each zroute has a zhttpmanager, which has up to 8 socket notifiers
+#define SOCKETNOTIFIERS_PER_ZROUTE 10
+
+#define PROMETHEUS_CONNECTIONS_MAX 16
+#define ZROUTES_MAX 100
 
 using std::map;
 using Connection = boost::signals2::scoped_connection;
@@ -38,10 +54,8 @@ using Connection = boost::signals2::scoped_connection;
 class StatsManager;
 class DomainMap;
 
-class Engine : public QObject
+class Engine
 {
-	Q_OBJECT
-
 public:
 	class Configuration
 	{
@@ -119,7 +133,7 @@ public:
 		}
 	};
 
-	Engine(DomainMap *domainMap, QObject *parent = 0);
+	Engine(DomainMap *domainMap);
 	~Engine();
 
 	StatsManager *statsManager() const;

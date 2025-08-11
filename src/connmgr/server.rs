@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::connmgr::batch::{Batch, BatchKey};
 use crate::connmgr::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
@@ -38,7 +39,7 @@ use crate::core::reactor::Reactor;
 use crate::core::select::{
     select_2, select_3, select_6, select_8, select_option, Select2, Select3, Select6, Select8,
 };
-use crate::core::task::{event_wait, yield_to_local_events, CancellationSender, CancellationToken};
+use crate::core::task::{self, yield_to_local_events, CancellationSender, CancellationToken};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
@@ -51,7 +52,6 @@ use slab::Slab;
 use socket2::{Domain, Socket, Type};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -227,160 +227,6 @@ impl Identify for AsyncTlsStream<'_> {
     fn set_id(&mut self, id: &str) {
         // server generates ids known to always be accepted
         self.inner().set_id(id).unwrap();
-    }
-}
-
-struct BatchKey {
-    addr_index: usize,
-    nkey: usize,
-}
-
-struct BatchGroup<'a, 'b> {
-    addr: &'b [u8],
-    ids: arena::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
-}
-
-impl<'a> BatchGroup<'a, '_> {
-    fn addr(&self) -> &[u8] {
-        self.addr
-    }
-
-    fn ids(&self) -> &[zhttppacket::Id<'a>] {
-        &self.ids
-    }
-}
-
-struct Batch {
-    nodes: Slab<list::Node<usize>>,
-    addrs: Vec<(ArrayVec<u8, 64>, list::List)>,
-    addr_index: usize,
-    group_ids: arena::ReusableVec,
-    last_group_ckeys: Vec<usize>,
-}
-
-impl Batch {
-    fn new(capacity: usize) -> Self {
-        Self {
-            nodes: Slab::with_capacity(capacity),
-            addrs: Vec::with_capacity(capacity),
-            addr_index: 0,
-            group_ids: arena::ReusableVec::new::<zhttppacket::Id>(capacity),
-            last_group_ckeys: Vec::with_capacity(capacity),
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    fn capacity(&self) -> usize {
-        self.nodes.capacity()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
-    }
-
-    fn clear(&mut self) {
-        self.addrs.clear();
-        self.nodes.clear();
-        self.addr_index = 0;
-    }
-
-    fn add(&mut self, to_addr: &[u8], ckey: usize) -> Result<BatchKey, ()> {
-        if self.nodes.len() == self.nodes.capacity() {
-            return Err(());
-        }
-
-        // if all existing nodes have been removed via remove() or take_group(),
-        // such that is_empty() returns true, start clean
-        if self.nodes.is_empty() {
-            self.addrs.clear();
-            self.addr_index = 0;
-        }
-
-        let mut pos = self.addrs.len();
-
-        for (i, a) in self.addrs.iter().enumerate() {
-            if a.0.as_ref() == to_addr {
-                pos = i;
-            }
-        }
-
-        if pos == self.addrs.len() {
-            if self.addrs.len() == self.addrs.capacity() {
-                return Err(());
-            }
-
-            // connection limits to_addr to 64 so this is guaranteed to succeed
-            let a = ArrayVec::try_from(to_addr).unwrap();
-
-            self.addrs.push((a, list::List::default()));
-        } else {
-            // adding not allowed if take_group() has already moved past the index
-            if pos < self.addr_index {
-                return Err(());
-            }
-        }
-
-        let nkey = self.nodes.insert(list::Node::new(ckey));
-        self.addrs[pos].1.push_back(&mut self.nodes, nkey);
-
-        Ok(BatchKey {
-            addr_index: pos,
-            nkey,
-        })
-    }
-
-    fn remove(&mut self, key: BatchKey) {
-        self.addrs[key.addr_index]
-            .1
-            .remove(&mut self.nodes, key.nkey);
-        self.nodes.remove(key.nkey);
-    }
-
-    fn take_group<'a, 'b: 'a, F>(&'a mut self, get_ids: F) -> Option<BatchGroup>
-    where
-        F: Fn(usize) -> (&'b [u8], u32),
-    {
-        // find the next addr with items
-        while self.addr_index < self.addrs.len() && self.addrs[self.addr_index].1.is_empty() {
-            self.addr_index += 1;
-        }
-
-        // if all are empty, we're done
-        if self.addr_index == self.addrs.len() {
-            assert!(self.nodes.is_empty());
-            return None;
-        }
-
-        let (addr, keys) = &mut self.addrs[self.addr_index];
-
-        self.last_group_ckeys.clear();
-
-        let mut ids = self.group_ids.get_as_new();
-
-        // get ids/seqs
-        while ids.len() < zhttppacket::IDS_MAX {
-            let nkey = match keys.pop_front(&mut self.nodes) {
-                Some(nkey) => nkey,
-                None => break,
-            };
-
-            let ckey = self.nodes[nkey].value;
-            self.nodes.remove(nkey);
-
-            let (id, seq) = get_ids(ckey);
-
-            self.last_group_ckeys.push(ckey);
-            ids.push(zhttppacket::Id { id, seq: Some(seq) });
-        }
-
-        Some(BatchGroup { addr, ids })
-    }
-
-    fn last_group_ckeys(&self) -> &[usize] {
-        &self.last_group_ckeys
     }
 }
 
@@ -641,7 +487,7 @@ impl Connections {
             None => return Err(()),
         };
 
-        let bkey = items.batch.add(addr, ckey)?;
+        let bkey = items.batch.add(addr, false, ckey)?;
 
         ci.batch_key = Some(bkey);
 
@@ -658,14 +504,22 @@ impl Connections {
         let batch = &mut items.batch;
 
         while !batch.is_empty() {
-            let group = batch
-                .take_group(|ckey| {
+            let group = {
+                let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
                     let cshared = ci.shared.as_ref().unwrap().get();
 
-                    (ci.id.as_bytes(), cshared.out_seq())
-                })
-                .unwrap();
+                    // addr could have been removed after adding to the batch
+                    cshared.to_addr().get()?;
+
+                    Some((ci.id.as_bytes(), cshared.out_seq()))
+                });
+
+                match group {
+                    Some(group) => group,
+                    None => continue,
+                }
+            };
 
             let count = group.ids().len();
 
@@ -923,7 +777,7 @@ impl Worker {
 
         let instance_id = Rc::new(instance_id);
 
-        let ka_batch = (stream_maxconn + (KEEP_ALIVE_BATCHES - 1)) / KEEP_ALIVE_BATCHES;
+        let ka_batch = stream_maxconn.div_ceil(KEEP_ALIVE_BATCHES);
 
         let batch = Batch::new(ka_batch);
 
@@ -1435,6 +1289,8 @@ impl Worker {
         let req_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let req_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
 
+        let resume_waker = task::create_resume_waker();
+
         debug!("server-worker {}: task started: req_handle", id);
 
         let mut handle_send = pin!(None);
@@ -1540,7 +1396,9 @@ impl Worker {
                             id, count
                         );
 
-                        yield_to_local_events().await;
+                        if count > 0 {
+                            yield_to_local_events(&resume_waker).await;
+                        }
                     }
                     Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },
@@ -1568,6 +1426,8 @@ impl Worker {
 
         let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let stream_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+
+        let resume_waker = task::create_resume_waker();
 
         debug!("server-worker {}: task started: stream_handle", id);
 
@@ -1653,21 +1513,27 @@ impl Worker {
                     }
                     // stream_handle.recv
                     Select8::R8(result) => match result {
-                        Ok(msg) => {
+                        Ok((msg, from_router)) => {
                             let msg_data = &msg.get()[..];
 
-                            let (addr, offset) = match get_addr_and_offset(msg_data) {
-                                Ok(ret) => ret,
-                                Err(_) => {
-                                    warn!("server-worker {}: packet has unexpected format", id);
+                            let offset = if from_router {
+                                0
+                            } else {
+                                let (addr, offset) = match get_addr_and_offset(msg_data) {
+                                    Ok(ret) => ret,
+                                    Err(_) => {
+                                        warn!("server-worker {}: packet has unexpected format", id);
+                                        continue;
+                                    }
+                                };
+
+                                if addr != *instance_id {
+                                    warn!("server-worker {}: packet not for us", id);
                                     continue;
                                 }
-                            };
 
-                            if addr != *instance_id {
-                                warn!("server-worker {}: packet not for us", id);
-                                continue;
-                            }
+                                offset
+                            };
 
                             let scratch = arena::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1716,7 +1582,7 @@ impl Worker {
                             );
 
                             if count > 0 {
-                                yield_to_local_events().await;
+                                yield_to_local_events(&resume_waker).await;
                             }
                         }
                         Err(e) => panic!("server-worker {}: handle read error {}", id, e),
@@ -1956,90 +1822,70 @@ impl Worker {
         let next_keep_alive_timeout = Timeout::new(next_keep_alive_time);
         let mut next_keep_alive_index = 0;
 
-        let sender_registration = reactor
-            .register_custom_local(sender.get_write_registration(), mio::Interest::WRITABLE)
-            .unwrap();
-
-        sender_registration.set_readiness(Some(mio::Interest::WRITABLE));
+        let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
-            while conns.batch_is_empty() {
-                // wait for next keep alive time
-                match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
-                    Select2::R1(_) => break 'main,
-                    Select2::R2(_) => {}
-                }
-
-                for _ in 0..conns.batch_capacity() {
-                    if next_keep_alive_index >= conns.items_capacity() {
-                        break;
-                    }
-
-                    let key = next_keep_alive_index;
-
-                    next_keep_alive_index += 1;
-
-                    if conns.is_item_stream(key) {
-                        // ignore errors
-                        let _ = conns.batch_add(key);
-                    }
-                }
-
-                keep_alive_count += 1;
-
-                if keep_alive_count >= KEEP_ALIVE_BATCHES {
-                    keep_alive_count = 0;
-                    next_keep_alive_index = 0;
-                }
-
-                // keep steady pace
-                next_keep_alive_time += KEEP_ALIVE_INTERVAL;
-                next_keep_alive_timeout.set_deadline(next_keep_alive_time);
-            }
-
-            match select_2(
-                stop.recv(),
-                pin!(event_wait(&sender_registration, mio::Interest::WRITABLE)),
-            )
-            .await
-            {
+            // wait for next keep alive time
+            match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
             }
 
-            if !sender.check_send() {
-                // if check_send returns false, we'll be on the waitlist for a notification
-                sender_registration.clear_readiness(mio::Interest::WRITABLE);
-                continue;
-            }
-
-            // if check_send returns true, we are guaranteed to be able to send
-
-            match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
-                Some((count, addr, msg)) => {
-                    debug!(
-                        "server-worker {}: sending keep alives for {} sessions",
-                        id, count
-                    );
-
-                    if let Err(e) = sender.try_send((addr, msg)) {
-                        error!("zhttp write error: {}", e);
-                    }
+            for _ in 0..conns.batch_capacity() {
+                if next_keep_alive_index >= conns.items_capacity() {
+                    break;
                 }
-                None => {
-                    // this could happen if items removed or message construction failed
-                    sender.cancel();
+
+                let key = next_keep_alive_index;
+
+                next_keep_alive_index += 1;
+
+                if conns.is_item_stream(key) {
+                    // ignore errors
+                    let _ = conns.batch_add(key);
                 }
             }
 
-            if conns.batch_is_empty() {
-                let now = reactor.now();
+            keep_alive_count += 1;
 
-                if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
-                    // got really behind somehow. just skip ahead
-                    next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
-                    next_keep_alive_timeout.set_deadline(next_keep_alive_time);
+            if keep_alive_count >= KEEP_ALIVE_BATCHES {
+                keep_alive_count = 0;
+                next_keep_alive_index = 0;
+            }
+
+            // keep steady pace
+            next_keep_alive_time += KEEP_ALIVE_INTERVAL;
+            next_keep_alive_timeout.set_deadline(next_keep_alive_time);
+
+            while !conns.batch_is_empty() {
+                let send = match select_2(stop.recv(), sender.wait_sendable()).await {
+                    Select2::R1(_) => break 'main,
+                    Select2::R2(send) => send,
+                };
+
+                // there could be no message if items removed or message construction failed
+                let (count, addr, msg) =
+                    match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
+                        Some(ret) => ret,
+                        None => continue,
+                    };
+
+                debug!(
+                    "server-worker {}: sending keep alives for {} sessions",
+                    id, count
+                );
+
+                if let Err(e) = send.try_send((addr, msg)) {
+                    error!("zhttp write error: {}", e);
                 }
+            }
+
+            let now = reactor.now();
+
+            if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
+                // got really behind somehow. just skip ahead
+                next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
+                next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
         }
 
@@ -2465,9 +2311,12 @@ impl TestServer {
         let (started_s, started_r) = channel::channel(1);
         let (stop_s, stop_r) = channel::channel(1);
 
-        let thread = thread::spawn(move || {
-            Self::run(started_s, stop_r, zmq_context);
-        });
+        let thread = thread::Builder::new()
+            .name("test-server".to_string())
+            .spawn(move || {
+                Self::run(started_s, stop_r, zmq_context);
+            })
+            .unwrap();
 
         // wait for handler thread to start
         started_r.recv().unwrap();
@@ -2525,12 +2374,16 @@ impl TestServer {
         Ok(zmq::Message::from(&dest[..size]))
     }
 
-    fn respond_stream(id: &[u8]) -> Result<zmq::Message, io::Error> {
+    fn respond_stream(prefix_addr: bool, id: &[u8]) -> Result<zmq::Message, io::Error> {
         let mut dest = [0; 1024];
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
 
-        cursor.write_all(b"test T")?;
+        if prefix_addr {
+            cursor.write_all(b"test ")?;
+        }
+
+        cursor.write_all(b"T")?;
 
         let mut w = tnetstring::Writer::new(&mut cursor);
 
@@ -2554,6 +2407,13 @@ impl TestServer {
         w.write_string(b"headers")?;
 
         w.start_array()?;
+
+        if !prefix_addr {
+            w.start_array()?;
+            w.write_string(b"Response-Path")?;
+            w.write_string(b"router")?;
+            w.end_array()?;
+        }
 
         w.start_array()?;
         w.write_string(b"Content-Length")?;
@@ -2791,6 +2651,7 @@ impl TestServer {
                 let mut id = "";
                 let mut method = "";
                 let mut uri = "";
+                let mut router_resp = false;
 
                 for f in tnetstring::parse_map(&msg[1..]).unwrap() {
                     let f = f.unwrap();
@@ -2808,8 +2669,15 @@ impl TestServer {
                             let s = tnetstring::parse_string(f.data).unwrap();
                             uri = str::from_utf8(s).unwrap();
                         }
+                        "router-resp" => {
+                            router_resp = tnetstring::parse_bool(f.data).unwrap();
+                        }
                         _ => {}
                     }
+                }
+
+                if !uri.contains("router-resp") {
+                    router_resp = false;
                 }
 
                 assert_eq!(method, "GET");
@@ -2818,8 +2686,15 @@ impl TestServer {
                     let msg = Self::respond_ws(id.as_bytes()).unwrap();
                     out_sock.send(msg, 0).unwrap();
                 } else {
-                    let msg = Self::respond_stream(id.as_bytes()).unwrap();
-                    out_sock.send(msg, 0).unwrap();
+                    let msg = Self::respond_stream(!router_resp, id.as_bytes()).unwrap();
+
+                    if router_resp {
+                        in_stream_sock
+                            .send_multipart([b"test".as_slice(), &[], &msg], 0)
+                            .unwrap();
+                    } else {
+                        out_sock.send(msg, 0).unwrap();
+                    }
                 }
             }
 
@@ -2987,86 +2862,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_batch() {
-        let mut batch = Batch::new(3);
-
-        assert_eq!(batch.capacity(), 3);
-        assert_eq!(batch.len(), 0);
-        assert!(batch.last_group_ckeys().is_empty());
-
-        assert!(batch.add(b"addr-a", 1).is_ok());
-        assert!(batch.add(b"addr-a", 2).is_ok());
-        assert!(batch.add(b"addr-b", 3).is_ok());
-        assert_eq!(batch.len(), 3);
-
-        assert!(batch.add(b"addr-c", 4).is_err());
-        assert_eq!(batch.len(), 3);
-        assert_eq!(batch.is_empty(), false);
-
-        let ids = ["id-1", "id-2", "id-3"];
-
-        let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
-            .unwrap();
-        assert_eq!(group.ids().len(), 2);
-        assert_eq!(group.ids()[0].id, b"id-1");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.ids()[1].id, b"id-2");
-        assert_eq!(group.ids()[1].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-a");
-        drop(group);
-        assert_eq!(batch.is_empty(), false);
-        assert_eq!(batch.last_group_ckeys(), &[1, 2]);
-
-        let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-3");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-b");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-        assert_eq!(batch.last_group_ckeys(), &[3]);
-
-        assert!(batch
-            .take_group(|ckey| { (ids[ckey - 1].as_bytes(), 0) })
-            .is_none());
-        assert_eq!(batch.last_group_ckeys(), &[3]);
-
-        let mut batch = Batch::new(3);
-
-        let bkey = batch.add(b"addr-a", 1).unwrap();
-        assert!(batch.add(b"addr-b", 2).is_ok());
-        assert_eq!(batch.len(), 2);
-        batch.remove(bkey);
-        assert_eq!(batch.len(), 1);
-
-        let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-2");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-b");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-
-        assert!(batch.add(b"addr-a", 3).is_ok());
-        assert_eq!(batch.len(), 1);
-        assert!(!batch.is_empty());
-        let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-3");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-a");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-    }
-
-    #[test]
     fn test_server() {
         let server = TestServer::new(1);
 
@@ -3098,6 +2893,21 @@ pub mod tests {
         assert_eq!(
             str::from_utf8(&buf).unwrap(),
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
+        );
+
+        // stream (http) with responses via router
+
+        let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
+        client
+            .write(b"GET /hello?router-resp HTTP/1.0\r\nHost: example.com\r\n\r\n")
+            .unwrap();
+
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).unwrap();
+
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            "HTTP/1.0 200 OK\r\nResponse-Path: router\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
         // stream (ws)

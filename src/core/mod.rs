@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ pub mod channel;
 pub mod config;
 pub mod defer;
 pub mod event;
+pub mod eventloop;
 pub mod executor;
 pub mod fs;
 pub mod http1;
@@ -32,14 +33,12 @@ pub mod reactor;
 pub mod select;
 pub mod shuffle;
 pub mod task;
+pub mod test;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
 pub mod waker;
 pub mod zmq;
-
-#[cfg(test)]
-pub mod qtest;
 
 use std::env;
 use std::ffi::{CString, OsStr};
@@ -47,6 +46,10 @@ use std::os::unix::ffi::OsStrExt;
 
 #[cfg(test)]
 use std::path::{Path, PathBuf};
+
+pub fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
 
 pub fn version() -> &'static str {
     env!("APP_VERSION")
@@ -97,30 +100,91 @@ pub fn ensure_example_config(dest: &Path) {
     });
 }
 
+mod ffi {
+    use std::os::raw::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn is_debug_build() -> c_int {
+        if super::is_debug_build() {
+            1
+        } else {
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::call_c_main;
+    use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
-    use std::ffi::OsStr;
 
-    fn httpheaders_test(args: &[&OsStr]) -> u8 {
+    fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::httpheaders_test, args) as u8 }
+        unsafe { ffi::httpheaders_test(out_ex) == 0 }
     }
 
-    fn jwt_test(args: &[&OsStr]) -> u8 {
+    fn jwt_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
-        unsafe { call_c_main(ffi::jwt_test, args) as u8 }
+        unsafe { ffi::jwt_test(out_ex) == 0 }
+    }
+
+    fn timer_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::timer_test(out_ex) == 0 }
+    }
+
+    fn defercall_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::defercall_test(out_ex) == 0 }
+    }
+
+    fn tcpstream_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::tcpstream_test(out_ex) == 0 }
+    }
+
+    fn unixstream_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::unixstream_test(out_ex) == 0 }
+    }
+
+    fn eventloop_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
 
     #[test]
     fn httpheaders() {
-        assert!(qtest::run(httpheaders_test));
+        run_cpp(httpheaders_test);
     }
 
     #[test]
     fn jwt() {
-        assert!(qtest::run(jwt_test));
+        run_cpp(jwt_test);
+    }
+
+    #[test]
+    fn timer() {
+        run_cpp(timer_test);
+    }
+
+    #[test]
+    fn defercall() {
+        run_cpp(defercall_test);
+    }
+
+    #[test]
+    fn tcpstream() {
+        run_cpp(tcpstream_test);
+    }
+
+    #[test]
+    fn unixstream() {
+        run_cpp(unixstream_test);
+    }
+
+    #[test]
+    fn eventloop() {
+        run_cpp(eventloop_test);
     }
 }

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +24,7 @@
 #ifndef PROXYSESSION_H
 #define PROXYSESSION_H
 
-#include <QObject>
+#include <boost/signals2.hpp>
 #include "logutil.h"
 #include "domainmap.h"
 
@@ -38,17 +39,14 @@ class ZRoutes;
 class StatsManager;
 class XffRule;
 class RequestSession;
-#include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-class ProxySession : public QObject
+class ProxySession
 {
-	Q_OBJECT
-
 public:
-	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, QObject *parent = 0);
+	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *stats = 0);
 	~ProxySession();
 
 	void setRoute(const DomainMap::Entry &route);
@@ -73,7 +71,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 #endif

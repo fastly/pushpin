@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,7 +33,8 @@
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "zhttpmanager.h"
@@ -58,23 +59,9 @@
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
-#define ZROUTES_MAX 100
 
-// each session can have a bunch of timers:
-// 2 per incoming zhttprequest/zwebsocket
-// 2 per outgoing zhttprequest/zwebsocket
-// 1 per wsproxysession
-// 2 per websocketoverhttp
-// 1 per inspect/accept request
-#define TIMERS_PER_SESSION 10
-
-// each zroute has a zhttpmanager, which has up to 8 timers
-#define TIMERS_PER_ZROUTE 10
-
-class Engine::Private : public QObject
+class Engine::Private
 {
-	Q_OBJECT
-
 public:
 	class ProxyItem
 	{
@@ -118,24 +105,24 @@ public:
 	bool destroying;
 	DomainMap *domainMap;
 	Configuration config;
-	ZhttpManager *zhttpIn;
-	ZhttpManager *intZhttpIn;
-	ZRoutes *zroutes;
-	ZrpcManager *inspect;
+	std::unique_ptr<ZhttpManager> zhttpIn;
+	std::unique_ptr<ZhttpManager> intZhttpIn;
+	std::unique_ptr<ZRoutes> zroutes;
+	std::unique_ptr<ZrpcManager> inspect;
 	std::unique_ptr<WsControlManager> wsControl;
-	ZrpcChecker *inspectChecker;
-	StatsManager *stats;
-	ZrpcManager *command;
-	ZrpcManager *accept;
-	QZmq::Socket *handler_retry_in_sock;
-	QZmq::Valve *handler_retry_in_valve;
+	std::unique_ptr<ZrpcChecker> inspectChecker;
+	std::unique_ptr<StatsManager> stats;
+	std::unique_ptr<ZrpcManager> command;
+	std::unique_ptr<ZrpcManager> accept;
+	std::unique_ptr<QZmq::Socket> handler_retry_in_sock;
+	std::unique_ptr<QZmq::Valve> handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
-	SockJsManager *sockJsManager;
+	std::unique_ptr<SockJsManager> sockJsManager;
 	ConnectionManager connectionManager;
-	Updater *updater;
+	std::unique_ptr<Updater> updater;
 	LogUtil::Config logConfig;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
@@ -148,22 +135,9 @@ public:
 	Connection rrConnection;
 
 	Private(Engine *_q, DomainMap *_domainMap) :
-		QObject(_q),
 		q(_q),
 		destroying(false),
-		domainMap(_domainMap),
-		zhttpIn(0),
-		intZhttpIn(0),
-		zroutes(0),
-		inspect(0),
-		inspectChecker(0),
-		stats(0),
-		command(0),
-		accept(0),
-		handler_retry_in_sock(0),
-		handler_retry_in_valve(0),
-		sockJsManager(0),
-		updater(0)
+		domainMap(_domainMap)
 	{
 	}
 
@@ -174,7 +148,7 @@ public:
 		// need to delete all objects that may have connections before
 		// deleting zhttpmanagers/zroutes
 
-		delete updater;
+		updater.reset();
 
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
@@ -204,29 +178,24 @@ public:
 		requestSessions.clear();
 
 		// may have background connections
-		delete sockJsManager;
-		sockJsManager = 0;
+		sockJsManager.reset();
 
 		WebSocketOverHttp::clearDisconnectManager();
 
 		// need to make sure this is deleted before inspect manager
-		delete inspectChecker;
-		inspectChecker = 0;
+		inspectChecker.reset();
 	}
 
 	bool start(const Configuration &_config)
 	{
 		config = _config;
 
-		// enough timers for sessions and zroutes, plus an extra 100 for misc
-		RTimer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
-
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
 
-		zhttpIn = new ZhttpManager(this);
+		zhttpIn = std::make_unique<ZhttpManager>();
 		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
 		socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
 
@@ -237,7 +206,7 @@ public:
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{
-			intZhttpIn = new ZhttpManager(this);
+			intZhttpIn = std::make_unique<ZhttpManager>();
 			intZhttpIn->setBind(true);
 			intZhttpIn->setIpcFileMode(config.ipcFileMode);
 			iRequestReadyConnection = intZhttpIn->requestReady.connect(boost::bind(&Private::intZhttpIn_requestReady, this));
@@ -248,18 +217,18 @@ public:
 			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
 		}
 
-		zroutes = new ZRoutes(this);
+		zroutes = std::make_unique<ZRoutes>();
 		zroutes->setInstanceId(config.clientId);
 		zroutes->setDefaultOutSpecs(config.clientOutSpecs);
 		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
-		sockJsManager = new SockJsManager(config.sockJsUrl, this);
+		sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
 		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
 		{
-			inspect = new ZrpcManager(this);
+			inspect = std::make_unique<ZrpcManager>();
 			inspect->setBind(true);
 			inspect->setIpcFileMode(config.ipcFileMode);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
@@ -270,12 +239,12 @@ public:
 
 			inspect->setTimeout(config.inspectTimeout);
 
-			inspectChecker = new ZrpcChecker(this);
+			inspectChecker = std::make_unique<ZrpcChecker>();
 		}
 
 		if(!config.acceptSpec.isEmpty())
 		{
-			accept = new ZrpcManager(this);
+			accept = std::make_unique<ZrpcManager>();
 			accept->setInstanceId(config.clientId);
 			accept->setBind(true);
 			accept->setIpcFileMode(config.ipcFileMode);
@@ -291,19 +260,19 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			handler_retry_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
-			if(!ZUtil::setupSocket(handler_retry_in_sock, config.retryInSpec, true, config.ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true, config.ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
 			}
 
-			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
+			handler_retry_in_valve = std::make_unique<QZmq::Valve>(handler_retry_in_sock.get());
 			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
@@ -332,7 +301,7 @@ public:
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.sessionsMax, 0, this);
+			stats = std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
 
 			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
@@ -367,7 +336,7 @@ public:
 
 		if(!config.commandSpec.isEmpty())
 		{
-			command = new ZrpcManager(this);
+			command = std::make_unique<ZrpcManager>();
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
 			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
@@ -381,7 +350,7 @@ public:
 
 		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
 		{
-			updater = new Updater(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager(), this);
+			updater = std::make_unique<Updater>(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager());
 		}
 
 		// init zroutes
@@ -427,7 +396,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, logConfig, stats);
+			ps = new ProxySession(zroutes.get(), accept.get(), logConfig, stats.get());
 			// TODO: use callbacks for performance
 			proxySessionConnectionMap[ps] = {
 				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
@@ -473,7 +442,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl.get());
+		WsProxySession *ps = new WsProxySession(zroutes.get(), &connectionManager, logConfig, stats.get(), wsControl.get());
 		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -573,7 +542,7 @@ public:
 				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
-		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
 
 		if(passthroughData.isValid() && !preferInternal)
 		{
@@ -861,7 +830,7 @@ private:
 		delete i;
 
 		ps->finishedByPassthroughCallback().remove(this);
-		ps->deleteLater();
+		DeferCall::deleteLater(ps);
 
 		tryTakeNext();
 	}
@@ -921,11 +890,12 @@ private:
 			ss.inSeq = req.inSeq;
 			ss.outSeq = req.outSeq;
 			ss.outCredits = req.outCredits;
+			ss.routerResp = req.routerResp;
 			ss.userData = req.userData;
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
 
 			requestSessions += rs;
 
@@ -1026,7 +996,7 @@ private:
 				return;
 			}
 
-			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
+			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
 			if(woh)
 				woh->refresh();
 
@@ -1087,8 +1057,7 @@ private:
 	}
 };
 
-Engine::Engine(DomainMap *domainMap, QObject *parent) :
-	QObject(parent)
+Engine::Engine(DomainMap *domainMap)
 {
 	d = new Private(this, domainMap);
 }
@@ -1100,7 +1069,7 @@ Engine::~Engine()
 
 StatsManager *Engine::statsManager() const
 {
-	return d->stats;
+	return d->stats.get();
 }
 
 bool Engine::start(const Configuration &config)
@@ -1112,5 +1081,3 @@ void Engine::routesChanged()
 {
 	d->routesChanged();
 }
-
-#include "engine.moc"

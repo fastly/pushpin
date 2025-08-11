@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,18 +24,26 @@
 #ifndef HTTPSESSION_H
 #define HTTPSESSION_H
 
-#include <QObject>
+#include <boost/signals2.hpp>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "callback.h"
 #include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
-#include <boost/signals2.hpp>
+#include "filter.h"
+#include "clientsession.h"
+
+// each session can have a bunch of timers:
+// incoming request
+// outgoing request
+// 2 additional timers
+// filter timers
+// a few more just in case
+#define TIMERS_PER_HTTPSESSION ((TIMERS_PER_ZHTTPREQUEST * 2) + 2 + TIMERS_PER_MESSAGEFILTERSTACK + 4)
 
 using Connection = boost::signals2::scoped_connection;
 
-class QTimer;
 class ZhttpManager;
 class StatsManager;
 class PublishItem;
@@ -44,12 +52,8 @@ class PublishLastIds;
 class HttpSessionUpdateManager;
 class RetryRequestPacket;
 
-class HttpSession;
-
-class HttpSession : public QObject
+class HttpSession : public ClientSession
 {
-	Q_OBJECT
-
 public:
 	class AcceptData
 	{
@@ -66,6 +70,7 @@ public:
 		QString route;
 		QString statsRoute;
 		QString channelPrefix;
+		int logLevel;
 		QSet<QString> implicitChannels;
 		bool trusted;
 		bool responseSent;
@@ -79,6 +84,7 @@ public:
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
 			unreportedTime(-1),
+			logLevel(-1),
 			trusted(false),
 			responseSent(false),
 			haveInspectInfo(false)
@@ -86,7 +92,7 @@ public:
 		}
 	};
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent = 0);
+	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax);
 	~HttpSession();
 
 	Instruct::HoldMode holdMode() const;
@@ -112,7 +118,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 #endif

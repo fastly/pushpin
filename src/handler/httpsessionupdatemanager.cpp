@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,14 +23,13 @@
 
 #include "httpsessionupdatemanager.h"
 
-#include <QTimer>
 #include <QUrl>
+#include "timer.h"
+#include "defercall.h"
 #include "httpsession.h"
 
-class HttpSessionUpdateManager::Private : public QObject
+class HttpSessionUpdateManager::Private
 {
-	Q_OBJECT
-
 public:
 	class Bucket
 	{
@@ -37,33 +37,22 @@ public:
 		QPair<int, QUrl> key;
 		QSet<HttpSession*> sessions;
 		QSet<HttpSession*> deferredSessions;
-		QTimer *timer;
+		std::unique_ptr<Timer> timer;
 	};
 
 	HttpSessionUpdateManager *q;
 	QHash<QPair<int, QUrl>, Bucket*> buckets;
-	QHash<QTimer*, Bucket*> bucketsByTimer;
+	QHash<Timer*, Bucket*> bucketsByTimer;
 	QHash<HttpSession*, Bucket*> bucketsBySession;
 
 	Private(HttpSessionUpdateManager *_q) :
-		QObject(_q),
 		q(_q)
 	{
 	}
 
 	~Private()
 	{
-		QHashIterator<QPair<int, QUrl>, Bucket*> it(buckets);
-		while(it.hasNext())
-		{
-			it.next();
-			Bucket *bucket = it.value();
-
-			bucket->timer->disconnect(this);
-			bucket->timer->setParent(0);
-			bucket->timer->deleteLater();
-			delete bucket;
-		}
+		qDeleteAll(buckets);
 	}
 
 	void removeBucket(Bucket *bucket)
@@ -71,16 +60,12 @@ public:
 		foreach(HttpSession *hs, bucket->sessions)
 			bucketsBySession.remove(hs);
 
-		bucketsByTimer.remove(bucket->timer);
+		bucketsByTimer.remove(bucket->timer.get());
 		buckets.remove(bucket->key);
-
-		bucket->timer->disconnect(this);
-		bucket->timer->setParent(0);
-		bucket->timer->deleteLater();
 		delete bucket;
 	}
 
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri)
+	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout)
 	{
 		QUrl tmp = uri;
 		tmp.setQuery(QString()); // remove the query part
@@ -91,9 +76,11 @@ public:
 		{
 			if(bucket->sessions.contains(hs))
 			{
-				// if the session is already in this bucket, flag it
-				//   for later processing
-				bucket->deferredSessions += hs;
+				if(resetTimeout)
+				{
+					// flag for later processing
+					bucket->deferredSessions += hs;
+				}
 			}
 			else
 			{
@@ -112,13 +99,11 @@ public:
 			bucket = new Bucket;
 			bucket->key = key;
 			bucket->sessions += hs;
-			bucket->timer = new QTimer(this);
-			QObject::connect(bucket->timer, &QTimer::timeout, [this, timer=bucket->timer]() {
-				this->timer_timeout(timer);
-			});
+			bucket->timer = std::make_unique<Timer>();
+			bucket->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, bucket->timer.get()));
 
 			buckets[key] = bucket;
-			bucketsByTimer[bucket->timer] = bucket;
+			bucketsByTimer[bucket->timer.get()] = bucket;
 			bucketsBySession[hs] = bucket;
 
 			bucket->timer->start(timeout * 1000);
@@ -140,7 +125,7 @@ public:
 	}
 
 private:
-	void timer_timeout(QTimer *timer)
+	void timer_timeout(Timer *timer)
 	{
 		Bucket *bucket = bucketsByTimer.value(timer);
 		if(!bucket)
@@ -174,8 +159,7 @@ private:
 	}
 };
 
-HttpSessionUpdateManager::HttpSessionUpdateManager(QObject *parent) :
-	QObject(parent)
+HttpSessionUpdateManager::HttpSessionUpdateManager()
 {
 	d = new Private(this);
 }
@@ -185,14 +169,12 @@ HttpSessionUpdateManager::~HttpSessionUpdateManager()
 	delete d;
 }
 
-void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const QUrl &uri)
+void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout)
 {
-	d->registerSession(hs, timeout, uri);
+	d->registerSession(hs, timeout, uri, resetTimeout);
 }
 
 void HttpSessionUpdateManager::unregisterSession(HttpSession *hs)
 {
 	d->unregisterSession(hs);
 }
-
-#include "httpsessionupdatemanager.moc"

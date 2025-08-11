@@ -18,9 +18,8 @@
 use log::{Level, Log, Metadata, Record};
 use std::fs::File;
 use std::io::{self, Write};
-use std::mem;
 use std::str;
-use std::sync::{Mutex, Once};
+use std::sync::{Mutex, OnceLock};
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
@@ -129,12 +128,10 @@ unsafe fn get_offset() -> Option<UtcOffset> {
     offset
 }
 
-static mut LOGGER: mem::MaybeUninit<SimpleLogger> = mem::MaybeUninit::uninit();
+static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
-    static INIT: Once = Once::new();
-
-    INIT.call_once(|| {
+    LOGGER.get_or_init(|| {
         // SAFETY: we accept that this call is unsound. on some platforms it
         // is the only way to know the time zone, with a chance of UB if
         // another thread modifies environment vars during the call. the risk
@@ -143,13 +140,10 @@ pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
         // zone than not know the time zone
         let local_offset = unsafe { get_offset() };
 
-        // SAFETY: call_once ensures this only happens from one place
-        unsafe {
-            LOGGER.write(SimpleLogger {
-                local_offset,
-                output_file: output_file.map(Mutex::new),
-                runner_mode,
-            });
+        SimpleLogger {
+            local_offset,
+            output_file: output_file.map(Mutex::new),
+            runner_mode,
         }
     });
 }
@@ -157,8 +151,8 @@ pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
 pub fn get_simple_logger() -> &'static SimpleLogger {
     ensure_init_simple_logger(None, false);
 
-    // SAFETY: logger is guaranteed to have been initialized
-    unsafe { LOGGER.assume_init_ref() }
+    // logger is guaranteed to have been initialized
+    LOGGER.get().expect("logger should be initialized")
 }
 
 pub fn local_offset_check() {

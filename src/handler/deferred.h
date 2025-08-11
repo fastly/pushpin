@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,8 +25,8 @@
 #define DEFERRED_H
 
 #include <QVariant>
-#include <QObject>
 #include <boost/signals2.hpp>
+#include "defercall.h"
 
 class DeferredResult
 {
@@ -47,27 +48,23 @@ public:
 
 Q_DECLARE_METATYPE(DeferredResult)
 
-class Deferred : public QObject
+class Deferred
 {
-	Q_OBJECT
-
 public:
 	virtual ~Deferred();
-
-	virtual void cancel();
 
 	boost::signals2::signal<void(const DeferredResult&)> finished;
 
 protected:
-	Deferred(QObject *parent = 0);
+	Deferred();
 
 	void setFinished(bool ok, const QVariant &value = QVariant());
 
-private slots:
-	void doFinish();
-
 private:
 	DeferredResult result_;
+	DeferCall deferCall_;
+
+	void doFinish();
 };
 
 #endif

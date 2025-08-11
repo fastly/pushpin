@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2006 Justin Karneges
  * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -21,158 +22,55 @@
 
 #include "processquit.h"
 
-#ifndef NO_IRISNET
-# include "irisnetglobal_p.h"
-#endif
-
-#ifdef QT_GUI_LIB
-# include <QApplication>
-#endif
-
-#ifdef Q_OS_WIN
-# include <windows.h>
-#endif
-
-#ifdef Q_OS_UNIX
-# include <signal.h>
-# include <unistd.h>
-#endif
-
-namespace {
-
-// safeobj stuff, from qca
-
-void releaseAndDeleteLater(QObject *owner, QObject *obj)
-{
-	obj->disconnect(owner);
-	obj->setParent(0);
-	obj->deleteLater();
-}
-
-class SafeSocketNotifier : public QObject
-{
-	Q_OBJECT
-public:
-	Connection activatedConnection;
-
-	SafeSocketNotifier(int socket, QSocketNotifier::Type type,
-		QObject *parent = 0) :
-		QObject(parent)
-	{
-		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, &QSocketNotifier::activated, this, &SafeSocketNotifier::doActivated);
-	}
-
-	~SafeSocketNotifier()
-	{
-		sn->setEnabled(false);
-		releaseAndDeleteLater(this, sn);
-	}
-
-	bool isEnabled() const             { return sn->isEnabled(); }
-	int socket() const                 { return sn->socket(); }
-	QSocketNotifier::Type type() const { return sn->type(); }
-
-public slots:
-	void setEnabled(bool enable)       { sn->setEnabled(enable); }
-
-public:
-	SignalInt activated;
-
-private:
-	QSocketNotifier *sn;
-
-	void doActivated(int sock)
-	{
-		activated(sock);
-	}
-};
-
-}
-
-#ifndef NO_IRISNET
-namespace XMPP {
-#endif
+#include <signal.h>
+#include <unistd.h>
+#include <QGlobalStatic>
+#include <QMutex>
+#include "socketnotifier.h"
 
 Q_GLOBAL_STATIC(QMutex, pq_mutex)
-static ProcessQuit *g_pq = 0;
+static ProcessQuit *g_pq = nullptr;
 
-inline bool is_gui_app()
+class ProcessQuit::Private
 {
-#ifdef QT_GUI_LIB
-	return (QApplication::type() != QApplication::Tty);
-#else
-	return false;
-#endif
-}
-
-class ProcessQuit::Private : public QObject
-{
-	Q_OBJECT
-
 public:
 	ProcessQuit *q;
 	Connection activatedConnection;
 
 	bool done;
-#ifdef Q_OS_WIN
-	bool use_handler;
-#endif
-#ifdef Q_OS_UNIX
 	int sig_pipe[2];
-	SafeSocketNotifier *sig_notifier;
-#endif
+	std::unique_ptr<SocketNotifier> sig_notifier;
 
-	Private(ProcessQuit *_q) : QObject(_q), q(_q)
+	Private(ProcessQuit *_q) :
+		q(_q)
 	{
 		done = false;
-#ifdef Q_OS_WIN
-		use_handler = !is_gui_app();
-		if(use_handler)
-			SetConsoleCtrlHandler((PHANDLER_ROUTINE)winHandler, TRUE);
-#endif
-#ifdef Q_OS_UNIX
+
 		if(pipe(sig_pipe) == -1)
 		{
 			// no support then
 			return;
 		}
 
-		sig_notifier = new SafeSocketNotifier(sig_pipe[0], QSocketNotifier::Read, this);
+		sig_notifier = std::make_unique<SocketNotifier>(sig_pipe[0], SocketNotifier::Read);
 		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
+		sig_notifier->clearReadiness(SocketNotifier::Read);
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
 		unixWatchAdd(SIGTERM);
-#endif
 	}
 
 	~Private()
 	{
-#ifdef Q_OS_WIN
-		if(use_handler)
-			SetConsoleCtrlHandler((PHANDLER_ROUTINE)winHandler, FALSE);
-#endif
-#ifdef Q_OS_UNIX
 		unixWatchRemove(SIGINT);
 		unixWatchRemove(SIGHUP);
 		unixWatchRemove(SIGTERM);
 		activatedConnection.disconnect();
-		delete sig_notifier;
+		sig_notifier.reset();
 		close(sig_pipe[0]);
 		close(sig_pipe[1]);
-#endif
 	}
 
-#ifdef Q_OS_WIN
-	static BOOL winHandler(DWORD ctrlType)
-	{
-		Q_UNUSED(ctrlType);
-		QMetaObject::invokeMethod(g_pq->d, "ctrl_ready", Qt::QueuedConnection);
-		return TRUE;
-	}
-#endif
-
-#ifdef Q_OS_UNIX
 	static void unixHandler(int sig)
 	{
 		Q_UNUSED(sig);
@@ -213,11 +111,11 @@ public:
 		sa.sa_handler = SIG_DFL;
 		sigaction(sig, &sa, 0);
 	}
-#endif
 
 	void sig_activated(int)
 	{
-#ifdef Q_OS_UNIX
+		sig_notifier->clearReadiness(SocketNotifier::Read);
+
 		unsigned char c;
 		if(::read(sig_pipe[0], &c, 1) == -1)
 		{
@@ -232,15 +130,6 @@ public:
 		}
 
 		do_emit();
-#endif
-	}
-
-public slots:
-	void ctrl_ready()
-	{
-#ifdef Q_OS_WIN
-		do_emit();
-#endif
 	}
 
 private:
@@ -255,8 +144,7 @@ private:
 	}
 };
 
-ProcessQuit::ProcessQuit(QObject *parent)
-:QObject(parent)
+ProcessQuit::ProcessQuit()
 {
 	d = new Private(this);
 }
@@ -270,13 +158,7 @@ ProcessQuit *ProcessQuit::instance()
 {
 	QMutexLocker locker(pq_mutex());
 	if(!g_pq)
-	{
 		g_pq = new ProcessQuit;
-		g_pq->moveToThread(QCoreApplication::instance()->thread());
-#ifndef NO_IRISNET
-		irisNetAddPostRoutine(cleanup);
-#endif
-	}
 	return g_pq;
 }
 
@@ -290,11 +172,5 @@ void ProcessQuit::reset()
 void ProcessQuit::cleanup()
 {
 	delete g_pq;
-	g_pq = 0;
+	g_pq = nullptr;
 }
-
-#ifndef NO_IRISNET
-}
-#endif
-
-#include "processquit.moc"

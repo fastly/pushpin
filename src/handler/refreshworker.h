@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2020 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,12 +27,12 @@
 #include <QByteArray>
 #include <QHash>
 #include <QSet>
-#include "deferred.h"
 #include <boost/signals2.hpp>
+#include "deferred.h"
+#include "zrpcrequest.h"
 
 using Connection = boost::signals2::scoped_connection;
 
-class ZrpcRequest;
 class ZrpcManager;
 class StatsManager;
 class WsSession;
@@ -45,13 +46,12 @@ private:
 	QStringList cids_;
 	bool ignoreErrors_;
 	ZrpcManager *proxyControlClient_;
-	ZrpcRequest *req_;
+	std::unique_ptr<ZrpcRequest> req_;
+	std::unique_ptr<Deferred> refresh_;
 	Connection finishedConnection_;
 
 	void refreshNextCid();
 	void respondError(const QByteArray &condition);
-
-private slots:
 	void proxyRefresh_finished(const DeferredResult &result);
 };
 

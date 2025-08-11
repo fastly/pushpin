@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,7 +26,6 @@
 #include <assert.h>
 #include <QStringList>
 #include <QHash>
-#include <QPointer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -34,7 +34,7 @@
 #include "log.h"
 #include "zutil.h"
 #include "logutil.h"
-#include "rtimer.h"
+#include "timer.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -54,10 +54,8 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
-class ZhttpManager::Private : public QObject
+class ZhttpManager::Private
 {
-	Q_OBJECT
-
 public:
 	enum SessionType
 	{
@@ -82,26 +80,28 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
-	QZmq::Socket *client_out_sock;
-	QZmq::Socket *client_out_stream_sock;
-	QZmq::Socket *client_in_sock;
-	QZmq::Socket *client_req_sock;
-	QZmq::Socket *server_in_sock;
-	QZmq::Socket *server_in_stream_sock;
-	QZmq::Socket *server_out_sock;
-	QZmq::Valve *client_in_valve;
-	QZmq::Valve *server_in_valve;
-	QZmq::Valve *server_in_stream_valve;
+	std::unique_ptr<QZmq::Socket> client_out_sock;
+	std::unique_ptr<QZmq::Socket> client_out_stream_sock;
+	std::unique_ptr<QZmq::Socket> client_in_sock;
+	std::unique_ptr<QZmq::Socket> client_req_sock;
+	std::unique_ptr<QZmq::Socket> server_in_sock;
+	std::unique_ptr<QZmq::Socket> server_in_stream_sock;
+	std::unique_ptr<QZmq::Socket> server_out_sock;
+	std::unique_ptr<QZmq::Valve> client_in_valve;
+	std::unique_ptr<QZmq::Valve> client_out_stream_valve;
+	std::unique_ptr<QZmq::Valve> server_in_valve;
+	std::unique_ptr<QZmq::Valve> server_in_stream_valve;
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
+	bool doProbe;
 	QHash<ZhttpRequest::Rid, ZhttpRequest*> clientReqsByRid;
 	QHash<ZhttpRequest::Rid, ZhttpRequest*> serverReqsByRid;
 	QList<ZhttpRequest*> serverPendingReqs;
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
-	std::unique_ptr<RTimer> refreshTimer;
+	std::unique_ptr<Timer> refreshTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -110,28 +110,19 @@ public:
 	Connection sosConnection;
 	Connection rrConnection;
 	Connection clientConnection;
+	Connection clientOutStreamConnection;
 	Connection serverConnection;
 	Connection serverStreamConnection;
 	Connection refreshTimerConnection;
 
 	Private(ZhttpManager *_q) :
-		QObject(_q),
 		q(_q),
-		client_out_sock(0),
-		client_out_stream_sock(0),
-		client_in_sock(0),
-		client_req_sock(0),
-		server_in_sock(0),
-		server_in_stream_sock(0),
-		server_out_sock(0),
-		client_in_valve(0),
-		server_in_valve(0),
-		server_in_stream_valve(0),
 		ipcFileMode(-1),
 		doBind(false),
+		doProbe(false),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 
@@ -162,17 +153,17 @@ public:
 	{
 		cosConnection.disconnect();
 		rrConnection.disconnect();
-		delete client_req_sock;
-		delete client_out_sock;
+		client_req_sock.reset();
+		client_out_sock.reset();
 
-		client_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+		client_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
 		cosConnection = client_out_sock->messagesWritten.connect(boost::bind(&Private::client_out_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_out_sock, client_out_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_out_sock.get(), client_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -185,23 +176,33 @@ public:
 	{
 		rrConnection.disconnect();
 		cossConnection.disconnect();
-		delete client_req_sock;
-		delete client_out_stream_sock;
+		client_req_sock.reset();
+		client_out_stream_valve.reset();
+		client_out_stream_sock.reset();
 
-		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+		client_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
+		client_out_stream_sock->setIdentity(instanceId);
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
 		client_out_stream_sock->setShutdownWaitTime(CLIENT_STREAM_WAIT_TIME);
 		client_out_stream_sock->setImmediateEnabled(true);
 
+		if(doProbe)
+			client_out_stream_sock->setProbeRouterEnabled(true);
+
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_out_stream_sock, client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_out_stream_sock.get(), client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
+
+		client_out_stream_valve = std::make_unique<QZmq::Valve>(client_out_stream_sock.get());
+		clientOutStreamConnection = client_out_stream_valve->readyRead.connect(boost::bind(&Private::client_out_stream_readyRead, this, boost::placeholders::_1));
+
+		client_out_stream_valve->open();
 
 		return true;
 	}
@@ -209,23 +210,24 @@ public:
 	bool setupClientIn()
 	{
 		rrConnection.disconnect();
-		delete client_req_sock;
-		delete client_in_sock;
+		client_req_sock.reset();
+		client_in_valve.reset();
+		client_in_sock.reset();
 
-		client_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
+		client_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 
 		client_in_sock->setHwm(DEFAULT_HWM);
 		client_in_sock->setShutdownWaitTime(0);
 		client_in_sock->subscribe(instanceId + ' ');
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_in_sock, client_in_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_in_sock.get(), client_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		client_in_valve = new QZmq::Valve(client_in_sock, this);
+		client_in_valve = std::make_unique<QZmq::Valve>(client_in_sock.get());
 		clientConnection = client_in_valve->readyRead.connect(boost::bind(&Private::client_in_readyRead, this, boost::placeholders::_1));
 
 		client_in_valve->open();
@@ -237,18 +239,18 @@ public:
 	{
 		cosConnection.disconnect();
 		cossConnection.disconnect();
-		delete client_out_sock;
-		delete client_out_stream_sock;
-		delete client_in_sock;
+		client_out_sock.reset();
+		client_out_stream_sock.reset();
+		client_in_sock.reset();
 
-		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+		client_req_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
 		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_req_sock, client_req_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_req_sock.get(), client_req_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -259,20 +261,21 @@ public:
 
 	bool setupServerIn()
 	{
-		delete server_in_sock;
+		server_in_valve.reset();
+		server_in_sock.reset();
 
-		server_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+		server_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
 
 		server_in_sock->setHwm(IN_HWM);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_in_sock, server_in_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_in_sock.get(), server_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		server_in_valve = new QZmq::Valve(server_in_sock, this);
+		server_in_valve = std::make_unique<QZmq::Valve>(server_in_sock.get());
 		serverConnection = server_in_valve->readyRead.connect(boost::bind(&Private::server_in_readyRead, this, boost::placeholders::_1));
 
 		server_in_valve->open();
@@ -283,21 +286,21 @@ public:
 	bool setupServerInStream()
 	{
 		serverStreamConnection.disconnect();
-		delete server_in_stream_sock;
+		server_in_stream_sock.reset();
 
-		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+		server_in_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_in_stream_sock, server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_in_stream_sock.get(), server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		server_in_stream_valve = new QZmq::Valve(server_in_stream_sock, this);
+		server_in_stream_valve = std::make_unique<QZmq::Valve>(server_in_stream_sock.get());
 		serverStreamConnection = server_in_stream_valve->readyRead.connect(boost::bind(&Private::server_in_stream_readyRead, this, boost::placeholders::_1));
 
 		server_in_stream_valve->open();
@@ -308,9 +311,9 @@ public:
 	bool setupServerOut()
 	{
 		sosConnection.disconnect();
-		delete server_out_sock;
+		server_out_sock.reset();
 
-		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		server_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 		sosConnection = server_out_sock->messagesWritten.connect(boost::bind(&Private::server_out_messagesWritten, this, boost::placeholders::_1));
 
 		server_out_sock->setWriteQueueEnabled(false);
@@ -318,7 +321,7 @@ public:
 		server_out_sock->setShutdownWaitTime(SERVER_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_out_sock, server_out_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_out_sock.get(), server_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -355,7 +358,7 @@ public:
 			out.from = instanceId;
 			out.ids += ZhttpResponsePacket::Id(id);
 			out.type = ZhttpResponsePacket::Cancel;
-			write(type, out, packet.from);
+			write(type, out, packet.from, packet.routerResp);
 		}
 	}
 
@@ -401,18 +404,44 @@ public:
 		client_out_stream_sock->write(msg);
 	}
 
-	void write(SessionType type, const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+	void write(SessionType type, const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
 		QVariant vpacket = packet.toVariant();
-		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+		if(routerResp)
+		{
+			QByteArray buf = "T" + TnetString::fromVariant(vpacket);
 
-		server_out_sock->write(QList<QByteArray>() << buf);
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT (router) %s", logprefix, instanceAddress.data());
+
+			QList<QByteArray> msg;
+			msg += instanceAddress;
+			msg += QByteArray();
+			msg += buf;
+			server_in_stream_sock->write(msg);
+		}
+		else
+		{
+			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+
+			server_out_sock->write(QList<QByteArray>() << buf);
+		}
+	}
+
+	void writeProbeAck(const QByteArray &toAddress)
+	{
+		QList<QByteArray> msg;
+		msg += toAddress;
+		msg += QByteArray();
+		msg += "probe-ack";
+		server_in_stream_sock->write(msg);
 	}
 
 	static const char *logPrefixForType(SessionType type)
@@ -478,13 +507,13 @@ public:
 		write(type, zreq, zhttpAddress);
 	}
 
-	void writeKeepAlive(SessionType type, const QList<ZhttpResponsePacket::Id> &ids, const QByteArray &zhttpAddress)
+	void writeKeepAlive(SessionType type, const QList<ZhttpResponsePacket::Id> &ids, const QByteArray &zhttpAddress, bool routerResp)
 	{
 		ZhttpResponsePacket zresp;
 		zresp.from = instanceId;
 		zresp.ids = ids;
 		zresp.type = ZhttpResponsePacket::KeepAlive;
-		write(type, zresp, zhttpAddress);
+		write(type, zresp, zhttpAddress, routerResp);
 	}
 
 	void client_out_messagesWritten(int count)
@@ -504,7 +533,7 @@ public:
 
 	void client_req_readyRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		while(client_req_sock->canRead())
 		{
@@ -551,7 +580,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -563,30 +592,15 @@ public:
 		}
 	}
 
-	void client_in_readyRead(const QList<QByteArray> &msg)
+	void processClientIn(const QByteArray &receiver, const QByteArray &msg)
 	{
-		if(msg.count() != 1)
-		{
-			log_warning("zhttp/zws client: received message with parts != 1, skipping");
-			return;
-		}
-
-		int at = msg[0].indexOf(' ');
-		if(at == -1)
-		{
-			log_warning("zhttp/zws client: received message with invalid format, skipping");
-			return;
-		}
-
-		QByteArray receiver = msg[0].mid(0, at);
-		QByteArray dataRaw = msg[0].mid(at + 1);
-		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+		if(msg.length() < 1 || msg[0] != 'T')
 		{
 			log_warning("zhttp/zws client: received message with invalid format (missing type), skipping");
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(dataRaw.mid(1));
+		QVariant data = TnetString::toVariant(msg.mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp/zws client: received message with invalid format (tnetstring parse failed), skipping");
@@ -594,7 +608,12 @@ public:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
+		{
+			if(!receiver.isEmpty())
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
+			else
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN");
+		}
 
 		ZhttpResponsePacket p;
 		if(!p.fromVariant(data))
@@ -603,7 +622,7 @@ public:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
@@ -612,7 +631,7 @@ public:
 			if(sock)
 			{
 				sock->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -623,7 +642,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -631,6 +650,44 @@ public:
 
 			log_debug("zhttp/zws client: received message for unknown request id, skipping");
 		}
+	}
+
+	void client_out_stream_readyRead(const QList<QByteArray> &msg)
+	{
+		if(msg.count() != 3)
+		{
+			log_warning("zhttp/zws client: received router message with parts != 3, skipping");
+			return;
+		}
+
+		if(msg[2] == "probe-ack")
+		{
+			q->probeAcked();
+			return;
+		}
+
+		processClientIn(QByteArray(), msg[2]);
+	}
+
+	void client_in_readyRead(const QList<QByteArray> &msg)
+	{
+		if(msg.count() != 1)
+		{
+			log_warning("zhttp/zws client: received pub message with parts != 1, skipping");
+			return;
+		}
+
+		int at = msg[0].indexOf(' ');
+		if(at == -1)
+		{
+			log_warning("zhttp/zws client: received pub message with invalid format, skipping");
+			return;
+		}
+
+		QByteArray receiver = msg[0].mid(0, at);
+		QByteArray dataRaw = msg[0].mid(at + 1);
+
+		processClientIn(receiver, dataRaw);
 	}
 
 	void server_in_readyRead(const QList<QByteArray> &msg)
@@ -742,9 +799,16 @@ public:
 
 	void server_in_stream_readyRead(const QList<QByteArray> &msg)
 	{
-		if(msg.count() != 3)
+		if(msg.count() < 2 || msg.count() > 3)
 		{
-			log_warning("zhttp/zws server: received message with parts != 3, skipping");
+			log_warning("zhttp/zws server: received message with parts != 2 or 3, skipping");
+			return;
+		}
+
+		if(msg.count() < 3)
+		{
+			// reply to probe
+			writeProbeAck(msg[0]);
 			return;
 		}
 
@@ -771,7 +835,7 @@ public:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
@@ -780,7 +844,7 @@ public:
 			if(sock)
 			{
 				sock->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -791,7 +855,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -804,7 +868,7 @@ public:
 	void refresh_timeout()
 	{
 		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type
-		QHash<QByteArray, QList<KeepAliveRegistration*> > serverSessionsBySender[2]; // index corresponds to type
+		QHash<QByteArray, QList<KeepAliveRegistration*> > serverSessionsBySender[4]; // index corresponds to type and response mode
 
 		// process the current bucket
 		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
@@ -823,13 +887,24 @@ public:
 				isServer = r->p.sock->isServer();
 			}
 
+			int groupIndex;
 			QByteArray sender;
+			bool routerResp = false;
 			if(isServer)
 			{
+				if(r->type == HttpSession)
+					routerResp = r->p.req->routerResp();
+				else // WebSocketSession
+					routerResp = r->p.sock->routerResp();
+
+				groupIndex = ((r->type - 1) * 2) + (routerResp ? 1 : 0);
+
 				sender = rid.first;
 			}
 			else
 			{
+				groupIndex = r->type - 1;
+
 				if(r->type == HttpSession)
 					sender = r->p.req->toAddress();
 				else // WebSocketSession
@@ -838,7 +913,7 @@ public:
 
 			assert(!sender.isEmpty());
 
-			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type - 1] : clientSessionsBySender[r->type - 1]);
+			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[groupIndex] : clientSessionsBySender[groupIndex]);
 
 			if(!sessionsBySender.contains(sender))
 				sessionsBySender.insert(sender, QList<KeepAliveRegistration*>());
@@ -861,7 +936,7 @@ public:
 							ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
 					}
 
-					writeKeepAlive(r->type, ids, sender);
+					writeKeepAlive(r->type, ids, sender, routerResp);
 				}
 				else
 				{
@@ -884,57 +959,60 @@ public:
 		}
 
 		// send last packets
+
 		for(int n = 0; n < 2; ++n)
 		{
 			SessionType type = (SessionType)(n + 1);
 
+			QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(clientSessionsBySender[n]);
+			while(sit.hasNext())
 			{
-				QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(clientSessionsBySender[n]);
-				while(sit.hasNext())
+				sit.next();
+				const QByteArray &sender = sit.key();
+				const QList<KeepAliveRegistration*> &sessions = sit.value();
+
+				if(!sessions.isEmpty())
 				{
-					sit.next();
-					const QByteArray &sender = sit.key();
-					const QList<KeepAliveRegistration*> &sessions = sit.value();
-
-					if(!sessions.isEmpty())
+					QList<ZhttpRequestPacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
 					{
-						QList<ZhttpRequestPacket::Id> ids;
-						foreach(KeepAliveRegistration *i, sessions)
-						{
-							assert(i->type == type);
-							if(type == HttpSession)
-								ids += ZhttpRequestPacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
-							else // WebSocketSession
-								ids += ZhttpRequestPacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
-						}
-
-						writeKeepAlive(type, ids, sender);
+						assert(i->type == type);
+						if(type == HttpSession)
+							ids += ZhttpRequestPacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpRequestPacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
 					}
+
+					writeKeepAlive(type, ids, sender);
 				}
 			}
+		}
 
+		for(int n = 0; n < 4; ++n)
+		{
+			SessionType type = (SessionType)((n / 2) + 1);
+			bool routerResp = n % 2 == 0 ? false : true;
+
+			QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(serverSessionsBySender[n]);
+			while(sit.hasNext())
 			{
-				QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(serverSessionsBySender[n]);
-				while(sit.hasNext())
+				sit.next();
+				const QByteArray &sender = sit.key();
+				const QList<KeepAliveRegistration*> &sessions = sit.value();
+
+				if(!sessions.isEmpty())
 				{
-					sit.next();
-					const QByteArray &sender = sit.key();
-					const QList<KeepAliveRegistration*> &sessions = sit.value();
-
-					if(!sessions.isEmpty())
+					QList<ZhttpResponsePacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
 					{
-						QList<ZhttpResponsePacket::Id> ids;
-						foreach(KeepAliveRegistration *i, sessions)
-						{
-							assert(i->type == type);
-							if(type == HttpSession)
-								ids += ZhttpResponsePacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
-							else // WebSocketSession
-								ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
-						}
-
-						writeKeepAlive(type, ids, sender);
+						assert(i->type == type);
+						if(type == HttpSession)
+							ids += ZhttpResponsePacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
 					}
+
+					writeKeepAlive(type, ids, sender, routerResp);
 				}
 			}
 		}
@@ -945,16 +1023,12 @@ public:
 	}
 };
 
-ZhttpManager::ZhttpManager(QObject *parent) :
-	QObject(parent)
+ZhttpManager::ZhttpManager()
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZhttpManager::~ZhttpManager()
-{
-	delete d;
-}
+ZhttpManager::~ZhttpManager() = default;
 
 int ZhttpManager::connectionCount() const
 {
@@ -994,6 +1068,11 @@ void ZhttpManager::setIpcFileMode(int mode)
 void ZhttpManager::setBind(bool enable)
 {
 	d->doBind = enable;
+}
+
+void ZhttpManager::setProbe(bool enable)
+{
+	d->doProbe = enable;
 }
 
 bool ZhttpManager::setClientOutSpecs(const QStringList &specs)
@@ -1164,9 +1243,9 @@ void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet, const QByteArray 
 	d->write(Private::HttpSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp)
 {
-	d->write(Private::HttpSession, packet, instanceAddress);
+	d->write(Private::HttpSession, packet, instanceAddress, routerResp);
 }
 
 void ZhttpManager::writeWs(const ZhttpRequestPacket &packet)
@@ -1179,9 +1258,9 @@ void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const QByteArray &i
 	d->write(Private::WebSocketSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp)
 {
-	d->write(Private::WebSocketSession, packet, instanceAddress);
+	d->write(Private::WebSocketSession, packet, instanceAddress, routerResp);
 }
 
 void ZhttpManager::registerKeepAlive(ZhttpRequest *req)
@@ -1235,5 +1314,3 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 
 	return total;
 }
-
-#include "zhttpmanager.moc"

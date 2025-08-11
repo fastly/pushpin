@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,25 +24,28 @@
 #include "domainmap.h"
 
 #include <assert.h>
+#include <thread>
+#include <pthread.h>
 #include <QStringList>
 #include <QHash>
-#include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
-#include <QFileSystemWatcher>
+#include <QCoreApplication>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
+#include "eventloop.h"
+#include "filewatcher.h"
 #include "routesfile.h"
 
-#define WORKER_THREAD_TIMERS 1
+#define WORKER_THREAD_TIMERS 10
+#define WORKER_THREAD_SOCKETNOTIFIERS 1
 
-class DomainMap::Worker : public QObject
+class DomainMap::Worker
 {
-	Q_OBJECT
-
 public:
 	enum AddRuleResult
 	{
@@ -78,6 +81,7 @@ public:
 		HttpHeaders headers;
 		bool grip;
 		QList<Target> targets;
+		int logLevel;
 
 		Rule() :
 			proto(-1),
@@ -88,7 +92,8 @@ public:
 			debug(false),
 			autoCrossOrigin(false),
 			session(false),
-			grip(true)
+			grip(true),
+			logLevel(LOG_LEVEL_DEBUG)
 		{
 		}
 
@@ -189,6 +194,7 @@ public:
 			e.separateStats = explicitId;
 			e.grip = grip;
 			e.targets = targets;
+			e.logLevel = logLevel;
 			return e;
 		}
 	};
@@ -198,12 +204,12 @@ public:
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
 	QHash<QString, Rule> rulesById;
-	RTimer t;
+	Timer t;
 	Connection tConnection;
-	QFileSystemWatcher watcher;
+	FileWatcher watcher;
+	DeferCall deferCall;
 
-	Worker() :
-		watcher(this)
+	Worker()
 	{
 		tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
 		t.setSingleShot(true);
@@ -288,7 +294,7 @@ public:
 
 		log_info("routes loaded with %d entries", allRules.count());
 
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] { doChanged(); });
 	}
 
 	// mutex must be locked when calling this method
@@ -307,18 +313,15 @@ public:
 	Signal started;
 	Signal changed;
 
-public slots:
-	void doChanged()
-	{
-		changed();
-	}
-
 	void start()
 	{
 		if(!fileName.isEmpty())
 		{
-			connect(&watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
-			watcher.addPath(fileName);
+			watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
+
+			if(!watcher.start(fileName)) {
+				log_error("failed to watch %s", qPrintable(fileName));
+			}
 
 			reload();
 		}
@@ -326,10 +329,8 @@ public slots:
 		started();
 	}
 
-	void fileChanged(const QString &path)
+	void fileChanged()
 	{
-		Q_UNUSED(path);
-
 		// inotify tends to give us extra events so let's hang around a
 		//   little bit before reloading
 		if(!t.isActive())
@@ -341,13 +342,6 @@ public slots:
 
 	void doReload()
 	{
-		// in case the file was not changed, but overwritten by a different
-		// file, re-arm watcher.
-		if(!fileName.isEmpty())
-		{
-			watcher.addPath(fileName);
-		}
-
 		reload();
 	}
 
@@ -547,6 +541,11 @@ private:
 		if(props.contains("no_grip"))
 			r.grip = false;
 
+		if(props.contains("log_level"))
+		{
+			r.logLevel = props.value("log_level").toInt();
+		}
+
 		ok = true;
 		for(int n = 1; n < sections.count(); ++n)
 		{
@@ -574,17 +573,38 @@ private:
 			}
 			else
 			{
-				target.type = Target::Default;
+				QString host;
+				int portPos = -1;
 
-				int at = val.indexOf(':');
-				if(at == -1)
+				if(val.startsWith("["))
+				{
+					// ipv6 address
+					int at = val.indexOf("]:");
+					if(at >= 0)
+					{
+						host = val.mid(1, at - 1);
+						portPos = at + 2;
+					}
+				}
+				else
+				{
+					// domain or ipv4 address
+					int at = val.indexOf(':');
+					if(at >= 0)
+					{
+						host = val.mid(0, at);
+						portPos = at + 1;
+					}
+				}
+
+				if(portPos < 0)
 				{
 					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
 					ok = false;
 					break;
 				}
 
-				QString sport = val.mid(at + 1);
+				QString sport = val.mid(portPos);
 				int port = sport.toInt(&ok);
 				if(!ok || port < 1 || port > 65535)
 				{
@@ -593,7 +613,8 @@ private:
 					break;
 				}
 
-				target.connectHost = val.mid(0, at);
+				target.type = Target::Default;
+				target.connectHost = host;
 				target.connectPort = port;
 			}
 
@@ -710,65 +731,134 @@ private:
 
 		return AddRuleOk;
 	}
+
+	void doChanged()
+	{
+		changed();
+	}
 };
 
-class DomainMap::Thread : public QThread
+class DomainMap::Thread
 {
-	Q_OBJECT
-
 public:
+	bool newEventLoop;
 	QString fileName;
-	Worker *worker;
+	std::thread thread;
+	std::unique_ptr<EventLoop> loop;
+	std::unique_ptr<QEventLoop> qloop;
+	std::unique_ptr<Worker> worker;
 	QMutex m;
 	QWaitCondition w;
 
+	Thread() :
+		newEventLoop(false)
+	{
+	}
+
 	~Thread()
 	{
-		quit();
-		wait();
+		if(worker)
+		{
+			worker->deferCall.defer([&] {
+				// NOTE: called from worker thread
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					qloop->quit();
+			});
+		}
+
+		thread.join();
 	}
 
 	void start()
 	{
 		QMutexLocker locker(&m);
-		QThread::start();
+
+		thread = std::thread([=] {
+#ifdef Q_OS_MAC
+			pthread_setname_np("domainmap");
+#else
+			pthread_setname_np(pthread_self(), "domainmap");
+#endif
+
+			run();
+		});
+
 		w.wait(&m);
 	}
 
-	virtual void run()
+	void run()
 	{
-		RTimer::init(WORKER_THREAD_TIMERS);
+		// will unlock during exec
+		m.lock();
 
-		worker = new Worker;
+		int timersMax = WORKER_THREAD_TIMERS;
+
+		if(newEventLoop)
+		{
+			log_debug("domainmap: using new event loop");
+
+			int socketNotifiersMax = WORKER_THREAD_SOCKETNOTIFIERS;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+
+			qloop = std::make_unique<QEventLoop>();
+		}
+
+		worker = std::make_unique<Worker>();
 		worker->fileName = fileName;
-		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
-		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
-		exec();
-		startedConnection.disconnect();
-		delete worker;
 
-		RTimer::deinit();
-	}
+		worker->started.connect([&] {
+			w.wakeOne();
+			m.unlock();
+		});
 
-public:
-	void worker_started()
-	{
-		QMutexLocker locker(&m);
-		w.wakeOne();
+		worker->deferCall.defer([=] { worker->start(); });
+
+		if(newEventLoop)
+			loop->exec();
+		else
+			qloop->exec();
+
+		worker.reset();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
+
+		// deinit here, after all event loop activity has completed
+
+		if(!newEventLoop)
+		{
+			DeferCall::cleanup();
+			Timer::deinit();
+		}
+
+		if(newEventLoop)
+			loop.reset();
+		else
+			qloop.reset();
 	}
 };
 
-class DomainMap::Private : public QObject
+class DomainMap::Private
 {
-	Q_OBJECT
-
 public:
 	DomainMap *q;
 	Thread *thread;
 	Connection changedConnection;
+	DeferCall deferCall;
 
 	Private(DomainMap *_q) :
-		QObject(_q),
 		q(_q),
 		thread(0)
 	{
@@ -780,9 +870,10 @@ public:
 		delete thread;
 	}
 
-	void start(const QString &fileName = QString())
+	void start(bool newEventLoop, const QString &fileName = QString())
 	{
 		thread = new Thread;
+		thread->newEventLoop = newEventLoop;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -791,31 +882,31 @@ public:
 	}
 
 private:
-	// NOTE: must be thread-safe. called from separate thread
+	// NOTE: called from worker thread
 	void workerChanged()
 	{
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] {
+			// NOTE: called from outer thread
+			doChanged();
+		});
 	}
 
-private slots:
 	void doChanged()
 	{
 		q->changed();
 	}
 };
 
-DomainMap::DomainMap(QObject *parent) :
-	QObject(parent)
+DomainMap::DomainMap(bool newEventLoop)
 {
 	d = new Private(this);
-	d->start();
+	d->start(newEventLoop);
 }
 
-DomainMap::DomainMap(const QString &fileName, QObject *parent) :
-	QObject(parent)
+DomainMap::DomainMap(const QString &fileName, bool newEventLoop)
 {
 	d = new Private(this);
-	d->start(fileName);
+	d->start(newEventLoop, fileName);
 }
 
 DomainMap::~DomainMap()
@@ -825,7 +916,12 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
-	QMetaObject::invokeMethod(d->thread->worker, "doReload", Qt::QueuedConnection);
+	Worker *worker = d->thread->worker.get();
+
+	worker->deferCall.defer([=] {
+		// NOTE: called from worker thread
+		worker->doReload();
+	});
 }
 
 bool DomainMap::isIdShared(const QString &id) const
@@ -909,5 +1005,3 @@ bool DomainMap::addRouteLine(const QString &line)
 	QMutexLocker locker(&d->thread->worker->m);
 	return d->thread->worker->addRouteLine(line);
 }
-
-#include "domainmap.moc"

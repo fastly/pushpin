@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,10 +24,10 @@
 #ifndef DOMAINMAP_H
 #define DOMAINMAP_H
 
-#include <QObject>
 #include <QPair>
 #include <QString>
 #include <QStringList>
+#include "log.h"
 #include "httpheaders.h"
 #include "jwt.h"
 #include <boost/signals2.hpp>
@@ -37,10 +38,8 @@ using Connection = boost::signals2::scoped_connection;
 // this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
 
-class DomainMap : public QObject
+class DomainMap
 {
-	Q_OBJECT
-
 public:
 	class JsonpConfig
 	{
@@ -152,6 +151,7 @@ public:
 		bool separateStats;
 		bool grip;
 		QList<Target> targets;
+		int logLevel;
 
 		bool isNull() const
 		{
@@ -173,13 +173,14 @@ public:
 			autoCrossOrigin(false),
 			session(false),
 			separateStats(false),
-			grip(true)
+			grip(true),
+			logLevel(LOG_LEVEL_DEBUG)
 		{
 		}
 	};
 
-	DomainMap(QObject *parent = 0);
-	DomainMap(const QString &fileName, QObject *parent = 0);
+	DomainMap(bool newEventLoop);
+	DomainMap(const QString &fileName, bool newEventLoop);
 	~DomainMap();
 
 	// shouldn't really ever need to call this, but it's here in case the

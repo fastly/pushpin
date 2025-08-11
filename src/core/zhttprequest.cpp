@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,12 +24,12 @@
 #include "zhttprequest.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -38,10 +38,8 @@
 #define KEEPALIVE_INTERVAL 45000
 #define REQ_BUF_MAX 1000000
 
-class ZhttpRequest::Private : public QObject
+class ZhttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -73,6 +71,7 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	int timeout;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
 	QString requestMethod;
@@ -99,15 +98,15 @@ public:
 	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	std::unique_ptr<Timer> expireTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
+	std::unique_ptr<Timer> finishTimer;
 	bool multi;
+	bool routerResp;
 	bool quiet;
-	Connection expTimerConnection;
-	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -117,6 +116,7 @@ public:
 		ignorePolicies(false),
 		trustConnectHost(false),
 		ignoreTlsErrors(false),
+		timeout(0),
 		sendBodyAfterAck(false),
 		inSeq(0),
 		outSeq(0),
@@ -132,17 +132,16 @@ public:
 		readableChanged(false),
 		writableChanged(false),
 		errored(false),
-		expireTimer(0),
-		keepAliveTimer(0),
 		multi(false),
+		routerResp(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer;
-		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+		expireTimer = std::make_unique<Timer>();
+		expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
-		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
+		keepAliveTimer = std::make_unique<Timer>();
+		keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
 	~Private()
@@ -159,21 +158,9 @@ public:
 		readableChanged = false;
 		writableChanged = false;
 
-		if(expireTimer)
-		{
-			expTimerConnection.disconnect();
-			expireTimer->setParent(0);
-			expireTimer->deleteLater();
-			expireTimer = 0;
-		}
-
-		if(keepAliveTimer)
-		{
-			keepAliveTimerConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
-		}
+		expireTimer.reset();
+		keepAliveTimer.reset();
+		finishTimer.reset();
 
 		if(manager)
 		{
@@ -235,6 +222,9 @@ public:
 		if(packet.multi)
 			multi = true;
 
+		if(packet.routerResp)
+			routerResp = true;
+
 		if(!packet.more)
 			haveRequestBody = true;
 
@@ -254,6 +244,7 @@ public:
 			outSeq = ss.outSeq;
 		if(ss.outCredits >= 0)
 			outCredits = ss.outCredits;
+		routerResp = ss.routerResp;
 		userData = ss.userData;
 
 		if(ss.responseCode != -1)
@@ -279,6 +270,14 @@ public:
 	void startClient()
 	{
 		state = ClientStarting;
+
+		if(timeout > 0)
+		{
+			finishTimer = std::make_unique<Timer>();
+			finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+			finishTimer->setSingleShot(true);
+			finishTimer->start(timeout);
+		}
 
 		refreshTimeout();
 		update();
@@ -367,7 +366,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([&]() { doUpdate(); });
 		}
 	}
 
@@ -409,7 +408,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == ClientRequesting)
 		{
@@ -492,7 +491,7 @@ public:
 			}
 		}
 
-		if(!self)
+		if(self.expired())
 			return;
 
 		trySendPause();
@@ -860,7 +859,7 @@ public:
 		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 		
-		manager->writeHttp(out, rid.first);
+		manager->writeHttp(out, rid.first, routerResp);
 	}
 
 	void writeCancel()
@@ -935,7 +934,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doUpdate()
 	{
 		pendingUpdate = false;
@@ -1014,6 +1012,7 @@ public slots:
 				if(!requestBodyBuf.isEmpty() || !bodyFinished)
 					p.more = true;
 				p.stream = true;
+				p.routerResp = true;
 				p.connectHost = connectHost;
 				p.connectPort = connectPort;
 				if(ignorePolicies)
@@ -1043,9 +1042,9 @@ public slots:
 		}
 		else if(state == ClientRequesting)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1129,23 +1128,23 @@ public slots:
 				cleanup();
 			}
 
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 
 			if(!packet.body.isEmpty())
 				q->bytesWritten(packet.body.size());
 			else if(!packet.more)
 				q->bytesWritten(0);
 
-			if(!self)
+			if(self.expired())
 				return;
 
 			trySendPause();
 		}
 		else if(state == ServerResponding)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1156,7 +1155,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Stopped;
@@ -1183,16 +1181,12 @@ public:
 	}
 };
 
-ZhttpRequest::ZhttpRequest(QObject *parent) :
-	HttpRequest(parent)
+ZhttpRequest::ZhttpRequest()
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZhttpRequest::~ZhttpRequest()
-{
-	delete d;
-}
+ZhttpRequest::~ZhttpRequest() = default;
 
 ZhttpRequest::Rid ZhttpRequest::rid() const
 {
@@ -1232,6 +1226,11 @@ void ZhttpRequest::setTrustConnectHost(bool on)
 void ZhttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void ZhttpRequest::setTimeout(int msecs)
+{
+	d->timeout = msecs;
 }
 
 void ZhttpRequest::setIsTls(bool on)
@@ -1309,6 +1308,7 @@ ZhttpRequest::ServerState ZhttpRequest::serverState() const
 	ss.inSeq = d->inSeq;
 	ss.outSeq = d->outSeq;
 	ss.outCredits = d->outCredits;
+	ss.routerResp = d->routerResp;
 	ss.userData = d->userData;
 	return ss;
 }
@@ -1437,6 +1437,11 @@ QByteArray ZhttpRequest::toAddress() const
 	return d->toAddress;
 }
 
+bool ZhttpRequest::routerResp() const
+{
+	return d->routerResp;
+}
+
 int ZhttpRequest::outSeqInc()
 {
 	return d->outSeq++;
@@ -1455,5 +1460,3 @@ void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePack
 
 	d->handle(id, seq, packet);
 }
-
-#include "zhttprequest.moc"

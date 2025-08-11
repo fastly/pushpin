@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,7 +24,6 @@
 #ifndef SOCKJSSESSION_H
 #define SOCKJSSESSION_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
@@ -40,8 +39,6 @@ class SockJsManager;
 
 class SockJsSession : public WebSocket
 {
-	Q_OBJECT
-
 public:
 	~SockJsSession();
 
@@ -83,10 +80,10 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class SockJsManager;
-	SockJsSession(QObject *parent = 0);
+	SockJsSession();
 	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);

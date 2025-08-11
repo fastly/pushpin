@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,7 +27,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <boost/signals2.hpp>
-#include "rtimer.h"
+#include "timer.h"
 #include "wscontrolmanager.h"
 
 #define SESSION_TTL 60
@@ -35,10 +35,8 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class WsControlSession::Private : public QObject
+class WsControlSession::Private
 {
-	Q_OBJECT
-
 public:
 	WsControlSession *q;
 	WsControlManager *manager;
@@ -46,23 +44,28 @@ public:
 	QList<WsControlPacket::Item> pendingItems;
 	QHash<int, qint64> pendingRequests;
 	QList<QByteArray> pendingSendEventWrites;
-	std::unique_ptr<RTimer> requestTimer;
+	std::unique_ptr<Timer> requestTimer;
 	QByteArray peer;
 	QByteArray cid;
+	bool debug;
 	QByteArray route;
 	bool separateStats;
 	QByteArray channelPrefix;
+	int logLevel;
 	QUrl uri;
+	bool targetTrusted;
 	Connection requestTimerConnection;
 
 	Private(WsControlSession *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		nextReqId(0),
-		separateStats(false)
+		debug(false),
+		separateStats(false),
+		logLevel(-1),
+		targetTrusted(false)
 	{
-		requestTimer = std::make_unique<RTimer>();
+		requestTimer = std::make_unique<Timer>();
 		requestTimerConnection = requestTimer->timeout.connect(boost::bind(&Private::requestTimer_timeout, this));
 		requestTimer->setSingleShot(true);
 	}
@@ -96,10 +99,13 @@ public:
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
 		i.requestId = QByteArray::number(reqId);
+		i.debug = debug;
 		i.route = route;
 		i.separateStats = separateStats;
 		i.channelPrefix = channelPrefix;
+		i.logLevel = logLevel;
 		i.uri = uri;
+		i.trusted = targetTrusted;
 		i.ttl = SESSION_TTL;
 		write(i, true);
 	}
@@ -295,7 +301,6 @@ public:
 		}
 	}
 
-private slots:
 	void requestTimer_timeout()
 	{
 		// on error, destroy any other pending requests
@@ -323,12 +328,15 @@ QByteArray WsControlSession::cid() const
 	return d->cid;
 }
 
-void WsControlSession::start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, const QUrl &uri)
+void WsControlSession::start(bool debug, const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri, bool targetTrusted)
 {
+	d->debug = debug;
 	d->route = routeId;
 	d->separateStats = separateStats;
 	d->channelPrefix = channelPrefix;
+	d->logLevel = logLevel;
 	d->uri = uri;
+	d->targetTrusted = targetTrusted;
 	d->start();
 }
 
@@ -365,5 +373,3 @@ void WsControlSession::handle(const QByteArray &from, const WsControlPacket::Ite
 
 	d->handle(from, item);
 }
-
-#include "wscontrolsession.moc"

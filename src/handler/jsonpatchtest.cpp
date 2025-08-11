@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,96 +21,80 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QtTest/QtTest>
+#include "test.h"
 #include "qtcompat.h"
 #include "jsonpatch.h"
 
-class JsonPatchTest : public QObject
+static void patch()
 {
-	Q_OBJECT
+	QVariantMap data;
+	data["foo"] = "bar";
 
-private slots:
-	void patch()
-	{
-		QVariantMap data;
-		data["foo"] = "bar";
+	QVariantMap op;
+	op["op"] = "test";
+	op["path"] = "/foo";
+	op["value"] = "bar";
+	QString msg;
+	QVariant ret = JsonPatch::patch(data, QVariantList() << op, &msg);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
 
-		QVariantMap op;
-		op["op"] = "test";
-		op["path"] = "/foo";
-		op["value"] = "bar";
-		QString msg;
-		QVariant ret = JsonPatch::patch(data, QVariantList() << op, &msg);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
+	op.clear();
+	op["op"] = "add";
+	op["path"] = "/fruit";
+	op["value"] = QVariantList() << "apple";
+	ret = JsonPatch::patch(data, QVariantList() << op);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
+	TEST_ASSERT_EQ(typeId(data["fruit"]), QMetaType::QVariantList);
+	TEST_ASSERT_EQ(data["fruit"].toList()[0].toString(), QString("apple"));
 
-		op.clear();
-		op["op"] = "add";
-		op["path"] = "/fruit";
-		op["value"] = QVariantList() << "apple";
-		ret = JsonPatch::patch(data, QVariantList() << op);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
-		QCOMPARE(typeId(data["fruit"]), QMetaType::QVariantList);
-		QCOMPARE(data["fruit"].toList()[0].toString(), QString("apple"));
+	op.clear();
+	op["op"] = "copy";
+	op["from"] = "/foo";
+	op["path"] = "/fruit/-";
+	ret = JsonPatch::patch(data, QVariantList() << op);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
+	TEST_ASSERT_EQ(data["fruit"].toList()[1].toString(), QString("bar"));
 
-		op.clear();
-		op["op"] = "copy";
-		op["from"] = "/foo";
-		op["path"] = "/fruit/-";
-		ret = JsonPatch::patch(data, QVariantList() << op);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
-		QCOMPARE(data["fruit"].toList()[1].toString(), QString("bar"));
+	op.clear();
+	op["op"] = "replace";
+	op["path"] = "/fruit/1";
+	QVariantMap bowl;
+	bowl["cherries"] = true;
+	bowl["grapes"] = 5;
+	op["value"] = bowl;
+	ret = JsonPatch::patch(data, QVariantList() << op);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
+	TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), QMetaType::QVariantMap);
+	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
+	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 
-		op.clear();
-		op["op"] = "replace";
-		op["path"] = "/fruit/1";
-		QVariantMap bowl;
-		bowl["cherries"] = true;
-		bowl["grapes"] = 5;
-		op["value"] = bowl;
-		ret = JsonPatch::patch(data, QVariantList() << op);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
-		QCOMPARE(typeId(data["fruit"].toList()[1]), QMetaType::QVariantMap);
-		QCOMPARE(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
-		QCOMPARE(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
+	op.clear();
+	op["op"] = "remove";
+	op["path"] = "/fruit/1/cherries";
+	ret = JsonPatch::patch(data, QVariantList() << op);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
+	TEST_ASSERT(!data["fruit"].toList()[1].toMap().contains("cherries"));
+	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 
-		op.clear();
-		op["op"] = "remove";
-		op["path"] = "/fruit/1/cherries";
-		ret = JsonPatch::patch(data, QVariantList() << op);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
-		QVERIFY(!data["fruit"].toList()[1].toMap().contains("cherries"));
-		QCOMPARE(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
-
-		op.clear();
-		op["op"] = "move";
-		op["from"] = "/fruit/0";
-		op["path"] = "/foo";
-		ret = JsonPatch::patch(data, QVariantList() << op);
-		QVERIFY(ret.isValid());
-		data = ret.toMap();
-		QCOMPARE(data["foo"].toString(), QString("apple"));
-		QCOMPARE(data["fruit"].toList()[0].toMap().value("grapes").toInt(), 5);
-	}
-};
-
-namespace {
-namespace Main {
-QTEST_MAIN(JsonPatchTest)
-}
+	op.clear();
+	op["op"] = "move";
+	op["from"] = "/fruit/0";
+	op["path"] = "/foo";
+	ret = JsonPatch::patch(data, QVariantList() << op);
+	TEST_ASSERT(ret.isValid());
+	data = ret.toMap();
+	TEST_ASSERT_EQ(data["foo"].toString(), QString("apple"));
+	TEST_ASSERT_EQ(data["fruit"].toList()[0].toMap().value("grapes").toInt(), 5);
 }
 
-extern "C" {
-
-int jsonpatch_test(int argc, char **argv)
+extern "C" int jsonpatch_test(ffi::TestException *out_ex)
 {
-	return Main::main(argc, argv);
-}
+	TEST_CATCH(patch());
 
+	return 0;
 }
-
-#include "jsonpatchtest.moc"

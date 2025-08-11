@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +24,6 @@
 #ifndef ZHTTPMANAGER_H
 #define ZHTTPMANAGER_H
 
-#include <QObject>
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <boost/signals2.hpp>
@@ -33,12 +33,10 @@ using Signal = boost::signals2::signal<void()>;
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 
-class ZhttpManager : public QObject
+class ZhttpManager
 {
-	Q_OBJECT
-
 public:
-	ZhttpManager(QObject *parent = 0);
+	ZhttpManager();
 	~ZhttpManager();
 
 	int connectionCount() const;
@@ -50,6 +48,7 @@ public:
 
 	void setIpcFileMode(int mode);
 	void setBind(bool enable);
+	void setProbe(bool enable);
 
 	bool setClientOutSpecs(const QStringList &specs);
 	bool setClientOutStreamSpecs(const QStringList &specs);
@@ -75,11 +74,12 @@ public:
 
 	Signal requestReady;
 	Signal socketReady;
+	Signal probeAcked;
 
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class ZhttpRequest;
 	friend class ZWebSocket;
@@ -90,10 +90,10 @@ private:
 	bool canWriteImmediately() const;
 	void writeHttp(const ZhttpRequestPacket &packet);
 	void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
 	void writeWs(const ZhttpRequestPacket &packet);
 	void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
 
 	void registerKeepAlive(ZhttpRequest *req);
 	void unregisterKeepAlive(ZhttpRequest *req);

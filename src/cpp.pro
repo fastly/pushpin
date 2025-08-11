@@ -1,6 +1,6 @@
 TEMPLATE = lib
 CONFIG -= app_bundle
-CONFIG += staticlib c++14
+CONFIG += staticlib c++17
 QT -= gui
 QT += network
 TARGET = pushpin-cpp
@@ -18,11 +18,8 @@ QMAKE_LFLAGS += $$(LDFLAGS)
 
 SRC_DIR = $$PWD
 
-DEFINES += NO_IRISNET
-
 INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
-INCLUDEPATH += $$SRC_DIR/core/qzmq/src
 
 include(core/core.pri)
 include(m2adapter/m2adapter.pri)

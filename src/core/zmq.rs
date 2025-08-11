@@ -746,6 +746,7 @@ mod ffi {
     pub const WZMQ_TCP_KEEPALIVE_CNT: libc::c_int = 12;
     pub const WZMQ_TCP_KEEPALIVE_INTVL: libc::c_int = 13;
     pub const WZMQ_ROUTER_MANDATORY: libc::c_int = 14;
+    pub const WZMQ_PROBE_ROUTER: libc::c_int = 15;
 
     pub const WZMQ_DONTWAIT: libc::c_int = 0x01;
     pub const WZMQ_SNDMORE: libc::c_int = 0x02;
@@ -1094,6 +1095,21 @@ mod ffi {
                 };
 
                 if let Err(e) = sock.set_router_mandatory(*x != 0) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_PROBE_ROUTER => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_probe_router(*x != 0) {
                     set_errno(e.to_raw());
                     return -1;
                 }

@@ -24,7 +24,6 @@
 #ifndef HTTPREQUEST_H
 #define HTTPREQUEST_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
@@ -33,10 +32,8 @@
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
 
-class HttpRequest : public QObject
+class HttpRequest
 {
-	Q_OBJECT
-
 public:
 	enum ErrorCondition
 	{
@@ -52,7 +49,7 @@ public:
 		ErrorRequestTooLarge
 	};
 
-	HttpRequest(QObject *parent = 0) : QObject(parent) {}
+	virtual ~HttpRequest() = default;
 
 	virtual QHostAddress peerAddress() const = 0;
 
@@ -61,6 +58,7 @@ public:
 	virtual void setIgnorePolicies(bool on) = 0;
 	virtual void setTrustConnectHost(bool on) = 0;
 	virtual void setIgnoreTlsErrors(bool on) = 0;
+	virtual void setTimeout(int msecs) = 0;
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers) = 0;
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) = 0;
