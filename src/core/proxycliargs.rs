@@ -85,48 +85,14 @@ pub mod ffi {
 
     #[repr(C)]
     pub struct CliArgsFfi {
-        config_file: *mut libc::c_char,
-        log_file: *mut libc::c_char,
-        log_level: libc::c_uint,
-        ipc_prefix: *mut libc::c_char,
-        port_offset: libc::c_int,
-        routes: *mut *mut libc::c_char,
-        routes_count: libc::c_uint,
-        quiet_check: libc::c_int,
-    }
-
-    impl CliArgsFfi {
-        pub fn config_file(&self) -> *mut libc::c_char {
-            self.config_file
-        }
-
-        pub fn log_file(&self) -> *mut libc::c_char {
-            self.log_file
-        }
-
-        pub fn log_level(&self) -> u32 {
-            self.log_level
-        }
-
-        pub fn ipc_prefix(&self) -> *mut libc::c_char {
-            self.ipc_prefix
-        }
-
-        pub fn port_offset(&self) -> i32 {
-            self.port_offset
-        }
-
-        pub fn routes(&self) -> *mut *mut libc::c_char {
-            self.routes
-        }
-
-        pub fn routes_count(&self) -> u32 {
-            self.routes_count
-        }
-
-        pub fn quiet_check(&self) -> bool {
-            self.quiet_check != 0
-        }
+        pub config_file: *mut libc::c_char,
+        pub log_file: *mut libc::c_char,
+        pub log_level: libc::c_uint,
+        pub ipc_prefix: *mut libc::c_char,
+        pub port_offset: libc::c_int,
+        pub routes: *mut *mut libc::c_char,
+        pub routes_count: libc::c_uint,
+        pub quiet_check: libc::c_int,
     }
 
     // Converts CliArgs to a C++-compatible struct
@@ -297,27 +263,27 @@ mod tests {
         // Test conversion to C++-compatible struct
         unsafe {
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.config_file())
+                std::ffi::CStr::from_ptr(args_ffi.config_file)
                     .to_str()
                     .unwrap(),
                 config_test_file
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.log_file())
+                std::ffi::CStr::from_ptr(args_ffi.log_file)
                     .to_str()
                     .unwrap(),
                 "pushpin.log"
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(args_ffi.ipc_prefix())
+                std::ffi::CStr::from_ptr(args_ffi.ipc_prefix)
                     .to_str()
                     .unwrap(),
                 "ipc"
             );
 
             // Test routes array
-            assert_eq!(args_ffi.routes_count(), 2);
-            let routes_array = args_ffi.routes();
+            assert_eq!(args_ffi.routes_count, 2);
+            let routes_array = args_ffi.routes;
             assert_eq!(
                 std::ffi::CStr::from_ptr(*routes_array.add(0))
                     .to_str()
@@ -331,9 +297,9 @@ mod tests {
                 "route2"
             );
         }
-        assert_eq!(args_ffi.log_level(), 3);
-        assert_eq!(args_ffi.port_offset(), 8080);
-        assert_eq!(args_ffi.quiet_check(), true);
+        assert_eq!(args_ffi.log_level, 3);
+        assert_eq!(args_ffi.port_offset, 8080);
+        assert_eq!(args_ffi.quiet_check, 1);
 
         // Test with empty/default values
         let empty_args = CliArgs {
@@ -368,27 +334,27 @@ mod tests {
         // Test conversion to C++-compatible struct
         unsafe {
             assert_eq!(
-                std::ffi::CStr::from_ptr(empty_args_ffi.config_file())
+                std::ffi::CStr::from_ptr(empty_args_ffi.config_file)
                     .to_str()
                     .unwrap(),
                 default_config_file
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(empty_args_ffi.log_file())
+                std::ffi::CStr::from_ptr(empty_args_ffi.log_file)
                     .to_str()
                     .unwrap(),
                 ""
             );
             assert_eq!(
-                std::ffi::CStr::from_ptr(empty_args_ffi.ipc_prefix())
+                std::ffi::CStr::from_ptr(empty_args_ffi.ipc_prefix)
                     .to_str()
                     .unwrap(),
                 ""
             );
-            assert_eq!(empty_args_ffi.routes_count(), 0);
-            assert_eq!(empty_args_ffi.log_level(), 2);
-            assert_eq!(empty_args_ffi.port_offset(), -1);
-            assert_eq!(empty_args_ffi.quiet_check(), false);
+            assert_eq!(empty_args_ffi.routes_count, 0);
+            assert_eq!(empty_args_ffi.log_level, 2);
+            assert_eq!(empty_args_ffi.port_offset, -1);
+            assert_eq!(empty_args_ffi.quiet_check, 0);
         }
     }
 }
