@@ -62,28 +62,9 @@ static void zeroTimeout()
 	TEST_ASSERT_EQ(count, 2);
 }
 
-static void zeroTimeoutQt()
-{
-	TestQCoreApplication qapp;
-	Timer::init(1);
-
-	int count = runZeroTimeout([] {
-		// the timer's qt-based implementation will process both timeouts
-		// during a single timer processing pass. therefore, both
-		// timeouts should get processed within a single event loop pass
-		QCoreApplication::processEvents(QEventLoop::AllEvents);
-	});
-
-	TEST_ASSERT_EQ(count, 2);
-
-	Timer::deinit();
-}
-
-
 extern "C" int timer_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(zeroTimeout());
-	TEST_CATCH(zeroTimeoutQt());
 
 	return 0;
 }

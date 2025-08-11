@@ -355,7 +355,7 @@ pub struct Frame<'a> {
     pub data: &'a [u8],
 }
 
-pub fn parse_frame(src: &[u8]) -> Result<(Frame, usize), ParseError> {
+pub fn parse_frame(src: &[u8]) -> Result<(Frame<'_>, usize), ParseError> {
     let mut size_end: Option<usize> = None;
 
     // find ':'
@@ -550,7 +550,7 @@ impl<'a> Iterator for SequenceIterator<'a> {
     }
 }
 
-pub fn parse_array(src: &[u8]) -> Result<SequenceIterator, ParseError> {
+pub fn parse_array(src: &[u8]) -> Result<SequenceIterator<'_>, ParseError> {
     let (frame, _) = parse_frame(src)?;
 
     match frame.ftype {
@@ -642,7 +642,7 @@ impl<'a> Iterator for MapIterator<'a> {
     }
 }
 
-pub fn parse_map(src: &[u8]) -> Result<MapIterator, ParseError> {
+pub fn parse_map(src: &[u8]) -> Result<MapIterator<'_>, ParseError> {
     let (frame, _) = parse_frame(src)?;
 
     match frame.ftype {

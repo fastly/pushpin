@@ -235,7 +235,9 @@ impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
     }
 }
 
-pub fn io_split<T: AsyncRead + AsyncWrite>(handle: &RefCell<T>) -> (ReadHalf<T>, WriteHalf<T>) {
+pub fn io_split<T: AsyncRead + AsyncWrite>(
+    handle: &RefCell<T>,
+) -> (ReadHalf<'_, T>, WriteHalf<'_, T>) {
     (ReadHalf { handle }, WriteHalf { handle })
 }
 

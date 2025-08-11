@@ -32,6 +32,14 @@ EventLoop::EventLoop(int capacity)
 
 EventLoop::~EventLoop()
 {
+	while(!cleanupHandlers_.empty())
+	{
+		CleanupHandler h = cleanupHandlers_.front();
+		cleanupHandlers_.pop_front();
+
+		h.handler(h.ctx);
+	}
+
 	ffi::event_loop_destroy(inner_);
 
 	g_instance = nullptr;
@@ -94,6 +102,24 @@ std::tuple<int, std::unique_ptr<Event::SetReadiness>> EventLoop::registerCustom(
 void EventLoop::deregister(int id)
 {
 	assert(ffi::event_loop_deregister(inner_, id) == 0);
+}
+
+void EventLoop::addCleanupHandler(void (*handler)(void *), void *ctx)
+{
+	CleanupHandler h;
+	h.handler = handler;
+	h.ctx = ctx;
+
+	cleanupHandlers_.push_front(h);
+}
+
+void EventLoop::removeCleanupHandler(void (*handler)(void *), void *ctx)
+{
+	CleanupHandler h;
+	h.handler = handler;
+	h.ctx = ctx;
+
+	cleanupHandlers_.remove(h);
 }
 
 EventLoop *EventLoop::instance()

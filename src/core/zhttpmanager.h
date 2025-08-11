@@ -48,6 +48,7 @@ public:
 
 	void setIpcFileMode(int mode);
 	void setBind(bool enable);
+	void setProbe(bool enable);
 
 	bool setClientOutSpecs(const QStringList &specs);
 	bool setClientOutStreamSpecs(const QStringList &specs);
@@ -73,6 +74,7 @@ public:
 
 	Signal requestReady;
 	Signal socketReady;
+	Signal probeAcked;
 
 private:
 	class Private;

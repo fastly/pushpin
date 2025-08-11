@@ -17,8 +17,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, OnceLock};
-use std::thread;
+use std::sync::OnceLock;
 
 #[derive(Default)]
 pub struct TestException {
@@ -38,77 +37,27 @@ fn get_root_dir() -> &'static Path {
     })
 }
 
-fn run_catchable<F>(test_fn: F) -> Option<TestException>
+fn run_catchable<F>(test_fn: F) -> Result<(), TestException>
 where
     F: FnOnce(&mut TestException) -> bool,
 {
     let mut ex = TestException::default();
 
     if !test_fn(&mut ex) {
-        return Some(ex);
+        return Err(ex);
     }
 
-    None
+    Ok(())
 }
 
-struct RunSerial {
-    f: Box<dyn FnOnce(&mut TestException) -> bool + Send>,
-    ret: mpsc::SyncSender<Option<TestException>>,
-}
-
-fn run_serial_inner<F>(test_fn: F) -> Option<TestException>
-where
-    F: FnOnce(&mut TestException) -> bool + Send + 'static,
-{
-    static SENDER: OnceLock<mpsc::Sender<RunSerial>> = OnceLock::new();
-
-    let s_call = SENDER.get_or_init(|| {
-        let (s, r) = mpsc::channel::<RunSerial>();
-
-        // run in the background forever
-        thread::Builder::new()
-            .name("run-serial".to_string())
-            .spawn(move || {
-                for t in r {
-                    let ret = run_catchable(t.f);
-
-                    // if receiver is gone, keep going
-                    let _ = t.ret.send(ret);
-                }
-                unreachable!();
-            })
-            .unwrap();
-
-        s
-    });
-
-    let (s_ret, r_ret) = mpsc::sync_channel(1);
-
-    s_call
-        .send(RunSerial {
-            f: Box::new(test_fn),
-            ret: s_ret,
-        })
-        .expect("call channel should always be writable");
-
-    r_ret
-        .recv()
-        .expect("return channel should always be readable")
-}
-
-// this function is meant for running tests that use QCoreApplication. there
-// can only be one global QCoreApplication instance, and qt doesn't like it
-// when QCoreApplication is recreated in different threads, so this function
-// sets up a background thread to enable running tests serially and all from
-// the same thread
 #[track_caller]
-pub fn run_serial<F>(test_fn: F)
+pub fn run_cpp<F>(test_fn: F)
 where
-    F: FnOnce(&mut TestException) -> bool + Send + 'static,
+    F: FnOnce(&mut TestException) -> bool,
 {
     let root_dir = get_root_dir();
 
-    if let Some(ex) = run_serial_inner(Box::new(test_fn)) {
+    if let Err(ex) = run_catchable(test_fn) {
         let file = Path::new(&ex.file);
         let file = file.strip_prefix(root_dir).unwrap_or(file);
 

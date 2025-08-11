@@ -292,7 +292,7 @@ impl<C: Callback> EventLoop<C> {
         }
     }
 
-    pub fn exec_async(&self) -> Exec<C> {
+    pub fn exec_async(&self) -> Exec<'_, C> {
         Exec { l: self }
     }
 

@@ -384,10 +384,11 @@ public:
 
 		// deinit here, after all event loop activity has completed
 
-		DeferCall::cleanup();
-
 		if(!newEventLoop)
+		{
+			DeferCall::cleanup();
 			Timer::deinit();
+		}
 	}
 };
 
@@ -787,10 +788,11 @@ private:
 
 		// deinit here, after all event loop activity has completed
 
-		DeferCall::cleanup();
-
 		if(!newEventLoop)
+		{
+			DeferCall::cleanup();
 			Timer::deinit();
+		}
 
 		return ret;
 	}

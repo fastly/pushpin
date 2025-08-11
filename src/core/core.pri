@@ -25,6 +25,7 @@ HEADERS += \
 	$$PWD/layertracker.h
 
 SOURCES += \
+	$$PWD/test.cpp \
 	$$PWD/tnetstring.cpp \
 	$$PWD/httpheaders.cpp \
 	$$PWD/zhttprequestpacket.cpp \
