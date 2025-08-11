@@ -105,6 +105,14 @@ static void set_router_mandatory(void *sock, bool on)
 	assert(ret == 0);
 }
 
+static void set_probe_router(void *sock, bool on)
+{
+	int v = on ? 1 : 0;
+	size_t opt_len = sizeof(v);
+	int ret = wzmq_setsockopt(sock, WZMQ_PROBE_ROUTER, &v, opt_len);
+	assert(ret == 0);
+}
+
 #else
 
 static void set_immediate(void *sock, bool on)
@@ -723,6 +731,11 @@ void Socket::setImmediateEnabled(bool on)
 void Socket::setRouterMandatoryEnabled(bool on)
 {
 	set_router_mandatory(d->sock, on);
+}
+
+void Socket::setProbeRouterEnabled(bool on)
+{
+	set_probe_router(d->sock, on);
 }
 
 void Socket::setTcpKeepAliveEnabled(bool on)

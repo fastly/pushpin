@@ -539,7 +539,7 @@ fn parse_log_levels(log_levels: Vec<String>) -> Result<HashMap<String, u8>, Box<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test::{run_serial, TestException};
+    use crate::core::test::{run_cpp, TestException};
     use crate::core::{ensure_example_config, test_dir};
     use crate::ffi;
     use std::collections::HashMap;
@@ -907,7 +907,7 @@ mod tests {
 
     #[test]
     fn template() {
-        run_serial(template_test);
+        run_cpp(template_test);
     }
 }
 

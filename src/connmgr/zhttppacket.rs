@@ -1169,7 +1169,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for CloseData<'buf> {
     }
 }
 
-fn parse_ping_or_pong(root: tnetstring::MapIterator) -> Result<(u32, &[u8]), ParseError> {
+fn parse_ping_or_pong(root: tnetstring::MapIterator<'_>) -> Result<(u32, &[u8]), ParseError> {
     let mut credits = 0;
     let mut body = EMPTY_BYTES;
 

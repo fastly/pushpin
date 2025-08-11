@@ -1,6 +1,19 @@
 Pushpin Changelog
 =================
 
+v. 1.41.0 (2025-08-08)
+
+  * Add support for gone links.
+  * WebSocket-Over-HTTP: allow keeping back data (Content-Bytes-Accepted).
+  * Support IPv6 addresses in route targets.
+  * Cache root certs when making outbound connections.
+  * New config option: update_on_first_subscription.
+  * New route condition option: log_level.
+  * Correctly read push_in_http_max_{headers,body}_size options.
+  * Apply next link response's own filters to its content.
+  * runner: look for bins in target dir (makes "cargo run" work).
+  * Remove use of Qt event loop, to reduce dependence on Qt.
+
 v. 1.40.1 (2024-08-13)
 
   * Fix build with recent rustc.
