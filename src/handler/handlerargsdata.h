@@ -21,14 +21,14 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef ARGSDATA_H
-#define ARGSDATA_H
+#ifndef HANDLERARGSDATA_H
+#define HANDLERARGSDATA_H
 
 #include <QString>
 #include <QStringList>
 #include "rust/bindings.h"
 
-class ArgsData
+class HandlerArgsData
 {
 	public:
 		QString configFile;
@@ -40,7 +40,7 @@ class ArgsData
 		uint routesCount;
 		bool quietCheck;
 
-		ArgsData(const ffi::CCliArgsFfi *argsFfi);
+		HandlerArgsData(const ffi::CliArgsFfi *argsFfi);
 };
 
 #endif

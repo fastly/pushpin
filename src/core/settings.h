@@ -26,7 +26,6 @@
 #include <QString>
 #include <QVariant>
 #include "rust/bindings.h"
-#include "argsdata.h"
 
 class QSettings;
 
@@ -34,7 +33,6 @@ class Settings
 {
 public:
 
-	Settings(const ArgsData *args);
 	Settings(const QString &fileName);
 	~Settings();
 	bool contains(const QString &key) const;
@@ -55,7 +53,6 @@ private:
 	QString ipcPrefix_;
 	int portOffset_;
 
-	void loadSettings(const QString &fileName);
 	QString resolveVars(const QString &in) const;
 };
 

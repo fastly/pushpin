@@ -27,7 +27,7 @@ use std::path::PathBuf;
     version = version(),
     about = "Pushpin handler component."
 )]
-pub struct CCliArgs {
+pub struct CliArgs {
     /// Set path to the configuration file
     #[arg(short, long, value_name = "file")]
     pub config_file: Option<String>,
@@ -57,7 +57,7 @@ pub struct CCliArgs {
     pub quiet_check: bool,
 }
 
-impl CCliArgs {
+impl CliArgs {
     /// Verifies the command line arguments.
     pub fn verify(mut self) -> Self {
         let work_dir = env::current_dir().unwrap_or_default();
@@ -75,8 +75,8 @@ impl CCliArgs {
         self
     }
 
-    pub fn to_ffi(&self) -> ffi::CCliArgsFfi {
-        ffi::c_cli_args_to_ffi(self)
+    pub fn to_ffi(&self) -> ffi::CliArgsFfi {
+        ffi::handler_cli_args_to_ffi(self)
     }
 }
 
@@ -84,7 +84,7 @@ pub mod ffi {
     use std::ffi::CString;
 
     #[repr(C)]
-    pub struct CCliArgsFfi {
+    pub struct CliArgsFfi {
         config_file: *mut libc::c_char,
         log_file: *mut libc::c_char,
         log_level: libc::c_uint,
@@ -95,7 +95,7 @@ pub mod ffi {
         quiet_check: libc::c_int,
     }
 
-    impl CCliArgsFfi {
+    impl CliArgsFfi {
         pub fn config_file(&self) -> *mut libc::c_char {
             self.config_file
         }
@@ -129,9 +129,9 @@ pub mod ffi {
         }
     }
 
-    // Converts CCliArgs to a C++-compatible struct
+    // Converts CliArgs to a C++-compatible struct
     #[no_mangle]
-    pub extern "C" fn c_cli_args_to_ffi(args: &super::CCliArgs) -> CCliArgsFfi {
+    pub extern "C" fn handler_cli_args_to_ffi(args: &super::CliArgs) -> CliArgsFfi {
         let config_file = args
             .config_file
             .as_ref()
@@ -188,7 +188,7 @@ pub mod ffi {
             }
         };
 
-        CCliArgsFfi {
+        CliArgsFfi {
             config_file,
             log_file,
             log_level: args.log_level,
@@ -200,10 +200,10 @@ pub mod ffi {
         }
     }
 
-    /// Frees the memory allocated by c_cli_args_to_ffi
-    /// MUST be called by C++ code when done with the CCliArgsFfi struct
+    /// Frees the memory allocated by handler_cli_args_to_ffi
+    /// MUST be called by C++ code when done with the CliArgsFfi struct
     #[no_mangle]
-    pub unsafe extern "C" fn destroy_c_cli_args(ffi_args: CCliArgsFfi) {
+    pub unsafe extern "C" fn destroy_handler_cli_args(ffi_args: CliArgsFfi) {
         if !ffi_args.config_file.is_null() {
             let _ = CString::from_raw(ffi_args.config_file);
         }
@@ -227,7 +227,7 @@ pub mod ffi {
     }
 }
 
-impl IntoIterator for CCliArgs {
+impl IntoIterator for CliArgs {
     type Item = (String, String);
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
@@ -269,7 +269,7 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         let config_test_file = file.path().to_str().unwrap().to_string();
 
-        let args = CCliArgs {
+        let args = CliArgs {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
@@ -279,7 +279,7 @@ mod tests {
             quiet_check: true,
         };
 
-        let args_ffi = ffi::c_cli_args_to_ffi(&args);
+        let args_ffi = ffi::handler_cli_args_to_ffi(&args);
 
         // Test verify() method
         let verified_args = args.verify();
@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(args_ffi.quiet_check(), true);
 
         // Test with empty/default values
-        let empty_args = CCliArgs {
+        let empty_args = CliArgs {
             config_file: None,
             log_file: None,
             log_level: 2,
@@ -346,7 +346,7 @@ mod tests {
             quiet_check: false,
         };
 
-        let empty_args_ffi = ffi::c_cli_args_to_ffi(&empty_args);
+        let empty_args_ffi = ffi::handler_cli_args_to_ffi(&empty_args);
 
         // Test verify() with empty args
         let verified_empty_args = empty_args.verify();

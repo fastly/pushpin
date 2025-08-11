@@ -22,7 +22,7 @@
  */
 
 #include "handlerapp.h"
-#include "argsdata.h"
+#include "handlerargsdata.h"
 #include "rust/bindings.h"
 
 #include <assert.h>
@@ -88,13 +88,15 @@ static QString firstSpec(const QString &s, int peerCount)
 class HandlerApp::Private
 {
 public:
-	static int run(const ffi::CCliArgsFfi *argsFfi)
+	static int run(const ffi::CliArgsFfi *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
 		QCoreApplication::setApplicationVersion(Config::get().version);
 
-		ArgsData args(argsFfi);
-		Settings settings(&args);
+		HandlerArgsData args(argsFfi);
+		Settings settings(args.configFile);
+		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
+		if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
 
 		QStringList services = settings.value("runner/services").toStringList();
 
@@ -346,7 +348,7 @@ HandlerApp::HandlerApp() = default;
 
 HandlerApp::~HandlerApp() = default;
 
-int HandlerApp::run(const ffi::CCliArgsFfi *argsFfi)
+int HandlerApp::run(const ffi::CliArgsFfi *argsFfi)
 {
 	return Private::run(argsFfi);
 }

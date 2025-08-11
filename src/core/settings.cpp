@@ -29,29 +29,11 @@
 #include <QSettings>
 #include "qtcompat.h"
 #include "config.h"
-#include "argsdata.h"
-
-Settings::Settings(const ArgsData *args) :
-	include_(0),
-	portOffset_(0)
-{
-	loadSettings(args->configFile);
-
-	if(!args->ipcPrefix.isEmpty())
-		ipcPrefix_ = args->ipcPrefix;
-
-	if(args->portOffset != -1)
-		portOffset_ = args->portOffset;
-}
 
 Settings::Settings(const QString &fileName) :
 	include_(0),
 	portOffset_(0)
 {
-	loadSettings(fileName);
-}
-
-void Settings::loadSettings(const QString &fileName) {
 	main_ = new QSettings(fileName, QSettings::IniFormat);
 
 	libdir_ = valueRaw("global/libdir").toString();

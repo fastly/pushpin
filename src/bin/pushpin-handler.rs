@@ -15,18 +15,18 @@
  */
 
 use clap::Parser;
-use pushpin::core::ccliargs::ffi::CCliArgsFfi;
-use pushpin::core::ccliargs::CCliArgs;
+use pushpin::core::handlercliargs::ffi::CliArgsFfi;
+use pushpin::core::handlercliargs::CliArgs;
 use pushpin::import_cpp;
 use std::process::ExitCode;
 
 import_cpp! {
-    fn handler_main(args: *const CCliArgsFfi) -> libc::c_int;
+    fn handler_main(args: *const CliArgsFfi) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
-    let c_cli_args = CCliArgs::parse().verify();
-    let c_cli_args_ffi = c_cli_args.to_ffi();
+    let cli_args = CliArgs::parse().verify();
+    let cli_args_ffi = cli_args.to_ffi();
 
-    unsafe { ExitCode::from(handler_main(&c_cli_args_ffi) as u8) }
+    unsafe { ExitCode::from(handler_main(&cli_args_ffi) as u8) }
 }

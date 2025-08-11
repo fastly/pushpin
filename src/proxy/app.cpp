@@ -22,7 +22,7 @@
  */
 
 #include "app.h"
-#include "argsdata.h"
+#include "proxyargsdata.h"
 #include "rust/bindings.h"
 
 #include <assert.h>
@@ -311,13 +311,15 @@ public:
 class App::Private
 {
 public:
-	static int run(const ffi::CCliArgsFfi *argsFfi)
+	static int run(const ffi::CliArgsFfi *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
 		QCoreApplication::setApplicationVersion(Config::get().version);
 
-		ArgsData args(argsFfi);
-		Settings settings(&args);
+		ProxyArgsData args(argsFfi);
+		Settings settings(args.configFile);
+		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
+		if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
 
 		QDir configDir = QFileInfo(args.configFile).absoluteDir();
 		QStringList services = settings.value("runner/services").toStringList();
@@ -655,7 +657,7 @@ App::App() = default;
 
 App::~App() = default;
 
-int App::run(const ffi::CCliArgsFfi *argsFfi)
+int App::run(const ffi::CliArgsFfi *argsFfi)
 {
 	return Private::run(argsFfi);
 }

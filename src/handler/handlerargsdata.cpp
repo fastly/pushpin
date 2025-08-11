@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "argsdata.h"
+#include "handlerargsdata.h"
 #include "settings.h"
 #include "config.h"
 #include "log.h"
@@ -29,7 +29,7 @@
 #include <QCoreApplication>
 #include <QFile>
 
-ArgsData::ArgsData(const ffi::CCliArgsFfi *argsFfi)
+HandlerArgsData::HandlerArgsData(const ffi::CliArgsFfi *argsFfi)
 {
     configFile  = QString::fromUtf8(argsFfi->config_file);
     logFile     = QString::fromUtf8(argsFfi->log_file);

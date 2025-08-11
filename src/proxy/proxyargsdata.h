@@ -1,5 +1,10 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
+ *
+ * This file is part of Pushpin.
+ *
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,21 +17,30 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * $FANOUT_END_LICENSE$
  */
 
-use clap::Parser;
-use pushpin::core::proxycliargs::ffi::CliArgsFfi;
-use pushpin::core::proxycliargs::CliArgs;
-use pushpin::import_cpp;
-use std::process::ExitCode;
+#ifndef PROXYARGSDATA_H
+#define PROXYARGSDATA_H
 
-import_cpp! {
-    fn proxy_main(args: *const CliArgsFfi) -> libc::c_int;
-}
+#include <QString>
+#include <QStringList>
+#include "rust/bindings.h"
 
-fn main() -> ExitCode {
-    let cli_args = CliArgs::parse().verify();
-    let cli_args_ffi = cli_args.to_ffi();
+class ProxyArgsData
+{
+	public:
+		QString configFile;
+		QString logFile;
+		int logLevel;
+		QString ipcPrefix;
+		int portOffset;
+		QStringList routeLines;
+		uint routesCount;
+		bool quietCheck;
 
-    unsafe { ExitCode::from(proxy_main(&cli_args_ffi) as u8) }
-}
+		ProxyArgsData(const ffi::CliArgsFfi *argsFfi);
+};
+
+#endif

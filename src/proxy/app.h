@@ -32,7 +32,7 @@ public:
 	App();
 	~App();
 
-	int run(const ffi::CCliArgsFfi *argsFfi);
+	int run(const ffi::CliArgsFfi *argsFfi);
 
 private:
 	class Private;
