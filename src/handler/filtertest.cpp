@@ -243,7 +243,7 @@ static void messageFilters(std::function<void (int)> loop_wait)
 	}
 }
 
-static void httpCheck(std::function<void (int)> loop_wait)
+[[maybe_unused]] static void httpCheck(std::function<void (int)> loop_wait)
 {
 	TestState state(loop_wait);
 
@@ -280,7 +280,7 @@ static void httpCheck(std::function<void (int)> loop_wait)
 	}
 }
 
-static void httpModify(std::function<void (int)> loop_wait)
+[[maybe_unused]] static void httpModify(std::function<void (int)> loop_wait)
 {
 	TestState state(loop_wait);
 

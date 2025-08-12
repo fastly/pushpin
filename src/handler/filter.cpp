@@ -518,7 +518,7 @@ bool HttpFilter::RequestAction::execute()
 	return true;
 }
 
-HttpFilter::HttpFilter(Mode mode)
+[[maybe_unused]] HttpFilter::HttpFilter(Mode mode)
 {
 	inner = std::make_shared<HttpFilterInner>(mode);
 
