@@ -38,6 +38,7 @@ void WscatWorker::startWscat(const QString &url, const QStringList &headers) {
 void WscatWorker::stopWscat() {
 	QMutexLocker locker(&mutex);
 	if (process) {
+		log_debug("[WS] killing wscat process");
 		process->kill();     // or process->terminate() for graceful
 		process->waitForFinished(3000);
 		process->deleteLater();
