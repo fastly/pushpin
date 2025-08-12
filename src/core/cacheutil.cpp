@@ -923,7 +923,7 @@ void check_cache_clients()
 		}			
 	}
 
-	QTimer::singleShot(30 * 1000, [=]() {
+	QTimer::singleShot(5 * 1000, [=]() {
 		check_cache_clients();
 	});
 }
