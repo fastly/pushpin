@@ -206,6 +206,11 @@ mod tests {
         assert_eq!(args_ffi.log_level, 3);
         assert_eq!(args_ffi.port_offset, 8080);
 
+        // Test cleanup - this should not crash
+        unsafe {
+            ffi::destroy_handler_cli_args(args_ffi);
+        }
+
         // Test with empty/default values
         let empty_args = CliArgs {
             config_file: None,
@@ -254,6 +259,11 @@ mod tests {
             );
             assert_eq!(empty_args_ffi.log_level, 2);
             assert_eq!(empty_args_ffi.port_offset, -1);
+        }
+
+        // Test cleanup for empty args - this should not crash
+        unsafe {
+            ffi::destroy_handler_cli_args(empty_args_ffi);
         }
     }
 }

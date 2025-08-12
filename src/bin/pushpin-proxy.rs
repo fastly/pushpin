@@ -15,7 +15,7 @@
  */
 
 use clap::Parser;
-use pushpin::core::proxycliargs::ffi::ProxyCliArgsFfi;
+use pushpin::core::proxycliargs::ffi::{destroy_proxy_cli_args, ProxyCliArgsFfi};
 use pushpin::core::proxycliargs::CliArgs;
 use pushpin::import_cpp;
 use std::process::ExitCode;
@@ -28,5 +28,10 @@ fn main() -> ExitCode {
     let cli_args = CliArgs::parse().verify();
     let cli_args_ffi = cli_args.to_ffi();
 
-    unsafe { ExitCode::from(proxy_main(&cli_args_ffi) as u8) }
+    let exit_code = unsafe { proxy_main(&cli_args_ffi) };
+
+    // Clean up the allocated memory
+    unsafe { destroy_proxy_cli_args(cli_args_ffi) };
+
+    ExitCode::from(exit_code as u8)
 }

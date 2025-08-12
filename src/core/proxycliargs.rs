@@ -271,6 +271,11 @@ mod tests {
         assert_eq!(args_ffi.log_level, 3);
         assert_eq!(args_ffi.quiet_check, 1);
 
+        // Test cleanup - this should not crash
+        unsafe {
+            ffi::destroy_proxy_cli_args(args_ffi);
+        }
+
         // Test with empty/default values
         let empty_args = CliArgs {
             config_file: None,
@@ -322,6 +327,11 @@ mod tests {
             assert_eq!(empty_args_ffi.routes_count, 0);
             assert_eq!(empty_args_ffi.log_level, 2);
             assert_eq!(empty_args_ffi.quiet_check, 0);
+        }
+
+        // Test cleanup for empty args - this should not crash
+        unsafe {
+            ffi::destroy_proxy_cli_args(empty_args_ffi);
         }
     }
 }
