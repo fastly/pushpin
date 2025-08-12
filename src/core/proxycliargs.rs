@@ -44,10 +44,6 @@ pub struct CliArgs {
     #[arg(long, value_name = "prefix")]
     pub ipc_prefix: Option<String>,
 
-    /// Override port_offset config option, which is used to increment all ZeroMQ TCP ports and the HTTP control server port
-    #[arg(long, value_name = "offset", value_parser = clap::value_parser!(u32))]
-    pub port_offset: Option<u32>,
-
     /// Add routes (overrides routes file)
     #[arg(long, value_name = "routes")]
     pub routes: Option<Vec<String>>,
@@ -75,7 +71,7 @@ impl CliArgs {
         self
     }
 
-    pub fn to_ffi(&self) -> ffi::CliArgsFfi {
+    pub fn to_ffi(&self) -> ffi::ProxyCliArgsFfi {
         ffi::proxy_cli_args_to_ffi(self)
     }
 }
@@ -84,12 +80,11 @@ pub mod ffi {
     use std::ffi::CString;
 
     #[repr(C)]
-    pub struct CliArgsFfi {
+    pub struct ProxyCliArgsFfi {
         pub config_file: *mut libc::c_char,
         pub log_file: *mut libc::c_char,
         pub log_level: libc::c_uint,
         pub ipc_prefix: *mut libc::c_char,
-        pub port_offset: libc::c_int,
         pub routes: *mut *mut libc::c_char,
         pub routes_count: libc::c_uint,
         pub quiet_check: libc::c_int,
@@ -97,7 +92,7 @@ pub mod ffi {
 
     // Converts CliArgs to a C++-compatible struct
     #[no_mangle]
-    pub extern "C" fn proxy_cli_args_to_ffi(args: &super::CliArgs) -> CliArgsFfi {
+    pub extern "C" fn proxy_cli_args_to_ffi(args: &super::CliArgs) -> ProxyCliArgsFfi {
         let config_file = args
             .config_file
             .as_ref()
@@ -154,12 +149,11 @@ pub mod ffi {
             }
         };
 
-        CliArgsFfi {
+        ProxyCliArgsFfi {
             config_file,
             log_file,
             log_level: args.log_level,
             ipc_prefix,
-            port_offset: args.port_offset.map_or(-1, |p| p as i32),
             routes,
             routes_count,
             quiet_check: if args.quiet_check { 1 } else { 0 },
@@ -167,9 +161,9 @@ pub mod ffi {
     }
 
     /// Frees the memory allocated by proxy_cli_args_to_ffi
-    /// MUST be called by C++ code when done with the CliArgsFfi struct
+    /// MUST be called by C++ code when done with the ProxyCliArgsFfi struct
     #[no_mangle]
-    pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: CliArgsFfi) {
+    pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ProxyCliArgsFfi) {
         if !ffi_args.config_file.is_null() {
             let _ = CString::from_raw(ffi_args.config_file);
         }
@@ -210,10 +204,6 @@ impl IntoIterator for CliArgs {
                 self.ipc_prefix.unwrap_or_default(),
             ),
             (
-                "port-offset".to_string(),
-                self.port_offset.map_or("".to_string(), |p| p.to_string()),
-            ),
-            (
                 "routes".to_string(),
                 self.routes.map_or("".to_string(), |r| r.join(",")),
             ),
@@ -240,7 +230,6 @@ mod tests {
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
             ipc_prefix: Some("ipc".to_string()),
-            port_offset: Some(8080),
             routes: Some(vec!["route1".to_string(), "route2".to_string()]),
             quiet_check: true,
         };
@@ -253,7 +242,6 @@ mod tests {
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
         assert_eq!(verified_args.log_level, 3);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
-        assert_eq!(verified_args.port_offset, Some(8080));
         assert_eq!(
             verified_args.routes,
             Some(vec!["route1".to_string(), "route2".to_string()])
@@ -298,7 +286,6 @@ mod tests {
             );
         }
         assert_eq!(args_ffi.log_level, 3);
-        assert_eq!(args_ffi.port_offset, 8080);
         assert_eq!(args_ffi.quiet_check, 1);
 
         // Test with empty/default values
@@ -307,7 +294,6 @@ mod tests {
             log_file: None,
             log_level: 2,
             ipc_prefix: None,
-            port_offset: None,
             routes: None,
             quiet_check: false,
         };
@@ -327,7 +313,6 @@ mod tests {
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);
-        assert_eq!(verified_empty_args.port_offset, None);
         assert_eq!(verified_empty_args.routes, None);
         assert_eq!(verified_empty_args.quiet_check, false);
 
@@ -353,7 +338,6 @@ mod tests {
             );
             assert_eq!(empty_args_ffi.routes_count, 0);
             assert_eq!(empty_args_ffi.log_level, 2);
-            assert_eq!(empty_args_ffi.port_offset, -1);
             assert_eq!(empty_args_ffi.quiet_check, 0);
         }
     }

@@ -15,13 +15,13 @@
  */
 
 use clap::Parser;
-use pushpin::core::proxycliargs::ffi::CliArgsFfi;
+use pushpin::core::proxycliargs::ffi::ProxyCliArgsFfi;
 use pushpin::core::proxycliargs::CliArgs;
 use pushpin::import_cpp;
 use std::process::ExitCode;
 
 import_cpp! {
-    fn proxy_main(args: *const CliArgsFfi) -> libc::c_int;
+    fn proxy_main(args: *const ProxyCliArgsFfi) -> libc::c_int;
 }
 
 fn main() -> ExitCode {

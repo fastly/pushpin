@@ -29,13 +29,12 @@
 #include <QCoreApplication>
 #include <QFile>
 
-ProxyArgsData::ProxyArgsData(const ffi::CliArgsFfi *argsFfi)
+ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgsFfi *argsFfi)
 {
     configFile  = QString::fromUtf8(argsFfi->config_file);
     logFile     = QString::fromUtf8(argsFfi->log_file);
     logLevel 	= argsFfi->log_level;
     ipcPrefix 	= QString::fromUtf8(argsFfi->ipc_prefix);
-    portOffset  = argsFfi->port_offset;
     routeLines = QStringList();
     for (unsigned int i = 0; i < argsFfi->routes_count; ++i)
     {

@@ -36,11 +36,8 @@ class HandlerArgsData
 		int logLevel;
 		QString ipcPrefix;
 		int portOffset;
-		QStringList routeLines;
-		uint routesCount;
-		bool quietCheck;
 
-		HandlerArgsData(const ffi::CliArgsFfi *argsFfi);
+		HandlerArgsData(const ffi::HandlerCliArgsFfi *argsFfi);
 };
 
 #endif

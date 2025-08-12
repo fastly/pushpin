@@ -311,7 +311,7 @@ public:
 class App::Private
 {
 public:
-	static int run(const ffi::CliArgsFfi *argsFfi)
+	static int run(const ffi::ProxyCliArgsFfi *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -319,7 +319,6 @@ public:
 		ProxyArgsData args(argsFfi);
 		Settings settings(args.configFile);
 		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
-		if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
 
 		QDir configDir = QFileInfo(args.configFile).absoluteDir();
 		QStringList services = settings.value("runner/services").toStringList();
@@ -657,7 +656,7 @@ App::App() = default;
 
 App::~App() = default;
 
-int App::run(const ffi::CliArgsFfi *argsFfi)
+int App::run(const ffi::ProxyCliArgsFfi *argsFfi)
 {
 	return Private::run(argsFfi);
 }

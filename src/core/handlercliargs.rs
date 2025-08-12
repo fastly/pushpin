@@ -47,14 +47,6 @@ pub struct CliArgs {
     /// Override port_offset config option, which is used to increment all ZeroMQ TCP ports and the HTTP control server port
     #[arg(long, value_name = "offset", value_parser = clap::value_parser!(u32))]
     pub port_offset: Option<u32>,
-
-    /// Add routes (overrides routes file)
-    #[arg(long, value_name = "routes")]
-    pub routes: Option<Vec<String>>,
-
-    /// Log update checks in Zurl as debug level
-    #[arg(long, value_name = "quiet-check", default_value_t = false)]
-    pub quiet_check: bool,
 }
 
 impl CliArgs {
@@ -75,7 +67,7 @@ impl CliArgs {
         self
     }
 
-    pub fn to_ffi(&self) -> ffi::CliArgsFfi {
+    pub fn to_ffi(&self) -> ffi::HandlerCliArgsFfi {
         ffi::handler_cli_args_to_ffi(self)
     }
 }
@@ -84,20 +76,17 @@ pub mod ffi {
     use std::ffi::CString;
 
     #[repr(C)]
-    pub struct CliArgsFfi {
+    pub struct HandlerCliArgsFfi {
         pub config_file: *mut libc::c_char,
         pub log_file: *mut libc::c_char,
         pub log_level: libc::c_uint,
         pub ipc_prefix: *mut libc::c_char,
         pub port_offset: libc::c_int,
-        pub routes: *mut *mut libc::c_char,
-        pub routes_count: libc::c_uint,
-        pub quiet_check: libc::c_int,
     }
 
     // Converts CliArgs to a C++-compatible struct
     #[no_mangle]
-    pub extern "C" fn handler_cli_args_to_ffi(args: &super::CliArgs) -> CliArgsFfi {
+    pub extern "C" fn handler_cli_args_to_ffi(args: &super::CliArgs) -> HandlerCliArgsFfi {
         let config_file = args
             .config_file
             .as_ref()
@@ -130,46 +119,19 @@ pub mod ffi {
             )
             .into_raw();
 
-        let (routes, routes_count) = match &args.routes {
-            Some(routes_vec) if !routes_vec.is_empty() => {
-                // Allocate array of string pointers
-                let routes_array = unsafe {
-                    libc::malloc(routes_vec.len() * std::mem::size_of::<*mut libc::c_char>())
-                        as *mut *mut libc::c_char
-                };
-
-                // Convert each route to CString and store pointer in array
-                for i in 0..routes_vec.len() {
-                    let c_string = CString::new(routes_vec[i].to_string()).unwrap().into_raw();
-                    unsafe {
-                        *routes_array.add(i) = c_string;
-                    }
-                }
-
-                (routes_array, routes_vec.len() as libc::c_uint)
-            }
-            _ => {
-                let routes_array = unsafe { libc::malloc(0) as *mut *mut libc::c_char };
-                (routes_array, 0)
-            }
-        };
-
-        CliArgsFfi {
+        HandlerCliArgsFfi {
             config_file,
             log_file,
             log_level: args.log_level,
             ipc_prefix,
             port_offset: args.port_offset.map_or(-1, |p| p as i32),
-            routes,
-            routes_count,
-            quiet_check: if args.quiet_check { 1 } else { 0 },
         }
     }
 
     /// Frees the memory allocated by handler_cli_args_to_ffi
-    /// MUST be called by C++ code when done with the CliArgsFfi struct
+    /// MUST be called by C++ code when done with the HandlerCliArgsFfi struct
     #[no_mangle]
-    pub unsafe extern "C" fn destroy_handler_cli_args(ffi_args: CliArgsFfi) {
+    pub unsafe extern "C" fn destroy_handler_cli_args(ffi_args: HandlerCliArgsFfi) {
         if !ffi_args.config_file.is_null() {
             let _ = CString::from_raw(ffi_args.config_file);
         }
@@ -178,17 +140,6 @@ pub mod ffi {
         }
         if !ffi_args.ipc_prefix.is_null() {
             let _ = CString::from_raw(ffi_args.ipc_prefix);
-        }
-        if !ffi_args.routes.is_null() {
-            // Free each individual route string
-            for i in 0..ffi_args.routes_count {
-                let route_ptr = *ffi_args.routes.add(i as usize);
-                if !route_ptr.is_null() {
-                    let _ = CString::from_raw(route_ptr);
-                }
-            }
-
-            libc::free(ffi_args.routes as *mut libc::c_void);
         }
     }
 }
@@ -213,11 +164,6 @@ impl IntoIterator for CliArgs {
                 "port-offset".to_string(),
                 self.port_offset.map_or("".to_string(), |p| p.to_string()),
             ),
-            (
-                "routes".to_string(),
-                self.routes.map_or("".to_string(), |r| r.join(",")),
-            ),
-            ("quiet-check".to_string(), self.quiet_check.to_string()),
         ];
 
         args.into_iter()
@@ -241,8 +187,6 @@ mod tests {
             log_level: 3,
             ipc_prefix: Some("ipc".to_string()),
             port_offset: Some(8080),
-            routes: Some(vec!["route1".to_string(), "route2".to_string()]),
-            quiet_check: true,
         };
 
         let args_ffi = ffi::handler_cli_args_to_ffi(&args);
@@ -254,11 +198,6 @@ mod tests {
         assert_eq!(verified_args.log_level, 3);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
-        assert_eq!(
-            verified_args.routes,
-            Some(vec!["route1".to_string(), "route2".to_string()])
-        );
-        assert_eq!(verified_args.quiet_check, true);
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -280,26 +219,9 @@ mod tests {
                     .unwrap(),
                 "ipc"
             );
-
-            // Test routes array
-            assert_eq!(args_ffi.routes_count, 2);
-            let routes_array = args_ffi.routes;
-            assert_eq!(
-                std::ffi::CStr::from_ptr(*routes_array.add(0))
-                    .to_str()
-                    .unwrap(),
-                "route1"
-            );
-            assert_eq!(
-                std::ffi::CStr::from_ptr(*routes_array.add(1))
-                    .to_str()
-                    .unwrap(),
-                "route2"
-            );
         }
         assert_eq!(args_ffi.log_level, 3);
         assert_eq!(args_ffi.port_offset, 8080);
-        assert_eq!(args_ffi.quiet_check, 1);
 
         // Test with empty/default values
         let empty_args = CliArgs {
@@ -308,8 +230,6 @@ mod tests {
             log_level: 2,
             ipc_prefix: None,
             port_offset: None,
-            routes: None,
-            quiet_check: false,
         };
 
         let empty_args_ffi = ffi::handler_cli_args_to_ffi(&empty_args);
@@ -328,8 +248,6 @@ mod tests {
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.port_offset, None);
-        assert_eq!(verified_empty_args.routes, None);
-        assert_eq!(verified_empty_args.quiet_check, false);
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -351,10 +269,8 @@ mod tests {
                     .unwrap(),
                 ""
             );
-            assert_eq!(empty_args_ffi.routes_count, 0);
             assert_eq!(empty_args_ffi.log_level, 2);
             assert_eq!(empty_args_ffi.port_offset, -1);
-            assert_eq!(empty_args_ffi.quiet_check, 0);
         }
     }
 }

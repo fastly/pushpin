@@ -42,20 +42,12 @@ void handlerargstest()
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
 
-    // Create test routes array
-    const char* route1 = "route1";
-    const char* route2 = "route2"; 
-    const char* routes[] = { route1, route2 };
-
-    ffi::CliArgsFfi argsFfi = {
+    ffi::HandlerCliArgsFfi argsFfi = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>("log.txt"),           // log_file
         3,                                      // log_level
         const_cast<char*>("ipc:prefix"),        // ipc_prefix
-        81,                                     // port_offset
-        const_cast<char**>(routes),             // routes
-        2,                                      // routes_count
-        1                                       // quiet_check
+        81                                      // port_offset
     };
 
     // Verify HandlerArgsData parsing
@@ -65,8 +57,6 @@ void handlerargstest()
     TEST_ASSERT_EQ(args.logLevel, 3);
     TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
     TEST_ASSERT_EQ(args.portOffset, 81);
-    TEST_ASSERT_EQ(args.routeLines, QStringList({"route1", "route2"}));
-    TEST_ASSERT_EQ(args.quietCheck, true);
 
     Settings settings(args.configFile);
     if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
@@ -76,18 +66,12 @@ void handlerargstest()
     TEST_ASSERT_EQ(settings.getPortOffset(), 81);
     TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
 
-    // Create empty routes array for testing
-    static const char* routesEmpty[] = {};
-
-    ffi::CliArgsFfi argsFfiEmpty = {
+    ffi::HandlerCliArgsFfi argsFfiEmpty = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>(""),                  // log_file
         2,                                      // log_level
         const_cast<char*>(""),                  // ipc_prefix
-        -1,                                     // port_offset
-        const_cast<char**>(routesEmpty),        // routes array
-        0,                                      // routes_count
-        0                                       // quiet_check
+        -1                                      // port_offset
     };
 
     // Verify HandlerArgsData parsing with empty arguments
@@ -97,8 +81,6 @@ void handlerargstest()
     TEST_ASSERT_EQ(argsEmpty.logLevel, 2);
     TEST_ASSERT_EQ(argsEmpty.ipcPrefix, QString(""));
     TEST_ASSERT_EQ(argsEmpty.portOffset, -1);
-    TEST_ASSERT_EQ(argsEmpty.routeLines, QStringList());
-    TEST_ASSERT_EQ(argsEmpty.quietCheck, false);
     
     Settings settingsEmpty(argsEmpty.configFile);
     if (!argsEmpty.ipcPrefix.isEmpty()) settingsEmpty.setIpcPrefix(argsEmpty.ipcPrefix);

@@ -15,13 +15,13 @@
  */
 
 use clap::Parser;
-use pushpin::core::handlercliargs::ffi::CliArgsFfi;
+use pushpin::core::handlercliargs::ffi::HandlerCliArgsFfi;
 use pushpin::core::handlercliargs::CliArgs;
 use pushpin::import_cpp;
 use std::process::ExitCode;
 
 import_cpp! {
-    fn handler_main(args: *const CliArgsFfi) -> libc::c_int;
+    fn handler_main(args: *const HandlerCliArgsFfi) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
