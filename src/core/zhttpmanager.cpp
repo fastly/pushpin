@@ -3177,38 +3177,33 @@ void initCacheClient(int workerNo)
 		for	(int i=0; i<gWsBackendUrlList.count(); i++)
 		{
 			log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[i]));
-			// create processes for cache client
-			WscatWorker * wscatWorker = create_process_for_cacheclient(gWsBackendUrlList[i], i);
-			if (wscatWorker != NULL)
-			{
-				ClientItem cacheClient;
-				cacheClient.initFlag = false;
-				cacheClient.wscatWorker = wscatWorker;
-				cacheClient.urlPath = gWsBackendUrlList[i];
-				cacheClient.lastResponseSeq = -1;
-				cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 
-				gWsCacheClientList.append(cacheClient);
-			}
+			// add cache client
+			ClientItem cacheClient;
+			cacheClient.initFlag = false;
+			cacheClient.urlPath = gWsBackendUrlList[i];
+			cacheClient.lastResponseSeq = -1;
+			cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
+			gWsCacheClientList.append(cacheClient);
+
+			// create processes for cache client
+			create_process_for_cacheclient(i);
 		}
 	}
 	else
 	{
 		log_debug("_[TIMER] init cache client backend=%s", qPrintable(gWsBackendUrlList[workerNo]));
 
-		// create processes for cache client
-		WscatWorker * wscatWorker = create_process_for_cacheclient(gWsBackendUrlList[workerNo], workerNo);
-		if (wscatWorker != NULL)
-		{
-			ClientItem cacheClient;
-			cacheClient.initFlag = false;
-			cacheClient.wscatWorker = wscatWorker;
-			cacheClient.urlPath = gWsBackendUrlList[0];
-			cacheClient.lastResponseSeq = -1;
-			cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
+		// add cache client
+		ClientItem cacheClient;
+		cacheClient.initFlag = false;
+		cacheClient.urlPath = gWsBackendUrlList[workerNo];
+		cacheClient.lastResponseSeq = -1;
+		cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
+		gWsCacheClientList.append(cacheClient);
 
-			gWsCacheClientList.append(cacheClient);
-		}
+		// create processes for cache client
+		create_process_for_cacheclient(workerNo);
 
 		workerNo++;
 		if (workerNo < gWsBackendUrlList.count())
