@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,11 +24,11 @@
 #include "zwebsocket.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -36,10 +36,8 @@
 #define SESSION_EXPIRE 60000
 #define KEEPALIVE_INTERVAL 45000
 
-class ZWebSocket::Private : public QObject
+class ZWebSocket::Private
 {
-	Q_OBJECT
-
 public:
 	enum InternalState
 	{
@@ -84,8 +82,8 @@ public:
 	bool readableChanged;
 	bool writableChanged;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	std::unique_ptr<Timer> expireTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
@@ -93,11 +91,10 @@ public:
 	int inContentType;
 	int outContentType;
 	bool multi;
-	Connection expireTimerConnection;
-	Connection keepAliveTimerConnection;
+	bool routerResp;
+	DeferCall deferCall;
 
 	Private(ZWebSocket *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -118,20 +115,19 @@ public:
 		pendingUpdate(false),
 		readableChanged(false),
 		writableChanged(false),
-		expireTimer(0),
-		keepAliveTimer(0),
 		inSize(0),
 		outSize(0),
 		inContentType(-1),
 		outContentType((int)Frame::Text),
-		multi(false)
+		multi(false),
+		routerResp(false)
 	{
-		expireTimer = new RTimer;
-		expireTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+		expireTimer = std::make_unique<Timer>();
+		expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
-		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
+		keepAliveTimer = std::make_unique<Timer>();
+		keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
 	~Private()
@@ -147,21 +143,8 @@ public:
 		readableChanged = false;
 		writableChanged = false;
 
-		if(expireTimer)
-		{
-			expireTimerConnection.disconnect();
-			expireTimer->setParent(0);
-			expireTimer->deleteLater();
-			expireTimer = 0;
-		}
-
-		if(keepAliveTimer)
-		{
-			keepAliveTimerConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
-		}
+		expireTimer.reset();
+		keepAliveTimer.reset();
 
 		if(manager)
 		{
@@ -202,6 +185,9 @@ public:
 
 		if(packet.multi)
 			multi = true;
+
+		if(packet.routerResp)
+			routerResp = true;
 
 		return true;
 	}
@@ -265,7 +251,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doUpdate(); });
 		}
 	}
 
@@ -297,7 +283,7 @@ public:
 
 		state = Idle;
 		cleanup();
-		QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+		deferCall.defer([=] { doClosed(); });
 	}
 
 	Frame readFrame()
@@ -337,7 +323,7 @@ public:
 				// if peer was already closed, then we're done!
 				state = Idle;
 				cleanup();
-				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+				deferCall.defer([=] { doClosed(); });
 			}
 			else
 			{
@@ -349,7 +335,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == Connected || state == ConnectedPeerClosed)
 		{
@@ -415,7 +401,7 @@ public:
 			if(written > 0 || contentBytesWritten > 0)
 			{
 				q->framesWritten(written, contentBytesWritten);
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -781,7 +767,7 @@ public:
 		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 
-		manager->writeWs(out, rid.first);
+		manager->writeWs(out, rid.first, routerResp);
 	}
 
 	void writeFrameInternal(const Frame &frame, int credits = -1)
@@ -976,7 +962,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doClosed()
 	{
 		q->closed();
@@ -999,10 +984,10 @@ public slots:
 				}
 				else
 				{
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					state = ConnectedPeerClosed;
 					q->peerClosed();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1012,9 +997,9 @@ public slots:
 				{
 					readableChanged = false;
 
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					q->readyRead();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1037,6 +1022,7 @@ public slots:
 			p.type = ZhttpRequestPacket::Data;
 			p.uri = requestUri;
 			p.headers = requestHeaders;
+			p.routerResp = true;
 			p.connectHost = connectHost;
 			p.connectPort = connectPort;
 			if(ignorePolicies)
@@ -1051,9 +1037,9 @@ public slots:
 		}
 		else if(state == Connected || state == ConnectedPeerClosed)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1065,7 +1051,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Idle;
@@ -1091,16 +1076,12 @@ public:
 	}
 };
 
-ZWebSocket::ZWebSocket(QObject *parent) :
-	WebSocket(parent)
+ZWebSocket::ZWebSocket()
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZWebSocket::~ZWebSocket()
-{
-	delete d;
-}
+ZWebSocket::~ZWebSocket() = default;
 
 ZWebSocket::Rid ZWebSocket::rid() const
 {
@@ -1300,6 +1281,11 @@ QByteArray ZWebSocket::toAddress() const
 	return d->toAddress;
 }
 
+bool ZWebSocket::routerResp() const
+{
+	return d->routerResp;
+}
+
 int ZWebSocket::outSeqInc()
 {
 	return d->outSeq++;
@@ -1318,5 +1304,3 @@ void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpResponsePacket
 
 	d->handle(id, seq, packet);
 }
-
-#include "zwebsocket.moc"

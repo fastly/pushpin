@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,8 +29,16 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
+#include "timer.h"
+#include "defercall.h"
+#include "eventloop.h"
 #include "processquit.h"
 #include "log.h"
+#include "simplehttpserver.h"
+#include "httpsession.h"
+#include "wssession.h"
+#include "httpsessionupdatemanager.h"
 #include "settings.h"
 #include "handlerengine.h"
 #include "config.h"
@@ -169,27 +177,10 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class HandlerApp::Private : public QObject
+class HandlerApp::Private
 {
-	Q_OBJECT
-
 public:
-	HandlerApp *q;
-	ArgsData args;
-	HandlerEngine *engine;
-	Connection quitConnection;
-	Connection hupConnection;
-
-	Private(HandlerApp *_q) :
-		QObject(_q),
-		q(_q),
-		engine(0)
-	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
-	}
-
-	void start()
+	static int run()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -197,6 +188,7 @@ public:
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Pushpin handler component.");
 
+		ArgsData args;
 		QString errorMessage;
 		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
@@ -204,13 +196,11 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				q->quit(1);
-				return;
+				return 1;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				q->quit(0);
-				return;
+				return 0;
 			case CommandLineHelpRequested:
 				parser.showHelp();
 				Q_UNREACHABLE();
@@ -226,8 +216,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				q->quit(1);
-				return;
+				return 1;
 			}
 		}
 
@@ -243,8 +232,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				q->quit(0);
-				return;
+				return 1;
 			}
 		}
 
@@ -316,8 +304,8 @@ public:
 		bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
 		QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
 		int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
-		int push_in_http_max_headers_size = settings.value("handler/push_in_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE).toInt();
-		int push_in_http_max_body_size = settings.value("handler/push_in_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
+		int push_in_http_max_headers_size = settings.value("handler/push_in_http_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE).toInt();
+		int push_in_http_max_body_size = settings.value("handler/push_in_http_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
 		bool ok;
 		int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		bool shareAll = settings.value("handler/share_all").toBool();
@@ -326,6 +314,7 @@ public:
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
 		int messageWait = settings.value("handler/message_wait", 5000).toInt();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
+		bool updateOnFirstSubscription = settings.value("handler/update_on_first_subscription", true).toBool();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
 		int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
@@ -340,15 +329,13 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_specs.isEmpty())
 		{
 			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		HandlerEngine::Configuration config;
@@ -391,6 +378,7 @@ public:
 		config.messageBlockSize = messageBlockSize;
 		config.messageWait = messageWait;
 		config.idCacheTtl = idCacheTtl;
+		config.updateOnFirstSubscription = updateOnFirstSubscription;
 		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;
 		config.subscriptionLinger = subscriptionLinger;
@@ -402,53 +390,111 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		engine = new HandlerEngine(this);
-		if(!engine->start(config))
-		{
-			q->quit(0);
-			return;
-		}
-
-		log_info("started");
+		return runLoop(config, true);
 	}
 
 private:
-	void reload()
+	static int runLoop(const HandlerEngine::Configuration &config, bool newEventLoop)
 	{
-		log_info("reloading");
-		log_rotate();
-		engine->reload();
-	}
+		// includes worst-case subscriptions and update registrations
+		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
+			(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
+			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
-	void doQuit()
-	{
-		log_info("stopping...");
+		// enough timers for sessions, plus an extra 100 for misc
+		int timersMax = (config.connectionsMax * timersPerSession) + 100;
+
+		std::unique_ptr<EventLoop> loop;
+
+		if(newEventLoop)
+		{
+			log_debug("using new event loop");
+
+			// enough for control requests and prometheus requests, plus an
+			// extra 100 for misc. client sessions don't use socket notifiers
+			int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
+
+		std::unique_ptr<HandlerEngine> engine;
+
+		DeferCall deferCall;
+		deferCall.defer([&] {
+			engine = std::make_unique<HandlerEngine>();
+
+			ProcessQuit::instance()->quit.connect([&] {
+				log_info("stopping...");
 		
-		// remove the handler, so if we get another signal then we crash out
-		ProcessQuit::cleanup();
+				// remove the handler, so if we get another signal then we crash out
+				ProcessQuit::cleanup();
 
-		delete engine;
-		engine = 0;
+				engine.reset();
 
-		log_debug("stopped");
-		q->quit(0);
+				log_debug("stopped");
+
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					QCoreApplication::exit(0);
+			});
+
+			ProcessQuit::instance()->hup.connect([&] {
+				log_info("reloading");
+				log_rotate();
+				engine->reload();
+			});
+
+			if(!engine->start(config))
+			{
+				engine.reset();
+
+				if(newEventLoop)
+					loop->exit(1);
+				else
+					QCoreApplication::exit(1);
+
+				return;
+			}
+
+			log_info("started");
+		});
+
+		int ret;
+		if(newEventLoop)
+			ret = loop->exec();
+		else
+			ret = QCoreApplication::exec();
+
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
+
+		// deinit here, after all event loop activity has completed
+
+		if(!newEventLoop)
+		{
+			DeferCall::cleanup();
+			Timer::deinit();
+		}
+
+		return ret;
 	}
 };
 
-HandlerApp::HandlerApp(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
-}
+HandlerApp::HandlerApp() = default;
 
-HandlerApp::~HandlerApp()
-{
-	delete d;
-}
+HandlerApp::~HandlerApp() = default;
 
-void HandlerApp::start()
+int HandlerApp::run()
 {
-	d->start();
+	return Private::run();
 }
-
-#include "handlerapp.moc"

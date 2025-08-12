@@ -27,13 +27,11 @@
 
 class TestHttpRequest : public HttpRequest
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
-	TestHttpRequest(QObject *parent = 0);
+	TestHttpRequest();
 	~TestHttpRequest();
 
 	// reimplemented
@@ -45,6 +43,7 @@ public:
 	virtual void setIgnorePolicies(bool on);
 	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
+	virtual void setTimeout(int msecs);
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);

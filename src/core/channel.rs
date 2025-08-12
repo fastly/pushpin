@@ -607,8 +607,12 @@ impl<T> AsyncLocalSender<T> {
         }
     }
 
+    // after polling/awaiting the returned future, you must call try_send()
+    // or cancel(), or drop the sender, in order to ensure proper
+    // coordination when there are multiple senders. prefer using
+    // wait_sendable() which guards against misuse.
     // it's okay to run multiple instances of this future within the same
-    // task. see the comment on the CheckSendFuture struct
+    // task. see the comment on the CheckSendFuture struct.
     pub fn check_send(&self) -> CheckSendFuture<'_, T> {
         CheckSendFuture { s: self }
     }
@@ -619,6 +623,21 @@ impl<T> AsyncLocalSender<T> {
 
     pub fn cancel(&self) {
         self.inner.cancel();
+    }
+
+    // waits for sendability in order to perform a non-blocking send
+    // afterward. basically a less error-prone version check_send() +
+    // try_send(). the returned future calls cancel() if dropped before
+    // completion. the output of the future is a SendOnce, which offers a
+    // method for sending one value. SendOnce calls cancel() if dropped
+    // without sending anything.
+    // it's okay to run multiple instances of this future within the same
+    // task. see the comment on the WaitSendableFuture struct.
+    pub fn wait_sendable(&self) -> WaitSendableFuture<'_, T> {
+        WaitSendableFuture {
+            evented: &self.evented,
+            sender: Some(&self.inner),
+        }
     }
 }
 
@@ -655,6 +674,26 @@ impl<T> AsyncLocalReceiver<T> {
 
     pub fn recv(&self) -> LocalRecvFuture<'_, T> {
         LocalRecvFuture { r: self }
+    }
+}
+
+// allows one send attempt by calling try_send() which consumes self.
+// if struct is dropped instead, the send interest is canceled.
+pub struct SendOnce<'a, T> {
+    sender: Option<&'a LocalSender<T>>,
+}
+
+impl<T> SendOnce<'_, T> {
+    pub fn try_send(mut self, t: T) -> Result<(), mpsc::TrySendError<T>> {
+        self.sender.take().unwrap().try_send(t)
+    }
+}
+
+impl<T> Drop for SendOnce<'_, T> {
+    fn drop(&mut self) {
+        if let Some(sender) = &self.sender {
+            sender.cancel();
+        }
     }
 }
 
@@ -877,6 +916,49 @@ impl<T> Drop for CheckSendFuture<'_, T> {
     }
 }
 
+// it's okay to maintain multiple instances of this future at the same time
+// within the same task, because the logic is same as CheckSendFuture
+pub struct WaitSendableFuture<'a, T> {
+    evented: &'a CustomEvented,
+    sender: Option<&'a LocalSender<T>>,
+}
+
+impl<'a, T> Future for WaitSendableFuture<'a, T>
+where
+    T: Unpin,
+{
+    type Output = SendOnce<'a, T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f.sender.unwrap().check_send() {
+            f.evented.registration().set_ready(false);
+
+            return Poll::Pending;
+        }
+
+        let sender = f.sender.take();
+        assert!(sender.is_some());
+
+        Poll::Ready(SendOnce { sender })
+    }
+}
+
+impl<T> Drop for WaitSendableFuture<'_, T> {
+    fn drop(&mut self) {
+        if let Some(sender) = &self.sender {
+            sender.cancel();
+        }
+
+        self.evented.registration().clear_waker();
+    }
+}
+
 pub struct LocalRecvFuture<'a, T> {
     r: &'a AsyncLocalReceiver<T>,
 }
@@ -927,7 +1009,7 @@ mod tests {
     use std::time;
 
     #[test]
-    fn test_send_recv_bound0() {
+    fn send_recv_bound0() {
         let (sender, receiver) = channel(0);
 
         assert_eq!(sender.can_send(), false);
@@ -964,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    fn test_send_recv_bound1() {
+    fn send_recv_bound1() {
         let (sender, receiver) = channel(1);
 
         let result = receiver.try_recv();
@@ -996,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn test_notify_bound0() {
+    fn notify_bound0() {
         let (sender, receiver) = channel(0);
 
         let mut poller = event::Poller::new(2).unwrap();
@@ -1069,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn test_notify_bound1() {
+    fn notify_bound1() {
         let (sender, receiver) = channel(1);
 
         let mut poller = event::Poller::new(2).unwrap();
@@ -1130,7 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_local_send_recv() {
+    fn local_send_recv() {
         let poller = event::Poller::new(6).unwrap();
 
         let (sender1, receiver) = local_channel(1, 2, poller.local_registration_memory());
@@ -1185,7 +1267,7 @@ mod tests {
     }
 
     #[test]
-    fn test_local_send_disc() {
+    fn local_send_disc() {
         let poller = event::Poller::new(4).unwrap();
 
         let (sender, receiver) = local_channel(1, 1, poller.local_registration_memory());
@@ -1196,7 +1278,7 @@ mod tests {
     }
 
     #[test]
-    fn test_local_cancel() {
+    fn local_cancel() {
         let poller = event::Poller::new(6).unwrap();
 
         let (sender1, receiver) = local_channel(1, 2, poller.local_registration_memory());
@@ -1252,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_local_check_send() {
+    fn local_check_send() {
         let poller = event::Poller::new(4).unwrap();
 
         let (sender, receiver) = local_channel(1, 1, poller.local_registration_memory());
@@ -1300,7 +1382,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_send_bound0() {
+    fn async_send_bound0() {
         let reactor = Reactor::new(2);
         let executor = Executor::new(2);
 
@@ -1332,7 +1414,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_send_bound1() {
+    fn async_send_bound1() {
         let reactor = Reactor::new(2);
         let executor = Executor::new(1);
 
@@ -1364,7 +1446,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_recv() {
+    fn async_recv() {
         let reactor = Reactor::new(2);
         let executor = Executor::new(2);
 
@@ -1394,7 +1476,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_writable() {
+    fn async_writable() {
         let reactor = Reactor::new(1);
         let executor = Executor::new(1);
 
@@ -1422,7 +1504,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_local_channel() {
+    fn async_local_channel() {
         let reactor = Reactor::new(2);
         let executor = Executor::new(2);
 
@@ -1452,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_check_send_sequential() {
+    fn async_check_send_sequential() {
         // create two instances and await them sequentially
 
         let reactor = Reactor::new(2);
@@ -1510,7 +1592,7 @@ mod tests {
     }
 
     #[test]
-    fn test_async_check_send_alternating() {
+    fn async_check_send_alternating() {
         // create one instance, poll it to pending, then create a second
         // instance and poll it to completion, then poll the first again
 
@@ -1572,7 +1654,122 @@ mod tests {
     }
 
     #[test]
-    fn test_budget_unlimited() {
+    fn async_wait_sendable_sequential() {
+        // create two instances and await them sequentially
+
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let state = Rc::new(Cell::new(0));
+
+        {
+            let state = state.clone();
+
+            executor
+                .spawn(async move {
+                    let s = AsyncLocalSender::new(s);
+
+                    // fill the queue
+                    s.send(1).await.unwrap();
+                    state.set(1);
+
+                    // create two instances and await them sequentially
+
+                    let fut1 = s.wait_sendable();
+                    let fut2 = s.wait_sendable();
+
+                    fut1.await.try_send(2).unwrap();
+                    state.set(2);
+
+                    fut2.await;
+                    state.set(3);
+                })
+                .unwrap();
+        }
+
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 1);
+
+        assert_eq!(r.try_recv(), Ok(1));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 2);
+
+        assert_eq!(r.try_recv(), Ok(2));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 3);
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn async_wait_sendable_alternating() {
+        // create one instance, poll it to pending, then create a second
+        // instance and poll it to completion, then poll the first again
+
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let state = Rc::new(Cell::new(0));
+
+        {
+            let state = state.clone();
+
+            executor
+                .spawn(async move {
+                    let s = AsyncLocalSender::new(s);
+
+                    // fill the queue
+                    s.send(1).await.unwrap();
+
+                    // create one instance
+                    let mut fut1 = s.wait_sendable();
+
+                    // poll it to pending
+                    assert!(poll_async(&mut fut1).await.is_pending());
+                    state.set(1);
+
+                    // create a second instance and poll it to completion
+                    s.wait_sendable().await.try_send(2).unwrap();
+                    state.set(2);
+
+                    // poll the first again
+                    fut1.await;
+
+                    state.set(3);
+                })
+                .unwrap();
+        }
+
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 1);
+
+        assert_eq!(r.try_recv(), Ok(1));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 2);
+
+        assert_eq!(r.try_recv(), Ok(2));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 3);
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn budget_unlimited() {
         let reactor = Reactor::new(1);
         let executor = Executor::new(1);
 
@@ -1608,7 +1805,7 @@ mod tests {
     }
 
     #[test]
-    fn test_budget_1() {
+    fn budget_1() {
         let reactor = Reactor::new(1);
         let executor = Executor::new(1);
 

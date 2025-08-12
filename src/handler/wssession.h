@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,29 +24,40 @@
 #ifndef WSSESSION_H
 #define WSSESSION_H
 
-#include <QObject>
 #include <QHash>
 #include <QSet>
-#include "packet/httprequestdata.h"
 #include <boost/signals2.hpp>
+#include "packet/httprequestdata.h"
+#include "packet/wscontrolpacket.h"
+#include "ratelimiter.h"
+#include "filter.h"
+#include "clientsession.h"
+
+// each session can have a bunch of timers:
+// 3 misc timers
+// filter timers
+#define TIMERS_PER_WSSESSION (3 + TIMERS_PER_MESSAGEFILTERSTACK)
 
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-class QTimer;
+class Timer;
+class ZhttpManager;
+class PublishItem;
 
-class WsSession : public QObject
+class WsSession : public ClientSession
 {
-	Q_OBJECT
-
 public:
 	QByteArray peer;
 	QString cid;
 	int nextReqId;
+	bool debug;
 	QString channelPrefix;
+	int logLevel;
 	HttpRequestData requestData;
 	QString route;
 	QString statsRoute;
+	bool targetTrusted;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
@@ -58,26 +69,36 @@ public:
 	QByteArray delayedType;
 	QByteArray delayedMessage;
 	QHash<int, qint64> pendingRequests;
-	QTimer *expireTimer;
-	QTimer *delayedTimer;
-	QTimer *requestTimer;
+	std::unique_ptr<Timer> expireTimer;
+	std::unique_ptr<Timer> delayedTimer;
+	std::unique_ptr<Timer> requestTimer;
+	QList<PublishItem> publishQueue;
+	ZhttpManager *zhttpOut;
+	std::shared_ptr<RateLimiter> filterLimiter;
+	std::unique_ptr<Filter::MessageFilter> filters;
+	Connection filtersFinishedConnection;
+	bool inProcessPublishQueue;
+	bool closed;
 
-	WsSession(QObject *parent = 0);
+	WsSession();
 	~WsSession();
 
 	void refreshExpiration();
 	void flushDelayed();
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
+	void publish(const PublishItem &item);
+	void sendCloseError(const QString &message);
 
-	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
 	Signal expired;
 	Signal error;
 
 private:
+	void processPublishQueue();
+	void filtersFinished(const Filter::MessageFilter::Result &result);
+	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
 	void setupRequestTimer();
-
-private slots:
 	void expireTimer_timeout();
 	void delayedTimer_timeout();
 	void requestTimer_timeout();

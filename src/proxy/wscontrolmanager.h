@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,15 +25,12 @@
 #define WSCONTROLMANAGER_H
 
 #include <memory>
-#include <QObject>
 #include "packet/wscontrolpacket.h"
 
 class WsControlSession;
 
-class WsControlManager : public QObject
+class WsControlManager
 {
-	Q_OBJECT
-
 public:
 	WsControlManager();
 	~WsControlManager();
@@ -48,7 +45,7 @@ public:
 
 private:
 	class Private;
-	std::unique_ptr<Private> d;
+	std::shared_ptr<Private> d;
 
 	friend class WsControlSession;
 	void link(WsControlSession *s, const QByteArray &cid);

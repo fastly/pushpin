@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,8 +31,6 @@
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
 	req_(req)
 {
-	req_->setParent(this);
-
 	QVariantHash args = req_->args();
 
 	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
@@ -63,8 +61,8 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 	if(!missing_.isEmpty())
 	{
 		// ask the proxy about any cids we don't know about
-		Deferred *d = ControlRequest::connCheck(proxyControlClient, missing_, this);
-		finishedConnection_ = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
+		connCheck_ = std::unique_ptr<Deferred>(ControlRequest::connCheck(proxyControlClient, missing_));
+		finishedConnection_ = connCheck_->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
 		return;
 	}
 

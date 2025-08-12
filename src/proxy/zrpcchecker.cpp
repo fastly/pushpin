@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,17 +25,15 @@
 
 #include <assert.h>
 #include <QHash>
-#include "rtimer.h"
+#include "timer.h"
 #include "zrpcrequest.h"
 
 #define CHECK_TIMEOUT 8
 
 using std::map;
 
-class ZrpcChecker::Private : public QObject
+class ZrpcChecker::Private
 {
-	Q_OBJECT
-
 public:
 	class Item
 	{
@@ -62,17 +61,16 @@ public:
 
 	ZrpcChecker *q;
 	bool avail;
-	std::unique_ptr<RTimer> timer;
+	std::unique_ptr<Timer> timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
 	map<ZrpcRequest*, ZrpcReqConnections> reqConnectionMap;
 	Connection timerConnection;
 
 	Private(ZrpcChecker *_q) :
-		QObject(_q),
 		q(_q),
 		avail(true)
 	{
-		timer = std::make_unique<RTimer>();
+		timer = std::make_unique<Timer>();
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 		timer->setSingleShot(true);
 	}
@@ -134,7 +132,6 @@ public:
 		if(i)
 		{
 			// take over ownership
-			req->setParent(this);
 			i->owned = true;
 		}
 		else
@@ -212,15 +209,13 @@ public:
 		delete i;
 	}
 
-public slots:
 	void timer_timeout()
 	{
 		avail = false;
 	}
 };
 
-ZrpcChecker::ZrpcChecker(QObject *parent) :
-	QObject(parent)
+ZrpcChecker::ZrpcChecker()
 {
 	d = new Private(this);
 }
@@ -249,5 +244,3 @@ void ZrpcChecker::give(ZrpcRequest *req)
 {
 	d->give(req);
 }
-
-#include "zrpcchecker.moc"

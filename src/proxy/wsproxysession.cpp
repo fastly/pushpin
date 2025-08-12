@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,7 +32,8 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
@@ -218,10 +219,8 @@ static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QBy
 	return e;
 }
 
-class WsProxySession::Private : public QObject
+class WsProxySession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -288,8 +287,8 @@ public:
 	QHostAddress logicalClientAddress;
 	QByteArray sigIss;
 	Jwt::EncodingKey sigKey;
-	WebSocket *inSock;
-	WebSocket *outSock;
+	std::unique_ptr<WebSocket> inSock;
+	std::unique_ptr<WebSocket> outSock;
 	QList<bool> inPendingFrames; // true means we should ack a send event
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
@@ -302,7 +301,7 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	RTimer *keepAliveTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
@@ -315,7 +314,6 @@ public:
 	InWSConnections inWSConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		zroutes(_zroutes),
@@ -331,12 +329,9 @@ public:
 		useXForwardedProtocol(false),
 		acceptPushpinRoute(false),
 		trustedClient(false),
-		inSock(0),
-		outSock(0),
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
-		keepAliveTimer(0),
 		keepAliveMode(WsControl::NoKeepAlive),
 		keepAliveTimeout(0),
 		logConfig(_logConfig)
@@ -355,8 +350,7 @@ public:
 		cleanupInSock();
 		
 		outWSConnection = WSConnections();
-		delete outSock;
-		outSock = 0;
+		outSock.reset();
 
 		wsProxyConnectionMap.erase(wsControl);
 		delete wsControl;
@@ -373,22 +367,15 @@ public:
 	{
 		if(inSock)
 		{
-			connectionManager->removeConnection(inSock);
+			connectionManager->removeConnection(inSock.get());
 			inWSConnection = InWSConnections();
-			delete inSock;
-			inSock = 0;
+			inSock.reset();
 		}
 	}
 
 	void cleanupKeepAliveTimer()
 	{
-		if(keepAliveTimer)
-		{
-			keepAliveConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
-		}
+		keepAliveTimer.reset();
 	}
 
 	void start(WebSocket *sock, const QByteArray &_publicCid, const DomainMap::Entry &entry)
@@ -402,8 +389,7 @@ public:
 		if(statsManager)
 			activityTime = QDateTime::currentDateTimeUtc();
 
-		inSock = sock;
-		inSock->setParent(this);
+		inSock = std::unique_ptr<WebSocket>(sock);
 		inWSConnection = InWSConnections{
 			inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
 			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
@@ -542,7 +528,7 @@ public:
 					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
 			}
 
-			outSock = new TestWebSocket(this);
+			outSock = std::make_unique<TestWebSocket>();
 		}
 		else
 		{
@@ -561,15 +547,15 @@ public:
 
 			if(target.overHttp)
 			{
-				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+				std::unique_ptr<WebSocketOverHttp> woh = std::make_unique<WebSocketOverHttp>(zhttpManager);
 
 				woh->setConnectionId(publicCid);
 
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
-				outSock = woh;
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh.get()));
+				outSock = std::move(woh);
 			}
 			else
 			{
@@ -580,8 +566,7 @@ public:
 					return;
 				}
 
-				outSock = zhttpManager->createSocket();
-				outSock->setParent(this);
+				outSock = std::unique_ptr<WebSocket>(zhttpManager->createSocket());
 			}
 		}
 		outWSConnection = {
@@ -825,7 +810,6 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -863,8 +847,7 @@ private slots:
 				if(outSock->state() == WebSocket::Connecting)
 				{
 					outWSConnection = WSConnections();
-					delete outSock;
-					outSock = 0;
+					outSock.reset();
 
 					inSock->close();
 				}
@@ -895,8 +878,7 @@ private slots:
 		if(!detached)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 		}
 
 		tryFinish();
@@ -949,7 +931,7 @@ private slots:
 					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
 					wsControl->error.connect(boost::bind(&Private::wsControl_error, this))
 				};
-				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
+				wsControl->start(route.debug, route.id, route.separateStats, channelPrefix, route.logLevel, inSock->requestUri(), target.trusted);
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{
@@ -992,8 +974,7 @@ private slots:
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
 		outWSConnection = WSConnections();
-		delete outSock;
-		outSock = 0;
+		outSock.reset();
 
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close(code, reason);
@@ -1009,8 +990,7 @@ private slots:
 		if(detached)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			tryFinish();
 			return;
@@ -1036,8 +1016,7 @@ private slots:
 			}
 
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			if(tryAgain)
 				tryNextTarget();
@@ -1047,8 +1026,7 @@ private slots:
 			cleanupInSock();
 
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 
 			tryFinish();
 		}
@@ -1109,8 +1087,11 @@ private:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new RTimer;
-				keepAliveConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+				keepAliveTimer = std::make_unique<Timer>();
+
+				// safe to not track, since timer doesn't outlive this
+				keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+
 				keepAliveTimer->setSingleShot(true);
 			}
 
@@ -1124,7 +1105,7 @@ private:
 
 	void wsControl_refreshEventReceived()
 	{
-		WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(outSock);
+		WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(outSock.get());
 		if(woh)
 			woh->refresh();
 	}
@@ -1155,8 +1136,7 @@ private:
 		if(outSock)
 		{
 			outWSConnection = WSConnections();
-			delete outSock;
-			outSock = 0;
+			outSock.reset();
 		}
 
 		cleanupInSock();
@@ -1179,8 +1159,7 @@ private:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
-	QObject(parent)
+WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager)
 {
 	d = new Private(this, zroutes, connectionManager, logConfig, statsManager, wsControlManager);
 }
@@ -1207,12 +1186,12 @@ QByteArray WsProxySession::cid() const
 
 WebSocket *WsProxySession::inSocket() const
 {
-	return d->inSock;
+	return d->inSock.get();
 }
 
 WebSocket *WsProxySession::outSocket() const
 {
-	return d->outSock;
+	return d->outSock.get();
 }
 
 void WsProxySession::setDebugEnabled(bool enabled)
@@ -1272,5 +1251,3 @@ Callback<std::tuple<WsProxySession *>> & WsProxySession::finishedByPassthroughCa
 {
 	return d->finishedByPassthroughCallback;
 }
-
-#include "wsproxysession.moc"

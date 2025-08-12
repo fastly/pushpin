@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -206,6 +206,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.reason.isEmpty())
 			vitem["reason"] = item.reason;
 
+		if(item.debug)
+			vitem["debug"] = true;
+
 		if(!item.route.isEmpty())
 			vitem["route"] = item.route;
 
@@ -214,6 +217,12 @@ QVariant WsControlPacket::toVariant() const
 
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
+
+		if(item.logLevel >= 0)
+			vitem["log-level"] = item.logLevel;
+
+		if(item.trusted)
+			vitem["trusted"] = true;
 
 		if(!item.channel.isEmpty())
 			vitem["channel"] = item.channel;
@@ -356,6 +365,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.reason = vitem["reason"].toByteArray();
 		}
 
+		if(vitem.contains("debug"))
+		{
+			if(typeId(vitem["debug"]) != QMetaType::Bool)
+				return false;
+
+			item.debug = vitem["debug"].toBool();
+		}
+
 		if(vitem.contains("route"))
 		{
 			if(typeId(vitem["route"]) != QMetaType::QByteArray)
@@ -382,6 +399,22 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
 			if(!channelPrefix.isEmpty())
 				item.channelPrefix = channelPrefix;
+		}
+
+		if(vitem.contains("log-level"))
+		{
+			if(!canConvert(vitem["log-level"], QMetaType::Int))
+				return false;
+
+			item.logLevel = vitem["log-level"].toInt();
+		}
+
+		if(vitem.contains("trusted"))
+		{
+			if(typeId(vitem["trusted"]) != QMetaType::Bool)
+				return false;
+
+			item.trusted = vitem["trusted"].toBool();
 		}
 
 		if(vitem.contains("channel"))

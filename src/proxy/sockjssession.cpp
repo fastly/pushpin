@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,7 +24,6 @@
 #include "sockjssession.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -33,7 +32,8 @@
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjsmanager.h"
@@ -44,10 +44,8 @@ using std::map;
 #define KEEPALIVE_TIMEOUT 25
 #define UNCONNECTED_TIMEOUT 5
 
-class SockJsSession::Private : public QObject
+class SockJsSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum Mode
 	{
@@ -155,7 +153,7 @@ public:
 	int pendingWrittenBytes;
 	QList<WriteItem> pendingWrites;
 	QHash<ZhttpRequest*, RequestItem*> requests;
-	std::unique_ptr<RTimer> keepAliveTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
 	int closeCode;
 	QString closeReason;
 	bool closeSent;
@@ -166,9 +164,9 @@ public:
 	map<ZhttpRequest*, ReqConnections> reqConnectionMap;
 	WSConnections wsConnection;
 	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(SockJsSession *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		mode((Mode)-1),
@@ -187,7 +185,7 @@ public:
 		peerCloseCode(-1),
 		updating(false)
 	{
-		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimer = std::make_unique<Timer>();
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 	}
 
@@ -589,7 +587,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+				deferCall.defer([=] { doClosed(); });
 			}
 			else
 				tryWrite();
@@ -650,9 +648,9 @@ public:
 
 		if(bytes > 0)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			q->writeBytesChanged();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -678,7 +676,7 @@ public:
 
 	bool tryRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(mode == Http)
 		{
@@ -722,7 +720,7 @@ public:
 			if(emitReadyRead)
 			{
 				q->readyRead();
-				if(!self)
+				if(self.expired())
 					return false;
 			}
 		}
@@ -837,7 +835,7 @@ public:
 			if(emitReadyRead)
 			{
 				q->readyRead();
-				if(!self)
+				if(self.expired())
 					return false;
 			}
 		}
@@ -850,7 +848,7 @@ public:
 		if(!updating)
 		{
 			updating = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doUpdate(); });
 		}
 	}
 
@@ -1044,7 +1042,6 @@ public:
 		q->error();
 	}
 
-private slots:
 	void doUpdate()
 	{
 		updating = false;
@@ -1112,16 +1109,12 @@ private slots:
 	}
 };
 
-SockJsSession::SockJsSession(QObject *parent) :
-	WebSocket(parent)
+SockJsSession::SockJsSession()
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-SockJsSession::~SockJsSession()
-{
-	delete d;
-}
+SockJsSession::~SockJsSession() = default;
 
 QByteArray SockJsSession::sid() const
 {
@@ -1360,5 +1353,3 @@ void SockJsSession::handleRequest(ZhttpRequest *req, const QByteArray &jsonpCall
 {
 	d->handleRequest(req, jsonpCallback, lastPart, body);
 }
-
-#include "sockjssession.moc"

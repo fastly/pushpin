@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2023 Fanout, Inc.
+ * Copyright (C) 2016-2025 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,8 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QUrl>
+#include <QUrlQuery>
+#include "rust/bindings.h"
 #include "processquit.h"
 #include "log.h"
 #include "settings.h"
@@ -457,23 +459,29 @@ public:
 
 		bool allowCompression = settings.value("runner/allow_compression").toBool();
 
+		QString targetDir;
+		if(ffi::is_debug_build())
+			targetDir = QDir(exeDir).filePath("target/debug");
+		else
+			targetDir = QDir(exeDir).filePath("target/release");
+
 		QString m2aBin = "m2adapter";
-		QFileInfo fi(QDir(exeDir).filePath("bin/m2adapter"));
+		QFileInfo fi(QDir(targetDir).filePath("m2adapter"));
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
 		QString connmgrBin = "pushpin-connmgr";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-connmgr"));
+		fi = QFileInfo(QDir(targetDir).filePath("pushpin-connmgr"));
 		if(fi.isFile())
 			connmgrBin = fi.canonicalFilePath();
 
 		QString proxyBin = "pushpin-proxy";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-proxy"));
+		fi = QFileInfo(QDir(targetDir).filePath("pushpin-proxy"));
 		if(fi.isFile())
 			proxyBin = fi.canonicalFilePath();
 
 		QString handlerBin = "pushpin-handler";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-handler"));
+		fi = QFileInfo(QDir(targetDir).filePath("pushpin-handler"));
 		if(fi.isFile())
 			handlerBin = fi.canonicalFilePath();
 

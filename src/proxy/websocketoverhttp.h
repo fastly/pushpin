@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2020 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,10 +36,23 @@ class ZhttpManager;
 
 class WebSocketOverHttp : public WebSocket
 {
-	Q_OBJECT
-
 public:
-	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
+	class Event
+	{
+	public:
+		QByteArray type;
+		QByteArray content;
+
+		Event() = default;
+
+		Event(const QByteArray &_type, const QByteArray &_content = QByteArray()) :
+			type(_type),
+			content(_content)
+		{
+		}
+	};
+
+	WebSocketOverHttp(ZhttpManager *zhttpManager);
 	~WebSocketOverHttp();
 
 	void setConnectionId(const QByteArray &id);
@@ -87,16 +100,34 @@ public:
 	Signal aboutToSendRequest;
 	Signal disconnected;
 
+	// creates events from `frames`. the returned events are guaranteed to
+	// represent 0 or more full messages from `frames`, where the first
+	// represented frame is a non-continuation frame. this matches the
+	// expectations of `removeContentFromFrames()`, in order to enable
+	// removing the frames afterwards.
+	static QList<Event> framesToEvents(const QList<Frame> &frames, int eventsMax, int contentMax, bool *ok, int *framesRepresented, int *contentRepresented);
+
+	// remove `count` content bytes from the beginning of `frames`, removing
+	// frames (including 0-sized frames) when their content is entirely removed.
+	// when a frame is removed from a multipart message, the original type is
+	// carried over into the next frame, which means the first frame can't be a
+	// continuation.
+	// returns the actual number of content bytes removed, which may be less than
+	// `count` if there are not enough content bytes available, or if a frame in
+	// a multipart message needs to be removed and there is no frame after it to
+	// retain the type.
+	static int removeContentFromFrames(QList<WebSocket::Frame> *frames, int count);
+
 private:
 	class DisconnectManager;
 	friend class DisconnectManager;
 
-	WebSocketOverHttp(QObject *parent = 0);
+	WebSocketOverHttp();
 	void sendDisconnect();
 
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	static thread_local DisconnectManager *g_disconnectManager;
 	static thread_local int g_maxManagedDisconnects;

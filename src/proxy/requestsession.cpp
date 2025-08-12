@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,7 +24,6 @@
 #include "requestsession.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
 #include <QUrlQuery>
@@ -36,6 +35,7 @@
 #include "qtcompat.h"
 #include "bufferlist.h"
 #include "log.h"
+#include "defercall.h"
 #include "layertracker.h"
 #include "sockjsmanager.h"
 #include "inspectdata.h"
@@ -128,10 +128,8 @@ static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
 	return rid.first + ':' + rid.second;
 }
 
-class RequestSession::Private : public QObject
+class RequestSession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -174,7 +172,7 @@ public:
 	QString routeId;
 	bool debug;
 	bool autoCrossOrigin;
-	InspectRequest *inspectRequest;
+	std::unique_ptr<InspectRequest> inspectRequest;
 	InspectData idata;
 	std::unique_ptr<AcceptRequest> acceptRequest;
 	BufferList in;
@@ -200,9 +198,9 @@ public:
 	ZhttpReqConnections zhttpReqConnections;
 	Connection inspectFinishedConnection;
 	Connection acceptFinishedConnection;
+	DeferCall deferCall;
 
 	Private(RequestSession *_q, int _workerId, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
-		QObject(_q),
 		q(_q),
 		workerId(_workerId),
 		state(Stopped),
@@ -216,7 +214,6 @@ public:
 		trusted(false),
 		debug(false),
 		autoCrossOrigin(false),
-		inspectRequest(0),
 		jsonpExtendedResponse(false),
 		responseBodySize(0),
 		responseBodyFinished(false),
@@ -250,8 +247,7 @@ public:
 		if(inspectRequest)
 		{
 			inspectFinishedConnection.disconnect();
-			inspectChecker->give(inspectRequest);
-			inspectRequest = 0;
+			inspectChecker->give(inspectRequest.release());
 		}
 
 		if(stats && connectionRegistered)
@@ -308,7 +304,7 @@ public:
 				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
-				QMetaObject::invokeMethod(this, "doFinished", Qt::QueuedConnection);
+				deferCall.defer([=] { doFinished(); });
 				return;
 			}
 		}
@@ -460,27 +456,27 @@ public:
 
 				if(inspectManager)
 				{
-					inspectRequest = new InspectRequest(inspectManager, this);
+					inspectRequest = std::make_unique<InspectRequest>(inspectManager);
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
 						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
-						inspectChecker->watch(inspectRequest);
+						inspectChecker->watch(inspectRequest.get());
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
 					else
 					{
-						inspectChecker->watch(inspectRequest);
-						inspectChecker->give(inspectRequest);
+						inspectChecker->watch(inspectRequest.get());
+						inspectChecker->give(inspectRequest.get());
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
-						inspectRequest = 0;
+						inspectRequest.release();
 					}
 				}
 
 				if(!inspectRequest)
 				{
 					log_debug("inspect not available");
-					QMetaObject::invokeMethod(this, "doInspectError", Qt::QueuedConnection);
+					deferCall.defer([=] { doInspectError(); });
 				}
 			}
 		}
@@ -559,7 +555,7 @@ public:
 		if(!pendingResponseUpdate)
 		{
 			pendingResponseUpdate = true;
-			QMetaObject::invokeMethod(this, "doResponseUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doResponseUpdate(); });
 		}
 	}
 
@@ -811,7 +807,7 @@ public:
 
 	void zhttpRequest_bytesWritten(int count)
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(!jsonpCallback.isEmpty())
 		{
@@ -822,7 +818,7 @@ public:
 		else
 			q->bytesWritten(count);
 
-		if(!self)
+		if(self.expired())
 			return;
 
 		if(zhttpRequest->isFinished())
@@ -886,8 +882,7 @@ public:
 		if(!inspectRequest->success())
 		{
 			inspectFinishedConnection.disconnect();
-			inspectChecker->give(inspectRequest);
-			inspectRequest = 0;
+			inspectChecker->give(inspectRequest.release());
 
 			doInspectError();
 			return;
@@ -896,8 +891,7 @@ public:
 		idata = inspectRequest->result();
 
 		inspectFinishedConnection.disconnect();
-		inspectChecker->give(inspectRequest);
-		inspectRequest = 0;
+		inspectChecker->give(inspectRequest.release());
 
 		if(!idata.doProxy)
 		{
@@ -973,7 +967,6 @@ public:
 		}
 	}
 
-public slots:
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;
@@ -1187,16 +1180,12 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
-	QObject(parent)
+RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats)
 {
-	d = new Private(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
+	d = std::make_shared<Private>(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
 }
 
-RequestSession::~RequestSession()
-{
-	delete d;
-}
+RequestSession::~RequestSession() = default;
 
 bool RequestSession::isRetry() const
 {
@@ -1423,5 +1412,3 @@ int RequestSession::unregisterConnection()
 	QByteArray cid = ridToString(d->rid);
 	return d->stats->removeConnection(cid, false);
 }
-
-#include "requestsession.moc"

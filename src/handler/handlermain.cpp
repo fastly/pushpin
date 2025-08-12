@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,28 +22,7 @@
  */
 
 #include <QCoreApplication>
-#include <QTimer>
-#include "rtimer.h"
 #include "handlerapp.h"
-
-class HandlerAppMain
-{
-public:
-	HandlerApp *app;
-
-	void start()
-	{
-		app = new HandlerApp;
-		app->quit.connect(boost::bind(&HandlerAppMain::app_quit, this, boost::placeholders::_1));
-		app->start();
-	}
-
-	void app_quit(int returnCode)
-	{
-		delete app;
-		QCoreApplication::exit(returnCode);
-	}
-};
 
 extern "C" {
 
@@ -51,17 +30,8 @@ int handler_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	HandlerAppMain appMain;
-	QTimer::singleShot(0, [&appMain]() {appMain.start();});
-	int ret = qapp.exec();
-
-	// ensure deferred deletes are processed
-	QCoreApplication::instance()->sendPostedEvents();
-
-	// deinit here, after all event loop activity has completed
-	RTimer::deinit();
-
-	return ret;
+	HandlerApp app;
+	return app.run();
 }
 
 }

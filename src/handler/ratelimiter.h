@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,12 +25,11 @@
 #define RATELIMITER_H
 
 #include <memory>
-#include <QObject>
 
-class RateLimiter : public QObject
+class QString;
+
+class RateLimiter
 {
-	Q_OBJECT
-
 public:
 	class Action
 	{
@@ -51,7 +51,7 @@ public:
 
 private:
 	class Private;
-	std::unique_ptr<Private> d;
+	std::shared_ptr<Private> d;
 };
 
 #endif

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -177,7 +177,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 		requestData->headers.removeAll("Grip-Feature");
 		requestData->headers += HttpHeader("Grip-Feature",
-			"status, session, link:next, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst");
+			"status, session, link:next, link:gone, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst, filter:http-check, filter:http-modify");
 
 		if(!idata.sid.isEmpty())
 		{
@@ -281,11 +281,23 @@ void applyGripSig(const char *logprefix, void *object, HttpHeaders *headers, con
 QString targetToString(const DomainMap::Target &target)
 {
 	if(target.type == DomainMap::Target::Test)
+	{
 		return "test";
+	}
 	else if(target.type == DomainMap::Target::Custom)
+	{
 		return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+	}
 	else // Default
-		return target.connectHost + ':' + QString::number(target.connectPort);
+	{
+		QString host;
+		if(QHostAddress(target.connectHost).protocol() == QAbstractSocket::IPv6Protocol)
+			host = '[' + target.connectHost + ']';
+		else
+			host = target.connectHost;
+
+		return host + ':' + QString::number(target.connectPort);
+	}
 }
 
 QHostAddress getLogicalAddress(const HttpHeaders &headers, const XffRule &xffRule, const QHostAddress &peerAddress)

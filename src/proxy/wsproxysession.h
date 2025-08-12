@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +24,6 @@
 #ifndef WSPROXYSESSION_H
 #define WSPROXYSESSION_H
 
-#include <QObject>
 #include "callback.h"
 #include "logutil.h"
 #include "domainmap.h"
@@ -44,12 +44,10 @@ class StatsManager;
 class ConnectionManager;
 class XffRule;
 
-class WsProxySession : public QObject
+class WsProxySession
 {
-	Q_OBJECT
-
 public:
-	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
+	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, WsControlManager *wsControlManager = 0);
 	~WsProxySession();
 
 	QHostAddress logicalClientAddress() const;

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,7 +34,7 @@
 #include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjssession.h"
@@ -72,10 +72,8 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
-class SockJsManager::Private : public QObject
+class SockJsManager::Private
 {
-	Q_OBJECT
-
 public:
 	class Session
 	{
@@ -99,7 +97,7 @@ public:
 		QByteArray lastPart;
 		bool pending;
 		SockJsSession *ext;
-		std::unique_ptr<RTimer> timer;
+		std::unique_ptr<Timer> timer;
 		QVariant closeValue;
 		Connection timerConnection;
 
@@ -141,7 +139,7 @@ public:
 	QHash<ZWebSocket*, Session*> sessionsBySocket;
 	QHash<QByteArray, Session*> sessionsById;
 	QHash<SockJsSession*, Session*> sessionsByExt;
-	QHash<RTimer*, Session*> sessionsByTimer;
+	QHash<Timer*, Session*> sessionsByTimer;
 	QList<Session*> pendingSessions;
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
@@ -150,7 +148,6 @@ public:
 	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
-		QObject(_q),
 		q(_q)
 	{
 		iframeHtml = QString(iframeHtmlTemplate).arg(sockJsUrl).toUtf8();
@@ -199,7 +196,7 @@ public:
 		if(s->closeValue.isValid())
 		{
 			// if there's a close value, hang around for a little bit
-			s->timer = std::make_unique<RTimer>();
+			s->timer = std::make_unique<Timer>();
 			s->timerConnection = s->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, s->timer.get()));
 			s->timer->setSingleShot(true);
 			sessionsByTimer.insert(s->timer.get(), s);
@@ -674,7 +671,7 @@ private:
 	}
 
 private:
-	void timer_timeout(RTimer *timer)
+	void timer_timeout(Timer *timer)
 	{
 		Session *s = sessionsByTimer.value(timer);
 		assert(s);
@@ -684,8 +681,7 @@ private:
 	}
 };
 
-SockJsManager::SockJsManager(const QString &sockJsUrl, QObject *parent) :
-	QObject(parent)
+SockJsManager::SockJsManager(const QString &sockJsUrl)
 {
 	d = new Private(this, sockJsUrl);
 }
@@ -739,5 +735,3 @@ void SockJsManager::respond(ZhttpRequest *req, int code, const QByteArray &reaso
 {
 	d->respond(req, code, reason, headers, body);
 }
-
-#include "sockjsmanager.moc"

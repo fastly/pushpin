@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +28,8 @@
 #include "httprequest.h"
 #include <boost/signals2.hpp>
 
+#define TIMERS_PER_ZHTTPREQUEST 3
+
 using Connection = boost::signals2::scoped_connection;
 
 class ZhttpRequestPacket;
@@ -35,8 +38,6 @@ class ZhttpManager;
 
 class ZhttpRequest : public HttpRequest
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
@@ -54,13 +55,15 @@ public:
 		int inSeq;
 		int outSeq;
 		int outCredits;
+		bool routerResp;
 		QVariant userData;
 
 		ServerState() :
 			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
-			outCredits(-1)
+			outCredits(-1),
+			routerResp(false)
 		{
 		}
 	};
@@ -88,6 +91,7 @@ public:
 	virtual void setIgnorePolicies(bool on);
 	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
+	virtual void setTimeout(int msecs);
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
@@ -117,16 +121,17 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
-	ZhttpRequest(QObject *parent = 0);
+	ZhttpRequest();
 	void setupClient(ZhttpManager *manager, bool req);
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void setupServer(ZhttpManager *manager, const ServerState &state);
 	void startServer();
 	bool isServer() const;
 	QByteArray toAddress() const;
+	bool routerResp() const;
 	int outSeqInc();
 	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);

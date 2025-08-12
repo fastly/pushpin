@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,8 +23,7 @@
 
 #include "deferred.h"
 
-Deferred::Deferred(QObject *parent) :
-	QObject(parent)
+Deferred::Deferred()
 {
 	qRegisterMetaType<DeferredResult>();
 }
@@ -32,21 +32,15 @@ Deferred::~Deferred()
 {
 }
 
-void Deferred::cancel()
-{
-	delete this;
-}
-
 void Deferred::setFinished(bool ok, const QVariant &value)
 {
 	result_.success = ok;
 	result_.value = value;
 
-	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
+	deferCall_.defer([=] { doFinish(); });
 }
 
 void Deferred::doFinish()
 {
 	finished(result_);
-	delete this;
 }

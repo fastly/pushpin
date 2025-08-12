@@ -26,17 +26,17 @@
 #include <assert.h>
 #include <QVector>
 #include <QDateTime>
-#include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
 #include "timerwheel.h"
 #include "log.h"
+#include "defercall.h"
 #include "tnetstring.h"
 #include "httpheaders.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
-#include "rtimer.h"
+#include "timer.h"
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -60,10 +60,8 @@ static qint64 durationToTicksRoundUp(qint64 msec)
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
 
-class StatsManager::Private : public QObject
+class StatsManager::Private
 {
-	Q_OBJECT
-
 public:
 	class TimerBase
 	{
@@ -403,8 +401,9 @@ public:
 	int subscriptionTtl;
 	int subscriptionLinger;
 	int reportInterval;
-	QZmq::Socket *sock;
-	SimpleHttpServer *prometheusServer;
+	std::unique_ptr<QZmq::Socket> sock;
+	std::unique_ptr<SimpleHttpServer> prometheusServer;
+	int prometheusConnectionsMax;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
 	QHash<QByteArray, quint32> routeActivity;
@@ -425,18 +424,17 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	std::unique_ptr<RTimer> activityTimer;
-	std::unique_ptr<RTimer> reportTimer;
-	std::unique_ptr<RTimer> refreshTimer;
-	std::unique_ptr<RTimer> externalConnectionsMaxTimer;
+	std::unique_ptr<Timer> activityTimer;
+	std::unique_ptr<Timer> reportTimer;
+	std::unique_ptr<Timer> refreshTimer;
+	std::unique_ptr<Timer> externalConnectionsMaxTimer;
 	Connection activityTimerConnection;
 	Connection reportTimerConnection;
 	Connection refreshTimerConnection;
 	Connection externalConnectionsMaxTimerConnection;
 	Connection promServerConnection;
 
-	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
-		QObject(_q),
+	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax, int _prometheusConnectionsMax) :
 		q(_q),
 		connectionsMax(_connectionsMax),
 		subscriptionsMax(_subscriptionsMax),
@@ -450,21 +448,20 @@ public:
 		subscriptionTtl(60 * 1000),
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
-		sock(0),
-		prometheusServer(0),
+		prometheusConnectionsMax(_prometheusConnectionsMax),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
 	{
-		activityTimer = std::make_unique<RTimer>();
+		activityTimer = std::make_unique<Timer>();
 		activityTimerConnection = activityTimer->timeout.connect(boost::bind(&Private::activity_timeout, this));
 		activityTimer->setSingleShot(true);
 
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 		refreshTimer->start(REFRESH_INTERVAL);
 
-		externalConnectionsMaxTimer = std::make_unique<RTimer>();
+		externalConnectionsMaxTimer = std::make_unique<Timer>();
 		externalConnectionsMaxTimerConnection = externalConnectionsMaxTimer->timeout.connect(boost::bind(&Private::externalConnectionsMax_timeout, this));
 		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
@@ -500,16 +497,16 @@ public:
 
 	bool setupSock()
 	{
-		delete sock;
+		sock.reset();
 
-		sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 
 		sock->setHwm(OUT_HWM);
 		sock->setWriteQueueEnabled(false);
 		sock->setShutdownWaitTime(0);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(sock, spec, true, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(sock.get(), spec, true, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -520,7 +517,9 @@ public:
 
 	bool setPrometheusPort(const QString &portStr)
 	{
-		prometheusServer = new SimpleHttpServer(8192, 8192, this);
+		assert(!prometheusServer);
+
+		prometheusServer = std::make_unique<SimpleHttpServer>(prometheusConnectionsMax, 8192, 8192);
 		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
@@ -528,7 +527,7 @@ public:
 			if(!prometheusServer->listenLocal(portStr.mid(6)))
 			{
 				promServerConnection.disconnect();
-				delete prometheusServer;
+				prometheusServer.reset();
 
 				return false;
 			}
@@ -552,7 +551,7 @@ public:
 			if(!prometheusServer->listen(addr, port))
 			{
 				promServerConnection.disconnect();
-				delete prometheusServer;
+				prometheusServer.reset();
 
 				return false;
 			}
@@ -607,7 +606,7 @@ public:
 	{
 		if(reportInterval > 0 && !reportTimer)
 		{
-			reportTimer = std::make_unique<RTimer>();
+			reportTimer = std::make_unique<Timer>();
 			reportTimerConnection = reportTimer->timeout.connect(boost::bind(&Private::report_timeout, this));
 			reportTimer->start(reportInterval);
 		}
@@ -1332,7 +1331,10 @@ public:
 
 			Report &r = report->externalReports[packet.from];
 
-			r.connectionsMinutes += qMax(packet.connectionsMinutes, 0);
+			int mins = qMax(packet.connectionsMinutes, 0);
+
+			r.connectionsMinutes += mins;
+			combinedReport.addConnectionsMinutes(mins, now);
 		}
 	}
 
@@ -1560,7 +1562,7 @@ private:
 			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
 		}
 
-		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
+		req->finished.connect([=] { DeferCall::deleteLater(req); });
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
@@ -1568,10 +1570,9 @@ private:
 	}
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
-	QObject(parent)
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax)
 {
-	d = new Private(this, connectionsMax, subscriptionsMax);
+	d = new Private(this, connectionsMax, subscriptionsMax, prometheusConnectionsMax);
 }
 
 StatsManager::~StatsManager()
@@ -2121,5 +2122,3 @@ void StatsManager::setRetrySeq(const QByteArray &routeId, int value)
 
 	cm.retrySeq = value;
 }
-
-#include "statsmanager.moc"

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,8 +35,6 @@ class ZhttpManager;
 
 class ZWebSocket : public WebSocket
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
@@ -80,15 +79,16 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
-	ZWebSocket(QObject *parent = 0);
+	ZWebSocket();
 	void setupClient(ZhttpManager *manager);
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void startServer();
 	bool isServer() const;
 	QByteArray toAddress() const;
+	bool routerResp() const;
 	int outSeqInc();
 	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);

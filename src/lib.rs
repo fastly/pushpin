@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -118,6 +118,7 @@ macro_rules! import_cpptest {
         )]
         #[cfg_attr(target_os = "macos", link(name = "c++"))]
         #[cfg_attr(not(target_os = "macos"), link(name = "stdc++"))]
+        #[allow(improper_ctypes)] // we only use pointers to non-FFI-safe types, which is safe
         extern "C" {
             $($tt)*
         }
@@ -126,17 +127,27 @@ macro_rules! import_cpptest {
 
 pub mod ffi {
     #[cfg(test)]
+    use crate::core::test::TestException;
+
+    #[cfg(test)]
     import_cpptest! {
-        pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-        pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn httpheaders_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn jwt_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn timer_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn defercall_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn tcpstream_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn unixstream_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn eventloop_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn websocketoverhttp_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn routesfile_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn proxyengine_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn filter_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn jsonpatch_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn instruct_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn idformat_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn publishformat_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn publishitem_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn handlerengine_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn template_test(out_ex: *mut TestException) -> libc::c_int;
     }
 }

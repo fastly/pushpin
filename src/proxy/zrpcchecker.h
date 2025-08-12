@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +24,6 @@
 #ifndef ZRPCCHECKER_H
 #define ZRPCCHECKER_H
 
-#include <QObject>
 #include <boost/signals2.hpp>
 
 using Connection = boost::signals2::scoped_connection;
@@ -34,12 +34,10 @@ class ZrpcRequest;
 //   watch() to have it monitor a request, but not own it. use give() to have
 //   this class take ownership of an already-watched request.
 
-class ZrpcChecker : public QObject
+class ZrpcChecker
 {
-	Q_OBJECT
-
 public:
-	ZrpcChecker(QObject *parent = 0);
+	ZrpcChecker();
 	~ZrpcChecker();
 
 	bool isInterfaceAvailable() const;

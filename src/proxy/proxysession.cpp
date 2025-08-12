@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <QSet>
-#include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
 #include "packet/statspacket.h"
@@ -58,10 +57,8 @@ using std::map;
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
 
-class ProxySession::Private : public QObject
+class ProxySession::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -130,7 +127,7 @@ public:
 	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
 	DomainMap::Target target;
-	HttpRequest *zhttpRequest;
+	std::unique_ptr<HttpRequest> zhttpRequest;
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
@@ -174,7 +171,6 @@ public:
 	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
-		QObject(_q),
 		q(_q),
 		state(Stopped),
 		zroutes(_zroutes),
@@ -182,7 +178,6 @@ public:
 		inRequest(0),
 		acceptManager(_acceptManager),
 		isHttps(false),
-		zhttpRequest(0),
 		addAllowed(true),
 		haveInspectData(false),
 		shared(false),
@@ -236,7 +231,6 @@ public:
 
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
-		si->rs->setParent(this);
 
 		// a retried request already had its received bytes counted earlier
 		if(rs->isRetry())
@@ -439,7 +433,7 @@ public:
 					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
 			}
 
-			zhttpRequest = new TestHttpRequest(this);
+			zhttpRequest = std::make_unique<TestHttpRequest>();
 		}
 		else
 		{
@@ -456,8 +450,7 @@ public:
 
 			zroutes->addRef(zhttpManager);
 
-			zhttpRequest = zhttpManager->createRequest();
-			zhttpRequest->setParent(this);
+			zhttpRequest = std::unique_ptr<HttpRequest>(zhttpManager->createRequest());
 		}
 
 		zhttpReqConnections = {
@@ -627,8 +620,7 @@ public:
 	{
 		zhttpReqConnections = ZhttpReqConnections();
 		// kill the active target request, if any
-		delete zhttpRequest;
-		zhttpRequest = 0;
+		zhttpRequest.reset();
 
 		assert(state != Responding);
 		assert(state != Responded);
@@ -745,7 +737,7 @@ public:
 		if(!buffering && pendingWrites())
 			return;
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		bool wasAllowed = addAllowed;
 
@@ -914,7 +906,7 @@ public:
 			if(wasAllowed && !addAllowed)
 			{
 				q->addNotAllowed();
-				if(!self)
+				if(self.expired())
 					return;
 			}
 		}
@@ -925,7 +917,7 @@ public:
 	// this method emits signals
 	void checkIncomingResponseFinished()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(zhttpRequest->isFinished() && zhttpRequest->bytesAvailable() == 0)
 		{
@@ -938,15 +930,14 @@ public:
 			}
 
 			zhttpReqConnections = ZhttpReqConnections();			
-			delete zhttpRequest;
-			zhttpRequest = 0;
+			zhttpRequest.reset();
 
 			// once the entire response has been received, cut off any new adds
 			if(addAllowed)
 			{
 				addAllowed = false;
 				q->addNotAllowed();
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -1218,9 +1209,9 @@ public:
 		if(!intReq)
 			logFinished(si);
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 		q->requestSessionDestroyed(si->rs, false);
-		if(!self)
+		if(self.expired())
 			return;
 
 		ZhttpRequest *req = rs->request();
@@ -1309,6 +1300,7 @@ public:
 				areq.inSeq = ss.inSeq;
 				areq.outSeq = ss.outSeq;
 				areq.outCredits = ss.outCredits;
+				areq.routerResp = ss.routerResp;
 				areq.userData = ss.userData;
 				adata.requests += areq;
 			}
@@ -1330,6 +1322,7 @@ public:
 			adata.route = route.id;
 			adata.separateStats = route.separateStats;
 			adata.channelPrefix = route.prefix;
+			adata.logLevel = route.logLevel;
 			foreach(const QString &s, target.subscriptions)
 				adata.channels += s.toUtf8();
 			adata.trusted = target.trusted;
@@ -1411,13 +1404,13 @@ public:
 				sessionItems.clear();
 				sessionItemsBySession.clear();
 
-				QPointer<QObject> self = this;
+				std::weak_ptr<Private> self = q->d;
 				foreach(RequestSession *rs, toDestroy)
 				{
 					q->requestSessionDestroyed(rs, true);
 					reqSessionConnectionMap.erase(rs);
 					delete rs;
-					if(!self)
+					if(self.expired())
 						return;
 				}
 
@@ -1485,16 +1478,12 @@ public:
 	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *statsManager, QObject *parent) :
-	QObject(parent)
+ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *statsManager)
 {
-	d = new Private(this, zroutes, acceptManager, logConfig, statsManager);
+	d = std::make_shared<Private>(this, zroutes, acceptManager, logConfig, statsManager);
 }
 
-ProxySession::~ProxySession()
-{
-	delete d;
-}
+ProxySession::~ProxySession() = default;
 
 void ProxySession::setRoute(const DomainMap::Entry &route)
 {
@@ -1554,5 +1543,3 @@ void ProxySession::add(RequestSession *rs)
 {
 	d->add(rs);
 }
-
-#include "proxysession.moc"

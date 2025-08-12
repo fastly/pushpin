@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2015 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,14 +30,13 @@
 #include "zrpcmanager.h"
 #include "uuidutil.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 
 using Connection = boost::signals2::scoped_connection;
 
-class ZrpcRequest::Private : public QObject
+class ZrpcRequest::Private
 {
-	Q_OBJECT
-
 public:
 	ZrpcRequest *q;
 	ZrpcManager *manager;
@@ -50,11 +49,11 @@ public:
 	QVariant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
-	std::unique_ptr<RTimer> timer;
+	std::unique_ptr<Timer> timer;
 	Connection timerConnection;
+	DeferCall deferCall;
 
 	Private(ZrpcRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		success(false),
@@ -136,7 +135,6 @@ public:
 		q->finished();
 	}
 
-private slots:
 	void doStart()
 	{
 		if(!manager->canWriteImmediately())
@@ -156,7 +154,7 @@ private slots:
 
 		if(manager->timeout() >= 0)
 		{
-			timer = std::make_unique<RTimer>();
+			timer = std::make_unique<Timer>();
 			timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 			timer->setSingleShot(true);
 			timer->start(manager->timeout());
@@ -175,14 +173,12 @@ private slots:
 	}
 };
 
-ZrpcRequest::ZrpcRequest(QObject *parent) :
-	QObject(parent)
+ZrpcRequest::ZrpcRequest()
 {
 	d = new Private(this);
 }
 
-ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
-	QObject(parent)
+ZrpcRequest::ZrpcRequest(ZrpcManager *manager)
 {
 	d = new Private(this);
 	setupClient(manager);
@@ -238,7 +234,7 @@ void ZrpcRequest::start(const QString &method, const QVariantHash &args)
 {
 	d->method = method;
 	d->args = args;
-	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
+	d->deferCall.defer([=] { d->doStart(); });
 }
 
 void ZrpcRequest::respond(const QVariant &result)
@@ -293,5 +289,3 @@ void ZrpcRequest::handle(const ZrpcResponsePacket &packet)
 
 	d->handle(packet);
 }
-
-#include "zrpcrequest.moc"

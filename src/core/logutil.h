@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +25,7 @@
 #define LOGUTIL_H
 
 #include <QHostAddress>
+#include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
@@ -73,10 +75,24 @@ public:
 	}
 };
 
+class RouteInfo
+{
+public:
+	QString id;
+	int logLevel;
+
+	RouteInfo(const QString &initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG) :
+		id(initId),
+		logLevel(initLogLevel)
+	{
+	}
+};
+
 void logVariant(int level, const QVariant &data, const char *fmt, ...);
 void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
 void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
 void logRequest(int level, const RequestData &data, const Config &config = Config());
+void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...);
 
 }
 
