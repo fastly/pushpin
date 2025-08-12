@@ -614,6 +614,7 @@ public:
 							QString urlPath = gWsBackendUrlList[ccIndex];
 							wsCacheClientConnectFailedCountMap[urlPath]++;
 							gWsCacheClientList[ccIndex].initFlag = false;
+							exit_process_for_cacheclient(ccIndex);
 						}
 					}
 					break;
@@ -1325,6 +1326,7 @@ public:
 								QString urlPath = gWsBackendUrlList[ccIndex];
 								wsCacheClientConnectFailedCountMap[urlPath]++;
 								gWsCacheClientList[ccIndex].initFlag = false;
+								exit_process_for_cacheclient(ccIndex);
 							}
 						}
 						break;
@@ -3184,6 +3186,8 @@ void initCacheClient(int workerNo)
 			cacheClient.urlPath = gWsBackendUrlList[i];
 			cacheClient.lastResponseSeq = -1;
 			cacheClient.lastResponseTime = QDateTime::currentMSecsSinceEpoch();
+			cacheClient.wscatWorker = nullptr;
+			cacheClient.wscatThread = nullptr;
 			gWsCacheClientList.append(cacheClient);
 
 			// create processes for cache client

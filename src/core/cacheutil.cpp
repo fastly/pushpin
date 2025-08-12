@@ -916,14 +916,13 @@ void check_cache_clients()
 			}
 
 			log_debug("[WS] killing cache client %d %s", i, gWsCacheClientList[i].clientId.data());
-			exit_process_for_cacheclient(i);
 			create_process_for_cacheclient(i);
 			gWsCacheClientList[i].lastResponseSeq = -1;
 			gWsCacheClientList[i].lastResponseTime = QDateTime::currentMSecsSinceEpoch();
 		}			
 	}
 
-	QTimer::singleShot(5 * 1000, [=]() {
+	QTimer::singleShot(30 * 1000, [=]() {
 		check_cache_clients();
 	});
 }
@@ -2103,6 +2102,8 @@ pid_t create_process_for_cacheclient__(QString urlPath, int _no)
 
 void create_process_for_cacheclient(int _no)
 {
+	exit_process_for_cacheclient(_no);
+
 	QThread *thread = new QThread;
 
 	WscatWorker *worker = new WscatWorker;
@@ -2127,7 +2128,15 @@ void create_process_for_cacheclient(int _no)
 
 void exit_process_for_cacheclient(int _no)
 {
-	gWsCacheClientList[_no].wscatWorker->stopWscat();
-	gWsCacheClientList[_no].wscatThread->quit();
-	gWsCacheClientList[_no].wscatThread->wait();
+	if (gWsCacheClientList[_no].wscatWorker != nullptr)
+	{
+		gWsCacheClientList[_no].wscatWorker->stopWscat();
+		gWsCacheClientList[_no].wscatWorker = nullptr;
+	}
+	if (gWsCacheClientList[_no].wscatThread != nullptr)
+	{
+		gWsCacheClientList[_no].wscatThread->quit();
+		gWsCacheClientList[_no].wscatThread->wait();
+		gWsCacheClientList[_no].wscatThread = nullptr;
+	}
 }
