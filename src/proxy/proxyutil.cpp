@@ -177,7 +177,9 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 		requestData->headers.removeAll("Grip-Feature");
 		requestData->headers += HttpHeader("Grip-Feature",
-			"status, session, link:next, link:gone, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst, filter:http-check, filter:http-modify");
+			"status, session, link:next, link:gone, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst");
+			// NOTE(clintjedwards): Not release ready [08-12-2025]
+			//, filter:http-check, filter:http-modify");
 
 		if(!idata.sid.isEmpty())
 		{
