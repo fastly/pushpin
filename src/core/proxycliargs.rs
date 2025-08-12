@@ -162,6 +162,16 @@ pub mod ffi {
 
     /// Frees the memory allocated by proxy_cli_args_to_ffi
     /// MUST be called by C++ code when done with the ProxyCliArgsFfi struct
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it takes ownership of raw pointers and frees their memory.
+    /// The caller must ensure that:
+    /// - The `ffi_args` struct was created by `proxy_cli_args_to_ffi`
+    /// - Each pointer field in `ffi_args` is either null or points to valid memory allocated by `CString::into_raw()` or `libc::malloc()`
+    /// - The `routes` array and its individual string elements were allocated properly
+    /// - No pointer in `ffi_args` is used after this function is called (double-free protection)
+    /// - This function is called exactly once per `ProxyCliArgsFfi` instance
     #[no_mangle]
     pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ProxyCliArgsFfi) {
         if !ffi_args.config_file.is_null() {
