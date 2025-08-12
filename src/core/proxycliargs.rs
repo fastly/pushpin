@@ -134,8 +134,8 @@ pub mod ffi {
                 };
 
                 // Convert each route to CString and store pointer in array
-                for i in 0..routes_vec.len() {
-                    let c_string = CString::new(routes_vec[i].to_string()).unwrap().into_raw();
+                for (i, item) in routes_vec.iter().enumerate() {
+                    let c_string = CString::new(item.to_string()).unwrap().into_raw();
                     unsafe {
                         *routes_array.add(i) = c_string;
                     }
