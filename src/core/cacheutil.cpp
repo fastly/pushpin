@@ -2107,7 +2107,11 @@ WscatWorker * create_process_for_cacheclient(QString urlPath, int _no)
 	if (thread == nullptr)
 		thread = new QThread;
 	else
-		thread->stop();
+	{
+		thread->quit();
+		thread->wait();
+	}
+
 	WscatWorker *worker = new WscatWorker;
 
 	worker->moveToThread(thread);
