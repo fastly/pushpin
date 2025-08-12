@@ -614,7 +614,6 @@ public:
 							QString urlPath = gWsBackendUrlList[ccIndex];
 							wsCacheClientConnectFailedCountMap[urlPath]++;
 							gWsCacheClientList[ccIndex].initFlag = false;
-							exit_process_for_cacheclient(ccIndex);
 						}
 					}
 					break;
@@ -1326,7 +1325,6 @@ public:
 								QString urlPath = gWsBackendUrlList[ccIndex];
 								wsCacheClientConnectFailedCountMap[urlPath]++;
 								gWsCacheClientList[ccIndex].initFlag = false;
-								exit_process_for_cacheclient(ccIndex);
 							}
 						}
 						break;
