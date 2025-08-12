@@ -326,8 +326,9 @@ static void httpModify(std::function<void (int)> loop_wait)
 extern "C" int filter_test(ffi::TestException *out_ex)
 {
 	TEST_CATCH(test_with_event_loop(messageFilters));
-	TEST_CATCH(test_with_event_loop(httpCheck));
-	TEST_CATCH(test_with_event_loop(httpModify));
+	// NOTE(clintjedwards): Not release ready [08-12-2025]
+	// TEST_CATCH(test_with_event_loop(httpCheck));
+	// TEST_CATCH(test_with_event_loop(httpModify));
 
 	return 0;
 }

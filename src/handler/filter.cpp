@@ -699,10 +699,11 @@ Filter::MessageFilter *Filter::createMessageFilter(const QString &name)
 		return new BuildIdFilter;
 	else if(name == "var-subst")
 		return new VarSubstFilter;
-	else if(name == "http-check")
-		return new HttpFilter(HttpFilter::Check);
-	else if(name == "http-modify")
-		return new HttpFilter(HttpFilter::Modify);
+	// NOTE(clintjedwards): Not release ready [08-12-2025]
+	// else if(name == "http-check")
+	// 	return new HttpFilter(HttpFilter::Check);
+	// else if(name == "http-modify")
+	// 	return new HttpFilter(HttpFilter::Modify);
 	else
 		return 0;
 }
@@ -714,9 +715,10 @@ QStringList Filter::names()
 		<< "skip-users"
 		<< "require-sub"
 		<< "build-id"
-		<< "var-subst"
-		<< "http-check"
-		<< "http-modify");
+		<< "var-subst");
+	  // NOTE(clintjedwards): Not release ready [08-12-2025]
+	  // << "http-check"
+	  // << "http-modify");
 }
 
 Filter::Targets Filter::targets(const QString &name)
@@ -731,10 +733,11 @@ Filter::Targets Filter::targets(const QString &name)
 		return Filter::Targets(Filter::MessageContent | Filter::ResponseContent);
 	else if(name == "var-subst")
 		return Filter::MessageContent;
-	else if(name == "http-check")
-		return Filter::MessageDelivery;
-	else if(name == "http-modify")
-		return Filter::Targets(Filter::MessageDelivery | Filter::MessageContent);
+	// NOTE(clintjedwards): Not release ready [08-12-2025]
+	// else if(name == "http-check")
+	// 	return Filter::MessageDelivery;
+	// else if(name == "http-modify")
+	// 	return Filter::Targets(Filter::MessageDelivery | Filter::MessageContent);
 	else
 		return Filter::Targets(0);
 }
