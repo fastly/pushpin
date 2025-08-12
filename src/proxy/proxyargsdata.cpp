@@ -40,7 +40,6 @@ ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgsFfi *argsFfi)
     {
         routeLines << QString::fromUtf8(argsFfi->routes[i]);
     }
-    routesCount = argsFfi->routes_count;
     quietCheck  = argsFfi->quiet_check == 1;
 
     // Set the log level
