@@ -144,32 +144,6 @@ pub mod ffi {
     }
 }
 
-impl IntoIterator for CliArgs {
-    type Item = (String, String);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let args: Vec<(String, String)> = vec![
-            (
-                "config-file".to_string(),
-                self.config_file.unwrap_or_default(),
-            ),
-            ("log-file".to_string(), self.log_file.unwrap_or_default()),
-            ("log-level".to_string(), self.log_level.to_string()),
-            (
-                "ipc-prefix".to_string(),
-                self.ipc_prefix.unwrap_or_default(),
-            ),
-            (
-                "port-offset".to_string(),
-                self.port_offset.map_or("".to_string(), |p| p.to_string()),
-            ),
-        ];
-
-        args.into_iter()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
