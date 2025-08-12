@@ -3192,6 +3192,8 @@ void initCacheClient(int workerNo)
 
 			// create processes for cache client
 			create_process_for_cacheclient(i);
+
+			QThread::msleep(100);
 		}
 	}
 	else
