@@ -33,10 +33,10 @@
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
-#define IDEAL_CREDITS 2000000
+#define IDEAL_CREDITS 20000000
 #define SESSION_EXPIRE 60000
 #define KEEPALIVE_INTERVAL 45000
-#define REQ_BUF_MAX 1000000
+#define REQ_BUF_MAX 10000000
 
 class ZhttpRequest::Private : public QObject
 {
