@@ -118,6 +118,16 @@ mod tests {
     use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
 
+    fn cowbytearray_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::cowbytearray_test(out_ex) == 0 }
+    }
+
+    fn cowstring_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::cowstring_test(out_ex) == 0 }
+    }
+
     fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::httpheaders_test(out_ex) == 0 }
@@ -151,6 +161,16 @@ mod tests {
     fn eventloop_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::eventloop_test(out_ex) == 0 }
+    }
+
+    #[test]
+    fn cowbytearray() {
+        run_cpp(cowbytearray_test);
+    }
+
+    #[test]
+    fn cowstring() {
+        run_cpp(cowstring_test);
     }
 
     #[test]
