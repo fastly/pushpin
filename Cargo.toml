@@ -1,6 +1,6 @@
 [package]
 name = "pushpin"
-version = "1.41.0-dev"
+version = "1.42.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
