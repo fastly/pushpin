@@ -719,6 +719,8 @@ public:
 	{
 		assert(server_out_sock);
 
+		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+
 		// count methods
 		numMessageSent++;
 
@@ -728,11 +730,11 @@ public:
 		if (pos != -1) 
 		{
 			pos += key.size(); // move after "4:body,"
-			int colonIndex = data.indexOf(':', pos);
+			int colonIndex = buf.indexOf(':', pos);
 			if (colonIndex != -1) 
 			{
-				int length = data.mid(pos, colonIndex - pos).toInt();
-				packetBody = data.mid(colonIndex + 1, length);
+				int length = buf.mid(pos, colonIndex - pos).toInt();
+				packetBody = buf.mid(colonIndex + 1, length);
 			}
 		}
 
