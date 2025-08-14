@@ -740,14 +740,15 @@ public:
 		numMessageSent++;
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
+		QList<QByteArray> chunks;
 		int offset = 0;
-		while (offset < buf.size()) 
-		{
+		while (offset < buf.size()) {
 			int len = qMin(CHUNK_SIZE, buf.size() - offset);
-			server_out_sock->write(buf.constData() + offset, len);
+			chunks << buf.mid(offset, len);
 			offset += len;
-			QThread::usleep(1);
 		}
+
+		server_out_sock->write(chunks);
 	}
 
 	static const char *logPrefixForType(SessionType type)
