@@ -1281,7 +1281,7 @@ public:
 
 				if (!p.headers.contains(HTTP_REFRESH_HEADER))
 				{
-					register_http_client(id.id, p.from, p.uri.toString(), p.creditSize);
+					register_http_client(id.id, p.from, p.uri.toString(), p.credits);
 				}
 				else
 				{
