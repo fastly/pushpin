@@ -38,7 +38,7 @@ class ProxyArgsData
 		QStringList routeLines;
 		bool quietCheck;
 
-		ProxyArgsData(const ffi::ProxyCliArgsFfi *argsFfi);
+		ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
 };
 
 #endif

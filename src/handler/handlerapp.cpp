@@ -88,7 +88,7 @@ static QString firstSpec(const QString &s, int peerCount)
 class HandlerApp::Private
 {
 public:
-	static int run(const ffi::HandlerCliArgsFfi *argsFfi)
+	static int run(const ffi::HandlerCliArgs *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -348,7 +348,7 @@ HandlerApp::HandlerApp() = default;
 
 HandlerApp::~HandlerApp() = default;
 
-int HandlerApp::run(const ffi::HandlerCliArgsFfi *argsFfi)
+int HandlerApp::run(const ffi::HandlerCliArgs *argsFfi)
 {
 	return Private::run(argsFfi);
 }

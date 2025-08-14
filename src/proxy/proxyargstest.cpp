@@ -46,7 +46,7 @@
     const char* route2 = "route2"; 
     const char* routes[] = { route1, route2 };
 
-    ffi::ProxyCliArgsFfi argsFfi = {
+    ffi::ProxyCliArgs argsFfi = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>("log.txt"),           // log_file
         3,                                      // log_level
@@ -75,7 +75,7 @@
     static const char* routesEmpty[] = {};
 
     // Set up valid empty command line arguments
-    ffi::ProxyCliArgsFfi argsFfiEmpty = {
+    ffi::ProxyCliArgs argsFfiEmpty = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>(""),                  // log_file
         2,                                      // log_level

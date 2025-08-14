@@ -37,7 +37,7 @@ class HandlerArgsData
 		QString ipcPrefix;
 		int portOffset;
 
-		HandlerArgsData(const ffi::HandlerCliArgsFfi *argsFfi);
+		HandlerArgsData(const ffi::HandlerCliArgs *argsFfi);
 };
 
 #endif

@@ -32,7 +32,7 @@ public:
 	App();
 	~App();
 
-	int run(const ffi::ProxyCliArgsFfi *argsFfi);
+	int run(const ffi::ProxyCliArgs *argsFfi);
 
 private:
 	class Private;

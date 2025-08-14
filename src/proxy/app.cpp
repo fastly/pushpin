@@ -311,7 +311,7 @@ public:
 class App::Private
 {
 public:
-	static int run(const ffi::ProxyCliArgsFfi *argsFfi)
+	static int run(const ffi::ProxyCliArgs *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -656,7 +656,7 @@ App::App() = default;
 
 App::~App() = default;
 
-int App::run(const ffi::ProxyCliArgsFfi *argsFfi)
+int App::run(const ffi::ProxyCliArgs *argsFfi)
 {
 	return Private::run(argsFfi);
 }

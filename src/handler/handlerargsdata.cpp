@@ -29,7 +29,7 @@
 #include <QCoreApplication>
 #include <QFile>
 
-HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgsFfi *argsFfi)
+HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
 {
     configFile  = QString::fromUtf8(argsFfi->config_file);
     logFile     = QString::fromUtf8(argsFfi->log_file);

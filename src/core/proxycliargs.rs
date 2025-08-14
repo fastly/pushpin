@@ -72,7 +72,7 @@ impl CliArgs {
         self
     }
 
-    pub fn to_ffi(&self) -> ffi::ProxyCliArgsFfi {
+    pub fn to_ffi(&self) -> ffi::ProxyCliArgs {
         let config_file = self
             .config_file
             .as_ref()
@@ -129,7 +129,7 @@ impl CliArgs {
             }
         };
 
-        ffi::ProxyCliArgsFfi {
+        ffi::ProxyCliArgs {
             config_file,
             log_file,
             log_level: self.log_level,
@@ -143,7 +143,7 @@ impl CliArgs {
 
 pub mod ffi {
     #[repr(C)]
-    pub struct ProxyCliArgsFfi {
+    pub struct ProxyCliArgs {
         pub config_file: *mut libc::c_char,
         pub log_file: *mut libc::c_char,
         pub log_level: libc::c_uint,
@@ -155,7 +155,7 @@ pub mod ffi {
 }
 
 /// Frees the memory allocated by proxy_cli_args_to_ffi
-/// MUST be called by C++ code when done with the ProxyCliArgsFfi struct
+/// MUST be called by C++ code when done with the ProxyCliArgs struct
 ///
 /// # Safety
 ///
@@ -165,9 +165,9 @@ pub mod ffi {
 /// - Each pointer field in `ffi_args` is either null or points to valid memory allocated by `CString::into_raw()` or `libc::malloc()`
 /// - The `routes` array and its individual string elements were allocated properly
 /// - No pointer in `ffi_args` is used after this function is called (double-free protection)
-/// - This function is called exactly once per `ProxyCliArgsFfi` instance
+/// - This function is called exactly once per `ProxyCliArgs` instance
 #[no_mangle]
-pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgsFfi) {
+pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgs) {
     if !ffi_args.config_file.is_null() {
         let _ = CString::from_raw(ffi_args.config_file);
     }

@@ -42,7 +42,7 @@ void handlerargstest()
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
 
-    ffi::HandlerCliArgsFfi argsFfi = {
+    ffi::HandlerCliArgs argsFfi = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>("log.txt"),           // log_file
         3,                                      // log_level
@@ -66,7 +66,7 @@ void handlerargstest()
     TEST_ASSERT_EQ(settings.getPortOffset(), 81);
     TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
 
-    ffi::HandlerCliArgsFfi argsFfiEmpty = {
+    ffi::HandlerCliArgs argsFfiEmpty = {
         const_cast<char*>(configFile.c_str()),  // config_file
         const_cast<char*>(""),                  // log_file
         2,                                      // log_level
