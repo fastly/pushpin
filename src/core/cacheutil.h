@@ -70,6 +70,7 @@ struct ClientItem {
 	WscatWorker *wscatWorker;
 	QThread *wscatThread;
 	bool initFlag;
+	int creditSize;
 	QString resultStr;
 	int msgIdCount;
 	int lastRequestSeq;
@@ -207,6 +208,7 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 
 int update_request_seq(const QByteArray &clientId);
 int get_client_new_response_seq(const QByteArray &clientId);
+int get_client_credit_size(const QByteArray &clientId);
 
 void send_http_post_request_with_refresh_header(QString backend, QByteArray postData, char *headerVal);
 

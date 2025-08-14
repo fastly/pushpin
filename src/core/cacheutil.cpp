@@ -1614,6 +1614,21 @@ int get_client_new_response_seq(const QByteArray &clientId)
 	return ret;
 }
 
+int get_client_credit_size(const QByteArray &clientId)
+{
+	int ret = 8192;
+	if (gWsClientMap.contains(clientId)) 
+	{
+		ret = gWsClientMap[clientId].creditSize;
+	}
+	else if (gHttpClientMap.contains(clientId)) 
+	{
+		ret = gHttpClientMap[clientId].creditSize;
+	}
+	
+	return ret;
+}
+
 void send_http_post_request_with_refresh_header(QString backend, QByteArray postData, char *headerVal)
 {
 	// Create the QNetworkAccessManager
