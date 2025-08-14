@@ -740,6 +740,7 @@ public:
 		// count methods
 		numMessageSent++;
 
+		log_debug("QQQQQ");
 		//server_out_sock->write(QList<QByteArray>() << buf);
 		QByteArray packetBody = packet.body;
 		QList<QByteArray> chunks;
