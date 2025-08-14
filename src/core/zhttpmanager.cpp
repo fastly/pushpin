@@ -754,7 +754,7 @@ public:
 		foreach (QByteArray chunk, chunks)
 		{
 			ZhttpResponsePacket p;
-			ZhttpRequestPacket::Id tempId;
+			ZhttpResponsePacket::Id tempId;
 			tempId.id = clientId;
 			tempId.seq = get_client_new_response_seq(clientId);
 			p.ids += tempId;
@@ -765,7 +765,7 @@ public:
 			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
-			
+
 			server_out_sock->write(QList<QByteArray>() << buf);
 		}
 
