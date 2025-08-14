@@ -720,6 +720,63 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
+		/*
+		packet.ids.first().id = clientId;
+		int newSeq = get_client_new_response_seq(clientId);
+		if (newSeq < 0)
+		{
+			log_debug("[WS] failed to get new response seq %s", clientId.constData());
+			return;
+		}
+		packet.ids.first().seq = newSeq;
+		packet.from = instanceId;
+
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+		*/
+		// count methods
+		numMessageSent++;
+
+		//server_out_sock->write(QList<QByteArray>() << buf);
+		QByteArray packetBody = packet.body;
+		QList<QByteArray> chunks;
+		int offset = 0;
+		while (offset < packetBody.size()) 
+		{
+			int len = qMin(CHUNK_SIZE, packetBody.size() - offset);
+			chunks << packetBody.mid(offset, len);
+			offset += len;
+		}
+
+		foreach (QByteArray chunk, chunks)
+		{
+			ZhttpResponsePacket p;
+			ZhttpRequestPacket::Id tempId;
+			tempId.id = clientId;
+			tempId.seq = get_client_new_response_seq(clientId);
+			p.ids += tempId;
+			p.from = instanceId;
+			p.body = chunk;
+
+			QVariant vpacket = p.toVariant();
+			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+			
+			server_out_sock->write(QList<QByteArray>() << buf);
+		}
+
+		server_out_sock->write(chunks);
+	}
+
+	void writeToClient1__(SessionType type, ZhttpResponsePacket &packet, const QByteArray &clientId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	{
+		assert(server_out_sock);
+		const char *logprefix = logPrefixForType(type);
+
 		packet.ids.first().id = clientId;
 		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
@@ -739,16 +796,7 @@ public:
 		// count methods
 		numMessageSent++;
 
-		//server_out_sock->write(QList<QByteArray>() << buf);
-		QList<QByteArray> chunks;
-		int offset = 0;
-		while (offset < buf.size()) {
-			int len = qMin(CHUNK_SIZE, buf.size() - offset);
-			chunks << buf.mid(offset, len);
-			offset += len;
-		}
-
-		server_out_sock->write(chunks);
+		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
 	static const char *logPrefixForType(SessionType type)
