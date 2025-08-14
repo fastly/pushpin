@@ -123,6 +123,8 @@ QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
 QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
+constexpr int CHUNK_SIZE = 8 * 1024; // 8 KB
+
 // prometheus restore allow seconds (default 300)
 int gPrometheusRestoreAllowSeconds = 300;
 
@@ -737,7 +739,15 @@ public:
 		// count methods
 		numMessageSent++;
 
-		server_out_sock->write(QList<QByteArray>() << buf);
+		//server_out_sock->write(QList<QByteArray>() << buf);
+		int offset = 0;
+		while (offset < buf.size()) 
+		{
+			int len = qMin(CHUNK_SIZE, buf.size() - offset);
+			server_out_sock->write(buf.constData() + offset, len);
+			offset += len;
+			QThread::usleep(1);
+		}
 	}
 
 	static const char *logPrefixForType(SessionType type)
