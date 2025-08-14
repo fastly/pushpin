@@ -699,6 +699,8 @@ public:
 	{
 		assert(server_out_sock);
 
+		log_debug("QQQQQ");
+
 		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
 		{
