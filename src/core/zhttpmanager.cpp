@@ -695,11 +695,9 @@ public:
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient1_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
-
-		log_debug("QQQQQ");
 
 		int newSeq = get_client_new_response_seq(clientId);
 		if (newSeq < 0)
@@ -712,6 +710,65 @@ public:
 
 		// count methods
 		numMessageSent++;
+
+		server_out_sock->write(QList<QByteArray>() << buf);
+		QThread::usleep(1);
+	}
+
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	{
+		assert(server_out_sock);
+
+		// count methods
+		numMessageSent++;
+
+		QByteArray packetBody = "";
+		QByteArray key = "4:body,";
+		int pos = buf.indexOf(key);
+		if (pos != -1) 
+		{
+			pos += key.size(); // move after "4:body,"
+			int colonIndex = data.indexOf(':', pos);
+			if (colonIndex != -1) 
+			{
+				int length = data.mid(pos, colonIndex - pos).toInt();
+				packetBody = data.mid(colonIndex + 1, length);
+			}
+		}
+
+		log_debug("1");
+		if (packetBody.isEmpty())
+		{
+			return;
+		}
+		log_debug("2");
+
+		QList<QByteArray> chunks;
+		int offset = 0;
+		while (offset < packetBody.size()) 
+		{
+			int len = qMin(CHUNK_SIZE, packetBody.size() - offset);
+			chunks << packetBody.mid(offset, len);
+			offset += len;
+		}
+
+		foreach (QByteArray chunk, chunks)
+		{
+			ZhttpResponsePacket p;
+			ZhttpResponsePacket::Id tempId;
+			tempId.id = clientId;
+			tempId.seq = get_client_new_response_seq(clientId);
+			p.ids += tempId;
+			p.from = instanceId;
+			p.body = chunk;
+
+			QVariant vpacket = p.toVariant();
+			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+			server_out_sock->write(QList<QByteArray>() << buf);
+		}
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 		QThread::usleep(1);
@@ -771,8 +828,6 @@ public:
 
 			server_out_sock->write(QList<QByteArray>() << buf);
 		}
-
-		server_out_sock->write(chunks);
 	}
 
 	void writeToClient1__(SessionType type, ZhttpResponsePacket &packet, const QByteArray &clientId, const QByteArray &instanceAddress, const QByteArray &instanceId)
