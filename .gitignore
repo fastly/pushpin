@@ -15,6 +15,7 @@ target_wrapper.sh
 vendor
 .vscode
 conf.pri
+log.txt
 
 /pushpin
 /pushpin-legacy
