@@ -777,8 +777,8 @@ public:
 			server_out_sock->write(QList<QByteArray>() << buf);
 		}
 
-		server_out_sock->write(QList<QByteArray>() << buf);
-		QThread::usleep(1);
+		//server_out_sock->write(QList<QByteArray>() << buf);
+		//QThread::usleep(1);
 	}
 
 	void writeToClient__(SessionType type, ZhttpResponsePacket &packet, const QByteArray &clientId, const QByteArray &instanceAddress, const QByteArray &instanceId)
