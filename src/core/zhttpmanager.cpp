@@ -755,7 +755,7 @@ public:
 			offset += len;
 		}
 
-		foreach (QByteArray chunk, chunks)
+		for (int i=0; i<chunks.size(); i++)
 		{
 			ZhttpResponsePacket p;
 			ZhttpResponsePacket::Id tempId;
@@ -763,7 +763,11 @@ public:
 			tempId.seq = get_client_new_response_seq(clientId);
 			p.ids += tempId;
 			p.from = instanceId;
-			p.body = chunk;
+			p.body = chunks[i];
+			if (i < (chunks.size()-1))
+				p.more = true;
+			else
+				p.more = false;
 
 			QVariant vpacket = p.toVariant();
 			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
