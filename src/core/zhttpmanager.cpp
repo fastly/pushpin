@@ -718,8 +718,9 @@ public:
 	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
+		const char *logprefix = logPrefixForType(type);
 
-		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, 0, msgId, instanceId, 0);
 
 		// count methods
 		numMessageSent++;
