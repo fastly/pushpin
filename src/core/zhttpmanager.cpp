@@ -698,8 +698,12 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
+		log_debug("1");
+
 		QByteArray clientId = packet.ids.first().id;
 		int clientCreditSize = get_client_credit_size(clientId);
+
+		log_debug("%d", clientCreditSize);
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
 		QByteArray packetBody = packet.body;
@@ -711,6 +715,8 @@ public:
 			chunks << packetBody.mid(offset, len);
 			offset += len;
 		}
+
+		log_debug("%d", chunks.size());
 
 		for (int i=0; i<chunks.size(); i++)
 		{
