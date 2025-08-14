@@ -37,19 +37,19 @@ PushpinProxyService::PushpinProxyService(
 	bool quietCheck)
 {
 	args_ += binFile;
-	args_ += "--config-file=" + configFile;
+	args_ += "--config=" + configFile;
 
 	if(!ipcPrefix.isEmpty())
 		args_ += "--ipc-prefix=" + ipcPrefix;
 
 	if(!logDir.isEmpty())
 	{
-		args_ += "--log-file=" + QDir(logDir).filePath(filePrefix + "pushpin-proxy.log");
+		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-proxy.log");
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
 	if(logLevel >= 0)
-		args_ += "--log-level=" + QString::number(logLevel);
+		args_ += "--loglevel=" + QString::number(logLevel);
 
 	foreach(const QString &route, routeLines)
 		args_ += "--routes=" + route;

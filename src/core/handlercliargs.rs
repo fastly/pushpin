@@ -30,15 +30,15 @@ use std::path::PathBuf;
 )]
 pub struct CliArgs {
     /// Set path to the configuration file
-    #[arg(short, long, value_name = "file")]
+    #[arg(short, long = "config", value_name = "file")]
     pub config_file: Option<String>,
 
     /// Set path to the log file
-    #[arg(short = 'l', long, value_name = "file")]
+    #[arg(short = 'l', long = "logfile", value_name = "file")]
     pub log_file: Option<String>,
 
     /// Set log level (0=error, 1=warn, 2=info, 3=debug, 4=trace)
-    #[arg(short = 'L', long, value_name = "x", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=4))]
+    #[arg(short = 'L', long = "loglevel", value_name = "x", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=4))]
     pub log_level: u32,
 
     /// Override ipc_prefix config option, which is used to add a prefix to all ZeroMQ IPC filenames

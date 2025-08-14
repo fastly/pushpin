@@ -326,7 +326,7 @@ impl PushpinProxyService {
         args.push(settings.proxy_bin.display().to_string());
 
         // Config file
-        args.push(format!("--config-file={}", settings.config_file.display()));
+        args.push(format!("--config={}", settings.config_file.display()));
 
         // Ipc prefix
         if !settings.ipc_prefix.is_empty() {
@@ -338,7 +338,7 @@ impl PushpinProxyService {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        args.push(format!("--log-level={}", log_level));
+        args.push(format!("--loglevel={}", log_level));
 
         // Routes
         args.push(format!("--routes={}", settings.route_lines.join(",")));
@@ -370,7 +370,7 @@ impl PushpinHandlerService {
         args.push(settings.handler_bin.display().to_string());
 
         // Config file
-        args.push(format!("--config-file={}", settings.config_file.display()));
+        args.push(format!("--config={}", settings.config_file.display()));
 
         // Port offset
         if settings.port_offset > 0 {
@@ -387,7 +387,7 @@ impl PushpinHandlerService {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        args.push(format!("--log-level={}", log_level));
+        args.push(format!("--loglevel={}", log_level));
 
         Self {
             service: Service::new(String::from(service_name), log_level),
