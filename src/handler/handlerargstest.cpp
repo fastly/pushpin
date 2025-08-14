@@ -21,7 +21,6 @@
  */
 
 #include "config.h"
-#include "handlerapp.h"
 #include "settings.h"
 #include "test.h"
 #include "handlerargsdata.h"
@@ -30,15 +29,6 @@
 
 void handlerargstest()
 {
-
-    // Create dummy argc/argv for QCoreApplication
-    int argc = 1;
-    char appName[] = "pushpin-handler";
-    char* argv[] = { appName, nullptr };
-
-    QCoreApplication qapp(argc, argv);
-    HandlerApp app;
-
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
 

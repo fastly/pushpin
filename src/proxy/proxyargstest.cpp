@@ -22,7 +22,6 @@
 
 
  #include "config.h"
- #include "app.h"
  #include "settings.h"
  #include "test.h"
  #include "proxyargsdata.h"
@@ -30,14 +29,6 @@
  
  void proxyargstest()
  {
-    // Create dummy argc/argv for QCoreApplication
-	    int argc = 1;
-		char appName[] = "pushpin-handler";
-		char* argv[] = { appName, nullptr };
-
-    QCoreApplication qapp(argc, argv);
-    App app;
-
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
 
