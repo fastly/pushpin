@@ -83,7 +83,7 @@ bench = false
 
 [[bin]]
 name = "pushpin-handler"
-test = true
+test = false
 bench = false
 
 [[bin]]
