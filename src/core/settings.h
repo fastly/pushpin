@@ -25,7 +25,6 @@
 
 #include <QString>
 #include <QVariant>
-#include "rust/bindings.h"
 
 class QSettings;
 

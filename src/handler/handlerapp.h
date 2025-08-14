@@ -23,7 +23,7 @@
 
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
-#include "settings.h"
+#include "rust/bindings.h"
 
 class HandlerApp
 {
