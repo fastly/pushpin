@@ -714,9 +714,10 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, certs_dir, secr
                     }
                 }
 
-    certs_changed = write_certs(client_certs, certs_dir, user=secrets_user, group=secrets_group)
-    if certs_changed:
-        logging.info("client certs changed")
+    # NOTE(jkarneges): Avoid littering until approach reevaluated [08-13-2025]
+    #certs_changed = write_certs(client_certs, certs_dir, user=secrets_user, group=secrets_group)
+    #if certs_changed:
+    #    logging.info("client certs changed")
 
     for service, backends in services.values():
         for backend in backends:
