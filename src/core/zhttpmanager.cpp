@@ -701,44 +701,65 @@ public:
 		log_debug("1");
 
 		QByteArray clientId = packet.ids.first().id;
-		int clientCreditSize = get_client_credit_size(clientId);
 
-		log_debug("%d", clientCreditSize);
-
-		//server_out_sock->write(QList<QByteArray>() << buf);
 		QByteArray packetBody = packet.body;
-		QList<QByteArray> chunks;
-		int offset = 0;
-		while (offset < packetBody.size()) 
+
+		if (packetBody.isEmpty())
 		{
-			int len = qMin(clientCreditSize, packetBody.size() - offset);
-			chunks << packetBody.mid(offset, len);
-			offset += len;
-		}
+			int newSeq = get_client_new_response_seq(clientId);
+			if (newSeq < 0)
+			{
+				log_debug("[WS] failed to get new response seq %s", clientId.constData());
+				return;
+			}
+			packet.ids.first().seq = newSeq;
 
-		log_debug("%d", chunks.size());
-
-		for (int i=0; i<chunks.size(); i++)
-		{
-			ZhttpResponsePacket p;
-			ZhttpResponsePacket::Id tempId;
-			tempId.id = clientId;
-			tempId.seq = get_client_new_response_seq(clientId);
-			p.ids += tempId;
-			p.from = instanceId;
-			p.body = chunks[i];
-			if (i < (chunks.size()-1))
-				p.more = true;
-			else
-				p.more = false;
-
-			QVariant vpacket = p.toVariant();
+			QVariant vpacket = packet.toVariant();
 			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 			server_out_sock->write(QList<QByteArray>() << buf);
-			QThread::usleep(1);
+		}
+		else
+		{
+			int clientCreditSize = get_client_credit_size(clientId);
+			log_debug("%d", clientCreditSize);
+
+			QList<QByteArray> chunks;
+			int offset = 0;
+			while (offset < packetBody.size()) 
+			{
+				int len = qMin(clientCreditSize, packetBody.size() - offset);
+				chunks << packetBody.mid(offset, len);
+				offset += len;
+			}
+
+			log_debug("%d", chunks.size());
+
+			for (int i=0; i<chunks.size(); i++)
+			{
+				ZhttpResponsePacket p;
+				ZhttpResponsePacket::Id tempId;
+				tempId.id = clientId;
+				tempId.seq = get_client_new_response_seq(clientId);
+				p.ids += tempId;
+				p.from = instanceId;
+				p.body = chunks[i];
+				if (i < (chunks.size()-1))
+					p.more = true;
+				else
+					p.more = false;
+
+				QVariant vpacket = p.toVariant();
+				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+				server_out_sock->write(QList<QByteArray>() << buf);
+				QThread::usleep(1);
+			}
 		}
 	}
 
@@ -767,8 +788,6 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
 
-		int clientCreditSize = get_client_credit_size(clientId);
-
 		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, 0, msgId, instanceId, 0);
 
 		// count methods
@@ -790,39 +809,51 @@ public:
 
 		if (packetBody.isEmpty())
 		{
-			return;
-		}
-
-		QList<QByteArray> chunks;
-		int offset = 0;
-		while (offset < packetBody.size()) 
-		{
-			int len = qMin(clientCreditSize, packetBody.size() - offset);
-			chunks << packetBody.mid(offset, len);
-			offset += len;
-		}
-
-		for (int i=0; i<chunks.size(); i++)
-		{
-			ZhttpResponsePacket p;
-			ZhttpResponsePacket::Id tempId;
-			tempId.id = clientId;
-			tempId.seq = get_client_new_response_seq(clientId);
-			p.ids += tempId;
-			p.from = instanceId;
-			p.body = chunks[i];
-			if (i < (chunks.size()-1))
-				p.more = true;
-			else
-				p.more = false;
-
-			QVariant vpacket = p.toVariant();
-			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+			int newSeq = get_client_new_response_seq(clientId);
+			if (newSeq < 0)
+			{
+				log_debug("[WS] failed_ to get new response seq %s", clientId.constData());
+				return;
+			}
 
 			server_out_sock->write(QList<QByteArray>() << buf);
 			QThread::usleep(1);
+		}
+		else
+		{
+			int clientCreditSize = get_client_credit_size(clientId);
+
+			QList<QByteArray> chunks;
+			int offset = 0;
+			while (offset < packetBody.size()) 
+			{
+				int len = qMin(clientCreditSize, packetBody.size() - offset);
+				chunks << packetBody.mid(offset, len);
+				offset += len;
+			}
+
+			for (int i=0; i<chunks.size(); i++)
+			{
+				ZhttpResponsePacket p;
+				ZhttpResponsePacket::Id tempId;
+				tempId.id = clientId;
+				tempId.seq = get_client_new_response_seq(clientId);
+				p.ids += tempId;
+				p.from = instanceId;
+				p.body = chunks[i];
+				if (i < (chunks.size()-1))
+					p.more = true;
+				else
+					p.more = false;
+
+				QVariant vpacket = p.toVariant();
+				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+				server_out_sock->write(QList<QByteArray>() << buf);
+				QThread::usleep(1);
+			}
 		}
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
@@ -834,43 +865,67 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		int clientCreditSize = get_client_credit_size(clientId);
-
 		// count methods
 		numMessageSent++;
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
 		QByteArray packetBody = packet.body;
-		QList<QByteArray> chunks;
-		int offset = 0;
-		while (offset < packetBody.size()) 
-		{
-			int len = qMin(clientCreditSize, packetBody.size() - offset);
-			chunks << packetBody.mid(offset, len);
-			offset += len;
-		}
 
-		for (int i=0; i<chunks.size(); i++)
+		if (packetBody.isEmpty())
 		{
-			ZhttpResponsePacket p;
-			ZhttpResponsePacket::Id tempId;
-			tempId.id = clientId;
-			tempId.seq = get_client_new_response_seq(clientId);
-			p.ids += tempId;
-			p.from = instanceId;
-			p.body = chunks[i];
-			if (i < (chunks.size()-1))
-				p.more = true;
-			else
-				p.more = false;
+			packet.ids.first().id = clientId;
+			int newSeq = get_client_new_response_seq(clientId);
+			if (newSeq < 0)
+			{
+				log_debug("[WS] failed to get new response seq %s", clientId.constData());
+				return;
+			}
+			packet.ids.first().seq = newSeq;
+			packet.from = instanceId;
 
-			QVariant vpacket = p.toVariant();
+			QVariant vpacket = packet.toVariant();
 			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 			server_out_sock->write(QList<QByteArray>() << buf);
-			QThread::usleep(1);
+		}
+		else
+		{
+			int clientCreditSize = get_client_credit_size(clientId);
+
+			QList<QByteArray> chunks;
+			int offset = 0;
+			while (offset < packetBody.size()) 
+			{
+				int len = qMin(clientCreditSize, packetBody.size() - offset);
+				chunks << packetBody.mid(offset, len);
+				offset += len;
+			}
+
+			for (int i=0; i<chunks.size(); i++)
+			{
+				ZhttpResponsePacket p;
+				ZhttpResponsePacket::Id tempId;
+				tempId.id = clientId;
+				tempId.seq = get_client_new_response_seq(clientId);
+				p.ids += tempId;
+				p.from = instanceId;
+				p.body = chunks[i];
+				if (i < (chunks.size()-1))
+					p.more = true;
+				else
+					p.more = false;
+
+				QVariant vpacket = p.toVariant();
+				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+				server_out_sock->write(QList<QByteArray>() << buf);
+				QThread::usleep(1);
+			}
 		}
 	}
 
