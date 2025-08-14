@@ -15,8 +15,8 @@
  */
 
 use clap::Parser;
-use pushpin::core::handlercliargs::ffi::{destroy_handler_cli_args, HandlerCliArgsFfi};
-use pushpin::core::handlercliargs::CliArgs;
+use pushpin::core::handlercliargs::ffi::HandlerCliArgsFfi;
+use pushpin::core::handlercliargs::{destroy_handler_cli_args, CliArgs};
 use pushpin::import_cpp;
 use std::process::ExitCode;
 

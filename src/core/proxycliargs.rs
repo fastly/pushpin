@@ -18,6 +18,7 @@ use crate::core::config::get_config_file;
 use crate::core::version;
 use clap::{arg, Parser};
 use std::env;
+use std::ffi::CString;
 use std::path::PathBuf;
 
 // Struct to hold the command line arguments
@@ -72,34 +73,13 @@ impl CliArgs {
     }
 
     pub fn to_ffi(&self) -> ffi::ProxyCliArgsFfi {
-        ffi::proxy_cli_args_to_ffi(self)
-    }
-}
-
-pub mod ffi {
-    use std::ffi::CString;
-
-    #[repr(C)]
-    pub struct ProxyCliArgsFfi {
-        pub config_file: *mut libc::c_char,
-        pub log_file: *mut libc::c_char,
-        pub log_level: libc::c_uint,
-        pub ipc_prefix: *mut libc::c_char,
-        pub routes: *mut *mut libc::c_char,
-        pub routes_count: libc::c_uint,
-        pub quiet_check: libc::c_int,
-    }
-
-    // Converts CliArgs to a C++-compatible struct
-    #[no_mangle]
-    pub extern "C" fn proxy_cli_args_to_ffi(args: &super::CliArgs) -> ProxyCliArgsFfi {
-        let config_file = args
+        let config_file = self
             .config_file
             .as_ref()
             .map_or_else(
                 || {
                     let work_dir = std::env::current_dir().unwrap_or_default();
-                    let default_config = super::get_config_file(&work_dir, None)
+                    let default_config = get_config_file(&work_dir, None)
                         .unwrap_or_else(|_| "examples/config/pushpin.conf".into());
                     CString::new(default_config.to_string_lossy().to_string()).unwrap()
                 },
@@ -107,7 +87,7 @@ pub mod ffi {
             )
             .into_raw();
 
-        let log_file = args
+        let log_file = self
             .log_file
             .as_ref()
             .map_or_else(
@@ -116,7 +96,7 @@ pub mod ffi {
             )
             .into_raw();
 
-        let ipc_prefix = args
+        let ipc_prefix = self
             .ipc_prefix
             .as_ref()
             .map_or_else(
@@ -125,7 +105,7 @@ pub mod ffi {
             )
             .into_raw();
 
-        let (routes, routes_count) = match &args.routes {
+        let (routes, routes_count) = match &self.routes {
             Some(routes_vec) if !routes_vec.is_empty() => {
                 // Allocate array of string pointers
                 let routes_array = unsafe {
@@ -149,51 +129,64 @@ pub mod ffi {
             }
         };
 
-        ProxyCliArgsFfi {
+        ffi::ProxyCliArgsFfi {
             config_file,
             log_file,
-            log_level: args.log_level,
+            log_level: self.log_level,
             ipc_prefix,
             routes,
             routes_count,
-            quiet_check: if args.quiet_check { 1 } else { 0 },
+            quiet_check: if self.quiet_check { 1 } else { 0 },
         }
     }
+}
 
-    /// Frees the memory allocated by proxy_cli_args_to_ffi
-    /// MUST be called by C++ code when done with the ProxyCliArgsFfi struct
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it takes ownership of raw pointers and frees their memory.
-    /// The caller must ensure that:
-    /// - The `ffi_args` struct was created by `proxy_cli_args_to_ffi`
-    /// - Each pointer field in `ffi_args` is either null or points to valid memory allocated by `CString::into_raw()` or `libc::malloc()`
-    /// - The `routes` array and its individual string elements were allocated properly
-    /// - No pointer in `ffi_args` is used after this function is called (double-free protection)
-    /// - This function is called exactly once per `ProxyCliArgsFfi` instance
-    #[no_mangle]
-    pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ProxyCliArgsFfi) {
-        if !ffi_args.config_file.is_null() {
-            let _ = CString::from_raw(ffi_args.config_file);
-        }
-        if !ffi_args.log_file.is_null() {
-            let _ = CString::from_raw(ffi_args.log_file);
-        }
-        if !ffi_args.ipc_prefix.is_null() {
-            let _ = CString::from_raw(ffi_args.ipc_prefix);
-        }
-        if !ffi_args.routes.is_null() {
-            // Free each individual route string
-            for i in 0..ffi_args.routes_count {
-                let route_ptr = *ffi_args.routes.add(i as usize);
-                if !route_ptr.is_null() {
-                    let _ = CString::from_raw(route_ptr);
-                }
+pub mod ffi {
+    #[repr(C)]
+    pub struct ProxyCliArgsFfi {
+        pub config_file: *mut libc::c_char,
+        pub log_file: *mut libc::c_char,
+        pub log_level: libc::c_uint,
+        pub ipc_prefix: *mut libc::c_char,
+        pub routes: *mut *mut libc::c_char,
+        pub routes_count: libc::c_uint,
+        pub quiet_check: libc::c_int,
+    }
+}
+
+/// Frees the memory allocated by proxy_cli_args_to_ffi
+/// MUST be called by C++ code when done with the ProxyCliArgsFfi struct
+///
+/// # Safety
+///
+/// This function is unsafe because it takes ownership of raw pointers and frees their memory.
+/// The caller must ensure that:
+/// - The `ffi_args` struct was created by `proxy_cli_args_to_ffi`
+/// - Each pointer field in `ffi_args` is either null or points to valid memory allocated by `CString::into_raw()` or `libc::malloc()`
+/// - The `routes` array and its individual string elements were allocated properly
+/// - No pointer in `ffi_args` is used after this function is called (double-free protection)
+/// - This function is called exactly once per `ProxyCliArgsFfi` instance
+#[no_mangle]
+pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgsFfi) {
+    if !ffi_args.config_file.is_null() {
+        let _ = CString::from_raw(ffi_args.config_file);
+    }
+    if !ffi_args.log_file.is_null() {
+        let _ = CString::from_raw(ffi_args.log_file);
+    }
+    if !ffi_args.ipc_prefix.is_null() {
+        let _ = CString::from_raw(ffi_args.ipc_prefix);
+    }
+    if !ffi_args.routes.is_null() {
+        // Free each individual route string
+        for i in 0..ffi_args.routes_count {
+            let route_ptr = *ffi_args.routes.add(i as usize);
+            if !route_ptr.is_null() {
+                let _ = CString::from_raw(route_ptr);
             }
-
-            libc::free(ffi_args.routes as *mut libc::c_void);
         }
+
+        libc::free(ffi_args.routes as *mut libc::c_void);
     }
 }
 
@@ -217,7 +210,7 @@ mod tests {
             quiet_check: true,
         };
 
-        let args_ffi = ffi::proxy_cli_args_to_ffi(&args);
+        let args_ffi = args.to_ffi();
 
         // Test verify() method
         let verified_args = args.verify();
@@ -273,7 +266,7 @@ mod tests {
 
         // Test cleanup - this should not crash
         unsafe {
-            ffi::destroy_proxy_cli_args(args_ffi);
+            destroy_proxy_cli_args(args_ffi);
         }
 
         // Test with empty/default values
@@ -286,7 +279,7 @@ mod tests {
             quiet_check: false,
         };
 
-        let empty_args_ffi = ffi::proxy_cli_args_to_ffi(&empty_args);
+        let empty_args_ffi = empty_args.to_ffi();
 
         // Test verify() with empty args
         let verified_empty_args = empty_args.verify();
@@ -331,7 +324,7 @@ mod tests {
 
         // Test cleanup for empty args - this should not crash
         unsafe {
-            ffi::destroy_proxy_cli_args(empty_args_ffi);
+            destroy_proxy_cli_args(empty_args_ffi);
         }
     }
 }
