@@ -6,4 +6,3 @@ SOURCES += \
 	$$PWD/tcpstreamtest.cpp \
 	$$PWD/unixstreamtest.cpp \
 	$$PWD/eventlooptest.cpp
-
