@@ -24,9 +24,7 @@
 /// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
-/// cbindgen:ignore
 pub mod handler;
-/// cbindgen:ignore
 pub mod proxy;
 /// cbindgen:ignore
 pub mod publish;

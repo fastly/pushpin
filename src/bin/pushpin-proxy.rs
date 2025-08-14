@@ -15,9 +15,9 @@
  */
 
 use clap::Parser;
-use pushpin::core::proxycliargs::ffi::ProxyCliArgs;
-use pushpin::core::proxycliargs::{destroy_proxy_cli_args, CliArgs};
 use pushpin::import_cpp;
+use pushpin::proxy::proxycliargs::ffi::ProxyCliArgs;
+use pushpin::proxy::proxycliargs::{destroy_proxy_cli_args, CliArgs};
 use std::process::ExitCode;
 
 import_cpp! {

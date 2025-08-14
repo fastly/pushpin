@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+pub mod handlercliargs;
+
 #[cfg(test)]
 mod tests {
     use crate::core::test::{run_cpp, TestException};
