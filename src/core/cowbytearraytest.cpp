@@ -27,6 +27,10 @@ static void basicUsage()
 {
 	CowByteArray a("hello");
 
+	// the data is null-terminated, but the null is not counted in the size
+	TEST_ASSERT_EQ(a.size(), 5);
+	TEST_ASSERT_EQ(strcmp(a.data(), "hello"), 0);
+
 	CowByteArrayList l;
 	l += a;
 	l += QByteArray("world");

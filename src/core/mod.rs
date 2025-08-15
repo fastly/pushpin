@@ -18,6 +18,7 @@ pub mod arena;
 pub mod buffer;
 pub mod channel;
 pub mod config;
+pub mod cow;
 pub mod defer;
 pub mod event;
 pub mod eventloop;
