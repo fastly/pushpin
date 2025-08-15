@@ -846,7 +846,6 @@ public:
 			p.ids += tempId;
 			p.from = instanceId;
 			p.body = packetBody;
-			p.type = ZhttpResponsePacket.Data;
 			p.more = true;
 
 			QVariant vpacket = p.toVariant();
@@ -866,7 +865,6 @@ public:
 			p1.ids += tempId1;
 			p1.from = instanceId;
 			p1.body = "";
-			p1.type = ZhttpResponsePacket.Data;
 			p1.more = false;
 
 			QVariant vpacket1 = p1.toVariant();
