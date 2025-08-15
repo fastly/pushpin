@@ -2349,7 +2349,7 @@ public:
 			{
 				QString msgId = pCacheItem->clientMap[cliId].msgId;
 				QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
-				writeToClient_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
+				writeToClient1_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
 
 				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				unregister_client(cliId);
