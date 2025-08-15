@@ -837,6 +837,7 @@ public:
 		{
 			server_out_sock->write(QList<QByteArray>() << data);
 			QThread::usleep(1);
+			packetBody = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 		}
 
 		if (packetBody.isEmpty())
