@@ -846,7 +846,7 @@ public:
 			p.ids += tempId;
 			p.from = instanceId;
 			p.body = packetBody;
-			p.more = true;
+			p.more = false;
 
 			QVariant vpacket = p.toVariant();
 			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
@@ -854,8 +854,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
+			for (i=0; i<100; i++)
 			server_out_sock->write(QList<QByteArray>() << buf);
-
+/*
 			QThread::usleep(100);
 			
 			ZhttpResponsePacket p1;
@@ -874,7 +875,7 @@ public:
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket1, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 			server_out_sock->write(QList<QByteArray>() << buf1);
-
+*/
 
 			return;
 		}
