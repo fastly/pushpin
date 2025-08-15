@@ -790,6 +790,8 @@ public:
 
 		QByteArray data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 
+		log_debug("[111] %s", data.constData());
+
 		// count methods
 		numMessageSent++;
 
@@ -818,13 +820,11 @@ public:
 					if (colonPos != -1) 
 					{
 						int tLength = data.mid(tPos, colonPos-tPos).toInt();
-						log_debug("[222] %d, %d", tLength, removeLength);
 						if (tLength > 0) 
 						{
 							int newLength = tLength - removeLength;
 							QByteArray newHeader = QByteArray::number(newLength);
 							data.replace(tPos, colonPos-tPos, newHeader);
-							log_debug("[111] %s", data.constData());
 						}
 					}
 				}
@@ -880,7 +880,7 @@ public:
 
 				QVariant vpacket = p.toVariant();
 				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-				buf += ",}";
+				log_debug("[222] %s", buf.constData());
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
