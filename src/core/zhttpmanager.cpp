@@ -837,6 +837,7 @@ public:
 		{
 			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 			server_out_sock->write(QList<QByteArray>() << data);
+			return;
 		}
 
 		if (packetBody.isEmpty())
