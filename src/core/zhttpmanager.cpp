@@ -848,6 +848,7 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
+			log_debug("[222] %s", data.constData());
 			server_out_sock->write(QList<QByteArray>() << data);
 		}
 
@@ -892,7 +893,7 @@ public:
 
 				QVariant vpacket = p.toVariant();
 				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-				log_debug("[222] %s", buf.constData());
+				log_debug("[333] %s", buf.constData());
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
