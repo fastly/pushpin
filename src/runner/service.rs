@@ -341,7 +341,7 @@ impl PushpinProxyService {
         args.push(format!("--loglevel={}", log_level));
 
         // Routes
-        args.push(format!("--routes={}", settings.route_lines.join(",")));
+        args.push(format!("--route={}", settings.route_lines.join(",")));
 
         Self {
             service: Service::new(String::from(service_name), log_level),

@@ -52,7 +52,7 @@ PushpinProxyService::PushpinProxyService(
 		args_ += "--loglevel=" + QString::number(logLevel);
 
 	foreach(const QString &route, routeLines)
-		args_ += "--routes=" + route;
+		args_ += "--route=" + route;
 
 	if(quietCheck)
 		args_ += "--quiet-check";
