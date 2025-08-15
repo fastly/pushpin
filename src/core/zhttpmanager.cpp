@@ -556,6 +556,8 @@ public:
 
 		QByteArray packetId = packet.ids.first().id;
 
+		log_debug("QQQ");
+
 		// cache process
 		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
 		{
