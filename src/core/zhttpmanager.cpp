@@ -802,7 +802,7 @@ public:
 			if (colonPos != -1) 
 			{
 				int bodyLength = buf.mid(lengthStart, colonPos - lengthStart).toInt();
-				bodyData = buf.mid(colonPos + 1, bodyLength);
+				packetBody = buf.mid(colonPos + 1, bodyLength);
 				// Remove "4:body,<len>:<data>"
 				buf.remove(bodyPos, (colonPos + 1 + bodyLength) - bodyPos);
 			}
