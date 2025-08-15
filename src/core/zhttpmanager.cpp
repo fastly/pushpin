@@ -627,6 +627,7 @@ public:
 					log_debug("[WS] passing keep-alive response");
 					break;
 				case ZhttpResponsePacket::Data:
+					if (ccIndex >= 0)
 					{
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
@@ -635,20 +636,32 @@ public:
 						out.credits = creditSize;
 						send_ws_request_over_cacheclient(out, NULL, ccIndex);
 
-						if (ccIndex >= 0)
+						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
+						resume_cache_thread();
+						return;
+					}
+					else
+					{
+						// increase credit
+						int creditSize = static_cast<int>(packet.body.size());
+						ZhttpRequestPacket out;
+						out.type = ZhttpRequestPacket::Credit;
+						out.credits = creditSize;
+						ZhttpRequestPacket::Id tempId;
+						tempId.id = packetId; // id
+						tempId.seq = update_request_seq(packetId);
+						out.ids += tempId;
+						ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(packet.from, packetId));
+						if(req)
 						{
-							process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
+							req->handle(packetId, tempId.seq, p);
+						}
+
+						int ret = process_http_response(packet, instanceAddress);
+						if (ret == 0)
+						{
 							resume_cache_thread();
 							return;
-						}
-						else
-						{
-							int ret = process_http_response(packet, instanceAddress);
-							if (ret == 0)
-							{
-								resume_cache_thread();
-								return;
-							}
 						}
 					}
 					break;
