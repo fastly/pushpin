@@ -26,11 +26,15 @@
  #include "test.h"
  #include "proxyargsdata.h"
  #include "log.h"
+ #include <filesystem>
  
  void proxyargstest()
  {
     // Get file for example config
     std::string configFile = "examples/config/pushpin.conf";
+
+    // Make directory for the log file
+    QDir().mkdir("log");
 
     // Create test routes array
     const char* route1 = "route1";
@@ -39,7 +43,7 @@
 
     ffi::ProxyCliArgs argsFfi = {
         const_cast<char*>(configFile.c_str()),  // config_file
-        const_cast<char*>("log.txt"),           // log_file
+        const_cast<char*>("log/log.txt"),           // log_file
         3,                                      // log_level
         const_cast<char*>("ipc:prefix"),        // ipc_prefix
         const_cast<char**>(routes),             // routes
@@ -50,7 +54,7 @@
     // Verify ProxyArgsData parsing
     ProxyArgsData args(&argsFfi);
     TEST_ASSERT_EQ(args.configFile, QString("examples/config/pushpin.conf"));
-    TEST_ASSERT_EQ(args.logFile, QString("log.txt"));
+    TEST_ASSERT_EQ(args.logFile, QString("log/log.txt"));
     TEST_ASSERT_EQ(args.logLevel, 3);
     TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
     TEST_ASSERT_EQ(args.routeLines, QStringList({"route1", "route2"}));
