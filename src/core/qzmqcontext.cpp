@@ -26,19 +26,17 @@
 #include <assert.h>
 #include "rust/bindings.h"
 
-using namespace ffi;
-
 namespace QZmq {
 
 Context::Context(int ioThreads)
 {
-	context_ = wzmq_init(ioThreads);
+	context_ = ffi::wzmq_init(ioThreads);
 	assert(context_);
 }
 
 Context::~Context()
 {
-	wzmq_term(context_);
+	ffi::wzmq_term(context_);
 }
 
 }
