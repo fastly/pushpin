@@ -807,10 +807,24 @@ public:
 			{
 				int bodyLength = data.mid(lengthStart, colonPos - lengthStart).toInt();
 				packetBody = data.mid(colonPos + 1, bodyLength);
-				// Remove "4:body,<len>:<data>"
-				int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
-				data.remove(bodyPos, removeLength);
 				
+				// check more:true flag
+				QByteArray moreKey = "4:more,4:true!";
+				int morePos = data.indexOf(moreKey);
+				if (morePos != -1)
+				{
+					// Replace "4:body,<len>:<data> with moreKey"
+					int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
+					data.replace(bodyPos, removeLength, moreKey);
+					removeLength -= moreKey.size();
+				}
+				else
+				{
+					// Remove "4:body,<len>:<data>"
+					int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
+					data.remove(bodyPos, removeLength);
+				}
+
 				// update T-length
 				int tPos = data.indexOf("T");
 				if (tPos != -1) 
@@ -836,27 +850,6 @@ public:
 		if (pCacheItem->proto == Scheme::http)
 		{
 			server_out_sock->write(QList<QByteArray>() << data);
-
-/*
-			QThread::usleep(100);
-			
-			ZhttpResponsePacket p1;
-			ZhttpResponsePacket::Id tempId1;
-			tempId1.id = clientId;
-			//tempId1.seq = get_client_new_response_seq(clientId);
-			p1.ids += tempId1;
-			p1.from = instanceId;
-			p1.body.clear();
-			p1.more = false;
-
-			QVariant vpacket1 = p1.toVariant();
-			QByteArray buf1 = instanceAddress + " T" + TnetString::fromVariant(vpacket1);
-			log_debug("[222] %s", buf1.constData());
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket1, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
-
-			server_out_sock->write(QList<QByteArray>() << buf1);
-*/
 		}
 
 		if (packetBody.isEmpty())
