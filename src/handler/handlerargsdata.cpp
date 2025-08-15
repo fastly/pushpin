@@ -49,7 +49,8 @@ HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
         if(!log_setFile(logFile))
         {
             log_error("failed to open log file: %s", qPrintable(logFile));
-            throw std::exception();
+            exit(1);
+
         }
     }
 
@@ -61,7 +62,6 @@ HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
         if(!file.open(QIODevice::ReadOnly))
         {
             log_error("failed to open %s", qPrintable(configFile));
-            throw std::exception();
         }
     }
 }
