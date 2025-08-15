@@ -21,6 +21,7 @@ use crate::connmgr::connection::{
     StreamSharedData,
 };
 use crate::connmgr::counter::Counter;
+use crate::connmgr::origind;
 use crate::connmgr::resolver::Resolver;
 use crate::connmgr::tls::TlsConfigCache;
 use crate::connmgr::zhttppacket;
@@ -49,6 +50,7 @@ use std::convert::TryFrom;
 use std::future::Future;
 use std::io::{self, Write};
 use std::mem;
+use std::path::Path;
 use std::pin::{pin, Pin};
 use std::rc::Rc;
 use std::str;
@@ -620,6 +622,7 @@ struct ConnectionOpts {
     instance_id: Rc<String>,
     buffer_size: usize,
     timeout: Duration,
+    origind_rate: u8,
     rb_tmp: Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -659,10 +662,12 @@ impl Worker {
         stream_timeout: Duration,
         allow_compression: bool,
         deny: &[IpNet],
+        origind_rate: u8,
         resolver: &Arc<Resolver>,
         tls_config_cache: &Arc<TlsConfigCache>,
         pool: &Arc<ConnectionPool>,
         zsockman: &Arc<zhttpsocket::ServerSocketManager>,
+        origindman: Option<&Arc<origind::OrigindManager>>,
         handle_bound: usize,
     ) -> Self {
         debug!("client worker {}: starting", id);
@@ -677,6 +682,7 @@ impl Worker {
         let tls_config_cache = Arc::clone(tls_config_cache);
         let pool = Arc::clone(pool);
         let zsockman = Arc::clone(zsockman);
+        let origindman = origindman.cloned();
 
         let thread = thread::Builder::new()
             .name(format!("client-worker-{}", id))
@@ -717,10 +723,12 @@ impl Worker {
                         stream_timeout,
                         allow_compression,
                         deny,
+                        origind_rate,
                         resolver,
                         tls_config_cache,
                         pool,
                         zsockman,
+                        origindman,
                         handle_bound,
                     ))
                     .unwrap();
@@ -760,10 +768,12 @@ impl Worker {
         stream_timeout: Duration,
         allow_compression: bool,
         deny: Vec<IpNet>,
+        origind_rate: u8,
         resolver: Arc<Resolver>,
         tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
+        origindman: Option<Arc<origind::OrigindManager>>,
         handle_bound: usize,
     ) {
         let executor = Executor::current().unwrap();
@@ -833,6 +843,7 @@ impl Worker {
                     instance_id: instance_id.clone(),
                     buffer_size,
                     timeout: req_timeout,
+                    origind_rate,
                     rb_tmp: rb_tmp.clone(),
                     packet_buf: packet_buf.clone(),
                     tmp_buf: tmp_buf.clone(),
@@ -864,10 +875,12 @@ impl Worker {
                     messages_max,
                     allow_compression,
                     Rc::clone(&deny),
+                    origindman.clone(),
                     ConnectionOpts {
                         instance_id: instance_id.clone(),
                         buffer_size,
                         timeout: stream_timeout,
+                        origind_rate,
                         rb_tmp: rb_tmp.clone(),
                         packet_buf: packet_buf.clone(),
                         tmp_buf: tmp_buf.clone(),
@@ -1175,6 +1188,7 @@ impl Worker {
         messages_max: usize,
         allow_compression: bool,
         deny: Rc<Vec<IpNet>>,
+        origindman: Option<Arc<origind::OrigindManager>>,
         opts: ConnectionOpts,
     ) {
         let reactor = Reactor::current().unwrap();
@@ -1371,6 +1385,7 @@ impl Worker {
                                         zstream_receiver,
                                         Rc::clone(&deny),
                                         Rc::clone(&conns),
+                                        origindman.clone(),
                                         opts.clone(),
                                         ConnectionStreamOpts {
                                             blocks_max: connection_blocks_max,
@@ -1600,6 +1615,7 @@ impl Worker {
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         deny: Rc<Vec<IpNet>>,
         conns: Rc<Connections>,
+        origindman: Option<Arc<origind::OrigindManager>>,
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
         shared: arena::Rc<StreamSharedData>,
@@ -1637,9 +1653,11 @@ impl Worker {
             stream_opts.allow_compression,
             &deny,
             &opts.instance_id,
+            opts.origind_rate,
             &resolver,
             &tls_config_cache,
             &pool,
+            origindman.as_deref(),
             zreceiver,
             AsyncLocalSender::new(stream_opts.sender),
             shared,
@@ -1781,6 +1799,8 @@ impl Client {
         stream_timeout: Duration,
         allow_compression: bool,
         deny: &[IpNet],
+        origind_path: Option<&Path>,
+        origind_rate: u8,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
     ) -> Result<Self, String> {
@@ -1810,6 +1830,8 @@ impl Client {
 
         let mut workers = Vec::new();
 
+        let origindman = origind_path.map(|p| Arc::new(origind::OrigindManager::new(p)));
+
         for i in 0..worker_count {
             let w = Worker::new(
                 instance_id,
@@ -1825,10 +1847,12 @@ impl Client {
                 stream_timeout,
                 allow_compression,
                 deny,
+                origind_rate,
                 &resolver,
                 &tls_config_cache,
                 &pool,
                 &zsockman,
+                origindman.as_ref(),
                 handle_bound,
             );
             workers.push(w);
@@ -1885,6 +1909,7 @@ impl Client {
                     instance_id: Rc::new("".to_string()),
                     buffer_size: 0,
                     timeout: Duration::from_millis(0),
+                    origind_rate: 0,
                     rb_tmp: Rc::new(TmpBuffer::new(1)),
                     packet_buf: Rc::new(RefCell::new(Vec::new())),
                     tmp_buf: Rc::new(RefCell::new(Vec::new())),
@@ -1952,10 +1977,12 @@ impl Client {
                 zreceiver,
                 Rc::new(Vec::new()),
                 conns,
+                None,
                 ConnectionOpts {
                     instance_id: Rc::new("".to_string()),
                     buffer_size: 0,
                     timeout: Duration::from_millis(0),
+                    origind_rate: 0,
                     rb_tmp: Rc::new(TmpBuffer::new(1)),
                     packet_buf: Rc::new(RefCell::new(Vec::new())),
                     tmp_buf: Rc::new(RefCell::new(Vec::new())),
@@ -2056,6 +2083,8 @@ impl TestClient {
             Duration::from_secs(5),
             false,
             &[],
+            None,
+            0,
             zsockman.clone(),
             100,
         )
@@ -3126,9 +3155,9 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit c0e4d161997e5c2880ba3409efe13afa3ec26fd7
+        // sizes in debug mode at commit 3e9b6d0f4c290216a75fb892476c83f025be47f1
         const REQ_TASK_SIZE_BASE: usize = 6888;
-        const STREAM_TASK_SIZE_BASE: usize = 12152;
+        const STREAM_TASK_SIZE_BASE: usize = 15368;
 
         // cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;

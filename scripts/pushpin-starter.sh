@@ -21,7 +21,7 @@ for m in "${MOUNT_RW[@]}"
 do
 	do_mount "rw" "${m}"
 done
-MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" "/proc" "/var/lib/powderhorn" )
+MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" "/proc" "/var/lib/powderhorn" "/var/run/origind" )
 # mounted ro
 for m in "${MOUNT_RO[@]}"
 do

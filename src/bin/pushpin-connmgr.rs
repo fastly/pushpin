@@ -63,6 +63,8 @@ struct Args {
     tls_identities_dir: String,
     allow_compression: bool,
     deny_out_internal: bool,
+    origind: Option<String>,
+    origind_rate: u8,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -109,6 +111,8 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         certs_dir: PathBuf::from(args.tls_identities_dir),
         allow_compression: args.allow_compression,
         deny: Vec::new(),
+        origind_path: args.origind,
+        origind_rate: args.origind_rate,
     };
 
     for v in args.listen.iter() {
@@ -378,6 +382,21 @@ fn main() {
                 .help("Block outbound connections to local/internal IP address ranges"),
         )
         .arg(
+            Arg::new("origind")
+                .long("origind")
+                .num_args(1)
+                .value_name("PATH")
+                .help("Path to OriginD unix socket file"),
+        )
+        .arg(
+            Arg::new("origind-rate")
+                .long("origind-rate")
+                .num_args(1)
+                .value_name("N")
+                .help("Percentage of outbound connections to send through OriginD")
+                .default_value("0"),
+        )
+        .arg(
             Arg::new("sizes")
                 .long("sizes")
                 .action(ArgAction::SetTrue)
@@ -575,6 +594,21 @@ fn main() {
 
     let deny_out_internal = *matches.get_one("deny-out-internal").unwrap();
 
+    let origind = matches.get_one::<String>("origind");
+
+    let origind_rate = matches
+        .get_one::<String>("origind-rate")
+        .cloned()
+        .unwrap_or_else(|| String::from("0"));
+
+    let origind_rate: u8 = match origind_rate.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse origind-rate: {}", e);
+            process::exit(1);
+        }
+    };
+
     // if no zmq server specs are set (needed by client mode), specify
     // default listen configuration in order to enable server mode. this
     // means if zmq server specs are set, then server mode won't be enabled
@@ -606,6 +640,8 @@ fn main() {
         tls_identities_dir: tls_identities_dir.to_string(),
         allow_compression,
         deny_out_internal,
+        origind: origind.cloned(),
+        origind_rate,
     };
 
     if let Err(e) = process_args_and_run(args) {

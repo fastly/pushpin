@@ -35,6 +35,7 @@
 #![allow(clippy::collapsible_else_if)]
 
 use crate::connmgr::counter::{Counter, CounterDec};
+use crate::connmgr::origind;
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
 use crate::connmgr::tls::{AsyncTlsStream, TlsConfigCache, TlsStream, TlsWaker, VerifyMode};
@@ -66,6 +67,7 @@ use crate::core::zmq::MultipartHeader;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
+use origind_client::OrigindError;
 use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
@@ -454,6 +456,27 @@ impl From<track::RecvError> for Error {
                 Self::Io(io::Error::from(io::ErrorKind::UnexpectedEof))
             }
             track::RecvError::ValueActive => Self::ValueActive,
+        }
+    }
+}
+
+impl From<OrigindError> for Error {
+    fn from(e: OrigindError) -> Self {
+        use origind_common::ConnectError;
+
+        match e {
+            OrigindError::Io(e) => Self::Io(e),
+            OrigindError::ConnectError(e) => match e {
+                ConnectError::ConnectionRefused => {
+                    Self::Io(io::Error::from(io::ErrorKind::ConnectionRefused))
+                }
+                ConnectError::ConnectionTimeout => {
+                    Self::Io(io::Error::from(io::ErrorKind::TimedOut))
+                }
+                _ => Self::Io(io::Error::from(io::ErrorKind::Other)),
+            },
+            OrigindError::SslError(_) => Self::Tls,
+            _ => Self::Io(io::Error::from(io::ErrorKind::Other)),
         }
     }
 }
@@ -4228,6 +4251,7 @@ impl Read for Stream {
 enum AsyncStream<'a> {
     Plain(AsyncTcpStream),
     Tls(AsyncTlsStream<'a>),
+    Origind(crate::connmgr::origind::OrigindStream),
 }
 
 impl AsyncStream<'_> {
@@ -4235,6 +4259,7 @@ impl AsyncStream<'_> {
         match self {
             Self::Plain(stream) => Stream::Plain(stream.into_std()),
             Self::Tls(stream) => Stream::Tls(stream.into_std()),
+            Self::Origind(_) => panic!("into_inner not supported for origind"),
         }
     }
 }
@@ -4346,6 +4371,36 @@ fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
     true
 }
 
+async fn client_connect_to_origind<'a>(
+    log_id: &str,
+    rdata: &zhttppacket::RequestData<'_, '_>,
+    uri_host: &str,
+    connect_host: &str,
+    connect_port: u16,
+    origindman: &origind::OrigindManager,
+) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
+    let host = if rdata.trust_connect_host {
+        connect_host
+    } else {
+        uri_host
+    };
+
+    let stream = origindman
+        .connect_tls(connect_host, connect_port, host, !rdata.ignore_tls_errors)
+        .await
+        .map_err(|e| {
+            debug!("client-conn {log_id}: failed to create origind connection: {e}");
+            e
+        })?;
+
+    debug!("client-conn {log_id}: created origind connection to {host}");
+
+    // origind connections are not reused so this value doesn't matter
+    let bogus_peer_addr = "0.0.0.0:0".parse().unwrap();
+
+    return Ok((bogus_peer_addr, true, AsyncStream::Origind(stream)));
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn client_connect<'a>(
     log_id: &str,
@@ -4354,7 +4409,9 @@ async fn client_connect<'a>(
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     deny: &[IpNet],
+    origind_rate: u8,
     pool: &ConnectionPool,
+    origindman: Option<&origind::OrigindManager>,
     tls_waker_data: &'a RefWakerData<TlsWaker>,
 ) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let use_tls = ["https", "wss"].contains(&uri.scheme());
@@ -4371,6 +4428,20 @@ async fn client_connect<'a>(
     } else {
         (uri_host, uri.port().unwrap_or(default_port))
     };
+
+    if let Some(origindman) = origindman {
+        if use_tls && origind_rate > ((random() % 100) as u8) {
+            return client_connect_to_origind(
+                log_id,
+                rdata,
+                uri_host,
+                connect_host,
+                connect_port,
+                origindman,
+            )
+            .await;
+        }
+    }
 
     let resolver = resolver::AsyncResolver::new(resolver);
 
@@ -4783,7 +4854,9 @@ async fn client_req_connect(
             resolver,
             tls_config_cache,
             deny,
+            0,
             pool,
+            None,
             &tls_waker_data,
         )
         .await?;
@@ -4823,6 +4896,7 @@ async fn client_req_connect(
                 )
                 .await?
             }
+            AsyncStream::Origind(_) => panic!("origind not supported for non-stream requests"),
         };
 
         if done.is_persistent() {
@@ -5543,9 +5617,11 @@ async fn client_stream_connect<E, R1, R2>(
     tmp_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     instance_id: &str,
+    origind_rate: u8,
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
+    origindman: Option<&origind::OrigindManager>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &StreamSharedData,
@@ -5665,7 +5741,9 @@ where
                 resolver,
                 tls_config_cache,
                 deny,
+                origind_rate,
                 pool,
+                origindman,
                 &tls_waker_data,
             ));
 
@@ -5686,6 +5764,8 @@ where
         };
 
         let mut blocks_avail = CounterDec::new(blocks_avail);
+
+        let mut using_origind = false;
 
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
@@ -5736,9 +5816,35 @@ where
                 )
                 .await?
             }
+            AsyncStream::Origind(stream) => {
+                using_origind = true;
+
+                client_stream_handler(
+                    log_id,
+                    stream,
+                    zreq,
+                    method,
+                    url,
+                    include_body,
+                    rdata.follow_redirects,
+                    buf1,
+                    buf2,
+                    blocks_max,
+                    &mut blocks_avail,
+                    messages_max,
+                    allow_compression,
+                    tmp_buf,
+                    &mut zsess_in,
+                    &zsess_out,
+                    shared,
+                    response_received,
+                    refresh_stream_timeout,
+                )
+                .await?
+            }
         };
 
-        if done.is_persistent() {
+        if !using_origind && done.is_persistent() {
             buf2.resize(buffer_size);
 
             if pool
@@ -5793,9 +5899,11 @@ async fn client_stream_connection_inner<E>(
     allow_compression: bool,
     deny: &[IpNet],
     instance_id: &str,
+    origind_rate: u8,
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
+    origindman: Option<&origind::OrigindManager>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
@@ -5838,9 +5946,11 @@ where
             &tmp_buf,
             deny,
             instance_id,
+            origind_rate,
             resolver,
             tls_config_cache,
             pool,
+            origindman,
             zreceiver,
             &zsender,
             shared.get(),
@@ -5946,9 +6056,11 @@ pub async fn client_stream_connection<E>(
     allow_compression: bool,
     deny: &[IpNet],
     instance_id: &str,
+    origind_rate: u8,
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
+    origindman: Option<&origind::OrigindManager>,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
@@ -5977,9 +6089,11 @@ pub async fn client_stream_connection<E>(
             allow_compression,
             deny,
             instance_id,
+            origind_rate,
             resolver,
             tls_config_cache,
             pool,
+            origindman,
             &zreceiver,
             zsender,
             shared,

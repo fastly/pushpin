@@ -18,6 +18,7 @@
 mod batch;
 mod counter;
 mod listener;
+mod origind;
 mod pool;
 mod track;
 mod zhttppacket;
@@ -40,7 +41,7 @@ use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -121,6 +122,8 @@ pub struct Config {
     pub certs_dir: PathBuf,
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
+    pub origind_path: Option<String>,
+    pub origind_rate: u8,
 }
 
 pub struct App {
@@ -315,6 +318,8 @@ impl App {
                 config.stream_timeout,
                 config.allow_compression,
                 &config.deny,
+                config.origind_path.as_ref().map(|p| Path::new(p)),
+                config.origind_rate,
                 zsockman.clone(),
                 handle_bound,
             )?;

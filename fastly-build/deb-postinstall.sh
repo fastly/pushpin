@@ -6,8 +6,9 @@ groupadd fetchly-sock || true
 groupadd pushpin || true
 groupadd pushpin-listener || true
 groupadd pub-events || true
+groupadd origind || true
 useradd -r -g pushpin pushpin || true
-usermod -a -G pushpin-listener,pub-events,fetchly-sock pushpin || true
+usermod -a -G pushpin-listener,pub-events,fetchly-sock,origind pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
 mkdir -p /var/lib/pushpin
