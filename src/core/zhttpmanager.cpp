@@ -814,14 +814,14 @@ public:
 				int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
 				if (morePos != -1)
 				{
-					// Replace "4:body,<len>:<data> with moreKey"
-					data.replace(bodyPos, removeLength, moreKey);
-					removeLength -= moreKey.size();
+					// Remove "4:body,<len>:<data>"
+					data.remove(bodyPos, removeLength);
 				}
 				else
 				{
-					// Remove "4:body,<len>:<data>"
-					data.remove(bodyPos, removeLength);
+					// Replace "4:body,<len>:<data> with moreKey"
+					data.replace(bodyPos, removeLength, moreKey);
+					removeLength -= moreKey.size();					
 				}
 
 				// update T-length
