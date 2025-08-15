@@ -854,7 +854,7 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
-			for (int i=0; i<100; i++)
+			for (int i=0; i<100000; i++)
 			server_out_sock->write(QList<QByteArray>() << buf);
 /*
 			QThread::usleep(100);
