@@ -589,6 +589,7 @@ public:
 			}
 			else
 			{
+				log_debug("[PPP] %d", packet.type);
 				switch (packet.type)
 				{
 				case ZhttpResponsePacket::Cancel:
