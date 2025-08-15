@@ -1490,7 +1490,7 @@ int check_multi_packets_for_http_response(ZhttpResponsePacket &p)
 		{
 			log_debug("[HTTP] Detected end of multi-parts response");
 			gHttpMultiPartResponseItemMap[pId].body.append(p.body);
-			p.body = gHttpMultiPartResponseItemMap[pId].body;
+			p = gHttpMultiPartResponseItemMap[pId];
 
 			gHttpMultiPartResponseItemMap.remove(pId);
 
