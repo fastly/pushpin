@@ -99,8 +99,8 @@ QString gSubscribeChangesAttrName = "params>>result>>changes";
 int gAccessTimeoutSeconds = 30;
 int gResponseTimeoutSeconds = 90;
 int gClientNoRequestTimeoutSeconds = 120; // 2mins
-int gCacheTimeoutSeconds = 10;
-int gShorterTimeoutSeconds = 5;
+int gCacheTimeoutSeconds = 25;
+int gShorterTimeoutSeconds = 15;
 int gLongerTimeoutSeconds = 60;
 int gCacheItemMaxCount = 3000;
 
