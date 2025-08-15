@@ -849,7 +849,7 @@ public:
 					int lenPos = commaPos + 1;
 					int endPos = data.indexOf(']', lenPos);
 					if (endPos != -1) {
-						data.replace(lenPos, endPos - lenPos, "0");
+						data.replace(lenPos, endPos - lenPos, "100");
 					}
 				}
 			}
