@@ -41,32 +41,4 @@ ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgs *argsFfi)
         routeLines << QString::fromUtf8(argsFfi->routes[i]);
     }
     quietCheck  = argsFfi->quiet_check == 1;
-
-    // Set the log level
-	if(logLevel != -1)
-        log_setOutputLevel(logLevel);
-    else
-        log_setOutputLevel(LOG_LEVEL_INFO);
-
-    // Set the log file if specified
-    if(!logFile.isEmpty())
-    {
-        if(!log_setFile(logFile))
-        {
-            log_error("failed to open log file: %s", qPrintable(logFile));
-            throw std::exception();
-        }
-    }
-
-    log_debug("starting...");
-
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
-    {
-        QFile file(configFile);
-        if(!file.open(QIODevice::ReadOnly))
-        {
-            log_error("failed to open %s", qPrintable(configFile));
-            throw std::exception();
-        }
-    }
 }

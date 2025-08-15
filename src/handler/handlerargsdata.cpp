@@ -36,32 +36,4 @@ HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
     logLevel 	= argsFfi->log_level;
     ipcPrefix 	= QString::fromUtf8(argsFfi->ipc_prefix);
     portOffset  = argsFfi->port_offset;
-
-    // Set the log level
-	if(logLevel != -1)
-        log_setOutputLevel(logLevel);
-    else
-        log_setOutputLevel(LOG_LEVEL_INFO);
-
-    // Set the log file if specified
-    if(!logFile.isEmpty())
-    {
-        if(!log_setFile(logFile))
-        {
-            log_error("failed to open log file: %s", qPrintable(logFile));
-            exit(1);
-
-        }
-    }
-
-    log_debug("starting...");
-
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
-    {
-        QFile file(configFile);
-        if(!file.open(QIODevice::ReadOnly))
-        {
-            log_error("failed to open %s", qPrintable(configFile));
-        }
-    }
 }

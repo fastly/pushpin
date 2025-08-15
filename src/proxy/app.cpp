@@ -320,6 +320,34 @@ public:
 		Settings settings(args.configFile);
 		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
 
+		// Set the log level
+		if(args.logLevel != -1)
+			log_setOutputLevel(args.logLevel);
+		else
+			log_setOutputLevel(LOG_LEVEL_INFO);
+
+		// Set the log file if specified
+		if(!args.logFile.isEmpty())
+		{
+			if(!log_setFile(args.logFile))
+			{
+				log_error("failed to open log file: %s", qPrintable(args.logFile));
+				exit(1);
+
+			}
+		}
+
+		log_debug("starting...");
+
+		// QSettings doesn't inform us if the config file can't be opened, so do that ourselves
+		{
+			QFile file(args.configFile);
+			if(!file.open(QIODevice::ReadOnly))
+			{
+				log_error("failed to open %s", qPrintable(args.configFile));
+			}
+		}
+
 		QDir configDir = QFileInfo(args.configFile).absoluteDir();
 		QStringList services = settings.value("runner/services").toStringList();
 
