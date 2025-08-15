@@ -23,15 +23,21 @@
 
 #include <QCoreApplication>
 #include "handlerapp.h"
+#include "rust/bindings.h"
 
 extern "C" {
 
-int handler_main(int argc, char **argv)
-{
-	QCoreApplication qapp(argc, argv);
+	int handler_main(const ffi::HandlerCliArgs *argsFfi)
+	{
+		// Create dummy argc/argv for QCoreApplication
+		int argc = 1;
+		char app_name[] = "pushpin-handler";
+		char* argv[] = { app_name, nullptr };
+		
+		QCoreApplication qapp(argc, argv);
 
-	HandlerApp app;
-	return app.run();
-}
+		HandlerApp app;
+		return app.run(argsFfi);
+	}
 
 }

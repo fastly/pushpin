@@ -144,7 +144,7 @@ enum CommandLineParseResult
 	CommandLineHelpRequested
 };
 
-class ArgsData
+class RunnerArgsData
 {
 public:
 	QString configFile;
@@ -155,14 +155,14 @@ public:
 	int id;
 	QStringList routeLines;
 
-	ArgsData() :
+	RunnerArgsData() :
 		mergeOutput(false),
 		id(-1)
 	{
 	}
 };
 
-static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsData *args, QString *errorMessage)
+static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, RunnerArgsData *args, QString *errorMessage)
 {
 	parser->setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
 	const QCommandLineOption configFileOption("config", "Config file.", "file");
@@ -259,7 +259,7 @@ class RunnerApp::Private
 {
 public:
 	RunnerApp *q;
-	ArgsData args;
+	RunnerArgsData args;
 	QList<Service*> services;
 	bool stopping;
 	bool errored;

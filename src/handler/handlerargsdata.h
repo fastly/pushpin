@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2025 Fastly, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,21 +21,23 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#ifndef HANDLERARGSDATA_H
+#define HANDLERARGSDATA_H
 
+#include <QString>
+#include <QStringList>
 #include "rust/bindings.h"
 
-class App
+class HandlerArgsData
 {
-public:
-	App();
-	~App();
+	public:
+		QString configFile;
+		QString logFile;
+		int logLevel;
+		QString ipcPrefix;
+		int portOffset;
 
-	int run(const ffi::ProxyCliArgs *argsFfi);
-
-private:
-	class Private;
+		HandlerArgsData(const ffi::HandlerCliArgs *argsFfi);
 };
 
 #endif

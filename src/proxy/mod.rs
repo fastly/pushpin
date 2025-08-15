@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+pub mod proxycliargs;
+
 #[cfg(test)]
 mod tests {
     use crate::core::test::{run_cpp, TestException};
@@ -34,6 +36,11 @@ mod tests {
         unsafe { ffi::proxyengine_test(out_ex) == 0 }
     }
 
+    fn proxyargs_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::proxyargs_test(out_ex) == 0 }
+    }
+
     #[test]
     fn websocketoverhttp() {
         run_cpp(websocketoverhttp_test);
@@ -47,5 +54,10 @@ mod tests {
     #[test]
     fn proxyengine() {
         run_cpp(proxyengine_test);
+    }
+
+    #[test]
+    fn proxyargs() {
+        run_cpp(proxyargs_test);
     }
 }

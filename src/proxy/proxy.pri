@@ -22,7 +22,8 @@ HEADERS += \
 	$$PWD/updater.h \
 	$$PWD/engine.h \
 	$$PWD/app.h \
-	$$PWD/main.h
+	$$PWD/main.h \ 
+	$$PWD/proxyargsdata.h 
 
 SOURCES += \
 	$$PWD/testhttprequest.cpp \
@@ -46,4 +47,5 @@ SOURCES += \
 	$$PWD/updater.cpp \
 	$$PWD/engine.cpp \
 	$$PWD/app.cpp \
-	$$PWD/main.cpp
+	$$PWD/main.cpp \ 
+	$$PWD/proxyargsdata.cpp 
