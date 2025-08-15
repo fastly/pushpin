@@ -808,7 +808,7 @@ public:
 
 		// send first part of response if http
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
-		if (gWsCacheItem->proto == Scheme::http)
+		if (pCacheItem->proto == Scheme::http)
 		{
 			log_debug("QQQ");
 		}
