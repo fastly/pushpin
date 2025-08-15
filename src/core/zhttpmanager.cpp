@@ -835,7 +835,7 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-			server_out_sock->write(QList<QByteArray>() << data);
+			//server_out_sock->write(QList<QByteArray>() << data);
 		}
 
 		if (packetBody.isEmpty())
@@ -883,7 +883,6 @@ public:
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
-				server_out_sock->write(QList<QByteArray>() << buf);
 				server_out_sock->write(QList<QByteArray>() << buf);
 				QThread::usleep(1);
 			}
