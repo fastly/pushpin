@@ -804,7 +804,23 @@ public:
 				int bodyLength = buf.mid(lengthStart, colonPos - lengthStart).toInt();
 				packetBody = buf.mid(colonPos + 1, bodyLength);
 				// Remove "4:body,<len>:<data>"
-				buf.remove(bodyPos, (colonPos + 1 + bodyLength) - bodyPos);
+				int removeLength = (colonPos + 1 + bodyLength) - bodyPos;
+				buf.remove(bodyPos, removeLength);
+				
+				// update T-length
+				if (buf.startsWith('T')) 
+				{
+					colonPos = buf.indexOf(':');
+					int tLength = buf.mid(1, colonPos - 1).toInt();
+					log_debug("[222] %d, %d", tLength, removeLength);
+					if (tLength > 0) 
+					{
+						int newLength = tLength - removeLength;
+						QByteArray newHeader = "T" + QByteArray::number(newLength);
+						buf.replace(0, colonPos, newHeader);
+						log_debug("[111] %s", buf.constData());
+					}
+				}
 			}
 		}
 
@@ -812,17 +828,7 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-			log_debug("[111] %s", buf.constData());
-			if (buf.startsWith('T')) 
-			{
-				int colonPos = buf.indexOf(':');
-				if (colonPos != -1) {
-					int newSize = buf.size() - (colonPos + 1); // size after the colon
-					QByteArray newHeader = "T" + QByteArray::number(newSize);
-					buf.replace(0, colonPos, newHeader);
-				}
-			}
-			log_debug("[222] %s", buf.constData());
+
 		}
 
 		if (packetBody.isEmpty())
