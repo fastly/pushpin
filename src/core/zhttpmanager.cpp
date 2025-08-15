@@ -806,7 +806,7 @@ public:
 				int bodyLength = data.mid(lengthStart, colonPos - lengthStart).toInt();
 				packetBody = data.mid(colonPos + 1, bodyLength);
 				// Remove "4:body,<len>:<data>"
-				int removeLength = (colonPos + 1 + bodyLength) - bodyPos;
+				int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
 				data.remove(bodyPos, removeLength);
 				
 				// update T-length
