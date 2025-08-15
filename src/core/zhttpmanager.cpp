@@ -808,17 +808,22 @@ public:
 				buf.remove(bodyPos, removeLength);
 				
 				// update T-length
-				if (buf.startsWith('T')) 
+				int tPos = buf.indexOf("T");
+				if (tPos != -1) 
 				{
-					colonPos = buf.indexOf(':');
-					int tLength = buf.mid(1, colonPos - 1).toInt();
-					log_debug("[222] %d, %d", tLength, removeLength);
-					if (tLength > 0) 
+					tPos += 1;
+					colonPos = buf.indexOf(':', tPos);
+					if (colonPos != -1) 
 					{
-						int newLength = tLength - removeLength;
-						QByteArray newHeader = "T" + QByteArray::number(newLength);
-						buf.replace(0, colonPos, newHeader);
-						log_debug("[111] %s", buf.constData());
+						int tLength = buf.mid(tPos, colonPos-tPos).toInt();
+						log_debug("[222] %d, %d", tLength, removeLength);
+						if (tLength > 0) 
+						{
+							int newLength = tLength - removeLength;
+							QByteArray newHeader = QByteArray::number(newLength);
+							buf.replace(tPos, colonPos-tPos, newHeader);
+							log_debug("[111] %s", buf.constData());
+						}
 					}
 				}
 			}
