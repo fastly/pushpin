@@ -880,7 +880,7 @@ public:
 
 				QVariant vpacket = p.toVariant();
 				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-				buf += ",}"
+				buf += ",}";
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
