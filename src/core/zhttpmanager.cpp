@@ -836,12 +836,8 @@ public:
 		if (pCacheItem->proto == Scheme::http)
 		{
 			//data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
-			// 2. Update Content-Length to "0"
-			QByteArray clKey = "3:113,";
-			int clPos = data.indexOf(clKey);
-			data.replace(clPos, 6, "3:100,");
-			log_debug("[111] %s", data.constData());
 			server_out_sock->write(QList<QByteArray>() << data);
+			server_out_sock->write(QList<QByteArray>() << packetBody);
 			return;
 		}
 
