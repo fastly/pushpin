@@ -698,8 +698,6 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		log_debug("1");
-
 		QByteArray clientId = packet.ids.first().id;
 
 		QByteArray packetBody = packet.body;
@@ -2257,11 +2255,13 @@ public:
 		QByteArray packetId = p.ids[0].id;
 		QByteArray from = p.from;
 
+		log_debug("1");
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
 			return 0;
 
+		log_debug("2");
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 		
@@ -2287,6 +2287,7 @@ public:
 			}
 		}
 
+		log_debug("3");
 		if (itemId.isEmpty())
 		{
 			foreach(QByteArray _itemId, get_cache_item_ids())
@@ -2349,7 +2350,7 @@ public:
 			{
 				QString msgId = pCacheItem->clientMap[cliId].msgId;
 				QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
-				writeToClient1_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
+				writeToClient_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
 
 				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				unregister_client(cliId);
