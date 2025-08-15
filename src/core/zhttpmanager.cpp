@@ -786,7 +786,9 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
 
-		QByteArray buf = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, 0, msgId, instanceId, 0);
+		int newSeq = get_client_new_response_seq(clientId);
+
+		QByteArray data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 
 		// count methods
 		numMessageSent++;
@@ -794,35 +796,35 @@ public:
 		// extract body
 		QByteArray packetBody = "";
 		QByteArray bodyKey = "4:body,";
-		int bodyPos = buf.indexOf(bodyKey);
+		int bodyPos = data.indexOf(bodyKey);
 		if (bodyPos != -1) 
 		{
 			int lengthStart = bodyPos + bodyKey.size();
-			int colonPos = buf.indexOf(':', lengthStart);
+			int colonPos = data.indexOf(':', lengthStart);
 			if (colonPos != -1) 
 			{
-				int bodyLength = buf.mid(lengthStart, colonPos - lengthStart).toInt();
-				packetBody = buf.mid(colonPos + 1, bodyLength);
+				int bodyLength = data.mid(lengthStart, colonPos - lengthStart).toInt();
+				packetBody = data.mid(colonPos + 1, bodyLength);
 				// Remove "4:body,<len>:<data>"
 				int removeLength = (colonPos + 1 + bodyLength) - bodyPos;
-				buf.remove(bodyPos, removeLength);
+				data.remove(bodyPos, removeLength);
 				
 				// update T-length
-				int tPos = buf.indexOf("T");
+				int tPos = data.indexOf("T");
 				if (tPos != -1) 
 				{
 					tPos += 1;
-					colonPos = buf.indexOf(':', tPos);
+					colonPos = data.indexOf(':', tPos);
 					if (colonPos != -1) 
 					{
-						int tLength = buf.mid(tPos, colonPos-tPos).toInt();
+						int tLength = data.mid(tPos, colonPos-tPos).toInt();
 						log_debug("[222] %d, %d", tLength, removeLength);
 						if (tLength > 0) 
 						{
 							int newLength = tLength - removeLength;
 							QByteArray newHeader = QByteArray::number(newLength);
-							buf.replace(tPos, colonPos-tPos, newHeader);
-							log_debug("[111] %s", buf.constData());
+							data.replace(tPos, colonPos-tPos, newHeader);
+							log_debug("[111] %s", data.constData());
 						}
 					}
 				}
@@ -833,7 +835,8 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-
+			server_out_sock->write(QList<QByteArray>() << data);
+			QThread::usleep(1);
 		}
 
 		if (packetBody.isEmpty())
@@ -845,7 +848,7 @@ public:
 				return;
 			}
 
-			server_out_sock->write(QList<QByteArray>() << buf);
+			server_out_sock->write(QList<QByteArray>() << data);
 			QThread::usleep(1);
 		}
 		else
