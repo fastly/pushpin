@@ -842,7 +842,7 @@ public:
 			ZhttpResponsePacket p;
 			ZhttpResponsePacket::Id tempId;
 			tempId.id = clientId;
-			tempId.seq = get_client_new_response_seq(clientId);
+			//tempId.seq = get_client_new_response_seq(clientId);
 			p.ids += tempId;
 			p.from = instanceId;
 			p.body = packetBody;
@@ -857,14 +857,14 @@ public:
 			server_out_sock->write(QList<QByteArray>() << buf);
 
 			QThread::usleep(100);
-
+			
 			ZhttpResponsePacket p1;
 			ZhttpResponsePacket::Id tempId1;
 			tempId1.id = clientId;
-			tempId1.seq = get_client_new_response_seq(clientId);
+			//tempId1.seq = get_client_new_response_seq(clientId);
 			p1.ids += tempId1;
 			p1.from = instanceId;
-			p1.body = "";
+			p1.body.clear();
 			p1.more = false;
 
 			QVariant vpacket1 = p1.toVariant();
