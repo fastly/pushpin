@@ -786,11 +786,18 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
 
-		int newSeq = get_client_new_response_seq(clientId);
+		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 
-		QByteArray data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
-
-		log_debug("[111] %s", data.constData());
+		QByteArray data;
+		if (pCacheItem->proto == Scheme::http)
+		{
+			int newSeq = get_client_new_response_seq(clientId);
+			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+		}
+		else
+		{
+			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, 0, msgId, instanceId, 0);
+		}
 
 		// count methods
 		numMessageSent++;
@@ -856,10 +863,8 @@ public:
 		}
 
 		// send first part of response if http
-		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-			log_debug("[222] %s", data.constData());
 			server_out_sock->write(QList<QByteArray>() << data);
 		}
 
@@ -904,7 +909,6 @@ public:
 
 				QVariant vpacket = p.toVariant();
 				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-				log_debug("[333] %s", buf.constData());
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
