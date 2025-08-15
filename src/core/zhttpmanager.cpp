@@ -556,8 +556,6 @@ public:
 
 		QByteArray packetId = packet.ids.first().id;
 
-		log_debug("QQQ");
-
 		// cache process
 		if (gCacheEnable == true && type != SessionType::CacheRequest && type != SessionType::CacheResponse)
 		{
@@ -2267,6 +2265,8 @@ public:
 		log_debug("2");
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+
+		log_debug("[TTT]-%s", responseBuf.constData());
 		
 		bool bodyParseSucceed = true;
 
