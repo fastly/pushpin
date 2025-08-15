@@ -627,15 +627,15 @@ public:
 					log_debug("[WS] passing keep-alive response");
 					break;
 				case ZhttpResponsePacket::Data:
+					// increase credit
+					int creditSize = static_cast<int>(packet.body.size());
+					ZhttpRequestPacket out;
+					out.type = ZhttpRequestPacket::Credit;
+					out.credits = creditSize;
+					send_ws_request_over_cacheclient(out, NULL, ccIndex);
+					
 					if (ccIndex >= 0)
 					{
-						// increase credit
-						int creditSize = static_cast<int>(packet.body.size());
-						ZhttpRequestPacket out;
-						out.type = ZhttpRequestPacket::Credit;
-						out.credits = creditSize;
-						send_ws_request_over_cacheclient(out, NULL, ccIndex);
-
 						process_ws_cacheclient_response(packet, ccIndex, instanceAddress);
 						resume_cache_thread();
 						return;
