@@ -2343,6 +2343,8 @@ public:
 		pCacheItem->cachedFlag = true;
 		log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
+		log_debug("QQQ %s", responseBuf.constData());
+
 		// store response body
 		store_cache_response_buffer(itemId, responseBuf, packetMsg.id, 0);
 
