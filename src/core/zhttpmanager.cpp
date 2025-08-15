@@ -836,6 +836,23 @@ public:
 		if (pCacheItem->proto == Scheme::http)
 		{
 			//data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+			// 2. Update Content-Length to "0"
+			QByteArray clKey = "14:Content-Length,3:";
+			int clPos = data.indexOf(clKey);
+			if (clPos != -1) {
+				int clValStart = clPos + clKey.size();
+				int commaPos = data.indexOf(',', clValStart);
+				if (commaPos != -1) {
+					// Replace the digit count (3) with 1 (since "0" is 1 digit)
+					data.replace(clValStart, commaPos - clValStart, "1");
+					// Replace actual length value after comma
+					int lenPos = commaPos + 1;
+					int endPos = data.indexOf(']', lenPos);
+					if (endPos != -1) {
+						data.replace(lenPos, endPos - lenPos, "0");
+					}
+				}
+			}
 			log_debug("[111] %s", data.constData());
 			server_out_sock->write(QList<QByteArray>() << data);
 			return;
