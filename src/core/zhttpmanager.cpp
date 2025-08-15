@@ -791,6 +791,7 @@ public:
 		// count methods
 		numMessageSent++;
 
+		// extract body
 		QByteArray packetBody = "";
 		QByteArray key = "4:body,";
 		int pos = buf.indexOf(key);
@@ -803,6 +804,13 @@ public:
 				int length = buf.mid(pos, colonIndex - pos).toInt();
 				packetBody = buf.mid(colonIndex + 1, length);
 			}
+		}
+
+		// send first part of response if http
+		pCacheItem = load_cache_item(cacheItemId);
+		if (gWsCacheItem->proto == Scheme::http)
+		{
+			log_debug("QQQ");
 		}
 
 		if (packetBody.isEmpty())
