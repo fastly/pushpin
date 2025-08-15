@@ -589,7 +589,6 @@ public:
 			}
 			else
 			{
-				log_debug("[PPP] %d", packet.type);
 				switch (packet.type)
 				{
 				case ZhttpResponsePacket::Cancel:
@@ -2252,22 +2251,23 @@ public:
 
 	int process_http_response(const ZhttpResponsePacket &responsePacket, const QByteArray &instanceAddress)
 	{
+		QVariant vpacket1 = responsePacket.toVariant();
+		QByteArray responseBuf1 = instanceAddress + " T" + TnetString::fromVariant(vpacket1);
+
+		log_debug("TTT %s", responseBuf1.constData());
+
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
 		QByteArray from = p.from;
 
-		log_debug("1");
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
 			return 0;
 
-		log_debug("2");
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
-		log_debug("[TTT]-%s", responseBuf.constData());
-		
 		bool bodyParseSucceed = true;
 
 		// parse json body
@@ -2290,7 +2290,6 @@ public:
 			}
 		}
 
-		log_debug("3");
 		if (itemId.isEmpty())
 		{
 			foreach(QByteArray _itemId, get_cache_item_ids())
