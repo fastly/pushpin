@@ -809,19 +809,30 @@ public:
 				packetBody = data.mid(colonPos + 1, bodyLength);
 				
 				// check more:true flag
-				QByteArray moreKey = "4:more,4:true!";
-				int morePos = data.indexOf(moreKey);
+				QByteArray moreTrueKey = "4:more,4:true!";
+				int moreTruePos = data.indexOf(moreTrueKey);
+
 				int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
-				if (morePos != -1)
+				if (moreTruePos != -1)
 				{
 					// Remove "4:body,<len>:<data>"
 					data.remove(bodyPos, removeLength);
 				}
 				else
 				{
-					// Replace "4:body,<len>:<data> with moreKey"
-					data.replace(bodyPos, removeLength, moreKey);
-					removeLength -= moreKey.size();					
+					// check more:false flag
+					QByteArray moreFalseKey = "4:more,4:false!";
+					int moreFalsePos = data.indexOf(moreFalseKey);
+					if (moreFalsePos != -1)
+					{
+						// Remove moreFalseKey
+						data.remove(moreFalsePos, moreFalseKey.size());
+						removeLength += moreFalseKey.size();
+					}
+
+					// Replace "4:body,<len>:<data> with moreTrueKey"
+					data.replace(bodyPos, removeLength, moreTrueKey);
+					removeLength -= moreTrueKey.size();
 				}
 
 				// update T-length
