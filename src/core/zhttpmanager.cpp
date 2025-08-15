@@ -886,6 +886,7 @@ public:
 				server_out_sock->write(QList<QByteArray>() << buf);
 				QThread::usleep(1);
 			}
+			server_out_sock->write(QList<QByteArray>() << ",");
 		}
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
