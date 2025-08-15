@@ -838,6 +838,7 @@ public:
 			//data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 			server_out_sock->write(QList<QByteArray>() << data);
 			QThread::usleep(100);
+			server_out_sock->write(QList<QByteArray>() << data);
 			
 			ZhttpResponsePacket p;
 			ZhttpResponsePacket::Id tempId;
@@ -854,8 +855,6 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
-			for (int i=0; i<100000; i++)
-			server_out_sock->write(QList<QByteArray>() << buf);
 /*
 			QThread::usleep(100);
 			
