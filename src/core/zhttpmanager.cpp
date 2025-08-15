@@ -835,7 +835,8 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+			//data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
+			log_debug("[111] %s", data.constData());
 			server_out_sock->write(QList<QByteArray>() << data);
 			return;
 		}
