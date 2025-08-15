@@ -2254,8 +2254,6 @@ public:
 		QVariant vpacket1 = responsePacket.toVariant();
 		QByteArray responseBuf1 = instanceAddress + " T" + TnetString::fromVariant(vpacket1);
 
-		log_debug("TTT %s", responseBuf1.constData());
-
 		ZhttpResponsePacket p = responsePacket;
 		QByteArray packetId = p.ids[0].id;
 		QByteArray from = p.from;
@@ -2343,8 +2341,6 @@ public:
 		pCacheItem->cachedFlag = true;
 		log_debug("[HTTP] Added/Updated Cache content for method=%s", qPrintable(pCacheItem->methodName));
 
-		log_debug("QQQ %s", responseBuf.constData());
-
 		// store response body
 		store_cache_response_buffer(itemId, responseBuf, packetMsg.id, 0);
 
@@ -2354,7 +2350,7 @@ public:
 			{
 				QString msgId = pCacheItem->clientMap[cliId].msgId;
 				QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
-				writeToClient1_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
+				writeToClient_(itemId, cliId, msgId, instanceAddress, orgInstanceId);
 
 				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				unregister_client(cliId);
@@ -2722,7 +2718,6 @@ public:
 				{
 					log_debug("[WS] Adding Cache content for method name=%s", qPrintable(pCacheItem->methodName));
 
-					log_debug("[QQQ] %s, %s, %d", (pCacheItem->cachedFlag==false)?"F":"T", (packetMsg.isResultNull==false)?"F":"T", pCacheItem->retryCount);
 					if (pCacheItem->cachedFlag == false && 
 						!(pCacheItem->refreshFlag & ACCEPT_NULL_RESPONSE) &&
 						packetMsg.isResultNull == true && 
