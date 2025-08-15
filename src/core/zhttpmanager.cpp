@@ -880,13 +880,13 @@ public:
 
 				QVariant vpacket = p.toVariant();
 				QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+				buf += ",}"
 				if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 					LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 				server_out_sock->write(QList<QByteArray>() << buf);
 				QThread::usleep(1);
 			}
-			server_out_sock->write(QList<QByteArray>() << ",");
 		}
 
 		//server_out_sock->write(QList<QByteArray>() << buf);
