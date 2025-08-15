@@ -835,25 +835,7 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 		if (pCacheItem->proto == Scheme::http)
 		{
-			//data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 			server_out_sock->write(QList<QByteArray>() << data);
-			QThread::usleep(100);
-			server_out_sock->write(QList<QByteArray>() << data);
-			
-			ZhttpResponsePacket p;
-			ZhttpResponsePacket::Id tempId;
-			tempId.id = clientId;
-			//tempId.seq = get_client_new_response_seq(clientId);
-			p.ids += tempId;
-			p.from = instanceId;
-			p.body = packetBody;
-			p.more = false;
-
-			QVariant vpacket = p.toVariant();
-			QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
-			log_debug("[222] %s", buf.constData());
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
 
 /*
 			QThread::usleep(100);
@@ -875,8 +857,6 @@ public:
 
 			server_out_sock->write(QList<QByteArray>() << buf1);
 */
-
-			return;
 		}
 
 		if (packetBody.isEmpty())
