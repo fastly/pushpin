@@ -654,7 +654,7 @@ public:
 						ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(packet.from, packetId));
 						if(req)
 						{
-							req->handle(packetId, tempId.seq, p);
+							req->handle(packetId, tempId.seq, out);
 						}
 
 						int ret = process_http_response(packet, instanceAddress);
