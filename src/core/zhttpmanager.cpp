@@ -642,6 +642,7 @@ public:
 					}
 					else
 					{
+						/*
 						// increase credit
 						int creditSize = static_cast<int>(packet.body.size());
 						ZhttpRequestPacket out;
@@ -656,7 +657,7 @@ public:
 						{
 							req->handle(packetId, tempId.seq, out);
 						}
-
+						*/
 						int ret = process_http_response(packet, instanceAddress);
 						if (ret == 0)
 						{
