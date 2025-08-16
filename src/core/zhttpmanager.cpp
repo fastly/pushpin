@@ -799,7 +799,7 @@ public:
 		QThread::usleep(1);
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient2_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 
@@ -842,7 +842,7 @@ public:
 */
 	}
 
-	void writeToClient2_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
@@ -850,7 +850,7 @@ public:
 		CacheItem* pCacheItem = load_cache_item(cacheItemId);
 
 		QByteArray data;
-		if (pCacheItem->proto == Scheme::http)
+		if (pCacheItem != NULL && pCacheItem->proto == Scheme::http)
 		{
 			int newSeq = get_client_new_response_seq(clientId);
 			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
@@ -876,7 +876,7 @@ public:
 				int bodyLength = data.mid(lengthStart, colonPos - lengthStart).toInt();
 				packetBody = data.mid(colonPos + 1, bodyLength);
 				
-				if (pCacheItem->proto == Scheme::http)
+				if (pCacheItem != NULL && pCacheItem->proto == Scheme::http)
 				{
 					// check more:true flag
 					QByteArray moreTrueKey = "4:more,4:true!";
@@ -927,7 +927,7 @@ public:
 		}
 
 		// send first part of response if http
-		if (pCacheItem->proto == Scheme::http)
+		if (pCacheItem != NULL && pCacheItem->proto == Scheme::http)
 		{
 			server_out_sock->write(QList<QByteArray>() << data);
 		}
