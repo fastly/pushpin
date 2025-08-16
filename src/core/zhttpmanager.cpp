@@ -779,7 +779,7 @@ public:
 		}
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient1_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 
@@ -799,7 +799,7 @@ public:
 		QThread::usleep(1);
 	}
 
-	void writeToClient1_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
