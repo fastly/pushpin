@@ -807,6 +807,12 @@ public:
 
 		int newSeq = get_client_new_response_seq(clientId);
 
+		if (newSeq < 0)
+		{
+			log_debug("[WS] failed_ to get new response seq %s", clientId.constData());
+			return;
+		}
+
 		QByteArray data;
 		if (pCacheItem->proto == Scheme::http)
 		{
