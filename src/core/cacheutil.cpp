@@ -1698,7 +1698,7 @@ int get_next_cache_refresh_interval(const QByteArray &itemId)
 	else
 	{
 		// set interval to the fixed value
-		timeInterval = 20;
+		timeInterval = 10;
 	}
 
 	return timeInterval;
