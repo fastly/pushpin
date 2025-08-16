@@ -779,7 +779,7 @@ public:
 		}
 	}
 
-	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient1_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 
@@ -799,7 +799,7 @@ public:
 		QThread::usleep(1);
 	}
 
-	void writeToClient1_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(CacheResponse);
@@ -833,47 +833,50 @@ public:
 				int bodyLength = data.mid(lengthStart, colonPos - lengthStart).toInt();
 				packetBody = data.mid(colonPos + 1, bodyLength);
 				
-				// check more:true flag
-				QByteArray moreTrueKey = "4:more,4:true!";
-				int moreTruePos = data.indexOf(moreTrueKey);
+				if (pCacheItem->proto == Scheme::http)
+				{
+					// check more:true flag
+					QByteArray moreTrueKey = "4:more,4:true!";
+					int moreTruePos = data.indexOf(moreTrueKey);
 
-				int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
-				if (moreTruePos != -1)
-				{
-					// Remove "4:body,<len>:<data>"
-					data.remove(bodyPos, removeLength);
-				}
-				else
-				{
-					// check more:false flag
-					QByteArray moreFalseKey = "4:more,4:false!";
-					int moreFalsePos = data.indexOf(moreFalseKey);
-					if (moreFalsePos != -1)
+					int removeLength = (colonPos + 1 + bodyLength) - bodyPos + 1; // 1 is for ','
+					if (moreTruePos != -1)
 					{
-						// Remove moreFalseKey
-						data.remove(moreFalsePos, moreFalseKey.size());
-						removeLength += moreFalseKey.size();
+						// Remove "4:body,<len>:<data>"
+						data.remove(bodyPos, removeLength);
+					}
+					else
+					{
+						// check more:false flag
+						QByteArray moreFalseKey = "4:more,4:false!";
+						int moreFalsePos = data.indexOf(moreFalseKey);
+						if (moreFalsePos != -1)
+						{
+							// Remove moreFalseKey
+							data.remove(moreFalsePos, moreFalseKey.size());
+							removeLength += moreFalseKey.size();
+						}
+
+						// Replace "4:body,<len>:<data> with moreTrueKey"
+						data.replace(bodyPos, removeLength, moreTrueKey);
+						removeLength -= moreTrueKey.size();
 					}
 
-					// Replace "4:body,<len>:<data> with moreTrueKey"
-					data.replace(bodyPos, removeLength, moreTrueKey);
-					removeLength -= moreTrueKey.size();
-				}
-
-				// update T-length
-				int tPos = data.indexOf("T");
-				if (tPos != -1) 
-				{
-					tPos += 1;
-					colonPos = data.indexOf(':', tPos);
-					if (colonPos != -1) 
+					// update T-length
+					int tPos = data.indexOf("T");
+					if (tPos != -1) 
 					{
-						int tLength = data.mid(tPos, colonPos-tPos).toInt();
-						if (tLength > 0) 
+						tPos += 1;
+						colonPos = data.indexOf(':', tPos);
+						if (colonPos != -1) 
 						{
-							int newLength = tLength - removeLength;
-							QByteArray newHeader = QByteArray::number(newLength);
-							data.replace(tPos, colonPos-tPos, newHeader);
+							int tLength = data.mid(tPos, colonPos-tPos).toInt();
+							if (tLength > 0) 
+							{
+								int newLength = tLength - removeLength;
+								QByteArray newHeader = QByteArray::number(newLength);
+								data.replace(tPos, colonPos-tPos, newHeader);
+							}
 						}
 					}
 				}
