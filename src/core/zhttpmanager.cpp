@@ -659,11 +659,13 @@ public:
 						}
 						*/
 						int ret = process_http_response(packet, instanceAddress);
+						/*
 						if (ret == 0)
 						{
 							resume_cache_thread();
 							return;
 						}
+						*/
 					}
 					break;
 				default:
@@ -2425,7 +2427,7 @@ public:
 
 		foreach(QByteArray cliId, pCacheItem->clientMap.keys())
 		{
-			if (gHttpClientMap.contains(cliId))
+			if (gHttpClientMap.contains(cliId) && cliId != packetId)
 			{
 				QString msgId = pCacheItem->clientMap[cliId].msgId;
 				QByteArray orgInstanceId = pCacheItem->clientMap[cliId].instanceId;
