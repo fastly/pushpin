@@ -799,7 +799,7 @@ public:
 		QThread::usleep(1);
 	}
 
-	void writeToClient2_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
+	void writeToClient_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
 	{
 		assert(server_out_sock);
 
@@ -814,9 +814,12 @@ public:
 		}
 		else
 		{
-			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, 0, msgId, instanceId, 0);
+			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 		}
 
+		server_out_sock->write(QList<QByteArray>() << data);
+		QThread::usleep(1);
+/*
 		if (newSeq < 0)
 		{
 			log_debug("[WS] failed_ to get new response seq %s", clientId.constData());
@@ -830,6 +833,7 @@ public:
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 		QThread::usleep(1);
+*/
 	}
 
 	void writeToClient2_(const QByteArray &cacheItemId, const QByteArray &clientId, const QString &msgId, const QByteArray &instanceAddress, const QByteArray &instanceId)
