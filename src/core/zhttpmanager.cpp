@@ -814,7 +814,7 @@ public:
 		}
 
 		QByteArray data;
-		if (pCacheItem->proto == Scheme::http)
+		if (pCacheItem != NULL && pCacheItem->proto == Scheme::http)
 		{
 			data = load_cache_response_buffer(instanceAddress, cacheItemId, clientId, newSeq, msgId, instanceId, 0);
 		}
