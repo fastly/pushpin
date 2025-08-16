@@ -2340,7 +2340,7 @@ public:
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
-			return 0;
+			return -1;
 
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
