@@ -81,7 +81,7 @@ public:
 
 			if(!msg.isEmpty())
 			{
-				q->readyRead(msg.asQByteArrayList());
+				q->readyRead(msg);
 				if(self.expired())
 					return;
 			}

@@ -26,7 +26,7 @@
 
 #include <boost/signals2.hpp>
 
-class QString;
+class CowString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -44,8 +44,8 @@ public:
 
 	void setShutdownWaitTime(int msecs);
 
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
 
 	bool canRead() const;
 

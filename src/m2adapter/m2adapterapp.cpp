@@ -1438,7 +1438,7 @@ public:
 		}
 	}
 
-	void handleZhttpIn(Mode mode, const QList<QByteArray> &message)
+	void handleZhttpIn(Mode mode, const CowByteArrayList &message)
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
@@ -1455,7 +1455,7 @@ public:
 			return;
 		}
 
-		QByteArray dataRaw = message[0].mid(at + 1);
+		CowByteArray dataRaw = message[0].mid(at + 1);
 		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
 		{
 			log_warning("%s: received message with invalid format (missing type), skipping", logprefix);
@@ -2319,7 +2319,7 @@ public:
 		}
 	}
 
-	void m2_in_readyRead(const QList<QByteArray> &message)
+	void m2_in_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2328,10 +2328,10 @@ public:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logByteArray(LOG_LEVEL_DEBUG, message[0], "m2: IN");
+			LogUtil::logByteArray(LOG_LEVEL_DEBUG, message[0].asQByteArray(), "m2: IN");
 
 		M2RequestPacket mreq;
-		if(!mreq.fromByteArray(message[0]))
+		if(!mreq.fromByteArray(message[0].asQByteArray()))
 		{
 			log_warning("m2: received message with invalid format, skipping");
 			return;
@@ -2755,7 +2755,7 @@ public:
 
 		while(sock->canRead())
 		{
-			QList<QByteArray> message = sock->read().asQByteArrayList();
+			CowByteArrayList message = sock->read();
 
 			if(message.count() != 2)
 			{
@@ -2814,12 +2814,12 @@ public:
 		}
 	}
 
-	void zhttp_in_readyRead(const QList<QByteArray> &message)
+	void zhttp_in_readyRead(const CowByteArrayList &message)
 	{
 		handleZhttpIn(Http, message);
 	}
 
-	void zws_in_readyRead(const QList<QByteArray> &message)
+	void zws_in_readyRead(const CowByteArrayList &message)
 	{
 		handleZhttpIn(WebSocket, message);
 	}

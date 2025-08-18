@@ -25,11 +25,10 @@
 #ifndef QZMQVALVE_H
 #define QZMQVALVE_H
 
-#include <QByteArray>
-#include <QList>
 #include <boost/signals2.hpp>
+#include "cowbytearray.h"
 
-using SignalList = boost::signals2::signal<void(const QList<QByteArray>&)>;
+using SignalList = boost::signals2::signal<void(const CowByteArrayList&)>;
 using Connection = boost::signals2::scoped_connection;
 
 namespace QZmq {

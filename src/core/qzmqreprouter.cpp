@@ -68,12 +68,12 @@ void RepRouter::setShutdownWaitTime(int msecs)
 	d->sock->setShutdownWaitTime(msecs);
 }
 
-void RepRouter::connectToAddress(const QString &addr)
+void RepRouter::connectToAddress(const CowString &addr)
 {
 	d->sock->connectToAddress(addr);
 }
 
-bool RepRouter::bind(const QString &addr)
+bool RepRouter::bind(const CowString &addr)
 {
 	return d->sock->bind(addr);
 }
