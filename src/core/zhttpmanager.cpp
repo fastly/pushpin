@@ -436,11 +436,11 @@ public:
 		}
 	}
 
-	void writeProbeAck(const QByteArray &toAddress)
+	void writeProbeAck(const CowByteArray &toAddress)
 	{
-		QList<QByteArray> msg;
+		CowByteArrayList msg;
 		msg += toAddress;
-		msg += QByteArray();
+		msg += CowByteArray();
 		msg += "probe-ack";
 		server_in_stream_sock->write(msg);
 	}
@@ -538,14 +538,14 @@ public:
 
 		while(client_req_sock->canRead())
 		{
-			QList<QByteArray> msg = client_req_sock->read().asQByteArrayList();
+			CowByteArrayList msg = client_req_sock->read();
 			if(msg.count() != 2)
 			{
 				log_warning("zhttp/zws client req: received message with parts != 2, skipping");
 				continue;
 			}
 
-			QByteArray dataRaw = msg[1];
+			CowByteArray dataRaw = msg[1];
 			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
 			{
 				log_warning("zhttp/zws client req: received message with invalid format (missing type), skipping");
@@ -593,7 +593,7 @@ public:
 		}
 	}
 
-	void processClientIn(const QByteArray &receiver, const QByteArray &msg)
+	void processClientIn(const CowByteArray &receiver, const CowByteArray &msg)
 	{
 		if(msg.length() < 1 || msg[0] != 'T')
 		{
@@ -653,7 +653,7 @@ public:
 		}
 	}
 
-	void client_out_stream_readyRead(const QList<QByteArray> &msg)
+	void client_out_stream_readyRead(const CowByteArrayList &msg)
 	{
 		if(msg.count() != 3)
 		{
@@ -667,10 +667,10 @@ public:
 			return;
 		}
 
-		processClientIn(QByteArray(), msg[2]);
+		processClientIn(CowByteArray(), msg[2]);
 	}
 
-	void client_in_readyRead(const QList<QByteArray> &msg)
+	void client_in_readyRead(const CowByteArrayList &msg)
 	{
 		if(msg.count() != 1)
 		{
@@ -685,13 +685,13 @@ public:
 			return;
 		}
 
-		QByteArray receiver = msg[0].mid(0, at);
-		QByteArray dataRaw = msg[0].mid(at + 1);
+		CowByteArray receiver = msg[0].mid(0, at);
+		CowByteArray dataRaw = msg[0].mid(at + 1);
 
 		processClientIn(receiver, dataRaw);
 	}
 
-	void server_in_readyRead(const QList<QByteArray> &msg)
+	void server_in_readyRead(const CowByteArrayList &msg)
 	{
 		if(msg.count() != 1)
 		{
@@ -798,7 +798,7 @@ public:
 		}
 	}
 
-	void server_in_stream_readyRead(const QList<QByteArray> &msg)
+	void server_in_stream_readyRead(const CowByteArrayList &msg)
 	{
 		if(msg.count() < 2 || msg.count() > 3)
 		{

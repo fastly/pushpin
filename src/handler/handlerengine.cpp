@@ -2383,12 +2383,13 @@ private:
 			removeSub(channel);
 	}
 
-	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
+	QVariant parseJsonOrTnetstring(const CowByteArray &message, bool *ok = 0, QString *errorMessage = 0)
+	{
 		QVariant data;
 		bool ok_;
 		if(message.length() > 0 && message[0] == 'J') {
 			QJsonParseError e;
-			QJsonDocument doc = QJsonDocument::fromJson(message.mid(1), &e);
+			QJsonDocument doc = QJsonDocument::fromJson(message.mid(1).asQByteArray(), &e);
 			if(e.error != QJsonParseError::NoError)
 			{
 				if(errorMessage)
@@ -2433,7 +2434,7 @@ private:
 		return data;
 	}
 
-	void inPull_readyRead(const QList<QByteArray> &message)
+	void inPull_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2463,7 +2464,7 @@ private:
 		handlePublishItem(item);
 	}
 
-	void inSub_readyRead(const QList<QByteArray> &message)
+	void inSub_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 2)
 		{
@@ -2479,7 +2480,7 @@ private:
 			return;
 		}
 
-		QString channel = QString::fromUtf8(message[0]);
+		QString channel = QString::fromUtf8(message[0].asQByteArray());
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
@@ -2494,7 +2495,7 @@ private:
 		handlePublishItem(item);
 	}
 
-	void wsControlInit_readyRead(const QList<QByteArray> &message)
+	void wsControlInit_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2505,7 +2506,7 @@ private:
 		wsControlIn_readyRead(message[0]);
 	}
 
-	void wsControlStream_readyRead(const QList<QByteArray> &message)
+	void wsControlStream_readyRead(const CowByteArrayList &message)
 	{
 		QZmq::ReqMessage req(message);
 
@@ -2518,7 +2519,7 @@ private:
 		wsControlIn_readyRead(req.content()[0]);
 	}
 
-	void wsControlIn_readyRead(const QByteArray &message)
+	void wsControlIn_readyRead(const CowByteArray &message)
 	{
 		bool ok;
 		QVariant data = TnetString::toVariant(message, 0, &ok);
@@ -2830,7 +2831,7 @@ private:
 		}
 	}
 
-	void proxyStats_readyRead(const QList<QByteArray> &message)
+	void proxyStats_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2845,7 +2846,7 @@ private:
 			return;
 		}
 
-		QByteArray type = message[0].mid(0, at);
+		QByteArray type = message[0].mid(0, at).asQByteArray();
 
 		if(at + 1 >= message[0].length() || message[0][at + 1] != 'T')
 		{

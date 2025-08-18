@@ -827,7 +827,7 @@ private:
 	}
 
 private:
-	void handler_retry_in_readyRead(const QList<QByteArray> &message)
+	void handler_retry_in_readyRead(const CowByteArrayList &message)
 	{
 		QZmq::ReqMessage req(message);
 
