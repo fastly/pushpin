@@ -332,8 +332,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				exit(1);
-
+				return 1;
 			}
 		}
 
@@ -345,6 +344,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s", qPrintable(args.configFile));
+				return 1;
 			}
 		}
 
