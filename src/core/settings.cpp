@@ -189,3 +189,13 @@ void Settings::setPortOffset(int x)
 {
 	portOffset_ = x;
 }
+
+QString Settings::getIpcPrefix() const
+{
+	return ipcPrefix_;
+}
+
+int Settings::getPortOffset() const 
+{
+	return portOffset_;
+}

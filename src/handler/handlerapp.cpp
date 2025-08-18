@@ -22,6 +22,8 @@
  */
 
 #include "handlerapp.h"
+#include "handlerargsdata.h"
+#include "rust/bindings.h"
 
 #include <assert.h>
 #include <QCoreApplication>
@@ -42,6 +44,7 @@
 #include "settings.h"
 #include "handlerengine.h"
 #include "config.h"
+#include <iostream>
 
 #define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
 #define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
@@ -82,135 +85,26 @@ static QString firstSpec(const QString &s, int peerCount)
 	return s;
 }
 
-enum CommandLineParseResult
-{
-	CommandLineOk,
-	CommandLineError,
-	CommandLineVersionRequested,
-	CommandLineHelpRequested
-};
-
-class ArgsData
-{
-public:
-	QString configFile;
-	QString logFile;
-	int logLevel;
-	QString ipcPrefix;
-	int portOffset;
-
-	ArgsData() :
-		logLevel(-1),
-		portOffset(-1)
-	{
-	}
-};
-
-static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsData *args, QString *errorMessage)
-{
-	parser->setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
-	const QCommandLineOption configFileOption("config", "Config file.", "file");
-	parser->addOption(configFileOption);
-	const QCommandLineOption logFileOption("logfile", "File to log to.", "file");
-	parser->addOption(logFileOption);
-	const QCommandLineOption logLevelOption("loglevel", "Log level (default: 2).", "x");
-	parser->addOption(logLevelOption);
-	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
-	parser->addOption(verboseOption);
-	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
-	parser->addOption(ipcPrefixOption);
-	const QCommandLineOption portOffsetOption("port-offset", "Override port_offset config option.", "offset");
-	parser->addOption(portOffsetOption);
-	const QCommandLineOption helpOption = parser->addHelpOption();
-	const QCommandLineOption versionOption = parser->addVersionOption();
-
-	if(!parser->parse(QCoreApplication::arguments()))
-	{
-		*errorMessage = parser->errorText();
-		return CommandLineError;
-	}
-
-	if(parser->isSet(versionOption))
-		return CommandLineVersionRequested;
-
-	if(parser->isSet(helpOption))
-		return CommandLineHelpRequested;
-
-	if(parser->isSet(configFileOption))
-		args->configFile = parser->value(configFileOption);
-
-	if(parser->isSet(logFileOption))
-		args->logFile = parser->value(logFileOption);
-
-	if(parser->isSet(logLevelOption))
-	{
-		bool ok;
-		int x = parser->value(logLevelOption).toInt(&ok);
-		if(!ok || x < 0)
-		{
-			*errorMessage = "error: loglevel must be greater than or equal to 0";
-			return CommandLineError;
-		}
-
-		args->logLevel = x;
-	}
-
-	if(parser->isSet(verboseOption))
-		args->logLevel = 3;
-
-	if(parser->isSet(ipcPrefixOption))
-		args->ipcPrefix = parser->value(ipcPrefixOption);
-
-	if(parser->isSet(portOffsetOption))
-	{
-		bool ok;
-		int x = parser->value(portOffsetOption).toInt(&ok);
-		if(!ok || x < 0)
-		{
-			*errorMessage = "error: port-offset must be greater than or equal to 0";
-			return CommandLineError;
-		}
-
-		args->portOffset = x;
-	}
-
-	return CommandLineOk;
-}
-
 class HandlerApp::Private
 {
 public:
-	static int run()
+	static int run(const ffi::HandlerCliArgs *argsFfi)
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
 		QCoreApplication::setApplicationVersion(Config::get().version);
 
-		QCommandLineParser parser;
-		parser.setApplicationDescription("Pushpin handler component.");
+		HandlerArgsData args(argsFfi);
+		Settings settings(args.configFile);
+		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
+		if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
 
-		ArgsData args;
-		QString errorMessage;
-		switch(parseCommandLine(&parser, &args, &errorMessage))
-		{
-			case CommandLineOk:
-				break;
-			case CommandLineError:
-				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				return 1;
-			case CommandLineVersionRequested:
-				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
-					qPrintable(QCoreApplication::applicationVersion()));
-				return 0;
-			case CommandLineHelpRequested:
-				parser.showHelp();
-				Q_UNREACHABLE();
-		}
-
+		// Set the log level
 		if(args.logLevel != -1)
 			log_setOutputLevel(args.logLevel);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
+		// Set the log file if specified
 		if(!args.logFile.isEmpty())
 		{
 			if(!log_setFile(args.logFile))
@@ -222,27 +116,15 @@ public:
 
 		log_debug("starting...");
 
-		QString configFile = args.configFile;
-		if(configFile.isEmpty())
-			configFile = QDir(Config::get().configDir).filePath("pushpin.conf");
-
-		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
+		// QSettings doesn't inform us if the config file can't be opened, so do that ourselves
 		{
-			QFile file(configFile);
+			QFile file(args.configFile);
 			if(!file.open(QIODevice::ReadOnly))
 			{
-				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
+				log_error("failed to open %s", qPrintable(args.configFile));
 				return 1;
 			}
 		}
-
-		Settings settings(configFile);
-
-		if(!args.ipcPrefix.isEmpty())
-			settings.setIpcPrefix(args.ipcPrefix);
-
-		if(args.portOffset != -1)
-			settings.setPortOffset(args.portOffset);
 
 		QStringList services = settings.value("runner/services").toStringList();
 
@@ -494,7 +376,7 @@ HandlerApp::HandlerApp() = default;
 
 HandlerApp::~HandlerApp() = default;
 
-int HandlerApp::run()
+int HandlerApp::run(const ffi::HandlerCliArgs *argsFfi)
 {
-	return Private::run();
+	return Private::run(argsFfi);
 }

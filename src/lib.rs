@@ -24,9 +24,7 @@
 /// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
-/// cbindgen:ignore
 pub mod handler;
-/// cbindgen:ignore
 pub mod proxy;
 /// cbindgen:ignore
 pub mod publish;
@@ -150,6 +148,8 @@ pub mod ffi {
         pub fn publishformat_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn publishitem_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn handlerengine_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn handlerargs_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn proxyargs_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn template_test(out_ex: *mut TestException) -> libc::c_int;
     }
 }

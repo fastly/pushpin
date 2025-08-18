@@ -23,15 +23,21 @@
 
 #include <QCoreApplication>
 #include "app.h"
+#include "rust/bindings.h"
 
 extern "C" {
 
-int proxy_main(int argc, char **argv)
-{
+int proxy_main(const ffi::ProxyCliArgs *argsFfi)
+{	
+	// Create dummy argc/argv for QCoreApplication
+	int argc = 1;
+	char app_name[] = "pushpin-proxy";
+	char* argv[] = { app_name, nullptr };
+	
 	QCoreApplication qapp(argc, argv);
 
 	App app;
-	return app.run();
+	return app.run(argsFfi);
 }
 
 }
