@@ -10,6 +10,10 @@ edition = "2018"
 rust-version = "1.75"
 default-run = "pushpin"
 
+[features]
+skip-qmake = []
+skip-cpp-build = []
+
 [profile.dev]
 panic = "abort"
 
