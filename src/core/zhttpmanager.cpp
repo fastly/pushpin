@@ -659,13 +659,11 @@ public:
 						}
 						*/
 						int ret = process_http_response(packet, instanceAddress);
-						/*
 						if (ret == 0)
 						{
 							resume_cache_thread();
 							return;
 						}
-						*/
 					}
 					break;
 				default:
@@ -2388,7 +2386,7 @@ public:
 		// check multi-part response
 		int ret = check_multi_packets_for_http_response(p);
 		if (ret < 0)
-			return -1;
+			return 0;
 
 		QVariant vpacket = p.toVariant();
 		QByteArray responseBuf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
@@ -2459,7 +2457,7 @@ public:
 			pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
 
 			//store_cache_item_field(msgIdByte, "lastAccessTime", pCacheItem->lastAccessTime);
-			return 0;
+			return -1;
 		}
 
 		// send response to clients.
