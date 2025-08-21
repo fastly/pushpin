@@ -479,13 +479,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cpp_pro = root_dir.join("src/cpp.pro");
     let cpp_tests_pro = root_dir.join("src/cpptests.pro");
 
+    let cpp_build_dir = match env::var("CPP_BUILD_DIR") {
+        Ok(s) => PathBuf::from(s),
+        Err(env::VarError::NotPresent) => out_dir.clone(),
+        Err(env::VarError::NotUnicode(_)) => return Err("CPP_BUILD_DIR not unicode".into()),
+    };
+
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
-        fs::create_dir_all(out_dir.join(dir))?;
+        fs::create_dir_all(cpp_build_dir.join(dir))?;
     }
 
     let mut include_paths = Vec::new();
 
-    include_paths.push(out_dir.as_ref());
+    include_paths.push(cpp_build_dir.as_ref());
 
     if boost_include_dir != Path::new("/usr/include") {
         include_paths.push(boost_include_dir.as_ref());
@@ -504,7 +510,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     write_cpp_conf_pri(
-        &out_dir.join("conf.pri"),
+        &cpp_build_dir.join("conf.pri"),
         profile == "release",
         &include_paths,
         deny_warnings,
@@ -519,37 +525,41 @@ fn main() -> Result<(), Box<dyn Error>> {
         &log_dir,
     )?;
 
-    check_command(Command::new(&qmake_path).args([
-        OsStr::new("-o"),
-        out_dir.join("Makefile").as_os_str(),
-        cpp_pro.as_os_str(),
-    ]))?;
+    if cfg!(not(feature = "skip-qmake")) {
+        check_command(Command::new(&qmake_path).args([
+            OsStr::new("-o"),
+            cpp_build_dir.join("Makefile").as_os_str(),
+            cpp_pro.as_os_str(),
+        ]))?;
 
-    check_command(Command::new(&qmake_path).args([
-        OsStr::new("-o"),
-        out_dir.join("Makefile.test").as_os_str(),
-        cpp_tests_pro.as_os_str(),
-    ]))?;
+        check_command(Command::new(&qmake_path).args([
+            OsStr::new("-o"),
+            cpp_build_dir.join("Makefile.test").as_os_str(),
+            cpp_tests_pro.as_os_str(),
+        ]))?;
 
-    check_command(
-        Command::new(&qmake_path)
-            .args(["-o", "Makefile", "postbuild.pro"])
-            .current_dir("postbuild"),
-    )?;
+        check_command(
+            Command::new(&qmake_path)
+                .args(["-o", "Makefile", "postbuild.pro"])
+                .current_dir("postbuild"),
+        )?;
+    }
 
-    check_command(
-        Command::new("make")
-            .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
-            .args(["-f", "Makefile"])
-            .current_dir(&out_dir),
-    )?;
+    if cfg!(not(feature = "skip-cpp-build")) {
+        check_command(
+            Command::new("make")
+                .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
+                .args(["-f", "Makefile"])
+                .current_dir(&cpp_build_dir),
+        )?;
 
-    check_command(
-        Command::new("make")
-            .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
-            .args(["-f", "Makefile.test"])
-            .current_dir(&out_dir),
-    )?;
+        check_command(
+            Command::new("make")
+                .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
+                .args(["-f", "Makefile.test"])
+                .current_dir(&cpp_build_dir),
+        )?;
+    }
 
     println!("cargo:rustc-env=APP_VERSION={}", get_version());
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
@@ -557,7 +567,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rustc-cfg=qt_lib_prefix=\"{}\"", qt_lib_prefix);
 
-    println!("cargo:rustc-link-search={}", out_dir.display());
+    println!("cargo:rustc-link-search={}", cpp_build_dir.display());
 
     if cfg!(target_os = "macos") {
         println!(
@@ -575,6 +585,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=LIBDIR");
     println!("cargo:rerun-if-env-changed=LOGDIR");
     println!("cargo:rerun-if-env-changed=RUNDIR");
+    println!("cargo:rerun-if-env-changed=CPP_BUILD_DIR");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=cbindgen.toml");
 

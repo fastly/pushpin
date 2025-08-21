@@ -40,6 +40,11 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "codeql"
+    - if: matrix.build-mode == 'manual'
+      shell: bash
+      env:
+        CPP_BUILD_DIR: /cppbuild
+      run: cargo check --features skip-cpp-build
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -48,7 +53,9 @@ jobs:
         build-mode: ${{ matrix.build-mode }}
     - if: matrix.build-mode == 'manual'
       shell: bash
-      run: make build
+      env:
+        CPP_BUILD_DIR: /cppbuild
+      run: cargo build --features skip-qmake
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
