@@ -1,4 +1,4 @@
-FROM container-registry.secretcdn.net/fastly/base-focal:latest
+FROM container-registry.secretcdn.net/fastly/base-noble:latest
 
 ARG DESTDIR=/build
 ARG SSH_AUTH_SOCK
@@ -12,11 +12,11 @@ ENV RUST_BACKTRACE=1
 
 # set up debug packages repo
 RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
-RUN printf "deb http://ddebs.ubuntu.com focal main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
+RUN printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
 
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake libqt5core5a-dbgsym libqt5network5-dbgsym libglib2.0-0-dbgsym fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev libqt6core6t64-dbgsym libqt6network6t64-dbgsym libglib2.0-0t64-dbgsym fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
-RUN mkdir ~/.ssh && \
+RUN mkdir -p ~/.ssh && \
   ssh-keyscan github.com >> ~/.ssh/known_hosts
 
 RUN ls -alhrt
