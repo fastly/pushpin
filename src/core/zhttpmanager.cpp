@@ -659,7 +659,7 @@ public:
 						}
 						*/
 						int ret = process_http_response(packet, instanceAddress);
-						if (ret == 0)
+						if (ret < 0)
 						{
 							resume_cache_thread();
 							return;
