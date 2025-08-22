@@ -2445,7 +2445,7 @@ public:
 		// if invalid response?
 		if ((bodyParseSucceed == false || (pCacheItem->cachedFlag == false && packetMsg.isResultNull == true)) &&
 			!(pCacheItem->refreshFlag & ACCEPT_NULL_RESPONSE) && 
-			pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
+			pCacheItem->retryCount < (gHttpBackendUrlList.count()+1))
 		{
 			// prometheus status
 			if (pCacheItem->httpBackendNo >= 0)
@@ -2848,7 +2848,7 @@ public:
 					if (pCacheItem->cachedFlag == false && 
 						!(pCacheItem->refreshFlag & ACCEPT_NULL_RESPONSE) &&
 						packetMsg.isResultNull == true && 
-						pCacheItem->retryCount < RETRY_RESPONSE_MAX_COUNT)
+						pCacheItem->retryCount < gWsBackendUrlList.count())
 					{
 						log_debug("[WS] get NULL response, retrying %d", pCacheItem->retryCount);
 						pCacheItem->lastAccessTime = QDateTime::currentMSecsSinceEpoch();
