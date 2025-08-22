@@ -123,6 +123,9 @@ QHash<QByteArray, ZhttpResponsePacket> gHttpMultiPartResponseItemMap;
 QHash<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 QHash<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
+// time seconds to retry another backend for null response
+int gBackendSwitchIntervalSeconds = 10;
+
 // prometheus restore allow seconds (default 300)
 int gPrometheusRestoreAllowSeconds = 300;
 
@@ -2008,7 +2011,6 @@ public:
 
 	void scan_subscribe_update()
 	{
-		log_debug("[SCAN]");
 		foreach(QByteArray itemId, get_cache_item_ids())
 		{
 			CacheItem* pCacheItem = load_cache_item(itemId);
@@ -3582,6 +3584,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
 	const QStringList &msgErrorFieldList,
+	int backendSwitchIntervalSeconds,
 	int prometheusRestoreAllowSeconds,
 	bool redisEnable,
 	const QString &redisHostAddr,
@@ -3772,6 +3775,9 @@ void ZhttpManager::setCacheParameters(
 
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}
+
+	// time seconds to retry another backend for null response
+	gBackendSwitchIntervalSeconds = backendSwitchIntervalSeconds;
 
 	// prometheus restore allow seconds (default 300)
 	gPrometheusRestoreAllowSeconds=prometheusRestoreAllowSeconds;

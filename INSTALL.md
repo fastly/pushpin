@@ -121,6 +121,11 @@ Options for cache are added into this file.
 	```
 	message_error_attributes=error,fault,bug
 	```
+#### timeout
+* <a name="backend_switch_interval_seconds"></a>time seconds to switch another backend for null response (default 10)
+	```
+	backend_switch_interval_seconds=10
+	```
 #### prometheus
 * <a name="prometheus_restore_allow_seconds"></a>prometheus restore allow seconds (default 300)
 	```

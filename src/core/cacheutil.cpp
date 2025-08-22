@@ -98,6 +98,8 @@ extern int gShorterTimeoutSeconds;
 extern int gLongerTimeoutSeconds;
 extern int gCacheItemMaxCount;
 
+extern int gBackendSwitchIntervalSeconds;
+
 // path of prometheus backup file
 static QString gPrometheusBackupDir = "/var/log/";
 extern int gPrometheusRestoreAllowSeconds;
@@ -1698,7 +1700,7 @@ int get_next_cache_refresh_interval(const QByteArray &itemId)
 	else
 	{
 		// set interval to the fixed value
-		timeInterval = 10;
+		timeInterval = gBackendSwitchIntervalSeconds;
 	}
 
 	return timeInterval;

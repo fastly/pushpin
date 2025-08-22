@@ -112,6 +112,7 @@ public:
 		QString msgMethodFieldName;
 		QString msgParamsFieldName;
 		QStringList msgErrorFieldList;
+		int backendSwitchIntervalSeconds;
 		int prometheusRestoreAllowSeconds;
 		bool redisEnable;
 		QString redisHostAddr;
@@ -143,6 +144,7 @@ public:
 			statsConnectionsMaxTtl(-1),
 			statsReportInterval(-1),
 			cacheEnable(false),
+			backendSwitchIntervalSeconds(10),
 			prometheusRestoreAllowSeconds(300),
 			redisEnable(false),
 			redisHostAddr("127.0.0.1"),

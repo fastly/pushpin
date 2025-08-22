@@ -80,6 +80,7 @@ public:
 		const QString &msgMethodFieldName,
 		const QString &msgParamsFieldName,
 		const QStringList &msgErrorFieldList,
+		const int backendSwitchIntervalSeconds,
 		const int prometheusRestoreAllowSeconds,
 		bool redisEnable,
 		const QString &redisHostAddr,

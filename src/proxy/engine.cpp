@@ -251,6 +251,7 @@ public:
 			config.msgMethodFieldName,
 			config.msgParamsFieldName,
 			config.msgErrorFieldList,
+			config.backendSwitchIntervalSeconds,
 			config.prometheusRestoreAllowSeconds,
 			config.redisEnable,
 			config.redisHostAddr,
