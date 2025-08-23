@@ -98,6 +98,11 @@ Options for cache are added into this file.
 	```
 	ws_refresh_passthrough_methods=state_getStorage,...
 	```
+* <a name="ws_null_response_methods"></a>null response methods<br />
+	ref: List of methods that treat null responses as valid
+	```
+	ws_null_response_methods=chainHead_v1_unpin,...
+	```
 #### cache keys
 * <a name="ws_cache_key"></a>important fields in request, used as a key to identify cache items
 	```
@@ -125,6 +130,11 @@ Options for cache are added into this file.
 * <a name="backend_switch_interval_seconds"></a>time seconds to switch another backend for null response (default 10)
 	```
 	backend_switch_interval_seconds=10
+	```
+#### error
+* <a name="message_error_attributes"></a>Fields in the response identifying errors
+	```
+	message_error_attributes=error,fault,bug
 	```
 #### prometheus
 * <a name="prometheus_restore_allow_seconds"></a>prometheus restore allow seconds (default 300)
