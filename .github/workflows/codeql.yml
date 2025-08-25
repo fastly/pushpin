@@ -44,7 +44,7 @@ jobs:
       shell: bash
       env:
         CPP_BUILD_DIR: ${{ github.workspace }}/cppbuild
-      run: echo "${{ env.CPP_BUILD_DIR }}" && cargo check --no-default-features --features do-qmake
+      run: cargo check --no-default-features --features do-qmake
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
