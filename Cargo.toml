@@ -11,8 +11,9 @@ rust-version = "1.75"
 default-run = "pushpin"
 
 [features]
-skip-qmake = []
-skip-cpp-build = []
+default = ["do-qmake", "do-cpp-build"]
+do-qmake = []
+do-cpp-build = []
 
 [profile.dev]
 panic = "abort"

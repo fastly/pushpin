@@ -525,7 +525,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &log_dir,
     )?;
 
-    if cfg!(not(feature = "skip-qmake")) {
+    if cfg!(feature = "do-qmake") {
         check_command(Command::new(&qmake_path).args([
             OsStr::new("-o"),
             cpp_build_dir.join("Makefile").as_os_str(),
@@ -545,7 +545,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?;
     }
 
-    if cfg!(not(feature = "skip-cpp-build")) {
+    if cfg!(feature = "do-cpp-build") {
         check_command(
             Command::new("make")
                 .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
