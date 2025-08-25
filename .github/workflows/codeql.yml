@@ -43,8 +43,8 @@ jobs:
     - if: matrix.build-mode == 'manual'
       shell: bash
       env:
-        CPP_BUILD_DIR: /cppbuild
-      run: cargo check --no-default-features --features do-qmake
+        CPP_BUILD_DIR: ${{ github.workspace }}/cppbuild
+      run: echo "${{ env.CPP_BUILD_DIR }}" && cargo check --no-default-features --features do-qmake
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -54,7 +54,7 @@ jobs:
     - if: matrix.build-mode == 'manual'
       shell: bash
       env:
-        CPP_BUILD_DIR: /cppbuild
+        CPP_BUILD_DIR: ${{ github.workspace }}/cppbuild
       run: cargo build --no-default-features --features do-cpp-build
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
