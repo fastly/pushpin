@@ -19,7 +19,6 @@ HEADERS += \
 	$$PWD/proxyutil.h \
 	$$PWD/proxysession.h \
 	$$PWD/wsproxysession.h \
-	$$PWD/updater.h \
 	$$PWD/engine.h \
 	$$PWD/app.h \
 	$$PWD/main.h \ 
@@ -44,7 +43,6 @@ SOURCES += \
 	$$PWD/proxyutil.cpp \
 	$$PWD/proxysession.cpp \
 	$$PWD/wsproxysession.cpp \
-	$$PWD/updater.cpp \
 	$$PWD/engine.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp \ 

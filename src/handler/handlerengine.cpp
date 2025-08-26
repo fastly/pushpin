@@ -1281,7 +1281,6 @@ public:
 	map<Subscription*, Connection> subscribedConnection;
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
-	Connection reportedConnection;
 	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
 	Connection pullConnection;
 	Connection controlInitValveConnection;
@@ -1518,7 +1517,6 @@ public:
 		stats = std::make_unique<StatsManager>(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
-		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
 
 		stats->setConnectionSendEnabled(config.statsConnectionSend);
 		stats->setConnectionTtl(config.statsConnectionTtl);
@@ -2383,35 +2381,6 @@ private:
 
 		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
 			removeSub(channel);
-	}
-
-	void stats_reported(const QList<StatsPacket> &packets)
-	{
-		// only one outstanding report at a time
-		if(report)
-			return;
-
-		// consolidate data
-		StatsPacket all;
-		all.type = StatsPacket::Report;
-		all.connectionsMax = 0;
-		all.connectionsMinutes = 0;
-		all.messagesReceived = 0;
-		all.messagesSent = 0;
-		all.httpResponseMessagesSent = 0;
-		foreach(const StatsPacket &p, packets)
-		{
-			all.connectionsMax += qMax(p.connectionsMax, 0);
-			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
-			all.messagesReceived += qMax(p.messagesReceived, 0);
-			all.messagesSent += qMax(p.messagesSent, 0);
-			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
-		}
-
-		report = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
-
-		// safe to not track, since report can't outlive this
-		report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 	}
 
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
