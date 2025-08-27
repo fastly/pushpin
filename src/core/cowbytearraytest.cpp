@@ -156,7 +156,7 @@ static void listMethods()
 	TEST_ASSERT_EQ(*cit, "world");
 
 	++cit;
-	TEST_ASSERT_EQ(cit, a.end());
+	TEST_ASSERT_EQ(cit, std::as_const(a).end());
 
 	// begin/end (non-const)
 	CowByteArrayList::iterator it = a.begin();

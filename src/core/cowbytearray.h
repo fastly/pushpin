@@ -132,16 +132,48 @@ inline CowByteArray CowByteArrayRef::mid(qsizetype pos, qsizetype len) const { r
 class CowByteArrayList
 {
 public:
-	class iterator : public QList<QByteArray>::iterator
+	class iterator
 	{
 	public:
-		iterator(QList<QByteArray>::iterator it) : QList<QByteArray>::iterator(it) {}
+		typedef std::random_access_iterator_tag iterator_category;
+		typedef qptrdiff difference_type;
+		typedef CowByteArray value_type;
+		typedef CowByteArray *pointer;
+		typedef CowByteArrayRef reference;
+
+		iterator(QList<QByteArray>::iterator it) : inner_(it) {}
+
+		inline CowByteArrayRef operator*() const { return CowByteArrayRef(*inner_); }
+
+		inline bool operator==(const iterator &other) const noexcept { return inner_ == other.inner_; }
+		inline bool operator!=(const iterator &other) const noexcept { return !(inner_ == other.inner_); }
+
+		inline iterator &operator++() { inner_++; return *this; }
+
+	private:
+		QList<QByteArray>::iterator inner_;
 	};
 
-	class const_iterator : public QList<QByteArray>::const_iterator
+	class const_iterator
 	{
 	public:
-		const_iterator(QList<QByteArray>::const_iterator it) : QList<QByteArray>::const_iterator(it) {}
+		typedef std::random_access_iterator_tag iterator_category;
+		typedef qptrdiff difference_type;
+		typedef CowByteArray value_type;
+		typedef const CowByteArray *pointer;
+		typedef CowByteArrayConstRef reference;
+
+		const_iterator(QList<QByteArray>::const_iterator it) : inner_(it) {}
+
+		inline CowByteArrayConstRef operator*() const { return CowByteArrayConstRef(*inner_); }
+
+		inline bool operator==(const const_iterator &other) const noexcept { return inner_ == other.inner_; }
+		inline bool operator!=(const const_iterator &other) const noexcept { return !(inner_ == other.inner_); }
+
+		inline const_iterator &operator++() { inner_++; return *this; }
+
+	private:
+		QList<QByteArray>::const_iterator inner_;
 	};
 
 	CowByteArrayList() = default;
