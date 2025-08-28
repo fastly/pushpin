@@ -1,6 +1,8 @@
 #ifndef PROXY_MAIN_H
 #define PROXY_MAIN_H
 
-int proxy_main(int argc, char **argv);
+#include "rust/bindings.h"
+
+int proxy_main(const ffi::ProxyCliArgs *argsFfi);
 
 #endif

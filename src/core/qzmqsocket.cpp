@@ -26,17 +26,16 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include <QStringList>
+#include <QList>
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
+#include "cowstring.h"
 #include "qzmqcontext.h"
 #include "timer.h"
 #include "socketnotifier.h"
 
 using Connection = boost::signals2::scoped_connection;
-
-using namespace ffi;
 
 namespace QZmq {
 
@@ -44,7 +43,7 @@ static int get_fd(void *sock)
 {
 	int fd;
 	size_t opt_len = sizeof(fd);
-	int ret = wzmq_getsockopt(sock, WZMQ_FD, &fd, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_FD, &fd, &opt_len);
 	assert(ret == 0);
 	return fd;
 }
@@ -52,28 +51,28 @@ static int get_fd(void *sock)
 static void set_subscribe(void *sock, const char *data, int size)
 {
 	size_t opt_len = size;
-	int ret = wzmq_setsockopt(sock, WZMQ_SUBSCRIBE, data, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_SUBSCRIBE, data, opt_len);
 	assert(ret == 0);
 }
 
 static void set_unsubscribe(void *sock, const char *data, int size)
 {
 	size_t opt_len = size;
-	wzmq_setsockopt(sock, WZMQ_UNSUBSCRIBE, data, opt_len);
+	ffi::wzmq_setsockopt(sock, ffi::WZMQ_UNSUBSCRIBE, data, opt_len);
 	// note: we ignore errors, such as unsubscribing a nonexisting filter
 }
 
 static void set_linger(void *sock, int value)
 {
 	size_t opt_len = sizeof(value);
-	int ret = wzmq_setsockopt(sock, WZMQ_LINGER, &value, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_LINGER, &value, opt_len);
 	assert(ret == 0);
 }
 
 static int get_identity(void *sock, char *data, int size)
 {
 	size_t opt_len = size;
-	int ret = wzmq_getsockopt(sock, WZMQ_IDENTITY, data, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_IDENTITY, data, &opt_len);
 	assert(ret == 0);
 	return (int)opt_len;
 }
@@ -81,7 +80,7 @@ static int get_identity(void *sock, char *data, int size)
 static void set_identity(void *sock, const char *data, int size)
 {
 	size_t opt_len = size;
-	int ret = wzmq_setsockopt(sock, WZMQ_IDENTITY, data, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_IDENTITY, data, opt_len);
 	if(ret != 0)
 		printf("%d\n", errno);
 	assert(ret == 0);
@@ -93,7 +92,7 @@ static void set_immediate(void *sock, bool on)
 {
 	int v = on ? 1 : 0;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_IMMEDIATE, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_IMMEDIATE, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -101,7 +100,7 @@ static void set_router_mandatory(void *sock, bool on)
 {
 	int v = on ? 1 : 0;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_ROUTER_MANDATORY, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_ROUTER_MANDATORY, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -109,7 +108,7 @@ static void set_probe_router(void *sock, bool on)
 {
 	int v = on ? 1 : 0;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_PROBE_ROUTER, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_PROBE_ROUTER, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -119,7 +118,7 @@ static void set_immediate(void *sock, bool on)
 {
 	int v = on ? 1 : 0;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_DELAY_ATTACH_ON_CONNECT, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_DELAY_ATTACH_ON_CONNECT, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -133,7 +132,7 @@ static bool get_rcvmore(void *sock)
 {
 	int more;
 	size_t opt_len = sizeof(more);
-	int ret = wzmq_getsockopt(sock, WZMQ_RCVMORE, &more, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_RCVMORE, &more, &opt_len);
 	assert(ret == 0);
 	return more ? true : false;
 }
@@ -145,7 +144,7 @@ static int get_events(void *sock)
 		int events;
 		size_t opt_len = sizeof(events);
 
-		int ret = wzmq_getsockopt(sock, WZMQ_EVENTS, &events, &opt_len);
+		int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_EVENTS, &events, &opt_len);
 		if(ret == 0)
 		{
 			return (int)events;
@@ -159,7 +158,7 @@ static int get_sndhwm(void *sock)
 {
 	int hwm;
 	size_t opt_len = sizeof(hwm);
-	int ret = wzmq_getsockopt(sock, WZMQ_SNDHWM, &hwm, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_SNDHWM, &hwm, &opt_len);
 	assert(ret == 0);
 	return (int)hwm;
 }
@@ -168,7 +167,7 @@ static void set_sndhwm(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_SNDHWM, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_SNDHWM, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -176,7 +175,7 @@ static int get_rcvhwm(void *sock)
 {
 	int hwm;
 	size_t opt_len = sizeof(hwm);
-	int ret = wzmq_getsockopt(sock, WZMQ_RCVHWM, &hwm, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_RCVHWM, &hwm, &opt_len);
 	assert(ret == 0);
 	return (int)hwm;
 }
@@ -185,7 +184,7 @@ static void set_rcvhwm(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_RCVHWM, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_RCVHWM, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -204,7 +203,7 @@ static void set_tcp_keepalive(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_TCP_KEEPALIVE, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_TCP_KEEPALIVE, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -212,7 +211,7 @@ static void set_tcp_keepalive_idle(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_TCP_KEEPALIVE_IDLE, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_TCP_KEEPALIVE_IDLE, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -220,7 +219,7 @@ static void set_tcp_keepalive_cnt(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_TCP_KEEPALIVE_CNT, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_TCP_KEEPALIVE_CNT, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -228,7 +227,7 @@ static void set_tcp_keepalive_intvl(void *sock, int value)
 {
 	int v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_TCP_KEEPALIVE_INTVL, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_TCP_KEEPALIVE_INTVL, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -238,7 +237,7 @@ static bool get_rcvmore(void *sock)
 {
 	qint64 more;
 	size_t opt_len = sizeof(more);
-	int ret = wzmq_getsockopt(sock, WZMQ_RCVMORE, &more, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_RCVMORE, &more, &opt_len);
 	assert(ret == 0);
 	return more ? true : false;
 }
@@ -250,7 +249,7 @@ static int get_events(void *sock)
 		quint32 events;
 		size_t opt_len = sizeof(events);
 
-		int ret = wzmq_getsockopt(sock, WZMQ_EVENTS, &events, &opt_len);
+		int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_EVENTS, &events, &opt_len);
 		if(ret == 0)
 		{
 			return (int)events;
@@ -264,7 +263,7 @@ static int get_hwm(void *sock)
 {
 	quint64 hwm;
 	size_t opt_len = sizeof(hwm);
-	int ret = wzmq_getsockopt(sock, WZMQ_HWM, &hwm, &opt_len);
+	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_HWM, &hwm, &opt_len);
 	assert(ret == 0);
 	return (int)hwm;
 }
@@ -273,7 +272,7 @@ static void set_hwm(void *sock, int value)
 {
 	quint64 v = value;
 	size_t opt_len = sizeof(v);
-	int ret = wzmq_setsockopt(sock, WZMQ_HWM, &v, opt_len);
+	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_HWM, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -378,7 +377,7 @@ public:
 	void *sock;
 	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
-	QList< QList<QByteArray> > pendingWrites;
+	QList<CowByteArrayList> pendingWrites;
 	int pendingWritten;
 	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
@@ -409,20 +408,20 @@ public:
 		int ztype = 0;
 		switch(type)
 		{
-			case Socket::Pair: ztype = WZMQ_PAIR; break;
-			case Socket::Dealer: ztype = WZMQ_DEALER; break;
-			case Socket::Router: ztype = WZMQ_ROUTER; break;
-			case Socket::Req: ztype = WZMQ_REQ; break;
-			case Socket::Rep: ztype = WZMQ_REP; break;
-			case Socket::Push: ztype = WZMQ_PUSH; break;
-			case Socket::Pull: ztype = WZMQ_PULL; break;
-			case Socket::Pub: ztype = WZMQ_PUB; break;
-			case Socket::Sub: ztype = WZMQ_SUB; break;
+			case Socket::Pair: ztype = ffi::WZMQ_PAIR; break;
+			case Socket::Dealer: ztype = ffi::WZMQ_DEALER; break;
+			case Socket::Router: ztype = ffi::WZMQ_ROUTER; break;
+			case Socket::Req: ztype = ffi::WZMQ_REQ; break;
+			case Socket::Rep: ztype = ffi::WZMQ_REP; break;
+			case Socket::Push: ztype = ffi::WZMQ_PUSH; break;
+			case Socket::Pull: ztype = ffi::WZMQ_PULL; break;
+			case Socket::Pub: ztype = ffi::WZMQ_PUB; break;
+			case Socket::Sub: ztype = ffi::WZMQ_SUB; break;
 			default:
 				assert(0);
 		}
 
-		sock = wzmq_socket(context->context(), ztype);
+		sock = ffi::wzmq_socket(context->context(), ztype);
 		assert(sock != NULL);
 
 		sn_read = std::make_unique<SocketNotifier>(get_fd(sock), SocketNotifier::Read);
@@ -446,7 +445,7 @@ public:
 		sn_read.reset();
 
 		set_linger(sock, shutdownWaitTime);
-		wzmq_close(sock);
+		ffi::wzmq_close(sock);
 
 		if(usingGlobalContext)
 			removeGlobalContextRef();
@@ -461,39 +460,39 @@ public:
 		}
 	}
 
-	QList<QByteArray> read()
+	CowByteArrayList read()
 	{
 		if(canRead)
 		{
-			QList<QByteArray> out;
+			CowByteArrayList out;
 
 			bool ok = true;
 
 			do
 			{
-				wzmq_msg_t msg;
+				ffi::wzmq_msg_t msg;
 
-				int ret = wzmq_msg_init(&msg);
+				int ret = ffi::wzmq_msg_init(&msg);
 				assert(ret == 0);
 
 #ifdef USE_MSG_IO
-				ret = wzmq_msg_recv(&msg, sock, WZMQ_DONTWAIT);
+				ret = ffi::wzmq_msg_recv(&msg, sock, ffi::WZMQ_DONTWAIT);
 #else
-				ret = wzmq_recv(sock, &msg, WZMQ_NOBLOCK);
+				ret = ffi::wzmq_recv(sock, &msg, ffi::WZMQ_NOBLOCK);
 #endif
 
 				if(ret < 0)
 				{
-					ret = wzmq_msg_close(&msg);
+					ret = ffi::wzmq_msg_close(&msg);
 					assert(ret == 0);
 
 					ok = false;
 					break;
 				}
 
-				QByteArray buf((const char *)wzmq_msg_data(&msg), wzmq_msg_size(&msg));
+				CowByteArray buf((const char *)ffi::wzmq_msg_data(&msg), ffi::wzmq_msg_size(&msg));
 
-				ret = wzmq_msg_close(&msg);
+				ret = ffi::wzmq_msg_close(&msg);
 				assert(ret == 0);
 
 				out += buf;
@@ -507,13 +506,13 @@ public:
 			if(ok)
 				return out;
 			else
-				return QList<QByteArray>();
+				return CowByteArrayList();
 		}
 		else
-			return QList<QByteArray>();
+			return CowByteArrayList();
 	}
 
-	void write(const QList<QByteArray> &message)
+	void write(const CowByteArrayList &message)
 	{
 		assert(!message.isEmpty());
 
@@ -548,40 +547,40 @@ public:
 		bool canWriteOld = canWrite;
 		bool canReadOld = canRead;
 
-		canWrite = (flags & WZMQ_POLLOUT);
-		canRead = (flags & WZMQ_POLLIN);
+		canWrite = (flags & ffi::WZMQ_POLLOUT);
+		canRead = (flags & ffi::WZMQ_POLLIN);
 
 		return (canWrite != canWriteOld || canRead != canReadOld);
 	}
 
-	bool zmqWrite(const QList<QByteArray> &message)
+	bool zmqWrite(const CowByteArrayList &message)
 	{
 		for(int n = 0; n < message.count(); ++n)
 		{
-			const QByteArray &buf = message[n];
+			CowByteArrayConstRef buf = message[n];
 
-			wzmq_msg_t msg;
+			ffi::wzmq_msg_t msg;
 
-			int ret = wzmq_msg_init_size(&msg, buf.size());
+			int ret = ffi::wzmq_msg_init_size(&msg, buf.size());
 			assert(ret == 0);
 
-			memcpy(wzmq_msg_data(&msg), buf.data(), buf.size());
+			memcpy(ffi::wzmq_msg_data(&msg), buf.data(), buf.size());
 
 #ifdef USE_MSG_IO
-			ret = wzmq_msg_send(&msg, sock, WZMQ_DONTWAIT | (n + 1 < message.count() ? WZMQ_SNDMORE : 0));
+			ret = ffi::wzmq_msg_send(&msg, sock, ffi::WZMQ_DONTWAIT | (n + 1 < message.count() ? ffi::WZMQ_SNDMORE : 0));
 #else
-			ret = wzmq_send(sock, &msg, WZMQ_NOBLOCK | (n + 1 < message.count() ? WZMQ_SNDMORE : 0));
+			ret = ffi::wzmq_send(sock, &msg, ffi::WZMQ_NOBLOCK | (n + 1 < message.count() ? ffi::WZMQ_SNDMORE : 0));
 #endif
 
 			if(ret < 0)
 			{
-				ret = wzmq_msg_close(&msg);
+				ret = ffi::wzmq_msg_close(&msg);
 				assert(ret == 0);
 
 				return false;
 			}
 
-			ret = wzmq_msg_close(&msg);
+			ret = ffi::wzmq_msg_close(&msg);
 			assert(ret == 0);
 		}
 
@@ -671,24 +670,24 @@ void Socket::setWriteQueueEnabled(bool enable)
 	d->writeQueueEnabled = enable;
 }
 
-void Socket::subscribe(const QByteArray &filter)
+void Socket::subscribe(const CowByteArray &filter)
 {
 	set_subscribe(d->sock, filter.data(), filter.size());
 }
 
-void Socket::unsubscribe(const QByteArray &filter)
+void Socket::unsubscribe(const CowByteArray &filter)
 {
 	set_unsubscribe(d->sock, filter.data(), filter.size());
 }
 
-QByteArray Socket::identity() const
+CowByteArray Socket::identity() const
 {
-	QByteArray buf(255, 0);
+	CowByteArray buf(255, 0);
 	buf.resize(get_identity(d->sock, buf.data(), buf.size()));
 	return buf;
 }
 
-void Socket::setIdentity(const QByteArray &id)
+void Socket::setIdentity(const CowByteArray &id)
 {
 	set_identity(d->sock, id.data(), id.size());
 }
@@ -750,15 +749,15 @@ void Socket::setTcpKeepAliveParameters(int idle, int count, int interval)
 	set_tcp_keepalive_intvl(d->sock, interval);
 }
 
-void Socket::connectToAddress(const QString &addr)
+void Socket::connectToAddress(const CowString &addr)
 {
-	int ret = wzmq_connect(d->sock, addr.toUtf8().data());
+	int ret = ffi::wzmq_connect(d->sock, addr.toUtf8().data());
 	assert(ret == 0);
 }
 
-bool Socket::bind(const QString &addr)
+bool Socket::bind(const CowString &addr)
 {
-	int ret = wzmq_bind(d->sock, addr.toUtf8().data());
+	int ret = ffi::wzmq_bind(d->sock, addr.toUtf8().data());
 	if(ret != 0)
 		return false;
 
@@ -775,12 +774,12 @@ bool Socket::canWriteImmediately() const
 	return d->canWrite;
 }
 
-QList<QByteArray> Socket::read()
+CowByteArrayList Socket::read()
 {
 	return d->read();
 }
 
-void Socket::write(const QList<QByteArray> &message)
+void Socket::write(const CowByteArrayList &message)
 {
 	d->write(message);
 }

@@ -1,10 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,25 +12,29 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#ifndef COWSTRING_H
+#define COWSTRING_H
 
-#include "rust/bindings.h"
+#include <QString>
+#include "cowbytearray.h"
 
-class App
+// QString-like class that currently forwards to an inner QString, to
+// assist with reducing direct dependency on Qt. The API is designed to allow
+// cheap conversion to/from QString.
+class CowString
 {
 public:
-	App();
-	~App();
+	CowString(const QString &other) : inner_(other) {}
 
-	int run(const ffi::ProxyCliArgs *argsFfi);
+	CowByteArray toUtf8() const { return inner_.toUtf8(); }
+
+	const QString & asQString() const { return inner_; }
+	QString & asQString() { return inner_; }
 
 private:
-	class Private;
+	QString inner_;
 };
 
 #endif

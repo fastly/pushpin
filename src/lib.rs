@@ -24,9 +24,7 @@
 /// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
-/// cbindgen:ignore
 pub mod handler;
-/// cbindgen:ignore
 pub mod proxy;
 /// cbindgen:ignore
 pub mod publish;
@@ -131,6 +129,8 @@ pub mod ffi {
 
     #[cfg(test)]
     import_cpptest! {
+        pub fn cowbytearray_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn cowstring_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn httpheaders_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn jwt_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn timer_test(out_ex: *mut TestException) -> libc::c_int;
@@ -148,6 +148,8 @@ pub mod ffi {
         pub fn publishformat_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn publishitem_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn handlerengine_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn handlerargs_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn proxyargs_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn template_test(out_ex: *mut TestException) -> libc::c_int;
     }
 }

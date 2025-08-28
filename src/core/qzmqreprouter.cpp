@@ -23,6 +23,7 @@
 
 #include "qzmqreprouter.h"
 
+#include "cowstring.h"
 #include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
 
@@ -84,7 +85,7 @@ bool RepRouter::canRead() const
 
 ReqMessage RepRouter::read()
 {
-	return ReqMessage(d->sock->read());
+	return ReqMessage(d->sock->read().asQByteArrayList());
 }
 
 void RepRouter::write(const ReqMessage &message)

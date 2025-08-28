@@ -25,11 +25,10 @@
 #ifndef QZMQSOCKET_H
 #define QZMQSOCKET_H
 
-#include <QByteArray>
-#include <QList>
 #include <boost/signals2.hpp>
+#include "cowbytearray.h"
 
-class QString;
+class CowString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -71,11 +70,11 @@ public:
 	//   blocking policy.
 	void setWriteQueueEnabled(bool enable);
 
-	void subscribe(const QByteArray &filter);
-	void unsubscribe(const QByteArray &filter);
+	void subscribe(const CowByteArray &filter);
+	void unsubscribe(const CowByteArray &filter);
 
-	QByteArray identity() const;
-	void setIdentity(const QByteArray &id);
+	CowByteArray identity() const;
+	void setIdentity(const CowByteArray &id);
 
 	// deprecated, zmq 2.x
 	int hwm() const;
@@ -93,8 +92,8 @@ public:
 	void setTcpKeepAliveEnabled(bool on);
 	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
 
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
 
 	bool canRead() const;
 
@@ -104,8 +103,8 @@ public:
 	//   needing to be queued, if the conditions change in between.
 	bool canWriteImmediately() const;
 
-	QList<QByteArray> read();
-	void write(const QList<QByteArray> &message);
+	CowByteArrayList read();
+	void write(const CowByteArrayList &message);
 
 	Signal readyRead;
 	SignalInt messagesWritten;

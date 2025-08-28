@@ -22,7 +22,7 @@
 #ifndef PUSHPIN_TEST_H
 #define PUSHPIN_TEST_H
 
-#include "string.h"
+#include <string.h>
 #include <QtTest/QtTest>
 #include "rust/bindings.h"
 
@@ -53,11 +53,27 @@ inline void test_assert(bool cond, const char *condStr, const char *file, int li
 }
 
 // uses QtTest to stringify values
+template <typename T>
+inline std::string test_value_to_string(const T &value)
+{
+    char *s = QTest::toString(value);
+    if(!s)
+        return std::string("<no output format>");
+
+    std::string out(s);
+    delete [] s;
+    return out;
+}
+
 template <typename T1, typename T2>
 inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line)
 {
     if(!(left == right))
-        throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + QTest::toString(left) + "\n right: " + QTest::toString(right));
+    {
+        std::string leftStr = test_value_to_string(left);
+        std::string rightStr = test_value_to_string(right);
+        throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + leftStr + std::string("\n right: ") + rightStr);
+    }
 }
 
 // if cond is false, throws an exception with similar message as rust's assert macro

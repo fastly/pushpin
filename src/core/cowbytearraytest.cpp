@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
@@ -21,21 +20,30 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#include "test.h"
+#include "cowbytearray.h"
 
-#include "rust/bindings.h"
-
-class App
+static void basicUsage()
 {
-public:
-	App();
-	~App();
+	CowByteArray a("hello");
 
-	int run(const ffi::ProxyCliArgs *argsFfi);
+	CowByteArrayList l;
+	l += a;
+	l += QByteArray("world");
+	TEST_ASSERT_EQ(l.count(), 2);
+	TEST_ASSERT_EQ(l[0].size(), 5);
+	TEST_ASSERT_EQ(l[0].asQByteArray(), "hello");
+	TEST_ASSERT_EQ(l[1].asQByteArray(), "world");
 
-private:
-	class Private;
-};
+	QList<QByteArray> ql;
+	ql += "hello";
+	ql += "world";
+	TEST_ASSERT_EQ(l.asQByteArrayList(), ql);
+}
 
-#endif
+extern "C" int cowbytearray_test(ffi::TestException *out_ex)
+{
+	TEST_CATCH(basicUsage());
+
+	return 0;
+}

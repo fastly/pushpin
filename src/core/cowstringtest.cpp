@@ -1,5 +1,4 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
@@ -21,21 +20,19 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#include "test.h"
+#include "cowstring.h"
 
-#include "rust/bindings.h"
-
-class App
+static void basicUsage()
 {
-public:
-	App();
-	~App();
+	CowString s("hello");
+	CowByteArray a = s.toUtf8();
+	TEST_ASSERT_EQ(s.asQString().toUtf8(), a.asQByteArray());
+}
 
-	int run(const ffi::ProxyCliArgs *argsFfi);
+extern "C" int cowstring_test(ffi::TestException *out_ex)
+{
+	TEST_CATCH(basicUsage());
 
-private:
-	class Private;
-};
-
-#endif
+	return 0;
+}

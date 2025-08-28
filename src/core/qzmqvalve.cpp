@@ -77,11 +77,11 @@ public:
 				return;
 			}
 
-			QList<QByteArray> msg = sock->read();
+			CowByteArrayList msg = sock->read();
 
 			if(!msg.isEmpty())
 			{
-				q->readyRead(msg);
+				q->readyRead(msg.asQByteArrayList());
 				if(self.expired())
 					return;
 			}
