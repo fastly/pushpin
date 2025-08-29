@@ -372,6 +372,16 @@ impl Error {
         matches!(self, Error::ValueActive)
     }
 
+    fn is_eof(&self) -> bool {
+        let e = match self {
+            Self::Io(e) => e,
+            Self::CoreHttp(CoreHttpError::Io(e)) => e,
+            _ => return false,
+        };
+
+        e.kind() == io::ErrorKind::UnexpectedEof
+    }
+
     fn log_level(&self) -> Level {
         if self.is_logical() {
             Level::Error
@@ -382,16 +392,16 @@ impl Error {
 
     fn to_condition(&self) -> &'static str {
         match self {
-            Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+            Self::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
                 "remote-connection-failed"
             }
-            Error::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
-            Error::BadRequest => "bad-request",
-            Error::StreamTimeout => "connection-timeout",
-            Error::Tls => "tls-error",
-            Error::PolicyViolation => "policy-violation",
-            Error::TooManyRedirects => "too-many-redirects",
-            Error::WebSocketRejectionTooLarge(_) => "rejection-too-large",
+            Self::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
+            Self::BadRequest => "bad-request",
+            Self::StreamTimeout => "connection-timeout",
+            Self::Tls => "tls-error",
+            Self::PolicyViolation => "policy-violation",
+            Self::TooManyRedirects => "too-many-redirects",
+            Self::WebSocketRejectionTooLarge(_) => "rejection-too-large",
             _ => "undefined-condition",
         }
     }
@@ -1537,7 +1547,7 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
             Ok(ret) => ret,
-            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
         }
     };
@@ -3406,7 +3416,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
             Ok(ret) => ret,
-            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
         }
     };
