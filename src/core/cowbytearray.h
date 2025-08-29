@@ -20,6 +20,8 @@
 #include <QByteArray>
 #include <QList>
 
+class CowByteArray;
+
 class CowByteArrayConstRef
 {
 public:
@@ -27,7 +29,13 @@ public:
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 	qsizetype size() const { return inner_.size(); }
+	qsizetype length() const { return size(); }
 	const char *data() const { return inner_.data(); }
+
+	qsizetype indexOf(char ch, qsizetype from = 0) const { return inner_.indexOf(ch, from); }
+	CowByteArray mid(qsizetype pos, qsizetype len = -1) const;
+
+	char operator[](qsizetype i) const { return inner_[i]; }
 
 	const QByteArray & asQByteArray() const { return inner_; }
 
@@ -41,16 +49,23 @@ class CowByteArrayRef
 {
 public:
 	CowByteArrayRef(QByteArray &a) : inner_(a) {}
+	CowByteArrayRef & operator=(const CowByteArray &other);
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 	qsizetype size() const { return inner_.size(); }
+	qsizetype length() const { return size(); }
 	const char *data() const { return inner_.data(); }
 	char *data() { return inner_.data(); }
 
+	qsizetype indexOf(char ch, qsizetype from = 0) const { return inner_.indexOf(ch, from); }
+	CowByteArray mid(qsizetype pos, qsizetype len = -1) const;
+
 	void resize(qsizetype size) { inner_.resize(size); }
 
+	char operator[](qsizetype i) const { return inner_[i]; }
+	char & operator[](qsizetype i) { return inner_[i]; }
+
 	const QByteArray & asQByteArray() const { return inner_; }
-	QByteArray & asQByteArray() { return inner_; }
 
 private:
 	friend class CowByteArray;
@@ -73,17 +88,41 @@ public:
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 	qsizetype size() const { return inner_.size(); }
+	qsizetype length() const { return size(); }
 	const char *data() const { return inner_.data(); }
 	char *data() { return inner_.data(); }
 
+	qsizetype indexOf(char ch, qsizetype from = 0) const { return inner_.indexOf(ch, from); }
+	CowByteArray mid(qsizetype pos, qsizetype len = -1) const { return inner_.mid(pos, len); }
+
 	void resize(qsizetype size) { inner_.resize(size); }
 
+	char operator[](qsizetype i) const { return inner_[i]; }
+	char & operator[](qsizetype i) { return inner_[i]; }
+
 	const QByteArray & asQByteArray() const { return inner_; }
-	QByteArray & asQByteArray() { return inner_; }
+
+	friend bool operator==(const CowByteArray &lhs, const CowByteArray &rhs);
+	friend bool operator==(const CowByteArray &lhs, const char *const &rhs);
+	friend bool operator==(const char *const &lhs, const CowByteArray &rhs);
 
 private:
+	friend class CowByteArrayRef;
+
 	QByteArray inner_;
 };
+
+inline bool operator==(const CowByteArray &lhs, const CowByteArray &rhs) { return lhs.inner_ == rhs.inner_; }
+inline bool operator==(const CowByteArray &lhs, const char *const &rhs) { return lhs.inner_ == rhs; }
+inline bool operator==(const char *const &lhs, const CowByteArray &rhs) { return lhs == rhs.inner_; }
+inline bool operator!=(const CowByteArray &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const CowByteArray &lhs, const char *const &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const char *const &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
+
+inline CowByteArray CowByteArrayConstRef::mid(qsizetype pos, qsizetype len) const { return inner_.mid(pos, len); }
+
+inline CowByteArrayRef & CowByteArrayRef::operator=(const CowByteArray &other) { inner_ = other.inner_; return *this; }
+inline CowByteArray CowByteArrayRef::mid(qsizetype pos, qsizetype len) const { return inner_.mid(pos, len); }
 
 // QList-like class for working with CowByteArray that currently forwards to
 // an inner QList<QByteArray>, to assist with reducing direct dependency on
@@ -93,14 +132,65 @@ private:
 class CowByteArrayList
 {
 public:
+	class iterator
+	{
+	public:
+		typedef std::random_access_iterator_tag iterator_category;
+		typedef qptrdiff difference_type;
+		typedef CowByteArray value_type;
+		typedef CowByteArray *pointer;
+		typedef CowByteArrayRef reference;
+
+		iterator(QList<QByteArray>::iterator it) : inner_(it) {}
+
+		inline CowByteArrayRef operator*() const { return CowByteArrayRef(*inner_); }
+
+		inline bool operator==(const iterator &other) const noexcept { return inner_ == other.inner_; }
+		inline bool operator!=(const iterator &other) const noexcept { return !(inner_ == other.inner_); }
+
+		inline iterator &operator++() { inner_++; return *this; }
+
+	private:
+		QList<QByteArray>::iterator inner_;
+	};
+
+	class const_iterator
+	{
+	public:
+		typedef std::random_access_iterator_tag iterator_category;
+		typedef qptrdiff difference_type;
+		typedef CowByteArray value_type;
+		typedef const CowByteArray *pointer;
+		typedef CowByteArrayConstRef reference;
+
+		const_iterator(QList<QByteArray>::const_iterator it) : inner_(it) {}
+
+		inline CowByteArrayConstRef operator*() const { return CowByteArrayConstRef(*inner_); }
+
+		inline bool operator==(const const_iterator &other) const noexcept { return inner_ == other.inner_; }
+		inline bool operator!=(const const_iterator &other) const noexcept { return !(inner_ == other.inner_); }
+
+		inline const_iterator &operator++() { inner_++; return *this; }
+
+	private:
+		QList<QByteArray>::const_iterator inner_;
+	};
+
 	CowByteArrayList() = default;
 	CowByteArrayList(const QList<QByteArray> &other) : inner_(other) {}
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 	qsizetype count() const { return inner_.count(); }
 
+	iterator begin() { return inner_.begin(); }
+	const_iterator begin() const { return inner_.begin(); }
+	iterator end() { return inner_.end(); }
+	const_iterator end() const { return inner_.end(); }
+
+	CowByteArrayList & operator+=(const CowByteArrayList &other) { inner_ += other.asQByteArrayList(); return *this; }
 	CowByteArrayList & operator+=(const CowByteArray &a) { inner_ += a.asQByteArray(); return *this; }
 	CowByteArrayList & operator+=(const QByteArray &a) { inner_ += a; return *this; }
+	CowByteArrayList & operator+=(const char *str) { inner_ += str; return *this; }
 
 	CowByteArrayConstRef operator[](int index) const { return CowByteArrayConstRef(inner_[index]); }
 	CowByteArrayRef operator[](int index) { return CowByteArrayRef(inner_[index]); }
