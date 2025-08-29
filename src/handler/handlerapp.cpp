@@ -21,17 +21,15 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "handlerapp.h"
-#include "handlerargsdata.h"
-#include "rust/bindings.h"
-
 #include <assert.h>
+#include <iostream>
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include "rust/bindings.h"
 #include "timer.h"
 #include "defercall.h"
 #include "eventloop.h"
@@ -42,9 +40,9 @@
 #include "wssession.h"
 #include "httpsessionupdatemanager.h"
 #include "settings.h"
-#include "handlerengine.h"
 #include "config.h"
-#include <iostream>
+#include "handlerengine.h"
+#include "handlerargsdata.h"
 
 #define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
 #define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
@@ -84,6 +82,18 @@ static QString firstSpec(const QString &s, int peerCount)
 
 	return s;
 }
+
+class HandlerApp
+{
+public:
+	HandlerApp();
+	~HandlerApp();
+
+	int run(const ffi::HandlerCliArgs *argsFfi);
+
+private:
+	class Private;
+};
 
 class HandlerApp::Private
 {
@@ -379,4 +389,21 @@ HandlerApp::~HandlerApp() = default;
 int HandlerApp::run(const ffi::HandlerCliArgs *argsFfi)
 {
 	return Private::run(argsFfi);
+}
+
+extern "C" {
+
+int handler_init(const ffi::HandlerCliArgs *argsFfi)
+{
+	// Create dummy argc/argv for QCoreApplication
+	int argc = 1;
+	char app_name[] = "pushpin-handler";
+	char* argv[] = { app_name, nullptr };
+	
+	QCoreApplication qapp(argc, argv);
+
+	HandlerApp app;
+	return app.run(argsFfi);
+}
+
 }

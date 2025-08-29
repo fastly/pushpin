@@ -19,10 +19,8 @@ HEADERS += \
 	$$PWD/proxyutil.h \
 	$$PWD/proxysession.h \
 	$$PWD/wsproxysession.h \
-	$$PWD/engine.h \
-	$$PWD/app.h \
-	$$PWD/main.h \ 
-	$$PWD/proxyargsdata.h 
+	$$PWD/proxyengine.h \
+	$$PWD/proxyargsdata.h
 
 SOURCES += \
 	$$PWD/testhttprequest.cpp \
@@ -43,7 +41,6 @@ SOURCES += \
 	$$PWD/proxyutil.cpp \
 	$$PWD/proxysession.cpp \
 	$$PWD/wsproxysession.cpp \
-	$$PWD/engine.cpp \
-	$$PWD/app.cpp \
-	$$PWD/main.cpp \ 
-	$$PWD/proxyargsdata.cpp 
+	$$PWD/proxyengine.cpp \
+	$$PWD/proxyargsdata.cpp \
+	$$PWD/proxyapp.cpp

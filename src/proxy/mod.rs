@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-pub mod proxycliargs;
+pub mod cliargs;
 
 #[cfg(test)]
 mod tests {

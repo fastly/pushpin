@@ -21,13 +21,12 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "app.h"
-#include "proxyargsdata.h"
-#include "rust/bindings.h"
-
 #include <assert.h>
+#include <string>
+#include <vector>
 #include <thread>
 #include <pthread.h>
+#include <boost/algorithm/string.hpp>
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QStringList>
@@ -35,6 +34,7 @@
 #include <QFileInfo>
 #include <QMutex>
 #include <QWaitCondition>
+#include "rust/bindings.h"
 #include "eventloop.h"
 #include "processquit.h"
 #include "timer.h"
@@ -44,11 +44,9 @@
 #include "settings.h"
 #include "xffrule.h"
 #include "domainmap.h"
-#include "engine.h"
 #include "config.h"
-#include <vector>
-#include <boost/algorithm/string.hpp>
-#include <string>
+#include "proxyengine.h"
+#include "proxyargsdata.h"
 
 static void trimlist(QStringList *list)
 {
@@ -306,6 +304,18 @@ public:
 			Timer::deinit();
 		}
 	}
+};
+
+class App
+{
+public:
+	App();
+	~App();
+
+	int run(const ffi::ProxyCliArgs *argsFfi);
+
+private:
+	class Private;
 };
 
 class App::Private
@@ -679,4 +689,21 @@ App::~App() = default;
 int App::run(const ffi::ProxyCliArgs *argsFfi)
 {
 	return Private::run(argsFfi);
+}
+
+extern "C" {
+
+int proxy_init(const ffi::ProxyCliArgs *argsFfi)
+{	
+	// Create dummy argc/argv for QCoreApplication
+	int argc = 1;
+	char app_name[] = "pushpin-proxy";
+	char* argv[] = { app_name, nullptr };
+	
+	QCoreApplication qapp(argc, argv);
+
+	App app;
+	return app.run(argsFfi);
+}
+
 }

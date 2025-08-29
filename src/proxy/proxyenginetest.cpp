@@ -44,7 +44,7 @@
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "domainmap.h"
-#include "engine.h"
+#include "proxyengine.h"
 
 using namespace std::chrono_literals;
 

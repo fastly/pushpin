@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,20 @@
  */
 
 use clap::Parser;
-use pushpin::handler::handlercliargs::ffi::HandlerCliArgs;
-use pushpin::handler::handlercliargs::{destroy_handler_cli_args, CliArgs};
+use pushpin::handler::cliargs::ffi::HandlerCliArgs;
+use pushpin::handler::cliargs::{destroy_handler_cli_args, CliArgs};
 use pushpin::import_cpp;
 use std::process::ExitCode;
 
 import_cpp! {
-    fn handler_main(args: *const HandlerCliArgs) -> libc::c_int;
+    fn handler_init(args: *const HandlerCliArgs) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
     let cli_args = CliArgs::parse().verify();
     let cli_args_ffi = cli_args.to_ffi();
 
-    let exit_code = unsafe { handler_main(&cli_args_ffi) };
+    let exit_code = unsafe { handler_init(&cli_args_ffi) };
 
     // Clean up the allocated memory
     unsafe { destroy_handler_cli_args(cli_args_ffi) };

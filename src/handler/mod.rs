@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-pub mod handlercliargs;
+pub mod cliargs;
 
 #[cfg(test)]
 mod tests {

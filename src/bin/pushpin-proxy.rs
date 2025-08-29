@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,19 @@
 
 use clap::Parser;
 use pushpin::import_cpp;
-use pushpin::proxy::proxycliargs::ffi::ProxyCliArgs;
-use pushpin::proxy::proxycliargs::{destroy_proxy_cli_args, CliArgs};
+use pushpin::proxy::cliargs::ffi::ProxyCliArgs;
+use pushpin::proxy::cliargs::{destroy_proxy_cli_args, CliArgs};
 use std::process::ExitCode;
 
 import_cpp! {
-    fn proxy_main(args: *const ProxyCliArgs) -> libc::c_int;
+    fn proxy_init(args: *const ProxyCliArgs) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
     let cli_args = CliArgs::parse().verify();
     let cli_args_ffi = cli_args.to_ffi();
 
-    let exit_code = unsafe { proxy_main(&cli_args_ffi) };
+    let exit_code = unsafe { proxy_init(&cli_args_ffi) };
 
     // Clean up the allocated memory
     unsafe { destroy_proxy_cli_args(cli_args_ffi) };
