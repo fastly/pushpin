@@ -168,7 +168,7 @@ public:
 		serverSock->write(message);
 	}
 
-	void client_readyRead(const QList<QByteArray> &message)
+	void client_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 2)
 		{
@@ -209,7 +209,7 @@ public:
 		req->handle(p);
 	}
 
-	void server_readyRead(const QList<QByteArray> &message)
+	void server_readyRead(const CowByteArrayList &message)
 	{
 		QZmq::ReqMessage req(message);
 
@@ -237,7 +237,7 @@ public:
 		}
 
 		PendingItem i;
-		i.headers = req.headers();
+		i.headers = req.headers().asQByteArrayList();
 		i.packet = p;
 		pending += i;
 

@@ -22,6 +22,7 @@
 #include "tnetstring.h"
 
 #include <assert.h>
+#include "cowbytearray.h"
 #include "qtcompat.h"
 
 namespace TnetString {
@@ -251,6 +252,11 @@ QVariant toVariant(const QByteArray &in, int offset, bool *ok)
 	}
 
 	return toVariant(in, offset, type, dataOffset, dataSize, ok);
+}
+
+QVariant toVariant(const CowByteArray &in, int offset, bool *ok)
+{
+	return toVariant(in.asQByteArray(), offset, ok);
 }
 
 QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
