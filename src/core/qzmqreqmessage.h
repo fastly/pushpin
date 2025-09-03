@@ -24,6 +24,8 @@
 #ifndef QZMQREQMESSAGE_H
 #define QZMQREQMESSAGE_H
 
+class CowByteArrayList;
+
 namespace QZmq {
 
 class ReqMessage
@@ -33,16 +35,16 @@ public:
 	{
 	}
 
-	ReqMessage(const QList<QByteArray> &headers, const QList<QByteArray> &content) :
+	ReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content) :
 		headers_(headers),
 		content_(content)
 	{
 	}
 
-	ReqMessage(const QList<QByteArray> &rawMessage)
+	ReqMessage(const CowByteArrayList &rawMessage)
 	{
 		bool collectHeaders = true;
-		foreach(const QByteArray &part, rawMessage)
+		for(CowByteArrayConstRef part : std::as_const(rawMessage))
 		{
 			if(part.isEmpty())
 			{
@@ -59,26 +61,26 @@ public:
 
 	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
 
-	QList<QByteArray> headers() const { return headers_; }
-	QList<QByteArray> content() const { return content_; }
+	CowByteArrayList headers() const { return headers_; }
+	CowByteArrayList content() const { return content_; }
 
-	ReqMessage createReply(const QList<QByteArray> &content)
+	ReqMessage createReply(const CowByteArrayList &content)
 	{
 		return ReqMessage(headers_, content);
 	}
 
-	QList<QByteArray> toRawMessage() const
+	CowByteArrayList toRawMessage() const
 	{
-		QList<QByteArray> out;
+		CowByteArrayList out;
 		out += headers_;
-		out += QByteArray();
+		out += CowByteArray();
 		out += content_;
 		return out;
 	}
 
 private:
-	QList<QByteArray> headers_;
-	QList<QByteArray> content_;
+	CowByteArrayList headers_;
+	CowByteArrayList content_;
 };
 
 }

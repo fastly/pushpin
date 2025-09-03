@@ -252,7 +252,7 @@ public:
 	}
 
 private:
-	void stream_readyRead(const QList<QByteArray> &message)
+	void stream_readyRead(const CowByteArrayList &message)
 	{
 		QZmq::ReqMessage req(message);
 

@@ -198,7 +198,7 @@ public:
 	}
 
 private:
-	void processClientIn(const QByteArray &message)
+	void processClientIn(const CowByteArray &message)
 	{
 		log_debug("client in");
 		QVariant v = TnetString::toVariant(message);
@@ -245,14 +245,14 @@ private:
 		}
 	}
 
-	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	void zhttpClientIn_readyRead(const CowByteArrayList &message)
 	{
 		int at = message[0].indexOf(' ');
 
 		processClientIn(message[0].mid(at + 2));
 	}
 
-	void zhttpClientOutStream_readyRead(const QList<QByteArray> &message)
+	void zhttpClientOutStream_readyRead(const CowByteArrayList &message)
 	{
 		if(message[2] == "probe-ack")
 		{
@@ -263,7 +263,7 @@ private:
 		processClientIn(message[2].mid(1));
 	}
 
-	void zhttpServerIn_readyRead(const QList<QByteArray> &message)
+	void zhttpServerIn_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server in");
 		QVariant v = TnetString::toVariant(message[0].mid(1));
@@ -279,7 +279,7 @@ private:
 		handleServerIn(zreq);
 	}
 
-	void zhttpServerInStream_readyRead(const QList<QByteArray> &message)
+	void zhttpServerInStream_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server stream in");
 		QVariant v = TnetString::toVariant(message[2].mid(1));
@@ -468,7 +468,7 @@ private:
 		serverOutSeq = 0;
 	}
 
-	void handlerInspect_readyRead(const QList<QByteArray> &_message)
+	void handlerInspect_readyRead(const CowByteArrayList &_message)
 	{
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
@@ -493,7 +493,7 @@ private:
 		}
 	}
 
-	void handlerAccept_readyRead(const QList<QByteArray> &_message)
+	void handlerAccept_readyRead(const CowByteArrayList &_message)
 	{
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);

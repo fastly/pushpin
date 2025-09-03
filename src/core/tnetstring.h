@@ -23,6 +23,8 @@
 
 #include <QVariant>
 
+class CowByteArray;
+
 namespace TnetString {
 
 enum Type
@@ -55,6 +57,7 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize, bool *ok = 0);
 QVariant toVariant(const QByteArray &in, int offset = 0, bool *ok = 0);
+QVariant toVariant(const CowByteArray &in, int offset = 0, bool *ok = 0);
 
 QString byteArrayToEscapedString(const QByteArray &in);
 
