@@ -55,7 +55,6 @@
 #include "zutil.h"
 #include "sockjsmanager.h"
 #include "sockjssession.h"
-#include "updater.h"
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
@@ -122,7 +121,6 @@ public:
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
 	std::unique_ptr<SockJsManager> sockJsManager;
 	ConnectionManager connectionManager;
-	std::unique_ptr<Updater> updater;
 	LogUtil::Config logConfig;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
@@ -147,8 +145,6 @@ public:
 
 		// need to delete all objects that may have connections before
 		// deleting zhttpmanagers/zroutes
-
-		updater.reset();
 
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
@@ -346,11 +342,6 @@ public:
 				// zrpcmanager logs error
 				return false;
 			}
-		}
-
-		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
-		{
-			updater = std::make_unique<Updater>(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager());
 		}
 
 		// init zroutes
@@ -999,52 +990,6 @@ private:
 			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
 			if(woh)
 				woh->refresh();
-
-			req->respond();
-		}
-		else if(req->method() == "report")
-		{
-			QVariantHash args = req->args();
-			if(!args.contains("stats") || typeId(args["stats"]) != QMetaType::QVariantHash)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QVariant data = args["stats"];
-
-			StatsPacket p;
-			if(!p.fromVariant("report", data))
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			if(!updater)
-			{
-				req->respondError("service-unavailable");
-				delete req;
-				return;
-			}
-
-			int connectionsMax = qMax(p.connectionsMax, 0);
-			int connectionsMinutes = qMax(p.connectionsMinutes, 0);
-			int messagesReceived = qMax(p.messagesReceived, 0);
-			int messagesSent = qMax(p.messagesSent, 0);
-			int httpResponseMessagesSent = qMax(p.httpResponseMessagesSent, 0);
-
-			Updater::Report report;
-			report.connectionsMax = connectionsMax;
-			report.connectionsMinutes = connectionsMinutes;
-			report.messagesReceived = messagesReceived;
-			report.messagesSent = messagesSent;
-
-			// fanout cloud style ops calculation
-			report.ops = connectionsMinutes + messagesReceived + messagesSent - httpResponseMessagesSent;
-
-			updater->setReport(report);
 
 			req->respond();
 		}

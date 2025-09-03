@@ -99,9 +99,6 @@ public:
 		Jwt::EncodingKey sigKey;
 		Jwt::DecodingKey upstreamKey;
 		QString sockJsUrl;
-		QString updatesCheck;
-		QString organizationName;
-		bool quietCheck;
 		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsConnectionsMaxTtl;
@@ -123,8 +120,6 @@ public:
 			acceptPushpinRoute(false),
 			logFrom(false),
 			logUserAgent(false),
-			updatesCheck("check"),
-			quietCheck(false),
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsConnectionsMaxTtl(-1),

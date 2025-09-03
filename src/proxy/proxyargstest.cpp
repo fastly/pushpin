@@ -44,8 +44,7 @@
         3,                                      // log_level
         const_cast<char*>("ipc:prefix"),        // ipc_prefix
         const_cast<char**>(routes),             // routes
-        2,                                      // routes_count
-        1                                       // quiet_check
+        2                                       // routes_count
     };
  
     // Verify ProxyArgsData parsing
@@ -55,7 +54,6 @@
     TEST_ASSERT_EQ(args.logLevel, 3);
     TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
     TEST_ASSERT_EQ(args.routeLines, QStringList({"route1", "route2"}));
-    TEST_ASSERT_EQ(args.quietCheck, true);
 
     Settings settings(args.configFile);
     if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
@@ -73,8 +71,7 @@
         2,                                      // log_level
         const_cast<char*>(""),                  // ipc_prefix
         const_cast<char**>(routesEmpty),        // routes array
-        0,                                      // routes_count
-        0                                       // quiet_check
+        0                                       // routes_count
     };
 
     // Verify ProxyArgsData parsing with empty arguments
@@ -84,7 +81,6 @@
     TEST_ASSERT_EQ(argsEmpty.logLevel, 2);
     TEST_ASSERT_EQ(argsEmpty.ipcPrefix, QString(""));
     TEST_ASSERT_EQ(argsEmpty.routeLines, QStringList());
-    TEST_ASSERT_EQ(argsEmpty.quietCheck, false);
 
     Settings settingsEmpty(argsEmpty.configFile);
     if (!argsEmpty.ipcPrefix.isEmpty()) settingsEmpty.setIpcPrefix(argsEmpty.ipcPrefix);

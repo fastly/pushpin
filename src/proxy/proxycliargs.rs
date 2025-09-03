@@ -48,10 +48,6 @@ pub struct CliArgs {
     /// Add routes (overrides routes file)
     #[arg(long, value_name = "routes")]
     pub routes: Option<Vec<String>>,
-
-    /// Log update checks in Zurl as debug level
-    #[arg(long, value_name = "quiet-check", default_value_t = false)]
-    pub quiet_check: bool,
 }
 
 impl CliArgs {
@@ -136,7 +132,6 @@ impl CliArgs {
             ipc_prefix,
             routes,
             routes_count,
-            quiet_check: if self.quiet_check { 1 } else { 0 },
         }
     }
 }
@@ -150,7 +145,6 @@ pub mod ffi {
         pub ipc_prefix: *mut libc::c_char,
         pub routes: *mut *mut libc::c_char,
         pub routes_count: libc::c_uint,
-        pub quiet_check: libc::c_int,
     }
 }
 
@@ -207,7 +201,6 @@ mod tests {
             log_level: 3,
             ipc_prefix: Some("ipc".to_string()),
             routes: Some(vec!["route1".to_string(), "route2".to_string()]),
-            quiet_check: true,
         };
 
         let args_ffi = args.to_ffi();
@@ -222,7 +215,6 @@ mod tests {
             verified_args.routes,
             Some(vec!["route1".to_string(), "route2".to_string()])
         );
-        assert_eq!(verified_args.quiet_check, true);
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -262,7 +254,6 @@ mod tests {
             );
         }
         assert_eq!(args_ffi.log_level, 3);
-        assert_eq!(args_ffi.quiet_check, 1);
 
         // Test cleanup - this should not crash
         unsafe {
@@ -276,7 +267,6 @@ mod tests {
             log_level: 2,
             ipc_prefix: None,
             routes: None,
-            quiet_check: false,
         };
 
         let empty_args_ffi = empty_args.to_ffi();
@@ -295,7 +285,6 @@ mod tests {
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.routes, None);
-        assert_eq!(verified_empty_args.quiet_check, false);
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -319,7 +308,6 @@ mod tests {
             );
             assert_eq!(empty_args_ffi.routes_count, 0);
             assert_eq!(empty_args_ffi.log_level, 2);
-            assert_eq!(empty_args_ffi.quiet_check, 0);
         }
 
         // Test cleanup for empty args - this should not crash

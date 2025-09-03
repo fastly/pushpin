@@ -33,8 +33,7 @@ PushpinProxyService::PushpinProxyService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	int logLevel,
-	const QStringList &routeLines,
-	bool quietCheck)
+	const QStringList &routeLines)
 {
 	args_ += binFile;
 	args_ += "--config=" + configFile;
@@ -53,9 +52,6 @@ PushpinProxyService::PushpinProxyService(
 
 	foreach(const QString &route, routeLines)
 		args_ += "--route=" + route;
-
-	if(quietCheck)
-		args_ += "--quiet-check";
 
 	setName("proxy");
 	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-proxy.pid"));

@@ -36,7 +36,6 @@ class ProxyArgsData
 		int logLevel;
 		QString ipcPrefix;
 		QStringList routeLines;
-		bool quietCheck;
 
 		ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
 };

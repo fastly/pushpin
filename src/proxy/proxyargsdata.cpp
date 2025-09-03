@@ -40,5 +40,4 @@ ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgs *argsFfi)
     {
         routeLines << QString::fromUtf8(argsFfi->routes[i]);
     }
-    quietCheck  = argsFfi->quiet_check == 1;
 }

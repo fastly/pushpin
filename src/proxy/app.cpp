@@ -431,8 +431,6 @@ public:
 		Jwt::EncodingKey sigKey = Jwt::EncodingKey::fromConfigString(settings.value("proxy/sig_key").toString(), configDir);
 		Jwt::DecodingKey upstreamKey = Jwt::DecodingKey::fromConfigString(settings.value("proxy/upstream_key").toString(), configDir);
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
-		QString updatesCheck = settings.value("proxy/updates_check").toString();
-		QString organizationName = settings.value("proxy/organization_name").toString();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		bool statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
@@ -461,9 +459,6 @@ public:
 			log_error("must set connmgr_client_out_specs, connmgr_client_out_stream_specs, and connmgr_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			return 1;
 		}
-
-		if(updatesCheck == "true")
-			updatesCheck = "check";
 
 		// sessionsMax should not exceed clientMaxconn
 		if(sessionsMax >= 0)
@@ -526,9 +521,6 @@ public:
 		config.sigKey = sigKey;
 		config.upstreamKey = upstreamKey;
 		config.sockJsUrl = sockJsUrl;
-		config.updatesCheck = updatesCheck;
-		config.organizationName = organizationName;
-		config.quietCheck = args.quietCheck;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
