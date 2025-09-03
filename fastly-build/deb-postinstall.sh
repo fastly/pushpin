@@ -6,11 +6,12 @@ groupadd fetchly-sock || true
 groupadd pushpin || true
 groupadd pushpin-listener || true
 groupadd pub-events || true
+groupadd powderhorn || true
 groupadd origind || true
 useradd -r -g pushpin pushpin || true
+useradd -r -g powderhorn powderhorn || true
+useradd -r -g origind origind || true
 usermod -a -G pushpin-listener,pub-events,fetchly-sock,origind pushpin || true
-mkdir -p /var/run/pushpin
-chown pushpin:pushpin /var/run/pushpin
 mkdir -p /var/lib/pushpin
 chown pushpin:pushpin /var/lib/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck

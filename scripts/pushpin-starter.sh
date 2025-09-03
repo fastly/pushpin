@@ -13,8 +13,10 @@ do_mount() {
 	mount --bind -o "$mode" "$src" "$dst"
 }
 
-mkdir -p /var/run/pushpin
+mkdir -p /var/run/pushpin /var/lib/powderhorn /var/run/origind
 chown pushpin:pushpin /var/run/pushpin
+chown powderhorn:powderhorn /var/lib/powderhorn
+chown origind:origind /var/run/origind
 MOUNT_RW=( "/var/run/pushpin" )
 # mounted rw
 for m in "${MOUNT_RW[@]}"
