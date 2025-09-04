@@ -139,7 +139,15 @@ void WsSession::processPublishQueue()
 		filters = std::make_unique<Filter::MessageFilterStack>(channelFilters[item.channel]);
 		filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
 
+		// websocket sessions currently don't support previous IDs on
+		// subscriptions, but we still need to populate the channel names in
+		// in the filter context even if all the values will be null
+		QHash<QString, QString> prevIds;
+		foreach(const QString &name, channels)
+			prevIds[name] = QString();
+
 		Filter::Context fc;
+		fc.prevIds = prevIds;
 		fc.subscriptionMeta = meta;
 		fc.publishMeta = item.meta;
 		fc.zhttpOut = zhttpOut;
