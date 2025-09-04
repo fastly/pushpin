@@ -126,6 +126,11 @@ Options for cache are added into this file.
 	```
 	message_error_attributes=error,fault,bug
 	```
+#### count of cache items
+* <a name="cache_item_max_count"></a>Maximum cache item count (default 3000)
+	```
+	cache_item_max_count=3000
+	```
 #### timeout
 * <a name="backend_switch_interval_seconds"></a>time seconds to switch another backend for null response (default 10)
 	```

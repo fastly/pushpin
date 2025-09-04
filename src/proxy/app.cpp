@@ -699,6 +699,8 @@ public:
 		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
 		QStringList msgErrorFieldList = settings.value("cache/message_error_attributes").toStringList();
+		// Maximum cache item count (default 3000)
+		int cacheItemMaxCount = settings.value("cache/cache_item_max_count", 3000).toInt();
 		// time seconds to retry another backend for null response (default 10)
 		int backendSwitchIntervalSeconds = settings.value("cache/backend_switch_interval_seconds", 10).toInt();
 		// prometheus restore allow seconds (default 300)
@@ -738,6 +740,7 @@ public:
 		config.msgMethodFieldName = msgMethodFieldName;
 		config.msgParamsFieldName = msgParamsFieldName;
 		config.msgErrorFieldList = msgErrorFieldList;
+		config.cacheItemMaxCount = cacheItemMaxCount;
 		config.backendSwitchIntervalSeconds = backendSwitchIntervalSeconds;
 		config.prometheusRestoreAllowSeconds = prometheusRestoreAllowSeconds;
 		config.redisEnable = redisEnable;

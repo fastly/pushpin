@@ -112,6 +112,7 @@ public:
 		QString msgMethodFieldName;
 		QString msgParamsFieldName;
 		QStringList msgErrorFieldList;
+		int cacheItemMaxCount;
 		int backendSwitchIntervalSeconds;
 		int prometheusRestoreAllowSeconds;
 		bool redisEnable;
@@ -144,6 +145,7 @@ public:
 			statsConnectionsMaxTtl(-1),
 			statsReportInterval(-1),
 			cacheEnable(false),
+			cacheItemMaxCount(3000),
 			backendSwitchIntervalSeconds(10),
 			prometheusRestoreAllowSeconds(300),
 			redisEnable(false),

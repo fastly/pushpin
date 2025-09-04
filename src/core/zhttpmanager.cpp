@@ -3584,6 +3584,7 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
 	const QStringList &msgErrorFieldList,
+	int cacheItemMaxCount,
 	int backendSwitchIntervalSeconds,
 	int prometheusRestoreAllowSeconds,
 	bool redisEnable,
@@ -3775,6 +3776,9 @@ void ZhttpManager::setCacheParameters(
 
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}
+
+	// Maximum cache item countd
+	gCacheItemMaxCount = cacheItemMaxCount;
 
 	// time seconds to retry another backend for null response
 	gBackendSwitchIntervalSeconds = backendSwitchIntervalSeconds;
