@@ -655,10 +655,13 @@ static void remove_old_cache_items()
 				qint64 accessDiff = currMTime - pCacheItem->lastAccessTime;
 				if (accessDiff > accessTimeoutMSeconds)
 				{
-					// remove cache item
-					log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
-					deleteIdList.append(itemId);  // Safely erase and move to the next item
-					continue;
+					if (pCacheItem->cachedFlag == true || pCacheItem->retryCount > RETRY_RESPONSE_MAX_COUNT)
+					{
+						// remove cache item
+						log_debug("[CACHE] deleting cache item for access timeout %s", itemId.toHex().data());
+						deleteIdList.append(itemId);  // Safely erase and move to the next item
+						continue;						
+					}
 				} 
 			}
 			else if (pCacheItem->methodType == CacheMethodType::SUBSCRIBE_METHOD)
@@ -715,7 +718,7 @@ static void remove_old_cache_items()
 		}
 
 		log_debug("[CACHE] detected MAX cache item count %d", totalItemCount);
-		accessTimeoutMSeconds -= 1000;
+		accessTimeoutMSeconds -= (gAccessTimeoutSeconds/5) * 1000;
 	}
 }
 
