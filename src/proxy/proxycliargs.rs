@@ -45,9 +45,9 @@ pub struct CliArgs {
     #[arg(long, value_name = "prefix")]
     pub ipc_prefix: Option<String>,
 
-    /// Add routes (overrides routes file)
-    #[arg(long, value_name = "routes")]
-    pub routes: Option<Vec<String>>,
+    /// Add route (overrides routes file)
+    #[arg(long, value_name = "route")]
+    pub route: Option<Vec<String>>,
 }
 
 impl CliArgs {
@@ -101,7 +101,7 @@ impl CliArgs {
             )
             .into_raw();
 
-        let (routes, routes_count) = match &self.routes {
+        let (routes, routes_count) = match &self.route {
             Some(routes_vec) if !routes_vec.is_empty() => {
                 // Allocate array of string pointers
                 let routes_array = unsafe {
@@ -200,7 +200,7 @@ mod tests {
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
             ipc_prefix: Some("ipc".to_string()),
-            routes: Some(vec!["route1".to_string(), "route2".to_string()]),
+            route: Some(vec!["route1".to_string(), "route2".to_string()]),
         };
 
         let args_ffi = args.to_ffi();
@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(verified_args.log_level, 3);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(
-            verified_args.routes,
+            verified_args.route,
             Some(vec!["route1".to_string(), "route2".to_string()])
         );
 
@@ -266,7 +266,7 @@ mod tests {
             log_file: None,
             log_level: 2,
             ipc_prefix: None,
-            routes: None,
+            route: None,
         };
 
         let empty_args_ffi = empty_args.to_ffi();
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
         assert_eq!(verified_empty_args.ipc_prefix, None);
-        assert_eq!(verified_empty_args.routes, None);
+        assert_eq!(verified_empty_args.route, None);
 
         // Test conversion to C++-compatible struct
         unsafe {
