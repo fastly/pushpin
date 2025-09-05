@@ -4432,12 +4432,19 @@ async fn client_connect<'a>(
                 VerifyMode::Full
             };
 
+            let client_cert = if !rdata.client_cert.is_empty() {
+                Some((rdata.client_cert, rdata.client_key))
+            } else {
+                None
+            };
+
             let stream = match AsyncTlsStream::connect(
                 host,
                 stream,
                 verify_mode,
                 tls_waker_data,
                 tls_config_cache,
+                client_cert,
             ) {
                 Ok(stream) => stream,
                 Err(e) => {

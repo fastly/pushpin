@@ -72,6 +72,8 @@ public:
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int timeout;
+	QString clientCert;
+	QString clientKey;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
 	QString requestMethod;
@@ -970,6 +972,8 @@ public:
 						p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
+					p.clientCert = clientCert;
+					p.clientKey = clientKey;
 					if(passthrough.isValid())
 						p.passthrough = passthrough;
 					if(quiet)
@@ -1021,6 +1025,8 @@ public:
 					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
+				p.clientCert = clientCert;
+				p.clientKey = clientKey;
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
 				if(quiet)
@@ -1231,6 +1237,12 @@ void ZhttpRequest::setIgnoreTlsErrors(bool on)
 void ZhttpRequest::setTimeout(int msecs)
 {
 	d->timeout = msecs;
+}
+
+void ZhttpRequest::setClientCert(const QString &cert, const QString &key)
+{
+	d->clientCert = cert;
+	d->clientKey = key;
 }
 
 void ZhttpRequest::setIsTls(bool on)

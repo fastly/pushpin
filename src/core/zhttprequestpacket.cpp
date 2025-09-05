@@ -150,6 +150,12 @@ QVariant ZhttpRequestPacket::toVariant() const
 	if(ignoreTlsErrors)
 		obj["ignore-tls-errors"] = true;
 
+	if(!clientCert.isEmpty())
+		obj["client-cert"] = clientCert.toUtf8();
+
+	if(!clientKey.isEmpty())
+		obj["client-key"] = clientKey.toUtf8();
+
 	if(followRedirects)
 		obj["follow-redirects"] = true;
 
@@ -466,6 +472,24 @@ bool ZhttpRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		ignoreTlsErrors = obj["ignore-tls-errors"].toBool();
+	}
+
+	clientCert.clear();
+	if(obj.contains("client-cert"))
+	{
+		if(typeId(obj["client-cert"]) != QMetaType::QByteArray)
+			return false;
+
+		clientCert = QString::fromUtf8(obj["client-cert"].toByteArray());
+	}
+
+	clientKey.clear();
+	if(obj.contains("client-key"))
+	{
+		if(typeId(obj["client-key"]) != QMetaType::QByteArray)
+			return false;
+
+		clientKey = QString::fromUtf8(obj["client-key"].toByteArray());
 	}
 
 	followRedirects = false;

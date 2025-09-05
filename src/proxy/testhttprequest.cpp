@@ -185,6 +185,12 @@ void TestHttpRequest::setTimeout(int msecs)
 	Q_UNUSED(msecs);
 }
 
+void TestHttpRequest::setClientCert(const QString &cert, const QString &key)
+{
+	Q_UNUSED(cert);
+	Q_UNUSED(key);
+}
+
 void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);

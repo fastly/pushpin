@@ -61,6 +61,8 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString clientCert;
+	QString clientKey;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
 	int inSeq;
@@ -1031,6 +1033,8 @@ public:
 				p.trustConnectHost = true;
 			if(ignoreTlsErrors)
 				p.ignoreTlsErrors = true;
+			p.clientCert = clientCert;
+			p.clientKey = clientKey;
 			p.credits = IDEAL_CREDITS;
 			p.multi = true;
 			writePacket(p);
@@ -1121,6 +1125,12 @@ void ZWebSocket::setIgnoreTlsErrors(bool on)
 void ZWebSocket::setIsTls(bool on)
 {
 	d->requestUri.setScheme(on ? "wss" : "ws");
+}
+
+void ZWebSocket::setClientCert(const QString &cert, const QString &key)
+{
+	d->clientCert = cert;
+	d->clientKey = key;
 }
 
 void ZWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
