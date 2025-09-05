@@ -341,8 +341,8 @@ impl PushpinProxyService {
         args.push(format!("--loglevel={}", log_level));
 
         // Routes
-        for route in settings.route_lines.clone() {
-            args.push(format!("--route={}", route));
+        for route in &settings.route_lines {
+            args.push(format!("--route={route}"));
         }
 
         Self {
