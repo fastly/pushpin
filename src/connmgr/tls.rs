@@ -573,11 +573,12 @@ where
                 let mut chain = X509::stack_from_pem(client_cert.as_bytes())?;
 
                 if chain.is_empty() {
-                    // stack_from_pem() may not give us an error if the data
-                    // doesn't contain any certs. to obtain a proper error in
-                    // this case, we'll use from_pem()
+                    // we want at least one cert, however stack_from_pem()
+                    // may not return an error if the data doesn't contain
+                    // any certs. to generate an ssl::Error in this case,
+                    // we'll use from_pem() on empty data
                     return Err(X509::from_pem(&[])
-                        .expect_err("from_pem didn't error")
+                        .expect_err("from_pem with empty data didn't error")
                         .into());
                 }
 
