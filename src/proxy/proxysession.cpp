@@ -474,6 +474,9 @@ public:
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
 
+		if(!target.clientCert.isEmpty())
+			zhttpRequest->setClientCert(target.clientCert, target.clientKey);
+
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(requestData.method, uri, requestData.headers));

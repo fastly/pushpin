@@ -562,11 +562,40 @@ where
         stream: T,
         verify_mode: VerifyMode,
         config_cache: &TlsConfigCache,
+        client_cert: Option<(&str, &str)>,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
             let connector = config_cache.get_connector(verify_mode)?;
 
-            let stream = match connector.connect(domain, stream) {
+            let mut configuration = connector.configure()?;
+
+            if let Some((client_cert, client_key)) = client_cert {
+                let mut chain = X509::stack_from_pem(client_cert.as_bytes())?;
+
+                if chain.is_empty() {
+                    // we want at least one cert, however stack_from_pem()
+                    // may not return an error if the data doesn't contain
+                    // any certs. to generate an ssl::Error in this case,
+                    // we'll use from_pem() on empty data
+                    return Err(X509::from_pem(&[])
+                        .expect_err("from_pem with empty data didn't error")
+                        .into());
+                }
+
+                assert!(!chain.is_empty());
+
+                let key = PKey::private_key_from_pem(client_key.as_bytes())?;
+
+                configuration.set_certificate(&chain.remove(0))?;
+
+                for cert in chain {
+                    configuration.add_chain_cert(cert)?;
+                }
+
+                configuration.set_private_key(&key)?;
+            }
+
+            let stream = match configuration.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
                 Err(HandshakeError::SetupFailure(e)) => return Err(e.into()),
                 Err(HandshakeError::Failure(stream)) => return Err(stream.into_error()),
@@ -1000,17 +1029,19 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         verify_mode: VerifyMode,
         waker_data: &'a RefWakerData<TlsWaker>,
         config_cache: &TlsConfigCache,
+        client_cert: Option<(&str, &str)>,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.into_evented().into_parts();
 
-        let stream = match TlsStream::connect(domain, stream, verify_mode, config_cache) {
-            Ok(stream) => stream,
-            Err((mut stream, e)) => {
-                registration.deregister_io(&mut stream).unwrap();
+        let stream =
+            match TlsStream::connect(domain, stream, verify_mode, config_cache, client_cert) {
+                Ok(stream) => stream,
+                Err((mut stream, e)) => {
+                    registration.deregister_io(&mut stream).unwrap();
 
-                return Err(e);
-            }
-        };
+                    return Err(e);
+                }
+            };
 
         Ok(Self::new_with_registration(
             stream,
@@ -1356,8 +1387,14 @@ mod tests {
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
-        let mut stream =
-            TlsStream::connect("localhost", a, VerifyMode::Full, &TlsConfigCache::new()).unwrap();
+        let mut stream = TlsStream::connect(
+            "localhost",
+            a,
+            VerifyMode::Full,
+            &TlsConfigCache::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
         assert_eq!(stream.get_inner().b, 2);
@@ -1366,11 +1403,16 @@ mod tests {
     #[test]
     fn test_connect_error() {
         let c = ReadWriteC { c: 1 };
-        let (stream, e) =
-            match TlsStream::connect("localhost", c, VerifyMode::Full, &TlsConfigCache::new()) {
-                Ok(_) => panic!("unexpected success"),
-                Err(ret) => ret,
-            };
+        let (stream, e) = match TlsStream::connect(
+            "localhost",
+            c,
+            VerifyMode::Full,
+            &TlsConfigCache::new(),
+            None,
+        ) {
+            Ok(_) => panic!("unexpected success"),
+            Err(ret) => ret,
+        };
         assert_eq!(stream.c, 1);
         assert_eq!(e.into_io_error().unwrap().kind(), io::ErrorKind::Other);
     }
@@ -1399,6 +1441,7 @@ mod tests {
                             VerifyMode::None,
                             &tls_waker_data,
                             &TlsConfigCache::new(),
+                            None,
                         )
                         .unwrap();
 

@@ -93,6 +93,8 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString clientCert;
+	QString clientKey;
 	bool followRedirects;
 	QVariant passthrough; // if valid, may contain pushpin-specific passthrough info
 	bool multi;

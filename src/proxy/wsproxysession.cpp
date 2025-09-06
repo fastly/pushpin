@@ -593,6 +593,9 @@ public:
 			outSock->setConnectPort(target.connectPort);
 		}
 
+		if(!target.clientCert.isEmpty())
+			outSock->setClientCert(target.clientCert, target.clientKey);
+
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes("GET", uri, requestData.headers));
