@@ -126,6 +126,27 @@ Options for cache are added into this file.
 	```
 	message_error_attributes=error,fault,bug
 	```
+#### timeout of auto-refresh
+* <a name="ws_auto_refresh_cache_timeout_seconds"></a>cache timeout seconds (default 10)<br />
+	ref: Number of seconds to count auto-refresh timeout
+	```
+	ws_auto_refresh_cache_timeout_seconds=10
+	```
+* <a name="ws_auto_refresh_shorter_timeout_seconds"></a>cache shorter timeout seconds (default 6)<br />
+	ref: Number of seconds to count auto-refresh shorter timeout
+	```
+	ws_auto_refresh_shorter_timeout_seconds=6
+	```
+* <a name="ws_auto_refresh_longer_timeout_seconds"></a>cache longer timeout seconds (default 60)<br />
+	ref: Number of seconds to count auto-refresh longer timeout
+	```
+	ws_auto_refresh_longer_timeout_seconds=60
+	```
+* <a name="ws_auto_refresh_access_timeout_seconds"></a>cache auto-refresh access timeout seconds (default 30)<br />
+    ref: Number of seconds to count time out, be used to delete cache items that are not referenced by any client for this timeout period
+    ```
+    ws_auto_refresh_access_timeout_seconds=30
+    ```
 #### count of cache items
 * <a name="cache_item_max_count"></a>Maximum cache item count (default 3000)
 	```

@@ -3584,6 +3584,10 @@ void ZhttpManager::setCacheParameters(
 	const QString &msgMethodFieldName,
 	const QString &msgParamsFieldName,
 	const QStringList &msgErrorFieldList,
+	const int cacheTimeoutSeconds,
+	const int shorterTimeoutSeconds,
+	const int longerTimeoutSeconds,
+	const int accessTimeoutSeconds,
 	int cacheItemMaxCount,
 	int backendSwitchIntervalSeconds,
 	int prometheusRestoreAllowSeconds,
@@ -3777,8 +3781,20 @@ void ZhttpManager::setCacheParameters(
 		gCacheThread = QtConcurrent::run(cache_thread);
 	}
 
+	// timeout
+	gCacheTimeoutSeconds = cacheTimeoutSeconds;
+	gShorterTimeoutSeconds = shorterTimeoutSeconds;
+	gLongerTimeoutSeconds = longerTimeoutSeconds;
+	gAccessTimeoutSeconds = accessTimeoutSeconds;
+
+	log_debug("gCacheTimeoutSeconds = %d", gCacheTimeoutSeconds);
+	log_debug("gShorterTimeoutSeconds = %d", gShorterTimeoutSeconds);
+	log_debug("gLongerTimeoutSeconds = %d", gLongerTimeoutSeconds);
+	log_debug("gAccessTimeoutSeconds = %d", gAccessTimeoutSeconds);
+
 	// Maximum cache item countd
 	gCacheItemMaxCount = cacheItemMaxCount;
+	log_debug("gCacheItemMaxCount = %d", gCacheItemMaxCount);
 
 	// time seconds to retry another backend for null response
 	gBackendSwitchIntervalSeconds = backendSwitchIntervalSeconds;

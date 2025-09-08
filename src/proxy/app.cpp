@@ -699,6 +699,11 @@ public:
 		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
 		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
 		QStringList msgErrorFieldList = settings.value("cache/message_error_attributes").toStringList();
+		// cache shorter timeout seconds (default 6)
+		int cacheTimeoutSeconds = settings.value("cache/ws_auto_refresh_cache_timeout_seconds", 20).toInt();
+		int shorterTimeoutSeconds = settings.value("cache/ws_auto_refresh_shorter_cache_timeout_seconds", 10).toInt();
+		int longerTimeoutSeconds = settings.value("cache/ws_auto_refresh_longer_timeout_seconds", 60).toInt();
+		int accessTimeoutSeconds = settings.value("cache/ws_auto_refresh_access_timeout_seconds", 30).toInt();
 		// Maximum cache item count (default 3000)
 		int cacheItemMaxCount = settings.value("cache/cache_item_max_count", 3000).toInt();
 		// time seconds to retry another backend for null response (default 10)
@@ -740,7 +745,11 @@ public:
 		config.msgMethodFieldName = msgMethodFieldName;
 		config.msgParamsFieldName = msgParamsFieldName;
 		config.msgErrorFieldList = msgErrorFieldList;
+		config.cacheTimeoutSeconds = cacheTimeoutSeconds;
 		config.cacheItemMaxCount = cacheItemMaxCount;
+		config.shorterTimeoutSeconds = shorterTimeoutSeconds;
+		config.longerTimeoutSeconds = longerTimeoutSeconds;
+		config.accessTimeoutSeconds = accessTimeoutSeconds;
 		config.backendSwitchIntervalSeconds = backendSwitchIntervalSeconds;
 		config.prometheusRestoreAllowSeconds = prometheusRestoreAllowSeconds;
 		config.redisEnable = redisEnable;
