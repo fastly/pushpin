@@ -632,6 +632,8 @@ static void remove_old_cache_items()
 		int neverTimeoutCacheItemCount = 0;
 		int autoRefreshItemCount = 0;
 
+		bool checkFlag = true;
+
 		// Remove items where the value is greater than 30
 		for	(int i=0; i < itemCount; i++)
 		{
@@ -647,7 +649,7 @@ static void remove_old_cache_items()
 				else
 					autoRefreshItemCount++;
 
-				if (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT)
+				if ((checkFlag == true) && (pCacheItem->refreshFlag & AUTO_REFRESH_UNERASE || pCacheItem->refreshFlag & AUTO_REFRESH_NEVER_TIMEOUT))
 				{
 					//log_debug("[CACHE] detected unerase method(%s) %s", qPrintable(pCacheItem->methodName), itemId.toHex().data());
 					continue;
@@ -719,6 +721,9 @@ static void remove_old_cache_items()
 
 		log_debug("[CACHE] detected MAX cache item count %d", totalItemCount);
 		accessTimeoutMSeconds -= (gAccessTimeoutSeconds/5) * 1000;
+
+		// disable check flag
+		checkFlag = false;
 	}
 }
 
