@@ -54,6 +54,58 @@ use std::time::{Duration, Instant, SystemTime};
 const DOMAIN_LEN_MAX: usize = 253;
 const CONFIG_CACHE_TTL: Duration = Duration::from_secs(60);
 
+// self-signed and expired (2023), with common name "localhost"
+const TEST_CERT: &str = concat!(
+    "-----BEGIN CERTIFICATE-----\n",
+    "MIICpDCCAYwCCQDkzIPOmEje1DANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls\n",
+    "b2NhbGhvc3QwHhcNMjMwNjA4MjIxMjE3WhcNMjMwNjA5MjIxMjE3WjAUMRIwEAYD\n",
+    "VQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7\n",
+    "Lj9eFGJ0hsbtn1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x\n",
+    "5NZC89rghUScZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtl\n",
+    "lRMQ0/Jg6WkUglYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSb\n",
+    "bke2ahVrnJ2lC63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsff\n",
+    "BFJ1iVfnzkxR/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4W\n",
+    "ijPttBqrybO5T+jDV/PNAgMBAAEwDQYJKoZIhvcNAQELBQADggEBADQmWrdkwdtR\n",
+    "Fu+9GBjXsmjPNvN72Da4UtLf8Y+LgA/XYKGCFaGxpFm+61DOpbjpUR3B8MRQzn45\n",
+    "x4/ZcNmRrYj7yiBlj/Y/bQKfBLaTG2JCJ2ffdBgZMPG3U9wLQKsUbOsdznkSYG18\n",
+    "CGTM3btznIlW7pkDsw3CRkKoYWNRd0STzifa2ASCEgRAFemYIj/YysVw6nWTtIHY\n",
+    "5Ez+TDwOpUkuk2haE6UvaxR0+q3r+10907HqZejyLmSY+FQk1ylAfJtJcJvpbrB+\n",
+    "kQa8kPmOm+hnLGDXFI0qfBHfuiKDX7yi39aFgWI/Mbz5wKHr0IIoJmncayYacnGX\n",
+    "coUhiF2hpf0=\n",
+    "-----END CERTIFICATE-----\n"
+);
+
+const TEST_KEY: &str = concat!(
+    "-----BEGIN PRIVATE KEY-----\n",
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7Lj9eFGJ0hsbt\n",
+    "n1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x5NZC89rghUSc\n",
+    "ZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtllRMQ0/Jg6WkU\n",
+    "glYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSbbke2ahVrnJ2l\n",
+    "C63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsffBFJ1iVfnzkxR\n",
+    "/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4WijPttBqrybO5\n",
+    "T+jDV/PNAgMBAAECggEAB1lIeZwZRXPpKXkhCmHv2fAz+xC4Igz51jm327854orQ\n",
+    "rzHjgAWVmahf8M+DVU5Lxc+zLcu/IyN4Tx+ZFLOM7ghEtmG7R2Nf6QYhLzff9Hov\n",
+    "EPGcpbJKZJ1AHbbZx9x+Nj3FEtsPYAip7Hk1ggkOjB1awQN3LAdzvjM2CpSkrqXg\n",
+    "c4GQ4hK3tkyIZxPiC6pr6246+UjakzFGXT5zzQajbkFHrM8s4Wn42tbdd6N14jgv\n",
+    "5mdR6bAzusG8P3IRlO4zQ/NQTCXI6kz4SdTlZERaxt35pThXRkcifMPcGRTageax\n",
+    "l1ZxBIRjTSp60tPR6fcH8std8hEcRExcOeCmOld4gQKBgQDwWz5vQCUyvza6l/O3\n",
+    "G6huXmQcpFea5PpWtII55bp3DTen6SrB3cGGtKZZqfN7IXFODUIUIvQEf4bI8r0y\n",
+    "Vu6Sypnq+CIbRN5aul7X+do5gEpFEZW+BdbBN+mCBaf16xaxS9GWZj1wCWSjyE4s\n",
+    "PE7jEbLgVPwd+8FmK3XemaF7bQKBgQDHXQC7XjZ0OxfeAOVLz1vShBBlbDtJEonY\n",
+    "cuSveZqEiLEaUFuU3XFuExbyfCRjNNsz6JROXvCO2KQ6HbI/tkZCmJYoQ8mhhAF+\n",
+    "5QN9hGZgMPcvPEZW4AEih5qVrwO3IQGF3YJnYLvyyroEjQ7nSwCf/HPCF5Gl/K41\n",
+    "QPRlM5e94QKBgFyhPYGQfgV9rbDhqLpTvWizle934o8+WcAalumLQH5rKJzcfm7y\n",
+    "cIfijQ2XMs+sRsdm0qWCBvrIzwAYlJOW7yDBVeo5MKPDudHLa4verZxldboCmev+\n",
+    "whH641IJrf5XWIqBhsdopZrM8+0u3/mqUFiwVHiiJ/vCL3mZnDZqjNJNAoGAFge2\n",
+    "7v2IMuvcxVGABRKS6P5i+XIuUvLTfLGlh6Z+ZqrcNzYuCJM315wQaxdAxh2vI1tO\n",
+    "GCLxnjdeXnWtntC7jtxhq21iOJDnwWf5LMOWtIZ0qimU9ECon3IwqN3AIVpqWqqR\n",
+    "oG7WFgxE5f/YZ8Kn/QXenNIR7C+x6HyXBR/gYsECgYEAg6PSkpYdOxaTZzaxIxS3\n",
+    "HUUy7H1+wzV/ZCKIMZEfH23kUiHMZXjp3xI1FTlGcbMFpOkmjwi+MFHEMcvmwzmc\n",
+    "owdohdh7ngo60nkgMwz5TyWBWDdT+Otogi7F37qAt/fjd4xmNjsyTY4b2OwuP1/S\n",
+    "X7Rmwy1AQ2WKrwOSy4d3xDs=\n",
+    "-----END PRIVATE KEY-----"
+);
+
 enum IdentityError {
     InvalidName,
     CertMetadata(PathBuf, io::Error),
@@ -336,59 +388,8 @@ impl TlsAcceptor {
     pub fn new_self_signed() -> Self {
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
 
-        let cert_pem = concat!(
-            "-----BEGIN CERTIFICATE-----\n",
-            "MIICpDCCAYwCCQDkzIPOmEje1DANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls\n",
-            "b2NhbGhvc3QwHhcNMjMwNjA4MjIxMjE3WhcNMjMwNjA5MjIxMjE3WjAUMRIwEAYD\n",
-            "VQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7\n",
-            "Lj9eFGJ0hsbtn1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x\n",
-            "5NZC89rghUScZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtl\n",
-            "lRMQ0/Jg6WkUglYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSb\n",
-            "bke2ahVrnJ2lC63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsff\n",
-            "BFJ1iVfnzkxR/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4W\n",
-            "ijPttBqrybO5T+jDV/PNAgMBAAEwDQYJKoZIhvcNAQELBQADggEBADQmWrdkwdtR\n",
-            "Fu+9GBjXsmjPNvN72Da4UtLf8Y+LgA/XYKGCFaGxpFm+61DOpbjpUR3B8MRQzn45\n",
-            "x4/ZcNmRrYj7yiBlj/Y/bQKfBLaTG2JCJ2ffdBgZMPG3U9wLQKsUbOsdznkSYG18\n",
-            "CGTM3btznIlW7pkDsw3CRkKoYWNRd0STzifa2ASCEgRAFemYIj/YysVw6nWTtIHY\n",
-            "5Ez+TDwOpUkuk2haE6UvaxR0+q3r+10907HqZejyLmSY+FQk1ylAfJtJcJvpbrB+\n",
-            "kQa8kPmOm+hnLGDXFI0qfBHfuiKDX7yi39aFgWI/Mbz5wKHr0IIoJmncayYacnGX\n",
-            "coUhiF2hpf0=\n",
-            "-----END CERTIFICATE-----\n"
-        );
-
-        let key_pem = concat!(
-            "-----BEGIN PRIVATE KEY-----\n",
-            "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7Lj9eFGJ0hsbt\n",
-            "n1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x5NZC89rghUSc\n",
-            "ZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtllRMQ0/Jg6WkU\n",
-            "glYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSbbke2ahVrnJ2l\n",
-            "C63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsffBFJ1iVfnzkxR\n",
-            "/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4WijPttBqrybO5\n",
-            "T+jDV/PNAgMBAAECggEAB1lIeZwZRXPpKXkhCmHv2fAz+xC4Igz51jm327854orQ\n",
-            "rzHjgAWVmahf8M+DVU5Lxc+zLcu/IyN4Tx+ZFLOM7ghEtmG7R2Nf6QYhLzff9Hov\n",
-            "EPGcpbJKZJ1AHbbZx9x+Nj3FEtsPYAip7Hk1ggkOjB1awQN3LAdzvjM2CpSkrqXg\n",
-            "c4GQ4hK3tkyIZxPiC6pr6246+UjakzFGXT5zzQajbkFHrM8s4Wn42tbdd6N14jgv\n",
-            "5mdR6bAzusG8P3IRlO4zQ/NQTCXI6kz4SdTlZERaxt35pThXRkcifMPcGRTageax\n",
-            "l1ZxBIRjTSp60tPR6fcH8std8hEcRExcOeCmOld4gQKBgQDwWz5vQCUyvza6l/O3\n",
-            "G6huXmQcpFea5PpWtII55bp3DTen6SrB3cGGtKZZqfN7IXFODUIUIvQEf4bI8r0y\n",
-            "Vu6Sypnq+CIbRN5aul7X+do5gEpFEZW+BdbBN+mCBaf16xaxS9GWZj1wCWSjyE4s\n",
-            "PE7jEbLgVPwd+8FmK3XemaF7bQKBgQDHXQC7XjZ0OxfeAOVLz1vShBBlbDtJEonY\n",
-            "cuSveZqEiLEaUFuU3XFuExbyfCRjNNsz6JROXvCO2KQ6HbI/tkZCmJYoQ8mhhAF+\n",
-            "5QN9hGZgMPcvPEZW4AEih5qVrwO3IQGF3YJnYLvyyroEjQ7nSwCf/HPCF5Gl/K41\n",
-            "QPRlM5e94QKBgFyhPYGQfgV9rbDhqLpTvWizle934o8+WcAalumLQH5rKJzcfm7y\n",
-            "cIfijQ2XMs+sRsdm0qWCBvrIzwAYlJOW7yDBVeo5MKPDudHLa4verZxldboCmev+\n",
-            "whH641IJrf5XWIqBhsdopZrM8+0u3/mqUFiwVHiiJ/vCL3mZnDZqjNJNAoGAFge2\n",
-            "7v2IMuvcxVGABRKS6P5i+XIuUvLTfLGlh6Z+ZqrcNzYuCJM315wQaxdAxh2vI1tO\n",
-            "GCLxnjdeXnWtntC7jtxhq21iOJDnwWf5LMOWtIZ0qimU9ECon3IwqN3AIVpqWqqR\n",
-            "oG7WFgxE5f/YZ8Kn/QXenNIR7C+x6HyXBR/gYsECgYEAg6PSkpYdOxaTZzaxIxS3\n",
-            "HUUy7H1+wzV/ZCKIMZEfH23kUiHMZXjp3xI1FTlGcbMFpOkmjwi+MFHEMcvmwzmc\n",
-            "owdohdh7ngo60nkgMwz5TyWBWDdT+Otogi7F37qAt/fjd4xmNjsyTY4b2OwuP1/S\n",
-            "X7Rmwy1AQ2WKrwOSy4d3xDs=\n",
-            "-----END PRIVATE KEY-----"
-        );
-
-        let cert = X509::from_pem(cert_pem.as_bytes()).unwrap();
-        let key = PKey::private_key_from_pem(key_pem.as_bytes()).unwrap();
+        let cert = X509::from_pem(TEST_CERT.as_bytes()).unwrap();
+        let key = PKey::private_key_from_pem(TEST_KEY.as_bytes()).unwrap();
 
         acceptor.set_certificate(&cert).unwrap();
         acceptor.set_private_key(&key).unwrap();
@@ -541,6 +542,25 @@ impl TlsConfigCache {
     }
 }
 
+// guaranteed to return >=1 certs
+fn chain_from_pem(pem: &[u8]) -> Result<Vec<X509>, ssl::Error> {
+    let chain = X509::stack_from_pem(pem)?;
+
+    if chain.is_empty() {
+        // we want at least one cert, however stack_from_pem() doesn't
+        // return an error if the data doesn't contain any certs. to
+        // generate an ssl::Error in this case, we'll use from_pem() on
+        // empty data
+        return Err(X509::from_pem(&[])
+            .expect_err("from_pem with empty data didn't error")
+            .into());
+    }
+
+    assert!(!chain.is_empty());
+
+    Ok(chain)
+}
+
 pub struct TlsStream<T> {
     stream: Stream<&'static mut Box<dyn ReadWrite>>,
     plain_stream: Box<Box<dyn ReadWrite>>,
@@ -562,11 +582,28 @@ where
         stream: T,
         verify_mode: VerifyMode,
         config_cache: &TlsConfigCache,
+        client_cert: Option<(&str, &str)>,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
             let connector = config_cache.get_connector(verify_mode)?;
 
-            let stream = match connector.connect(domain, stream) {
+            let mut configuration = connector.configure()?;
+
+            if let Some((cert, key)) = client_cert {
+                let mut chain = chain_from_pem(cert.as_bytes())?;
+                let key = PKey::private_key_from_pem(key.as_bytes())?;
+
+                // chain guaranteed to be non-empty
+                configuration.set_certificate(&chain.remove(0))?;
+
+                for cert in chain {
+                    configuration.add_chain_cert(cert)?;
+                }
+
+                configuration.set_private_key(&key)?;
+            }
+
+            let stream = match configuration.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
                 Err(HandshakeError::SetupFailure(e)) => return Err(e.into()),
                 Err(HandshakeError::Failure(stream)) => return Err(stream.into_error()),
@@ -1000,17 +1037,19 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         verify_mode: VerifyMode,
         waker_data: &'a RefWakerData<TlsWaker>,
         config_cache: &TlsConfigCache,
+        client_cert: Option<(&str, &str)>,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.into_evented().into_parts();
 
-        let stream = match TlsStream::connect(domain, stream, verify_mode, config_cache) {
-            Ok(stream) => stream,
-            Err((mut stream, e)) => {
-                registration.deregister_io(&mut stream).unwrap();
+        let stream =
+            match TlsStream::connect(domain, stream, verify_mode, config_cache, client_cert) {
+                Ok(stream) => stream,
+                Err((mut stream, e)) => {
+                    registration.deregister_io(&mut stream).unwrap();
 
-                return Err(e);
-            }
-        };
+                    return Err(e);
+                }
+            };
 
         Ok(Self::new_with_registration(
             stream,
@@ -1356,8 +1395,14 @@ mod tests {
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
-        let mut stream =
-            TlsStream::connect("localhost", a, VerifyMode::Full, &TlsConfigCache::new()).unwrap();
+        let mut stream = TlsStream::connect(
+            "localhost",
+            a,
+            VerifyMode::Full,
+            &TlsConfigCache::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
         assert_eq!(stream.get_inner().b, 2);
@@ -1366,11 +1411,16 @@ mod tests {
     #[test]
     fn test_connect_error() {
         let c = ReadWriteC { c: 1 };
-        let (stream, e) =
-            match TlsStream::connect("localhost", c, VerifyMode::Full, &TlsConfigCache::new()) {
-                Ok(_) => panic!("unexpected success"),
-                Err(ret) => ret,
-            };
+        let (stream, e) = match TlsStream::connect(
+            "localhost",
+            c,
+            VerifyMode::Full,
+            &TlsConfigCache::new(),
+            None,
+        ) {
+            Ok(_) => panic!("unexpected success"),
+            Err(ret) => ret,
+        };
         assert_eq!(stream.c, 1);
         assert_eq!(e.into_io_error().unwrap().kind(), io::ErrorKind::Other);
     }
@@ -1399,6 +1449,7 @@ mod tests {
                             VerifyMode::None,
                             &tls_waker_data,
                             &TlsConfigCache::new(),
+                            None,
                         )
                         .unwrap();
 
@@ -1441,5 +1492,44 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_chain_from_pem() {
+        struct Test {
+            name: &'static str,
+            pem: String,
+            expected_len: Option<usize>,
+        }
+
+        let tests = [
+            Test {
+                name: "single",
+                pem: String::from(TEST_CERT),
+                expected_len: Some(1),
+            },
+            Test {
+                name: "multiple",
+                pem: String::from(TEST_CERT) + TEST_CERT,
+                expected_len: Some(2),
+            },
+            Test {
+                name: "empty content",
+                pem: String::new(),
+                expected_len: None,
+            },
+            Test {
+                name: "invalid",
+                pem: String::from("-----BEGIN CERTIFICATE-----\nbogus"),
+                expected_len: None,
+            },
+        ];
+
+        for t in tests {
+            match chain_from_pem(t.pem.as_bytes()) {
+                Ok(chain) => assert_eq!(Some(chain.len()), t.expected_len),
+                Err(_) => assert!(t.expected_len.is_none(), "test={}", t.name),
+            }
+        }
     }
 }
