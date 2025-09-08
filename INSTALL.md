@@ -127,15 +127,15 @@ Options for cache are added into this file.
 	message_error_attributes=error,fault,bug
 	```
 #### timeout of auto-refresh
-* <a name="ws_auto_refresh_cache_timeout_seconds"></a>cache timeout seconds (default 10)<br />
+* <a name="ws_auto_refresh_cache_timeout_seconds"></a>cache timeout seconds (default 20)<br />
 	ref: Number of seconds to count auto-refresh timeout
 	```
-	ws_auto_refresh_cache_timeout_seconds=10
+	ws_auto_refresh_cache_timeout_seconds=20
 	```
-* <a name="ws_auto_refresh_shorter_timeout_seconds"></a>cache shorter timeout seconds (default 6)<br />
+* <a name="ws_auto_refresh_shorter_timeout_seconds"></a>cache shorter timeout seconds (default 10)<br />
 	ref: Number of seconds to count auto-refresh shorter timeout
 	```
-	ws_auto_refresh_shorter_timeout_seconds=6
+	ws_auto_refresh_shorter_timeout_seconds=10
 	```
 * <a name="ws_auto_refresh_longer_timeout_seconds"></a>cache longer timeout seconds (default 60)<br />
 	ref: Number of seconds to count auto-refresh longer timeout
