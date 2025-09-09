@@ -621,6 +621,8 @@ static void remove_old_cache_items()
 	qint64 accessTimeoutMSeconds = gAccessTimeoutSeconds * 1000;
 	qint64 responseTimeoutMSeconds = gResponseTimeoutSeconds * 1000;
 
+	bool checkFlag = true;
+
 	while (accessTimeoutMSeconds > 0)
 	{
 		QList<QByteArray> cacheItemIdList = gCacheItemMap.keys();//get_cache_item_ids();
@@ -631,8 +633,6 @@ static void remove_old_cache_items()
 		int subscribeItemCount = 0;
 		int neverTimeoutCacheItemCount = 0;
 		int autoRefreshItemCount = 0;
-
-		bool checkFlag = true;
 
 		// Remove items where the value is greater than 30
 		for	(int i=0; i < itemCount; i++)
