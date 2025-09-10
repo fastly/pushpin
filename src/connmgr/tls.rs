@@ -399,10 +399,10 @@ impl TlsAcceptor {
         }
     }
 
-    pub fn accept(
-        &self,
-        stream: mio::net::TcpStream,
-    ) -> Result<TlsStream<mio::net::TcpStream>, ssl::Error> {
+    pub fn accept<T>(&self, stream: T) -> Result<TlsStream<T>, ssl::Error>
+    where
+        T: Read + Write + Any + Send,
+    {
         let result = TlsStream::new(false, stream, |stream| {
             let stream = match self.acceptor.accept(stream) {
                 Ok(stream) => Stream::Ssl(stream),
