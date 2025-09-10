@@ -4784,7 +4784,7 @@ async fn client_req_connect(
             None => return Err(Error::BadRequest),
         };
 
-        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+        let mut tls_waker_data = RefWakerData::new(TlsWaker::new());
 
         let (peer_addr, using_tls, mut stream) = client_connect(
             log_id,
@@ -4835,23 +4835,26 @@ async fn client_req_connect(
             }
         };
 
-        let mut stream = Some(stream);
-
-        if done.is_persistent() {
+        let stream = if done.is_persistent() {
             match pool.push(
                 peer_addr,
                 using_tls,
                 url_host.to_string(),
-                stream.take().unwrap().into_inner(),
+                stream.into_inner(),
                 CONNECTION_POOL_TTL,
             ) {
-                Ok(()) => debug!("client-conn {}: leaving connection intact", log_id),
+                Ok(()) => {
+                    debug!("client-conn {}: leaving connection intact", log_id);
+                    None
+                }
                 Err(s) => {
-                    tls_waker_data.inner().reset();
-                    stream = Some(AsyncStream::from_stream(s, &tls_waker_data));
+                    tls_waker_data = RefWakerData::new(TlsWaker::new());
+                    Some(AsyncStream::from_stream(s, &tls_waker_data))
                 }
             }
-        }
+        } else {
+            Some(stream)
+        };
 
         if let Some(mut stream) = stream {
             stream.close().await?;
@@ -5649,7 +5652,7 @@ where
             None => return Err(Error::BadRequest),
         };
 
-        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+        let mut tls_waker_data = RefWakerData::new(TlsWaker::new());
 
         let (peer_addr, using_tls, mut stream) = {
             let mut client_connect = pin!(client_connect(
@@ -5730,25 +5733,28 @@ where
             }
         };
 
-        let mut stream = Some(stream);
-
-        if done.is_persistent() {
+        let stream = if done.is_persistent() {
             buf2.resize(buffer_size);
 
             match pool.push(
                 peer_addr,
                 using_tls,
                 url_host.to_string(),
-                stream.take().unwrap().into_inner(),
+                stream.into_inner(),
                 CONNECTION_POOL_TTL,
             ) {
-                Ok(()) => debug!("client-conn {}: leaving connection intact", log_id),
+                Ok(()) => {
+                    debug!("client-conn {}: leaving connection intact", log_id);
+                    None
+                }
                 Err(s) => {
-                    tls_waker_data.inner().reset();
-                    stream = Some(AsyncStream::from_stream(s, &tls_waker_data));
+                    tls_waker_data = RefWakerData::new(TlsWaker::new());
+                    Some(AsyncStream::from_stream(s, &tls_waker_data))
                 }
             }
-        }
+        } else {
+            Some(stream)
+        };
 
         if let Some(mut stream) = stream {
             let mut stream_close = pin!(stream.close());
