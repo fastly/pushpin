@@ -887,6 +887,13 @@ impl TlsOp {
         }
     }
 
+    fn reset(&self) {
+        self.inner.replace(TlsOpInner {
+            readiness: None,
+            waker: None,
+        });
+    }
+
     fn readiness(&self) -> event::Readiness {
         self.inner.borrow().readiness
     }
@@ -974,6 +981,14 @@ impl TlsWaker {
             shutdown: TlsOp::new(),
             read: TlsOp::new(),
             write: TlsOp::new(),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.registration.replace(None);
+
+        for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+            op.reset();
         }
     }
 

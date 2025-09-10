@@ -94,6 +94,10 @@ impl<W: RefWake> RefWakerData<W> {
             w,
         }
     }
+
+    pub fn inner(&self) -> &W {
+        &self.w
+    }
 }
 
 // a waker that borrows its inner data and panics on drop if there are any

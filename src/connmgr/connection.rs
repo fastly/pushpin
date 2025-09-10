@@ -4224,11 +4224,25 @@ enum AsyncStream<'a> {
     Tls(AsyncTlsStream<'a>),
 }
 
-impl AsyncStream<'_> {
+impl<'a> AsyncStream<'a> {
+    async fn close(&mut self) -> Result<(), io::Error> {
+        match self {
+            Self::Plain(stream) => stream.close().await,
+            Self::Tls(stream) => stream.close().await,
+        }
+    }
+
     fn into_inner(self) -> Stream {
         match self {
             Self::Plain(stream) => Stream::Plain(stream.into_std()),
             Self::Tls(stream) => Stream::Tls(stream.into_std()),
+        }
+    }
+
+    fn from_stream(stream: Stream, tls_waker_data: &'a RefWakerData<TlsWaker>) -> Self {
+        match stream {
+            Stream::Plain(stream) => Self::Plain(AsyncTcpStream::from_std(stream)),
+            Stream::Tls(stream) => Self::Tls(AsyncTlsStream::from_std(stream, tls_waker_data)),
         }
     }
 }
@@ -4398,12 +4412,7 @@ async fn client_connect<'a>(
             log_id, peer_addr,
         );
 
-        let stream = match stream {
-            Stream::Plain(stream) => AsyncStream::Plain(AsyncTcpStream::from_std(stream)),
-            Stream::Tls(stream) => {
-                AsyncStream::Tls(AsyncTlsStream::from_std(stream, tls_waker_data))
-            }
-        };
+        let stream = AsyncStream::from_stream(stream, tls_waker_data);
 
         (peer_addr, stream, false)
     } else {
@@ -4826,19 +4835,26 @@ async fn client_req_connect(
             }
         };
 
+        let mut stream = Some(stream);
+
         if done.is_persistent() {
-            if pool
-                .push(
-                    peer_addr,
-                    using_tls,
-                    url_host.to_string(),
-                    stream.into_inner(),
-                    CONNECTION_POOL_TTL,
-                )
-                .is_ok()
-            {
-                debug!("client-conn {}: leaving connection intact", log_id);
+            match pool.push(
+                peer_addr,
+                using_tls,
+                url_host.to_string(),
+                stream.take().unwrap().into_inner(),
+                CONNECTION_POOL_TTL,
+            ) {
+                Ok(()) => debug!("client-conn {}: leaving connection intact", log_id),
+                Err(s) => {
+                    tls_waker_data.inner().reset();
+                    stream = Some(AsyncStream::from_stream(s, &tls_waker_data));
+                }
             }
+        }
+
+        if let Some(mut stream) = stream {
+            stream.close().await?;
         }
 
         match done {
@@ -5714,20 +5730,42 @@ where
             }
         };
 
+        let mut stream = Some(stream);
+
         if done.is_persistent() {
             buf2.resize(buffer_size);
 
-            if pool
-                .push(
-                    peer_addr,
-                    using_tls,
-                    url_host.to_string(),
-                    stream.into_inner(),
-                    CONNECTION_POOL_TTL,
-                )
-                .is_ok()
-            {
-                debug!("client-conn {}: leaving connection intact", log_id);
+            match pool.push(
+                peer_addr,
+                using_tls,
+                url_host.to_string(),
+                stream.take().unwrap().into_inner(),
+                CONNECTION_POOL_TTL,
+            ) {
+                Ok(()) => debug!("client-conn {}: leaving connection intact", log_id),
+                Err(s) => {
+                    tls_waker_data.inner().reset();
+                    stream = Some(AsyncStream::from_stream(s, &tls_waker_data));
+                }
+            }
+        }
+
+        if let Some(mut stream) = stream {
+            let mut stream_close = pin!(stream.close());
+
+            loop {
+                // ABR: select contains read
+                let ret = select_2(stream_close.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+                match ret {
+                    Select2::R1(ret) => break ret?,
+                    Select2::R2(ret) => {
+                        let zreq = ret?;
+
+                        // ABR: handle_other
+                        server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                    }
+                }
             }
         }
 
