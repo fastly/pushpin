@@ -144,7 +144,6 @@ bool gReplicaTimerStarted = false;
 QHash<QString, QStringList> gCountMethodGroupMap;
 
 // prometheus status
-QList<QString> gCacheMethodRequestCountList;
 QList<QString> gCacheMethodResponseCountList;
 quint32 numRequestReceived, numMessageSent, numWsConnect;
 quint32 numClientCount, numHttpClientCount, numWsClientCount;
@@ -489,7 +488,7 @@ public:
 				}
 
 				// update the counter for prometheus
-				gCacheMethodResponseCountList.append(responseKey != NULL ? "WS_INIT" : "WS");
+				count_responses(responseKey != NULL ? "WS_INIT" : "WS");
 				break;
 			}
 			return;
@@ -2317,7 +2316,7 @@ public:
 			qPrintable(packetMsg.id), qPrintable(packetMsg.method), qPrintable(packetMsg.params));
 
 		// update the counter for prometheus
-		gCacheMethodRequestCountList.append(packetMsg.method);
+		count_requests(packetMsg.method);
 
 		if (is_cache_method(packetMsg.method))
 		{
@@ -2337,6 +2336,7 @@ public:
 					writeToClient_(packetMsg.paramsHash, packetId, packetMsg.id, p.from, instanceId);
 					log_debug("[HTTP] Replied with Cache content for method \"%s\"", qPrintable(packetMsg.method));
 					unregister_client(packetId);
+					count_responses("HTTP");
 				}
 				else
 				{
@@ -2481,6 +2481,7 @@ public:
 
 				log_debug("[HTTP] Sent Cache content to client id=%s", cliId.data());
 				unregister_client(cliId);
+				count_responses("HTTP");
 			}
 		}
 		pCacheItem->clientMap.clear();
@@ -3128,7 +3129,7 @@ public:
 		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdStr), qPrintable(methodName));
 
 		// update the counter for prometheus
-		gCacheMethodRequestCountList.append(methodName);
+		count_requests(methodName);
 
 		// Params hash val
 		QByteArray paramsHash = packetMsg.paramsHash;

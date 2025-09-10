@@ -219,7 +219,9 @@ QString get_switched_ws_backend_url(QString currUrl);
 
 void check_cache_clients();
 
-void count_methods();
+void count_requests(QString methodName);
+void count_responses(QString responseKey);
+void count_clients();
 
 void update_prometheus_hit_count(const CacheItem &cacheItem);
 

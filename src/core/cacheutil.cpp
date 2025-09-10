@@ -118,8 +118,6 @@ extern QHash<QString, QStringList> gCountMethodGroupMap;
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 // prometheus status
-extern QList<QString> gCacheMethodRequestCountList;
-extern QList<QString> gCacheMethodResponseCountList;
 extern quint32 numRequestReceived, numMessageSent, numWsConnect;
 extern quint32 numClientCount, numHttpClientCount, numWsClientCount;
 extern quint32 numRpcAuthor, numRpcBabe, numRpcBeefy, numRpcChain, numRpcChildState;
@@ -778,7 +776,7 @@ void cache_thread()
 
 		gCacheThreadRunning = false;
 
-		count_methods();
+		count_clients();
 
 		QThread::msleep(1000);
 	}
@@ -1772,129 +1770,121 @@ QString get_switched_ws_backend_url(QString currUrl)
 	return gWsBackendUrlList[index];
 }
 
-void count_methods()
+void count_requests(QString methodName)
 {
-	// request count
-	if (gCacheMethodRequestCountList.count() > 0)
-	{
-		QString methodName = gCacheMethodRequestCountList[0];
-		gCacheMethodRequestCountList.removeAt(0);
-
-		// count methods
-		numRequestReceived++;
-		if (methodName.indexOf("author_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcAuthor++;
-			if (methodName.indexOf("submitandwatchextrinsic", 0, Qt::CaseInsensitive) == 7)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("babe_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcBabe++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 5)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("beefy_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcBeefy++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("chain_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcChain++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("childstate_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcChildState++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 11)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("contracts_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcContracts++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 10)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("dev_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcDev++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("engine_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcEngine++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 7)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("eth_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcEth++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("net_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcNet++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("web3_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcWeb3++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 5)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("grandpa_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcGrandpa++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 8)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("mmr_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcMmr++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("offchain_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcOffchain++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 9)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("payment_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcPayment++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 8)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("rpc_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcRpc++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("state_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcState++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("sync_state_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcSyncstate++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 11)
-				numRpcSubscribe++;
-		} else if (methodName.indexOf("system_", 0, Qt::CaseInsensitive) == 0) {
-			numRpcSystem++;
-			if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 7)
-				numRpcSubscribe++;
-		}
-
-		// add ws Cache lookup count
-		if (is_cache_method(methodName))
-		{
-			numCacheLookup++;
-		}
-		else if (is_subscribe_method(methodName))
-		{
-			numSubscriptionLookup++;
-		}
-
-		// user-defined method group count
-		foreach(QString groupKey, gCountMethodGroupMap.keys())
-		{
-			QStringList groupStrList = gCountMethodGroupMap[groupKey];
-
-			if (groupStrList.contains(methodName, Qt::CaseInsensitive))
-			{
-				groupMethodCountMap[groupKey]++;
-			}
-		}
+	// count methods
+	numRequestReceived++;
+	if (methodName.indexOf("author_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcAuthor++;
+		if (methodName.indexOf("submitandwatchextrinsic", 0, Qt::CaseInsensitive) == 7)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("babe_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcBabe++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 5)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("beefy_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcBeefy++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("chain_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcChain++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("childstate_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcChildState++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 11)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("contracts_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcContracts++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 10)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("dev_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcDev++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("engine_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcEngine++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 7)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("eth_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcEth++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("net_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcNet++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("web3_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcWeb3++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 5)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("grandpa_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcGrandpa++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 8)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("mmr_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcMmr++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("offchain_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcOffchain++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 9)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("payment_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcPayment++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 8)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("rpc_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcRpc++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 4)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("state_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcState++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 6)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("sync_state_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcSyncstate++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 11)
+			numRpcSubscribe++;
+	} else if (methodName.indexOf("system_", 0, Qt::CaseInsensitive) == 0) {
+		numRpcSystem++;
+		if (methodName.indexOf("subscribe", 0, Qt::CaseInsensitive) == 7)
+			numRpcSubscribe++;
 	}
 
-	// response count
-	if (gCacheMethodResponseCountList.count() > 0)
+	// add ws Cache lookup count
+	if (is_cache_method(methodName))
 	{
-		QString methodName = gCacheMethodResponseCountList[0];
-		gCacheMethodResponseCountList.removeAt(0);
-
-		// count methods
-		if (methodName == "HTTP" || methodName == "WS")
-			numMessageSent++;
-		else if (methodName == "WS_INIT")
-			numWsConnect++;
+		numCacheLookup++;
+	}
+	else if (is_subscribe_method(methodName))
+	{
+		numSubscriptionLookup++;
 	}
 
+	// user-defined method group count
+	foreach(QString groupKey, gCountMethodGroupMap.keys())
+	{
+		QStringList groupStrList = gCountMethodGroupMap[groupKey];
+
+		if (groupStrList.contains(methodName, Qt::CaseInsensitive))
+		{
+			groupMethodCountMap[groupKey]++;
+		}
+	}
+}
+
+void count_responses(QString responseKey)
+{
+	// count methods
+	if (responseKey == "HTTP" || responseKey == "WS")
+		numMessageSent++;
+	else if (responseKey == "WS_INIT")
+		numWsConnect++;
+}
+
+void count_clients()
+{
 	// client count
 	numHttpClientCount = gHttpClientMap.count();
 	numWsClientCount = gWsClientMap.count();
