@@ -1911,25 +1911,43 @@ impl TestClient {
     }
 
     pub fn do_req(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_req_message(addr).unwrap();
+        let msg = self.make_req_message(addr, false).unwrap();
+
+        self.control.send(ControlMessage::Req(msg)).unwrap();
+    }
+
+    pub fn do_req_tls(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_req_message(addr, true).unwrap();
 
         self.control.send(ControlMessage::Req(msg)).unwrap();
     }
 
     pub fn do_stream_http(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_stream_message(addr, false, false).unwrap();
+        let msg = self.make_stream_message(addr, false, false, false).unwrap();
 
         self.control.send(ControlMessage::Stream(msg)).unwrap();
     }
 
     pub fn do_stream_http_router_resp(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_stream_message(addr, true, false).unwrap();
+        let msg = self.make_stream_message(addr, true, false, false).unwrap();
+
+        self.control.send(ControlMessage::Stream(msg)).unwrap();
+    }
+
+    pub fn do_stream_http_router_resp_tls(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_stream_message(addr, true, false, true).unwrap();
 
         self.control.send(ControlMessage::Stream(msg)).unwrap();
     }
 
     pub fn do_stream_ws(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_stream_message(addr, false, true).unwrap();
+        let msg = self.make_stream_message(addr, false, true, false).unwrap();
+
+        self.control.send(ControlMessage::Stream(msg)).unwrap();
+    }
+
+    pub fn do_stream_ws_tls(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_stream_message(addr, false, true, true).unwrap();
 
         self.control.send(ControlMessage::Stream(msg)).unwrap();
     }
@@ -1942,7 +1960,11 @@ impl TestClient {
         assert_eq!(self.status.recv().unwrap(), StatusMessage::StreamFinished);
     }
 
-    fn make_req_message(&self, addr: std::net::SocketAddr) -> Result<zmq::Message, io::Error> {
+    fn make_req_message(
+        &self,
+        addr: std::net::SocketAddr,
+        tls: bool,
+    ) -> Result<zmq::Message, io::Error> {
         let mut dest = [0; 1024];
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
@@ -1975,8 +1997,10 @@ impl TestClient {
         let mut tmp = [0u8; 1024];
 
         let uri = {
+            let scheme = if tls { "https" } else { "http" };
+
             let mut cursor = io::Cursor::new(&mut tmp[..]);
-            write!(&mut cursor, "http://{}/path", addr)?;
+            write!(&mut cursor, "{scheme}://{addr}/path")?;
             let pos = cursor.position() as usize;
 
             &tmp[..pos]
@@ -1984,6 +2008,9 @@ impl TestClient {
 
         w.write_string(b"uri")?;
         w.write_string(uri)?;
+
+        w.write_string(b"ignore-tls-errors")?;
+        w.write_bool(true)?;
 
         w.end_map()?;
 
@@ -1999,6 +2026,7 @@ impl TestClient {
         addr: std::net::SocketAddr,
         router_resp: bool,
         ws: bool,
+        tls: bool,
     ) -> Result<zmq::Message, io::Error> {
         let mut dest = [0; 1024];
 
@@ -2034,18 +2062,26 @@ impl TestClient {
 
         let mut tmp = [0u8; 1024];
 
-        let uri = if ws {
-            let mut cursor = io::Cursor::new(&mut tmp[..]);
-            write!(&mut cursor, "ws://{}/path", addr)?;
-            let pos = cursor.position() as usize;
-
-            &tmp[..pos]
+        let scheme = if ws {
+            if tls {
+                "wss"
+            } else {
+                "ws"
+            }
         } else {
             w.write_string(b"method")?;
             w.write_string(b"GET")?;
 
+            if tls {
+                "https"
+            } else {
+                "http"
+            }
+        };
+
+        let uri = {
             let mut cursor = io::Cursor::new(&mut tmp[..]);
-            write!(&mut cursor, "http://{}/path", addr)?;
+            write!(&mut cursor, "{scheme}://{addr}/path")?;
             let pos = cursor.position() as usize;
 
             &tmp[..pos]
@@ -2053,6 +2089,9 @@ impl TestClient {
 
         w.write_string(b"uri")?;
         w.write_string(uri)?;
+
+        w.write_string(b"ignore-tls-errors")?;
+        w.write_bool(true)?;
 
         w.write_string(b"credits")?;
         w.write_int(1024)?;
@@ -2498,6 +2537,7 @@ impl Drop for TestClient {
 pub mod tests {
     use super::*;
     use crate::connmgr::connection::calculate_ws_accept;
+    use crate::connmgr::tls::TlsAcceptor;
     use crate::connmgr::websocket;
     use std::io::Read;
     use test_log::test;
@@ -2767,7 +2807,229 @@ pub mod tests {
     }
 
     #[test]
-    fn test_ws() {
+    fn test_req_tls() {
+        let client = TestClient::new(1);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let acceptor = TlsAcceptor::new_self_signed();
+        let addr = listener.local_addr().unwrap();
+
+        client.do_req_tls(addr);
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = acceptor.accept(stream).unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let expected = format!(
+            concat!("GET /path HTTP/1.1\r\n", "Host: {}\r\n", "\r\n"),
+            addr
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        stream
+            .write(
+                b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+            )
+            .unwrap();
+
+        // expect clean close
+
+        let mut chunk = [0; 1024];
+        let size = stream.read(&mut chunk).unwrap();
+        assert_eq!(size, 0);
+
+        drop(stream);
+
+        client.wait_req();
+    }
+
+    #[test]
+    fn test_stream_tls() {
+        let client = TestClient::new(1);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let acceptor = TlsAcceptor::new_self_signed();
+        let addr = listener.local_addr().unwrap();
+
+        client.do_stream_http_router_resp_tls(addr);
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = acceptor.accept(stream).unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let expected = format!(
+            concat!("GET /path HTTP/1.1\r\n", "Host: {}\r\n", "\r\n"),
+            addr
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        stream
+            .write(
+                b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+            )
+            .unwrap();
+
+        // expect clean close
+
+        let mut chunk = [0; 1024];
+        let size = stream.read(&mut chunk).unwrap();
+        assert_eq!(size, 0);
+
+        drop(stream);
+
+        client.wait_stream();
+    }
+
+    #[test]
+    fn test_ws_tls() {
+        let client = TestClient::new(1);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let acceptor = TlsAcceptor::new_self_signed();
+        let addr = listener.local_addr().unwrap();
+
+        client.do_stream_ws_tls(addr);
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = acceptor.accept(stream).unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let req_buf = &buf[..req_end];
+
+        // use httparse to fish out Sec-WebSocket-Key
+        let ws_key = {
+            let mut headers = [httparse::EMPTY_HEADER; 32];
+
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(req_buf) {
+                Ok(httparse::Status::Complete(_)) => {}
+                _ => panic!("unexpected parse status"),
+            }
+
+            let mut ws_key = String::new();
+
+            for h in req.headers {
+                if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+                    ws_key = String::from_utf8(h.value.to_vec()).unwrap();
+                }
+            }
+
+            ws_key
+        };
+
+        let expected = format!(
+            concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: {}\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Version: 13\r\n",
+                "Sec-WebSocket-Key: {}\r\n",
+                "\r\n"
+            ),
+            addr, ws_key,
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        buf = buf.split_off(req_end);
+
+        let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
+
+        let resp_data = format!(
+            concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: {}\r\n",
+                "\r\n",
+            ),
+            ws_accept
+        );
+
+        stream.write(resp_data.as_bytes()).unwrap();
+
+        // send close
+
+        let mut data = vec![0; 1024];
+        let body = &b"\x03\xe8"[..];
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_CLOSE,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(body);
+        stream.write(&data[..(size + body.len())]).unwrap();
+
+        // recv close
+
+        let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_CLOSE);
+        assert_eq!(&content, &b"\x03\xe8"[..]);
+
+        // expect clean close
+
+        let mut chunk = [0; 1024];
+        let size = stream.read(&mut chunk).unwrap();
+        assert_eq!(size, 0);
+
+        drop(stream);
+
+        client.wait_stream();
+    }
+
+    #[test]
+    fn test_ws_messages() {
         let client = TestClient::new(1);
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -2926,6 +3188,8 @@ pub mod tests {
         let size = stream.read(&mut chunk).unwrap();
         assert_eq!(size, 0);
 
+        drop(stream);
+
         client.wait_stream();
     }
 
@@ -2933,9 +3197,9 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit c0e4d161997e5c2880ba3409efe13afa3ec26fd7
+        // sizes in debug mode at commit TBD
         const REQ_TASK_SIZE_BASE: usize = 6888;
-        const STREAM_TASK_SIZE_BASE: usize = 12152;
+        const STREAM_TASK_SIZE_BASE: usize = 13224;
 
         // cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;
