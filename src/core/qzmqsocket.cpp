@@ -475,8 +475,7 @@ public:
 			//   can't write afterwards
 			canWrite = false;
 
-			const CowByteArrayList &message = pendingWrites.front();
-			if(zmqWrite(message))
+			if(zmqWrite(pendingWrites.front()))
 			{
 				pendingWrites.pop_front();
 				++pendingWritten;
