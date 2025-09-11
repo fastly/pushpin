@@ -85,7 +85,7 @@ bool RepRouter::canRead() const
 
 ReqMessage RepRouter::read()
 {
-	return ReqMessage(d->sock->read().asQByteArrayList());
+	return ReqMessage(d->sock->read());
 }
 
 void RepRouter::write(const ReqMessage &message)

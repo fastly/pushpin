@@ -24,10 +24,9 @@
 
 #include "qzmqsocket.h"
 
-#include <stdio.h>
 #include <assert.h>
-#include <QList>
-#include <QMutex>
+#include <list>
+#include <mutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "cowstring.h"
@@ -81,12 +80,8 @@ static void set_identity(void *sock, const char *data, int size)
 {
 	size_t opt_len = size;
 	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_IDENTITY, data, opt_len);
-	if(ret != 0)
-		printf("%d\n", errno);
 	assert(ret == 0);
 }
-
-#if WZMQ_VERSION_MAJOR >= 4
 
 static void set_immediate(void *sock, bool on)
 {
@@ -111,22 +106,6 @@ static void set_probe_router(void *sock, bool on)
 	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_PROBE_ROUTER, &v, opt_len);
 	assert(ret == 0);
 }
-
-#else
-
-static void set_immediate(void *sock, bool on)
-{
-	int v = on ? 1 : 0;
-	size_t opt_len = sizeof(v);
-	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_DELAY_ATTACH_ON_CONNECT, &v, opt_len);
-	assert(ret == 0);
-}
-
-#endif
-
-#if (WZMQ_VERSION_MAJOR >= 4) || ((WZMQ_VERSION_MAJOR >= 3) && (WZMQ_VERSION_MINOR >= 2))
-
-#define USE_MSG_IO
 
 static bool get_rcvmore(void *sock)
 {
@@ -231,102 +210,11 @@ static void set_tcp_keepalive_intvl(void *sock, int value)
 	assert(ret == 0);
 }
 
-#else
-
-static bool get_rcvmore(void *sock)
+static std::mutex &g_mutex()
 {
-	qint64 more;
-	size_t opt_len = sizeof(more);
-	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_RCVMORE, &more, &opt_len);
-	assert(ret == 0);
-	return more ? true : false;
+	static std::mutex m;
+	return m;
 }
-
-static int get_events(void *sock)
-{
-	while(true)
-	{
-		quint32 events;
-		size_t opt_len = sizeof(events);
-
-		int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_EVENTS, &events, &opt_len);
-		if(ret == 0)
-		{
-			return (int)events;
-		}
-
-		assert(errno == EINTR);
-	}
-}
-
-static int get_hwm(void *sock)
-{
-	quint64 hwm;
-	size_t opt_len = sizeof(hwm);
-	int ret = ffi::wzmq_getsockopt(sock, ffi::WZMQ_HWM, &hwm, &opt_len);
-	assert(ret == 0);
-	return (int)hwm;
-}
-
-static void set_hwm(void *sock, int value)
-{
-	quint64 v = value;
-	size_t opt_len = sizeof(v);
-	int ret = ffi::wzmq_setsockopt(sock, ffi::WZMQ_HWM, &v, opt_len);
-	assert(ret == 0);
-}
-
-static int get_sndhwm(void *sock)
-{
-	return get_hwm(sock);
-}
-
-static void set_sndhwm(void *sock, int value)
-{
-	set_hwm(sock, value);
-}
-
-static int get_rcvhwm(void *sock)
-{
-	return get_hwm(sock);
-}
-
-static void set_rcvhwm(void *sock, int value)
-{
-	set_hwm(sock, value);
-}
-
-static void set_tcp_keepalive(void *sock, int value)
-{
-	// not supported for this zmq version
-	Q_UNUSED(sock);
-	Q_UNUSED(on);
-}
-
-static void set_tcp_keepalive_idle(void *sock, int value)
-{
-	// not supported for this zmq version
-	Q_UNUSED(sock);
-	Q_UNUSED(on);
-}
-
-static void set_tcp_keepalive_cnt(void *sock, int value)
-{
-	// not supported for this zmq version
-	Q_UNUSED(sock);
-	Q_UNUSED(on);
-}
-
-static void set_tcp_keepalive_intvl(void *sock, int value)
-{
-	// not supported for this zmq version
-	Q_UNUSED(sock);
-	Q_UNUSED(on);
-}
-
-#endif
-
-Q_GLOBAL_STATIC(QMutex, g_mutex)
 
 class Global
 {
@@ -340,11 +228,11 @@ public:
 	}
 };
 
-static Global *global = 0;
+static Global *global = nullptr;
 
 static Context *addGlobalContextRef()
 {
-	QMutexLocker locker(g_mutex());
+	std::lock_guard<std::mutex> guard(g_mutex());
 
 	if(!global)
 		global = new Global;
@@ -355,7 +243,7 @@ static Context *addGlobalContextRef()
 
 static void removeGlobalContextRef()
 {
-	QMutexLocker locker(g_mutex());
+	std::lock_guard<std::mutex> guard(g_mutex());
 
 	assert(global);
 	assert(global->refs > 0);
@@ -364,7 +252,7 @@ static void removeGlobalContextRef()
 	if(global->refs == 0)
 	{
 		delete global;
-		global = 0;
+		global = nullptr;
 	}
 }
 
@@ -377,7 +265,7 @@ public:
 	void *sock;
 	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
-	QList<CowByteArrayList> pendingWrites;
+	std::list<CowByteArrayList> pendingWrites;
 	int pendingWritten;
 	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
@@ -475,11 +363,7 @@ public:
 				int ret = ffi::wzmq_msg_init(&msg);
 				assert(ret == 0);
 
-#ifdef USE_MSG_IO
 				ret = ffi::wzmq_msg_recv(&msg, sock, ffi::WZMQ_DONTWAIT);
-#else
-				ret = ffi::wzmq_recv(sock, &msg, ffi::WZMQ_NOBLOCK);
-#endif
 
 				if(ret < 0)
 				{
@@ -500,7 +384,7 @@ public:
 
 			processEvents();
 
-			if((canWrite && !pendingWrites.isEmpty()) || canRead)
+			if((canWrite && !pendingWrites.empty()) || canRead)
 				update();
 
 			if(ok)
@@ -518,7 +402,7 @@ public:
 
 		if(writeQueueEnabled)
 		{
-			pendingWrites += message;
+			pendingWrites.push_back(message);
 
 			if(canWrite)
 				update();
@@ -566,11 +450,7 @@ public:
 
 			memcpy(ffi::wzmq_msg_data(&msg), buf.data(), buf.size());
 
-#ifdef USE_MSG_IO
 			ret = ffi::wzmq_msg_send(&msg, sock, ffi::WZMQ_DONTWAIT | (n + 1 < message.count() ? ffi::WZMQ_SNDMORE : 0));
-#else
-			ret = ffi::wzmq_send(sock, &msg, ffi::WZMQ_NOBLOCK | (n + 1 < message.count() ? ffi::WZMQ_SNDMORE : 0));
-#endif
 
 			if(ret < 0)
 			{
@@ -589,15 +469,15 @@ public:
 
 	void tryWrite()
 	{
-		while(canWrite && !pendingWrites.isEmpty())
+		while(canWrite && !pendingWrites.empty())
 		{
 			// whether this write succeeds or not, we assume we
 			//   can't write afterwards
 			canWrite = false;
 
-			if(zmqWrite(pendingWrites.first()))
+			if(zmqWrite(pendingWrites.front()))
 			{
-				pendingWrites.removeFirst();
+				pendingWrites.pop_front();
 				++pendingWritten;
 			}
 
