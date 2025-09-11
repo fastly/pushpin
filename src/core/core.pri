@@ -3,17 +3,17 @@ HEADERS += \
 	$$PWD/cowstring.h
 
 HEADERS += \
-	$$PWD/qzmqcontext.h \
-	$$PWD/qzmqsocket.h \
-	$$PWD/qzmqvalve.h \
-	$$PWD/qzmqreqmessage.h \
-	$$PWD/qzmqreprouter.h
+	$$PWD/zmqcontext.h \
+	$$PWD/zmqsocket.h \
+	$$PWD/zmqvalve.h \
+	$$PWD/zmqreqmessage.h \
+	$$PWD/zmqreprouter.h
 
 SOURCES += \
-	$$PWD/qzmqcontext.cpp \
-	$$PWD/qzmqsocket.cpp \
-	$$PWD/qzmqvalve.cpp \
-	$$PWD/qzmqreprouter.cpp
+	$$PWD/zmqcontext.cpp \
+	$$PWD/zmqsocket.cpp \
+	$$PWD/zmqvalve.cpp \
+	$$PWD/zmqreprouter.cpp
 
 HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp

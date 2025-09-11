@@ -22,25 +22,23 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qzmqvalve.h"
+#include "zmqvalve.h"
 
-#include "qzmqsocket.h"
+#include "zmqsocket.h"
 #include "defercall.h"
 
-namespace QZmq {
-
-class Valve::Private
+class ZmqValve::Private
 {
 public:
-	Valve *q;
-	QZmq::Socket *sock;
+	ZmqValve *q;
+	ZmqSocket *sock;
 	bool isOpen;
 	bool pendingRead;
 	int maxReadsPerEvent;
 	boost::signals2::scoped_connection rrConnection;
 	DeferCall deferCall;
 
-	Private(Valve *_q) :
+	Private(ZmqValve *_q) :
 		q(_q),
 		sock(0),
 		isOpen(false),
@@ -49,7 +47,7 @@ public:
 	{
 	}
 
-	void setup(QZmq::Socket *_sock)
+	void setup(ZmqSocket *_sock)
 	{
 		sock = _sock;
 		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
@@ -105,25 +103,25 @@ public:
 	}
 };
 
-Valve::Valve(QZmq::Socket *sock)
+ZmqValve::ZmqValve(ZmqSocket *sock)
 {
 	d = std::make_shared<Private>(this);
 	d->setup(sock);
 }
 
-Valve::~Valve() = default;
+ZmqValve::~ZmqValve() = default;
 
-bool Valve::isOpen() const
+bool ZmqValve::isOpen() const
 {
 	return d->isOpen;
 }
 
-void Valve::setMaxReadsPerEvent(int max)
+void ZmqValve::setMaxReadsPerEvent(int max)
 {
 	d->maxReadsPerEvent = max;
 }
 
-void Valve::open()
+void ZmqValve::open()
 {
 	if(!d->isOpen)
 	{
@@ -133,9 +131,7 @@ void Valve::open()
 	}
 }
 
-void Valve::close()
+void ZmqValve::close()
 {
 	d->isOpen = false;
-}
-
 }

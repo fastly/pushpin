@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2012 Justin Karneges
- * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -22,40 +21,64 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQVALVE_H
-#define QZMQVALVE_H
+#ifndef ZMQREQMESSAGE_H
+#define ZMQREQMESSAGE_H
 
-#include <boost/signals2.hpp>
-#include "cowbytearray.h"
+class CowByteArrayList;
 
-using SignalList = boost::signals2::signal<void(const CowByteArrayList&)>;
-using Connection = boost::signals2::scoped_connection;
-
-namespace QZmq {
-
-class Socket;
-
-class Valve
+class ZmqReqMessage
 {
 public:
-	Valve(QZmq::Socket *sock);
-	~Valve();
+	ZmqReqMessage()
+	{
+	}
 
-	bool isOpen() const;
+	ZmqReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content) :
+		headers_(headers),
+		content_(content)
+	{
+	}
 
-	void setMaxReadsPerEvent(int max);
+	ZmqReqMessage(const CowByteArrayList &rawMessage)
+	{
+		bool collectHeaders = true;
+		for(CowByteArrayConstRef part : std::as_const(rawMessage))
+		{
+			if(part.isEmpty())
+			{
+				collectHeaders = false;
+				continue;
+			}
 
-	void open();
-	void close();
+			if(collectHeaders)
+				headers_ += part;
+			else
+				content_ += part;
+		}
+	}
 
-	SignalList readyRead;
+	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
+
+	CowByteArrayList headers() const { return headers_; }
+	CowByteArrayList content() const { return content_; }
+
+	ZmqReqMessage createReply(const CowByteArrayList &content)
+	{
+		return ZmqReqMessage(headers_, content);
+	}
+
+	CowByteArrayList toRawMessage() const
+	{
+		CowByteArrayList out;
+		out += headers_;
+		out += CowByteArray();
+		out += content_;
+		return out;
+	}
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+	CowByteArrayList headers_;
+	CowByteArrayList content_;
 };
-
-}
 
 #endif

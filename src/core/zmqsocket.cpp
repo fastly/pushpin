@@ -22,7 +22,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qzmqsocket.h"
+#include "zmqsocket.h"
 
 #include <assert.h>
 #include <list>
@@ -30,13 +30,11 @@
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "cowstring.h"
-#include "qzmqcontext.h"
+#include "zmqcontext.h"
 #include "timer.h"
 #include "socketnotifier.h"
 
 using Connection = boost::signals2::scoped_connection;
-
-namespace QZmq {
 
 static int get_fd(void *sock)
 {
@@ -219,7 +217,7 @@ static std::mutex &g_mutex()
 class Global
 {
 public:
-	Context context;
+	ZmqContext context;
 	int refs;
 
 	Global() :
@@ -230,7 +228,7 @@ public:
 
 static Global *global = nullptr;
 
-static Context *addGlobalContextRef()
+static ZmqContext *addGlobalContextRef()
 {
 	std::lock_guard<std::mutex> guard(g_mutex());
 
@@ -256,12 +254,12 @@ static void removeGlobalContextRef()
 	}
 }
 
-class Socket::Private
+class ZmqSocket::Private
 {
 public:
-	Socket *q;
+	ZmqSocket *q;
 	bool usingGlobalContext;
-	Context *context;
+	ZmqContext *context;
 	void *sock;
 	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
@@ -273,7 +271,7 @@ public:
 	int shutdownWaitTime;
 	bool writeQueueEnabled;
 
-	Private(Socket *_q, Socket::Type type, Context *_context) :
+	Private(ZmqSocket *_q, ZmqSocket::Type type, ZmqContext *_context) :
 		q(_q),
 		canWrite(false),
 		canRead(false),
@@ -296,15 +294,15 @@ public:
 		int ztype = 0;
 		switch(type)
 		{
-			case Socket::Pair: ztype = ffi::WZMQ_PAIR; break;
-			case Socket::Dealer: ztype = ffi::WZMQ_DEALER; break;
-			case Socket::Router: ztype = ffi::WZMQ_ROUTER; break;
-			case Socket::Req: ztype = ffi::WZMQ_REQ; break;
-			case Socket::Rep: ztype = ffi::WZMQ_REP; break;
-			case Socket::Push: ztype = ffi::WZMQ_PUSH; break;
-			case Socket::Pull: ztype = ffi::WZMQ_PULL; break;
-			case Socket::Pub: ztype = ffi::WZMQ_PUB; break;
-			case Socket::Sub: ztype = ffi::WZMQ_SUB; break;
+			case ZmqSocket::Pair: ztype = ffi::WZMQ_PAIR; break;
+			case ZmqSocket::Dealer: ztype = ffi::WZMQ_DEALER; break;
+			case ZmqSocket::Router: ztype = ffi::WZMQ_ROUTER; break;
+			case ZmqSocket::Req: ztype = ffi::WZMQ_REQ; break;
+			case ZmqSocket::Rep: ztype = ffi::WZMQ_REP; break;
+			case ZmqSocket::Push: ztype = ffi::WZMQ_PUSH; break;
+			case ZmqSocket::Pull: ztype = ffi::WZMQ_PULL; break;
+			case ZmqSocket::Pub: ztype = ffi::WZMQ_PUB; break;
+			case ZmqSocket::Sub: ztype = ffi::WZMQ_SUB; break;
 			default:
 				assert(0);
 		}
@@ -528,114 +526,114 @@ public:
 	}
 };
 
-Socket::Socket(Type type)
+ZmqSocket::ZmqSocket(Type type)
 {
 	d = std::make_shared<Private>(this, type, nullptr);
 }
 
-Socket::Socket(Type type, Context *context)
+ZmqSocket::ZmqSocket(Type type, ZmqContext *context)
 {
 	d = std::make_shared<Private>(this, type, context);
 }
 
-Socket::~Socket() = default;
+ZmqSocket::~ZmqSocket() = default;
 
-void Socket::setShutdownWaitTime(int msecs)
+void ZmqSocket::setShutdownWaitTime(int msecs)
 {
 	d->shutdownWaitTime = msecs;
 }
 
-void Socket::setWriteQueueEnabled(bool enable)
+void ZmqSocket::setWriteQueueEnabled(bool enable)
 {
 	d->writeQueueEnabled = enable;
 }
 
-void Socket::subscribe(const CowByteArray &filter)
+void ZmqSocket::subscribe(const CowByteArray &filter)
 {
 	set_subscribe(d->sock, filter.data(), filter.size());
 }
 
-void Socket::unsubscribe(const CowByteArray &filter)
+void ZmqSocket::unsubscribe(const CowByteArray &filter)
 {
 	set_unsubscribe(d->sock, filter.data(), filter.size());
 }
 
-CowByteArray Socket::identity() const
+CowByteArray ZmqSocket::identity() const
 {
 	CowByteArray buf(255, 0);
 	buf.resize(get_identity(d->sock, buf.data(), buf.size()));
 	return buf;
 }
 
-void Socket::setIdentity(const CowByteArray &id)
+void ZmqSocket::setIdentity(const CowByteArray &id)
 {
 	set_identity(d->sock, id.data(), id.size());
 }
 
-int Socket::hwm() const
+int ZmqSocket::hwm() const
 {
 	return get_hwm(d->sock);
 }
 
-void Socket::setHwm(int hwm)
+void ZmqSocket::setHwm(int hwm)
 {
 	set_hwm(d->sock, hwm);
 }
 
-int Socket::sendHwm() const
+int ZmqSocket::sendHwm() const
 {
 	return get_sndhwm(d->sock);
 }
 
-int Socket::receiveHwm() const
+int ZmqSocket::receiveHwm() const
 {
 	return get_rcvhwm(d->sock);
 }
 
-void Socket::setSendHwm(int hwm)
+void ZmqSocket::setSendHwm(int hwm)
 {
 	set_sndhwm(d->sock, hwm);
 }
 
-void Socket::setReceiveHwm(int hwm)
+void ZmqSocket::setReceiveHwm(int hwm)
 {
 	set_rcvhwm(d->sock, hwm);
 }
 
-void Socket::setImmediateEnabled(bool on)
+void ZmqSocket::setImmediateEnabled(bool on)
 {
 	set_immediate(d->sock, on);
 }
 
-void Socket::setRouterMandatoryEnabled(bool on)
+void ZmqSocket::setRouterMandatoryEnabled(bool on)
 {
 	set_router_mandatory(d->sock, on);
 }
 
-void Socket::setProbeRouterEnabled(bool on)
+void ZmqSocket::setProbeRouterEnabled(bool on)
 {
 	set_probe_router(d->sock, on);
 }
 
-void Socket::setTcpKeepAliveEnabled(bool on)
+void ZmqSocket::setTcpKeepAliveEnabled(bool on)
 {
 	set_tcp_keepalive(d->sock, on ? 1 : 0);
 }
 
-void Socket::setTcpKeepAliveParameters(int idle, int count, int interval)
+void ZmqSocket::setTcpKeepAliveParameters(int idle, int count, int interval)
 {
 	set_tcp_keepalive_idle(d->sock, idle);
 	set_tcp_keepalive_cnt(d->sock, count);
 	set_tcp_keepalive_intvl(d->sock, interval);
 }
 
-void Socket::connectToAddress(const CowString &addr)
+void ZmqSocket::connectToAddress(const CowString &addr)
 {
 	int ret = ffi::wzmq_connect(d->sock, addr.toUtf8().data());
 	assert(ret == 0);
 }
 
-bool Socket::bind(const CowString &addr)
+bool ZmqSocket::bind(const CowString &addr)
 {
 	int ret = ffi::wzmq_bind(d->sock, addr.toUtf8().data());
 	if(ret != 0)
@@ -644,24 +642,22 @@ bool Socket::bind(const CowString &addr)
 	return true;
 }
 
-bool Socket::canRead() const
+bool ZmqSocket::canRead() const
 {
 	return d->canRead;
 }
 
-bool Socket::canWriteImmediately() const
+bool ZmqSocket::canWriteImmediately() const
 {
 	return d->canWrite;
 }
 
-CowByteArrayList Socket::read()
+CowByteArrayList ZmqSocket::read()
 {
 	return d->read();
 }
 
-void Socket::write(const CowByteArrayList &message)
+void ZmqSocket::write(const CowByteArrayList &message)
 {
 	d->write(message);
-}
-
 }

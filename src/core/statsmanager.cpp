@@ -28,7 +28,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include "qzmqsocket.h"
+#include "zmqsocket.h"
 #include "timerwheel.h"
 #include "log.h"
 #include "defercall.h"
@@ -401,7 +401,7 @@ public:
 	int subscriptionTtl;
 	int subscriptionLinger;
 	int reportInterval;
-	std::unique_ptr<QZmq::Socket> sock;
+	std::unique_ptr<ZmqSocket> sock;
 	std::unique_ptr<SimpleHttpServer> prometheusServer;
 	int prometheusConnectionsMax;
 	QString prometheusPrefix;
@@ -499,7 +499,7 @@ public:
 	{
 		sock.reset();
 
-		sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		sock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 
 		sock->setHwm(OUT_HWM);
 		sock->setWriteQueueEnabled(false);

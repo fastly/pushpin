@@ -22,8 +22,8 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQSOCKET_H
-#define QZMQSOCKET_H
+#ifndef ZMQSOCKET_H
+#define ZMQSOCKET_H
 
 #include <boost/signals2.hpp>
 #include "cowbytearray.h"
@@ -34,11 +34,9 @@ using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
-namespace QZmq {
+class ZmqContext;
 
-class Context;
-
-class Socket
+class ZmqSocket
 {
 public:
 	enum Type
@@ -54,9 +52,9 @@ public:
 		Sub
 	};
 
-	Socket(Type type);
-	Socket(Type type, Context *context);
-	~Socket();
+	ZmqSocket(Type type);
+	ZmqSocket(Type type, ZmqContext *context);
+	~ZmqSocket();
 
 	// 0 means drop queue and don't block, -1 means infinite (default = -1)
 	void setShutdownWaitTime(int msecs);
@@ -110,14 +108,12 @@ public:
 	SignalInt messagesWritten;
 
 private:
-	Socket(const Socket &) = delete;
-	Socket &operator=(const Socket &) = delete;
+	ZmqSocket(const ZmqSocket &) = delete;
+	ZmqSocket &operator=(const ZmqSocket &) = delete;
 
 	class Private;
 	friend class Private;
 	std::shared_ptr<Private> d;
 };
-
-}
 
 #endif

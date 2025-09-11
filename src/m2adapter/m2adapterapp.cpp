@@ -35,8 +35,8 @@
 #include <QSettings>
 #include "cowstring.h"
 #include "cowbytearray.h"
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
 #include "qtcompat.h"
 #include "processquit.h"
 #include "tnetstring.h"
@@ -257,7 +257,7 @@ public:
 			ExpectingResponse
 		};
 
-		QZmq::Socket *sock;
+		ZmqSocket *sock;
 		State state;
 		bool works;
 		int reqStartTime;
@@ -422,17 +422,17 @@ public:
 	ArgsData args;
 	QByteArray zhttpInstanceId;
 	QByteArray zwsInstanceId;
-	std::unique_ptr<QZmq::Socket> m2_in_sock;
-	std::unique_ptr<QZmq::Socket> m2_out_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_in_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_out_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_out_stream_sock;
-	std::unique_ptr<QZmq::Socket> zws_in_sock;
-	std::unique_ptr<QZmq::Socket> zws_out_sock;
-	std::unique_ptr<QZmq::Socket> zws_out_stream_sock;
-	std::unique_ptr<QZmq::Valve> m2_in_valve;
-	std::unique_ptr<QZmq::Valve> zhttp_in_valve;
-	std::unique_ptr<QZmq::Valve> zws_in_valve;
+	std::unique_ptr<ZmqSocket> m2_in_sock;
+	std::unique_ptr<ZmqSocket> m2_out_sock;
+	std::unique_ptr<ZmqSocket> zhttp_in_sock;
+	std::unique_ptr<ZmqSocket> zhttp_out_sock;
+	std::unique_ptr<ZmqSocket> zhttp_out_stream_sock;
+	std::unique_ptr<ZmqSocket> zws_in_sock;
+	std::unique_ptr<ZmqSocket> zws_out_sock;
+	std::unique_ptr<ZmqSocket> zws_out_stream_sock;
+	std::unique_ptr<ZmqValve> m2_in_valve;
+	std::unique_ptr<ZmqValve> zhttp_in_valve;
+	std::unique_ptr<ZmqValve> zws_in_valve;
 	QList<QByteArray> m2_send_idents;
 	QHash<Rid, M2Connection*> m2ConnectionsByRid;
 	QHash<Rid, Session*> sessionsByM2Rid;
@@ -458,7 +458,7 @@ public:
 	QTimer *refreshTimer;
 	Connection quitConnection;
 	Connection hupConnection;
-	map<QZmq::Socket*, Connection> rrConnection;
+	map<ZmqSocket*, Connection> rrConnection;
 	Connection m2InValveConnection;
 	Connection zhttpInValveConnection;
 	Connection zwsInValveConnection;
@@ -650,7 +650,7 @@ public:
 		zhttpInstanceId = "m2zhttp_" + pidStr;
 		zwsInstanceId = "m2zws_" + pidStr;
 
-		m2_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+		m2_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 		m2_in_sock->setHwm(DEFAULT_HWM);
 		foreach(const QString &spec, m2_in_specs)
 		{
@@ -658,10 +658,10 @@ public:
 			m2_in_sock->connectToAddress(spec);
 		}
 
-		m2_in_valve = std::make_unique<QZmq::Valve>(m2_in_sock.get());
+		m2_in_valve = std::make_unique<ZmqValve>(m2_in_sock.get());
 		m2InValveConnection = m2_in_valve->readyRead.connect(boost::bind(&Private::m2_in_readyRead, this, boost::placeholders::_1));
 
-		m2_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		m2_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 		m2_out_sock->setShutdownWaitTime(0);
 		m2_out_sock->setHwm(DEFAULT_HWM);
 		m2_out_sock->setWriteQueueEnabled(false);
@@ -675,7 +675,7 @@ public:
 		{
 			const QString &spec = m2_control_specs[n];
 
-			QZmq::Socket *sock = new QZmq::Socket(QZmq::Socket::Dealer);
+			ZmqSocket *sock = new ZmqSocket(ZmqSocket::Dealer);
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
@@ -691,7 +691,7 @@ public:
 
 		if(!zhttp_in_specs.isEmpty())
 		{
-			zhttp_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			zhttp_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			zhttp_in_sock->setHwm(DEFAULT_HWM);
 			zhttp_in_sock->setShutdownWaitTime(0);
 			zhttp_in_sock->subscribe(zhttpInstanceId + ' ');
@@ -713,10 +713,10 @@ public:
 				}
 			}
 
-			zhttp_in_valve = std::make_unique<QZmq::Valve>(zhttp_in_sock.get());
+			zhttp_in_valve = std::make_unique<ZmqValve>(zhttp_in_sock.get());
 			zhttpInValveConnection = zhttp_in_valve->readyRead.connect(boost::bind(&Private::zhttp_in_readyRead, this, boost::placeholders::_1));
 
-			zhttp_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+			zhttp_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 			zhttp_out_sock->setShutdownWaitTime(0);
 			zhttp_out_sock->setHwm(DEFAULT_HWM);
 			if(zhttp_connect)
@@ -737,7 +737,7 @@ public:
 				}
 			}
 
-			zhttp_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			zhttp_out_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			zhttp_out_stream_sock->setShutdownWaitTime(0);
 			zhttp_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zhttp_connect)
@@ -761,7 +761,7 @@ public:
 
 		if(!zws_in_specs.isEmpty())
 		{
-			zws_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			zws_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			zws_in_sock->setHwm(DEFAULT_HWM);
 			zws_in_sock->subscribe(zwsInstanceId + ' ');
 			if(zws_connect)
@@ -782,10 +782,10 @@ public:
 				}
 			}
 
-			zws_in_valve = std::make_unique<QZmq::Valve>(zws_in_sock.get());
+			zws_in_valve = std::make_unique<ZmqValve>(zws_in_sock.get());
 			zwsInValveConnection = zws_in_valve->readyRead.connect(boost::bind(&Private::zws_in_readyRead, this, boost::placeholders::_1));
 
-			zws_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+			zws_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 			zws_out_sock->setShutdownWaitTime(0);
 			zws_out_sock->setHwm(DEFAULT_HWM);
 			if(zws_connect)
@@ -806,7 +806,7 @@ public:
 				}
 			}
 
-			zws_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			zws_out_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			zws_out_stream_sock->setShutdownWaitTime(0);
 			zws_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zws_connect)
@@ -2738,7 +2738,7 @@ public:
 		}
 	}
 
-	void m2_control_readyRead(QZmq::Socket *sock)
+	void m2_control_readyRead(ZmqSocket *sock)
 	{
 		int index = -1;
 		for(int n = 0; n < controlPorts.count(); ++n)

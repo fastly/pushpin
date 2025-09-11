@@ -27,8 +27,8 @@
 #include <QStringList>
 #include <QHash>
 #include "cowbytearray.h"
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
@@ -81,17 +81,17 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
-	std::unique_ptr<QZmq::Socket> client_out_sock;
-	std::unique_ptr<QZmq::Socket> client_out_stream_sock;
-	std::unique_ptr<QZmq::Socket> client_in_sock;
-	std::unique_ptr<QZmq::Socket> client_req_sock;
-	std::unique_ptr<QZmq::Socket> server_in_sock;
-	std::unique_ptr<QZmq::Socket> server_in_stream_sock;
-	std::unique_ptr<QZmq::Socket> server_out_sock;
-	std::unique_ptr<QZmq::Valve> client_in_valve;
-	std::unique_ptr<QZmq::Valve> client_out_stream_valve;
-	std::unique_ptr<QZmq::Valve> server_in_valve;
-	std::unique_ptr<QZmq::Valve> server_in_stream_valve;
+	std::unique_ptr<ZmqSocket> client_out_sock;
+	std::unique_ptr<ZmqSocket> client_out_stream_sock;
+	std::unique_ptr<ZmqSocket> client_in_sock;
+	std::unique_ptr<ZmqSocket> client_req_sock;
+	std::unique_ptr<ZmqSocket> server_in_sock;
+	std::unique_ptr<ZmqSocket> server_in_stream_sock;
+	std::unique_ptr<ZmqSocket> server_out_sock;
+	std::unique_ptr<ZmqValve> client_in_valve;
+	std::unique_ptr<ZmqValve> client_out_stream_valve;
+	std::unique_ptr<ZmqValve> server_in_valve;
+	std::unique_ptr<ZmqValve> server_in_stream_valve;
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
@@ -157,7 +157,7 @@ public:
 		client_req_sock.reset();
 		client_out_sock.reset();
 
-		client_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+		client_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 		cosConnection = client_out_sock->messagesWritten.connect(boost::bind(&Private::client_out_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_sock->setHwm(OUT_HWM);
@@ -181,7 +181,7 @@ public:
 		client_out_stream_valve.reset();
 		client_out_stream_sock.reset();
 
-		client_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		client_out_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_stream_sock->setIdentity(instanceId);
@@ -200,7 +200,7 @@ public:
 			return false;
 		}
 
-		client_out_stream_valve = std::make_unique<QZmq::Valve>(client_out_stream_sock.get());
+		client_out_stream_valve = std::make_unique<ZmqValve>(client_out_stream_sock.get());
 		clientOutStreamConnection = client_out_stream_valve->readyRead.connect(boost::bind(&Private::client_out_stream_readyRead, this, boost::placeholders::_1));
 
 		client_out_stream_valve->open();
@@ -215,7 +215,7 @@ public:
 		client_in_valve.reset();
 		client_in_sock.reset();
 
-		client_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+		client_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 
 		client_in_sock->setHwm(DEFAULT_HWM);
 		client_in_sock->setShutdownWaitTime(0);
@@ -228,7 +228,7 @@ public:
 			return false;
 		}
 
-		client_in_valve = std::make_unique<QZmq::Valve>(client_in_sock.get());
+		client_in_valve = std::make_unique<ZmqValve>(client_in_sock.get());
 		clientConnection = client_in_valve->readyRead.connect(boost::bind(&Private::client_in_readyRead, this, boost::placeholders::_1));
 
 		client_in_valve->open();
@@ -244,7 +244,7 @@ public:
 		client_out_stream_sock.reset();
 		client_in_sock.reset();
 
-		client_req_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
+		client_req_sock = std::make_unique<ZmqSocket>(ZmqSocket::Dealer);
 		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
@@ -265,7 +265,7 @@ public:
 		server_in_valve.reset();
 		server_in_sock.reset();
 
-		server_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+		server_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 
 		server_in_sock->setHwm(IN_HWM);
 
@@ -276,7 +276,7 @@ public:
 			return false;
 		}
 
-		server_in_valve = std::make_unique<QZmq::Valve>(server_in_sock.get());
+		server_in_valve = std::make_unique<ZmqValve>(server_in_sock.get());
 		serverConnection = server_in_valve->readyRead.connect(boost::bind(&Private::server_in_readyRead, this, boost::placeholders::_1));
 
 		server_in_valve->open();
@@ -289,7 +289,7 @@ public:
 		serverStreamConnection.disconnect();
 		server_in_stream_sock.reset();
 
-		server_in_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		server_in_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
@@ -301,7 +301,7 @@ public:
 			return false;
 		}
 
-		server_in_stream_valve = std::make_unique<QZmq::Valve>(server_in_stream_sock.get());
+		server_in_stream_valve = std::make_unique<ZmqValve>(server_in_stream_sock.get());
 		serverStreamConnection = server_in_stream_valve->readyRead.connect(boost::bind(&Private::server_in_stream_readyRead, this, boost::placeholders::_1));
 
 		server_in_stream_valve->open();
@@ -314,7 +314,7 @@ public:
 		sosConnection.disconnect();
 		server_out_sock.reset();
 
-		server_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		server_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 		sosConnection = server_out_sock->messagesWritten.connect(boost::bind(&Private::server_out_messagesWritten, this, boost::placeholders::_1));
 
 		server_out_sock->setWriteQueueEnabled(false);
