@@ -44,6 +44,26 @@
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
 
+static QString readFile(const QString &name, QString *errorMessage)
+{
+	QFile f(name);
+	if(!f.open(QFile::ReadOnly))
+	{
+		*errorMessage = QString("failed to open %1: %2").arg(name, f.errorString());
+		return QByteArray();
+	}
+
+	QByteArray data = f.readAll();
+
+	if(f.error() != QFileDevice::NoError)
+	{
+		*errorMessage = QString("failed to read %1: %2").arg(name, f.errorString());
+		return QByteArray();
+	}
+
+	return QString::fromUtf8(data);
+}
+
 class DomainMap::Worker
 {
 public:
@@ -656,6 +676,34 @@ private:
 				int x = props.value("ipc_file_mode").toInt(&ok_, 8);
 				if(ok_ && x >= 0)
 					target.zhttpRoute.ipcFileMode = x;
+			}
+
+			if(props.contains("client_cert"))
+			{
+				QString err;
+				QString data = readFile(props.value("client_cert"), &err);
+				if(!err.isEmpty())
+				{
+					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
+					ok = false;
+					break;
+				}
+
+				target.clientCert = data;
+			}
+
+			if(props.contains("client_key"))
+			{
+				QString err;
+				QString data = readFile(props.value("client_key"), &err);
+				if(!err.isEmpty())
+				{
+					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
+					ok = false;
+					break;
+				}
+
+				target.clientKey = data;
 			}
 
 			r.targets += target;
