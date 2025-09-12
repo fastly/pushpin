@@ -26,9 +26,9 @@
 #include <QDir>
 #include "test.h"
 #include "cowstring.h"
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "qtcompat.h"
 #include "log.h"
 #include "tnetstring.h"
@@ -45,18 +45,18 @@ namespace {
 class Wrapper
 {
 public:
-	std::unique_ptr<QZmq::Socket> zhttpClientOutStreamSock;
-	std::unique_ptr<QZmq::Valve> zhttpClientOutStreamValve;
-	std::unique_ptr<QZmq::Socket> zhttpClientInSock;
-	std::unique_ptr<QZmq::Valve> zhttpClientInValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerInSock;
-	std::unique_ptr<QZmq::Valve> zhttpServerInValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerInStreamSock;
-	std::unique_ptr<QZmq::Valve> zhttpServerInStreamValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerOutSock;
-	std::unique_ptr<QZmq::Socket> proxyAcceptSock;
-	std::unique_ptr<QZmq::Valve> proxyAcceptValve;
-	std::unique_ptr<QZmq::Socket> publishPushSock;
+	std::unique_ptr<ZmqSocket> zhttpClientOutStreamSock;
+	std::unique_ptr<ZmqValve> zhttpClientOutStreamValve;
+	std::unique_ptr<ZmqSocket> zhttpClientInSock;
+	std::unique_ptr<ZmqValve> zhttpClientInValve;
+	std::unique_ptr<ZmqSocket> zhttpServerInSock;
+	std::unique_ptr<ZmqValve> zhttpServerInValve;
+	std::unique_ptr<ZmqSocket> zhttpServerInStreamSock;
+	std::unique_ptr<ZmqValve> zhttpServerInStreamValve;
+	std::unique_ptr<ZmqSocket> zhttpServerOutSock;
+	std::unique_ptr<ZmqSocket> proxyAcceptSock;
+	std::unique_ptr<ZmqValve> proxyAcceptValve;
+	std::unique_ptr<ZmqSocket> publishPushSock;
 
 	QDir workDir;
 	bool acceptSuccess;
@@ -85,34 +85,34 @@ public:
 	{
 		// http sockets
 
-		zhttpClientOutStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
-		zhttpClientOutStreamValve = std::make_unique<QZmq::Valve>(zhttpClientOutStreamSock.get());
+		zhttpClientOutStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
+		zhttpClientOutStreamValve = std::make_unique<ZmqValve>(zhttpClientOutStreamSock.get());
 		zhttpClientOutStreamValveConnection = zhttpClientOutStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientOutStream_readyRead, this, boost::placeholders::_1));
 
-		zhttpClientInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
-		zhttpClientInValve = std::make_unique<QZmq::Valve>(zhttpClientInSock.get());
+		zhttpClientInSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
+		zhttpClientInValve = std::make_unique<ZmqValve>(zhttpClientInSock.get());
 		zhttpClientInValveConnection = zhttpClientInValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
-		zhttpServerInValve = std::make_unique<QZmq::Valve>(zhttpServerInSock.get());
+		zhttpServerInSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
+		zhttpServerInValve = std::make_unique<ZmqValve>(zhttpServerInSock.get());
 		zhttpServerInValveConnection = zhttpServerInValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		zhttpServerInStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 		zhttpServerInStreamSock->setIdentity("test-server");
-		zhttpServerInStreamValve = std::make_unique<QZmq::Valve>(zhttpServerInStreamSock.get());
+		zhttpServerInStreamValve = std::make_unique<ZmqValve>(zhttpServerInStreamSock.get());
 		zhttpServerInStreamValveConnection = zhttpServerInStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerInStream_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		zhttpServerOutSock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 
 		// proxy sockets
 
-		proxyAcceptSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
-		proxyAcceptValve = std::make_unique<QZmq::Valve>(proxyAcceptSock.get());
+		proxyAcceptSock = std::make_unique<ZmqSocket>(ZmqSocket::Dealer);
+		proxyAcceptValve = std::make_unique<ZmqValve>(proxyAcceptSock.get());
 		proxyAcceptValveConnection = proxyAcceptValve->readyRead.connect(boost::bind(&Wrapper::proxyAccept_readyRead, this, boost::placeholders::_1));
 
 		// publish sockets
 
-		publishPushSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+		publishPushSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 	}
 
 	void startHttp()
@@ -272,7 +272,7 @@ public:
 
 	void proxyAccept_readyRead(const CowByteArrayList &_message)
 	{
-		QZmq::ReqMessage message(_message);
+		ZmqReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
 
 		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);

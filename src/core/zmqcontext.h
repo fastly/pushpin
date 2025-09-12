@@ -21,16 +21,14 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQCONTEXT_H
-#define QZMQCONTEXT_H
+#ifndef ZMQCONTEXT_H
+#define ZMQCONTEXT_H
 
-namespace QZmq {
-
-class Context
+class ZmqContext
 {
 public:
-	Context(int ioThreads = 1);
-	~Context();
+	ZmqContext(int ioThreads = 1);
+	~ZmqContext();
 
 	// the zmq context
 	void *context() { return context_; }
@@ -38,7 +36,5 @@ public:
 private:
 	void *context_;
 };
-
-}
 
 #endif

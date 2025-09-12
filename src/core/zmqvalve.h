@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Justin Karneges
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -21,22 +22,36 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qzmqcontext.h"
+#ifndef ZMQVALVE_H
+#define ZMQVALVE_H
 
-#include <assert.h>
-#include "rust/bindings.h"
+#include <boost/signals2.hpp>
+#include "cowbytearray.h"
 
-namespace QZmq {
+using SignalList = boost::signals2::signal<void(const CowByteArrayList&)>;
+using Connection = boost::signals2::scoped_connection;
 
-Context::Context(int ioThreads)
+class ZmqSocket;
+
+class ZmqValve
 {
-	context_ = ffi::wzmq_init(ioThreads);
-	assert(context_);
-}
+public:
+	ZmqValve(ZmqSocket *sock);
+	~ZmqValve();
 
-Context::~Context()
-{
-	ffi::wzmq_term(context_);
-}
+	bool isOpen() const;
 
-}
+	void setMaxReadsPerEvent(int max);
+
+	void open();
+	void close();
+
+	SignalList readyRead;
+
+private:
+	class Private;
+	friend class Private;
+	std::shared_ptr<Private> d;
+};
+
+#endif

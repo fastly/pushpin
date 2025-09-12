@@ -24,9 +24,9 @@
 #include "engine.h"
 
 #include <assert.h>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "tnetstring.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
@@ -113,8 +113,8 @@ public:
 	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<ZrpcManager> command;
 	std::unique_ptr<ZrpcManager> accept;
-	std::unique_ptr<QZmq::Socket> handler_retry_in_sock;
-	std::unique_ptr<QZmq::Valve> handler_retry_in_valve;
+	std::unique_ptr<ZmqSocket> handler_retry_in_sock;
+	std::unique_ptr<ZmqValve> handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
@@ -256,7 +256,7 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			handler_retry_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
 			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
@@ -268,7 +268,7 @@ public:
 				return false;
 			}
 
-			handler_retry_in_valve = std::make_unique<QZmq::Valve>(handler_retry_in_sock.get());
+			handler_retry_in_valve = std::make_unique<ZmqValve>(handler_retry_in_sock.get());
 			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
@@ -829,7 +829,7 @@ private:
 private:
 	void handler_retry_in_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{

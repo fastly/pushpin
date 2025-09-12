@@ -21,68 +21,45 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQREQMESSAGE_H
-#define QZMQREQMESSAGE_H
+#ifndef ZMQREPROUTER_H
+#define ZMQREPROUTER_H
 
-class CowByteArrayList;
+#include <boost/signals2.hpp>
 
-namespace QZmq {
+class CowString;
 
-class ReqMessage
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::scoped_connection;
+
+class ZmqReqMessage;
+
+class ZmqRepRouter
 {
 public:
-	ReqMessage()
-	{
-	}
+	ZmqRepRouter();
+	~ZmqRepRouter();
 
-	ReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content) :
-		headers_(headers),
-		content_(content)
-	{
-	}
+	void setShutdownWaitTime(int msecs);
 
-	ReqMessage(const CowByteArrayList &rawMessage)
-	{
-		bool collectHeaders = true;
-		for(CowByteArrayConstRef part : std::as_const(rawMessage))
-		{
-			if(part.isEmpty())
-			{
-				collectHeaders = false;
-				continue;
-			}
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
 
-			if(collectHeaders)
-				headers_ += part;
-			else
-				content_ += part;
-		}
-	}
+	bool canRead() const;
 
-	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
+	ZmqReqMessage read();
+	void write(const ZmqReqMessage &message);
 
-	CowByteArrayList headers() const { return headers_; }
-	CowByteArrayList content() const { return content_; }
-
-	ReqMessage createReply(const CowByteArrayList &content)
-	{
-		return ReqMessage(headers_, content);
-	}
-
-	CowByteArrayList toRawMessage() const
-	{
-		CowByteArrayList out;
-		out += headers_;
-		out += CowByteArray();
-		out += content_;
-		return out;
-	}
+	Signal readyRead;
+	SignalInt messagesWritten;
 
 private:
-	CowByteArrayList headers_;
-	CowByteArrayList content_;
-};
+	ZmqRepRouter(const ZmqRepRouter &) = delete;
+	ZmqRepRouter &operator=(const ZmqRepRouter &) = delete;
 
-}
+	class Private;
+	friend class Private;
+	std::unique_ptr<Private> d;
+};
 
 #endif

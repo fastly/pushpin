@@ -29,9 +29,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "timer.h"
@@ -1249,18 +1249,18 @@ public:
 	std::unique_ptr<ZrpcManager> stateClient;
 	std::unique_ptr<ZrpcManager> controlServer;
 	std::unique_ptr<ZrpcManager> proxyControlClient;
-	std::unique_ptr<QZmq::Socket> inPullSock;
-	std::unique_ptr<QZmq::Valve> inPullValve;
-	std::unique_ptr<QZmq::Socket> inSubSock;
-	std::unique_ptr<QZmq::Valve> inSubValve;
-	std::unique_ptr<QZmq::Socket> retrySock;
-	std::unique_ptr<QZmq::Socket> wsControlInitSock;
-	std::unique_ptr<QZmq::Valve> wsControlInitValve;
-	std::unique_ptr<QZmq::Socket> wsControlStreamSock;
-	std::unique_ptr<QZmq::Valve> wsControlStreamValve;
-	std::unique_ptr<QZmq::Socket> statsSock;
-	std::unique_ptr<QZmq::Socket> proxyStatsSock;
-	std::unique_ptr<QZmq::Valve> proxyStatsValve;
+	std::unique_ptr<ZmqSocket> inPullSock;
+	std::unique_ptr<ZmqValve> inPullValve;
+	std::unique_ptr<ZmqSocket> inSubSock;
+	std::unique_ptr<ZmqValve> inSubValve;
+	std::unique_ptr<ZmqSocket> retrySock;
+	std::unique_ptr<ZmqSocket> wsControlInitSock;
+	std::unique_ptr<ZmqValve> wsControlInitValve;
+	std::unique_ptr<ZmqSocket> wsControlStreamSock;
+	std::unique_ptr<ZmqValve> wsControlStreamValve;
+	std::unique_ptr<ZmqSocket> statsSock;
+	std::unique_ptr<ZmqSocket> proxyStatsSock;
+	std::unique_ptr<ZmqValve> proxyStatsValve;
 	std::unique_ptr<SimpleHttpServer> controlHttpServer;
 	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<RateLimiter> publishLimiter;
@@ -1408,7 +1408,7 @@ public:
 
 		if(!config.pushInSpec.isEmpty())
 		{
-			inPullSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+			inPullSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 			inPullSock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
@@ -1418,7 +1418,7 @@ public:
 				return false;
 			}
 
-			inPullValve = std::make_unique<QZmq::Valve>(inPullSock.get());
+			inPullValve = std::make_unique<ZmqValve>(inPullSock.get());
 			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in pull: %s", qPrintable(config.pushInSpec));
@@ -1426,7 +1426,7 @@ public:
 
 		if(!config.pushInSubSpecs.isEmpty())
 		{
-			inSubSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			inSubSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			inSubSock->setSendHwm(SUB_SNDHWM);
 			inSubSock->setShutdownWaitTime(0);
 
@@ -1445,7 +1445,7 @@ public:
 				inSubSock->setTcpKeepAliveParameters(30, 6, 5);
 			}
 
-			inSubValve = std::make_unique<QZmq::Valve>(inSubSock.get());
+			inSubValve = std::make_unique<ZmqValve>(inSubSock.get());
 			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
@@ -1453,7 +1453,7 @@ public:
 
 		if(!config.retryOutSpecs.isEmpty())
 		{
-			retrySock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			retrySock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			retrySock->setImmediateEnabled(true);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
@@ -1474,7 +1474,7 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControlInitSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+			wsControlInitSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 			wsControlInitSock->setHwm(DEFAULT_HWM);
 
 			foreach(const QString &spec, config.wsControlInitSpecs)
@@ -1487,12 +1487,12 @@ public:
 				}
 			}
 
-			wsControlInitValve = std::make_unique<QZmq::Valve>(wsControlInitSock.get());
+			wsControlInitValve = std::make_unique<ZmqValve>(wsControlInitSock.get());
 			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
-			wsControlStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			wsControlStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			wsControlStreamSock->setIdentity(config.instanceId);
 			wsControlStreamSock->setImmediateEnabled(true);
 			wsControlStreamSock->setHwm(DEFAULT_HWM);
@@ -1508,7 +1508,7 @@ public:
 				}
 			}
 
-			wsControlStreamValve = std::make_unique<QZmq::Valve>(wsControlStreamSock.get());
+			wsControlStreamValve = std::make_unique<ZmqValve>(wsControlStreamSock.get());
 			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
@@ -1560,7 +1560,7 @@ public:
 
 		if(!config.proxyStatsSpecs.isEmpty())
 		{
-			proxyStatsSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			proxyStatsSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
 			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
@@ -1575,7 +1575,7 @@ public:
 				}
 			}
 
-			proxyStatsValve = std::make_unique<QZmq::Valve>(proxyStatsSock.get());
+			proxyStatsValve = std::make_unique<ZmqValve>(proxyStatsSock.get());
 			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
 			log_debug("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
@@ -2508,7 +2508,7 @@ private:
 
 	void wsControlStream_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{
