@@ -13,17 +13,16 @@ do_mount() {
 	mount --bind -o "$mode" "$src" "$dst"
 }
 
-mkdir -p /var/run/pushpin /var/lib/powderhorn /var/run/origind
+mkdir -p /var/run/pushpin /var/lib/powderhorn
 chown pushpin:pushpin /var/run/pushpin
 chown powderhorn:powderhorn /var/lib/powderhorn
-chown origind:origind /var/run/origind
-MOUNT_RW=( "/var/run/pushpin" )
+MOUNT_RW=( "/var/run" )
 # mounted rw
 for m in "${MOUNT_RW[@]}"
 do
 	do_mount "rw" "${m}"
 done
-MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" "/proc" "/var/lib/powderhorn" "/var/run/origind" )
+MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" "/proc" "/var/lib/powderhorn" )
 # mounted ro
 for m in "${MOUNT_RO[@]}"
 do

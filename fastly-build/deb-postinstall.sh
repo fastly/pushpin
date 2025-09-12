@@ -10,7 +10,6 @@ groupadd powderhorn || true
 groupadd origind || true
 useradd -r -g pushpin pushpin || true
 useradd -r -g powderhorn powderhorn || true
-useradd -r -g origind origind || true
 usermod -a -G pushpin-listener,pub-events,fetchly-sock,origind pushpin || true
 mkdir -p /var/lib/pushpin
 chown pushpin:pushpin /var/lib/pushpin
