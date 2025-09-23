@@ -21,13 +21,13 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef ENGINE_H
-#define ENGINE_H
+#ifndef PROXYENGINE_H
+#define PROXYENGINE_H
 
+#include <map>
 #include <QStringList>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
-#include <map>
 #include "jwt.h"
 #include "xffrule.h"
 

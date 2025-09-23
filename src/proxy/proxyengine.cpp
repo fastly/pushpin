@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "engine.h"
+#include "proxyengine.h"
 
 #include <assert.h>
 #include "zmqsocket.h"
