@@ -22,22 +22,16 @@
  */
 
 #include "proxyargsdata.h"
-#include "settings.h"
-#include "config.h"
-#include "log.h"
-#include "rust/bindings.h"
-#include <QCoreApplication>
-#include <QFile>
 
 ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgs *argsFfi)
 {
-    configFile  = QString::fromUtf8(argsFfi->config_file);
-    logFile     = QString::fromUtf8(argsFfi->log_file);
-    logLevel 	= argsFfi->log_level;
-    ipcPrefix 	= QString::fromUtf8(argsFfi->ipc_prefix);
-    routeLines = QStringList();
-    for (unsigned int i = 0; i < argsFfi->routes_count; ++i)
-    {
-        routeLines << QString::fromUtf8(argsFfi->routes[i]);
-    }
+	configFile = QString::fromUtf8(argsFfi->config_file);
+	logFile    = QString::fromUtf8(argsFfi->log_file);
+	logLevel   = argsFfi->log_level;
+	ipcPrefix  = QString::fromUtf8(argsFfi->ipc_prefix);
+
+	for (unsigned int i = 0; i < argsFfi->routes_count; ++i)
+	{
+		routeLines << QString::fromUtf8(argsFfi->routes[i]);
+	}
 }
