@@ -40,7 +40,7 @@ public:
 		bodyWritten(0)
 	{
 		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(bytesWritten(qint64)), SLOT(sock_bytesWritten(qint64)));
+		connect(sock, SIGNAL(bytesWritten(int64_t)), SLOT(sock_bytesWritten(int64_t)));
 		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
 		processIn();
 	}
@@ -170,7 +170,7 @@ private slots:
 		processIn();
 	}
 
-	void sock_bytesWritten(qint64 bytes)
+	void sock_bytesWritten(int64_t bytes)
 	{
 		totalWritten += (int)bytes;
 		if(totalWritten >= confirmedWritten)

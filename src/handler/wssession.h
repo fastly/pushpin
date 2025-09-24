@@ -68,7 +68,7 @@ public:
 	QByteArray keepAliveMessage;
 	QByteArray delayedType;
 	QByteArray delayedMessage;
-	QHash<int, qint64> pendingRequests;
+	QHash<int, int64_t> pendingRequests;
 	std::unique_ptr<Timer> expireTimer;
 	std::unique_ptr<Timer> delayedTimer;
 	std::unique_ptr<Timer> requestTimer;

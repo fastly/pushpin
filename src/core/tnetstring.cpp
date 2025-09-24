@@ -32,7 +32,7 @@ QByteArray fromByteArray(const QByteArray &in)
 	return QByteArray::number(in.size()) + ':' + in + ',';
 }
 
-QByteArray fromInt(qint64 in)
+QByteArray fromInt(int64_t in)
 {
 	QByteArray val = QByteArray::number(in);
 	return QByteArray::number(val.size()) + ':' + val + '#';
@@ -141,12 +141,12 @@ QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dat
 	return in.mid(dataOffset, dataSize);
 }
 
-qint64 toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
+int64_t toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
 {
 	Q_UNUSED(offset);
 	QByteArray val = in.mid(dataOffset, dataSize);
 	bool ok_;
-	qint64 x = val.toLongLong(&ok_);
+	int64_t x = val.toLongLong(&ok_);
 	if(!ok_)
 		x = 0;
 	if(ok)

@@ -56,7 +56,7 @@ public:
 	{
 	public:
 		WsControlSession *s;
-		qint64 lastRefresh;
+		int64_t lastRefresh;
 		int refreshBucket;
 	};
 
@@ -71,7 +71,7 @@ public:
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
 	std::unique_ptr<Timer> refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
-	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
+	QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
 	Connection streamValveConnection;
@@ -211,14 +211,14 @@ public:
 		if(keepAliveRegistrations.contains(s))
 			return;
 
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
 		KeepAliveRegistration *r = new KeepAliveRegistration;
 		r->s = s;
 		keepAliveRegistrations.insert(s, r);
 
 		r->lastRefresh = now;
-		sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+		sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 		r->refreshBucket = smallestSessionRefreshBucket();
 		sessionRefreshBuckets[r->refreshBucket] += r;
@@ -233,7 +233,7 @@ public:
 			return;
 
 		sessionRefreshBuckets[r->refreshBucket].remove(r);
-		sessionsByLastRefresh.remove(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r));
+		sessionsByLastRefresh.remove(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r));
 		keepAliveRegistrations.remove(s);
 		delete r;
 
@@ -315,7 +315,7 @@ private:
 
 	void refresh_timeout()
 	{
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
 		QHash<QByteArray, WsControlPacket> packets;
 
@@ -324,10 +324,10 @@ private:
 		foreach(KeepAliveRegistration *r, bucket)
 		{
 			// move to the end
-			QPair<qint64, KeepAliveRegistration*> k(r->lastRefresh, r);
+			QPair<int64_t, KeepAliveRegistration*> k(r->lastRefresh, r);
 			sessionsByLastRefresh.remove(k);
 			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
 			if(peer.isEmpty())
@@ -357,10 +357,10 @@ private:
 		}
 
 		// process any others
-		qint64 threshold = now - SESSION_MUST_PROCESS;
+		int64_t threshold = now - SESSION_MUST_PROCESS;
 		while(!sessionsByLastRefresh.isEmpty())
 		{
-			QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
+			QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
 			KeepAliveRegistration *r = it.value();
 
 			if(r->lastRefresh > threshold)
@@ -369,7 +369,7 @@ private:
 			// move to the end
 			sessionsByLastRefresh.erase(it);
 			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
 			if(peer.isEmpty())
