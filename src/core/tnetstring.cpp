@@ -208,7 +208,7 @@ QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, 
 			val = toByteArray(in, offset, dataOffset, dataSize, &ok_);
 			break;
 		case Int:
-			val = toInt(in, offset, dataOffset, dataSize, &ok_);
+			val = (qint64)toInt(in, offset, dataOffset, dataSize, &ok_);
 			break;
 		case Double:
 			val = toDouble(in, offset, dataOffset, dataSize, &ok_);
