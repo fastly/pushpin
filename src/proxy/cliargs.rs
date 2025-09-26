@@ -204,8 +204,9 @@ mod tests {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
+            verbose: false,
             ipc_prefix: Some("ipc".to_string()),
-            route: Some(vec!["route1".to_string(), "route2".to_string()]),
+            route: vec!["route1".to_string(), "route2".to_string()],
         };
 
         let args_ffi = args.to_ffi();
@@ -215,10 +216,11 @@ mod tests {
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
         assert_eq!(verified_args.log_level, 3);
+        assert_eq!(verified_args.verbose, false);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(
             verified_args.route,
-            Some(vec!["route1".to_string(), "route2".to_string()])
+            vec!["route1".to_string(), "route2".to_string()]
         );
 
         // Test conversion to C++-compatible struct
@@ -270,8 +272,9 @@ mod tests {
             config_file: None,
             log_file: None,
             log_level: 2,
+            verbose: false,
             ipc_prefix: None,
-            route: None,
+            route: Vec::new(),
         };
 
         let empty_args_ffi = empty_args.to_ffi();
@@ -288,8 +291,9 @@ mod tests {
         );
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
+        assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
-        assert_eq!(verified_empty_args.route, None);
+        assert!(verified_empty_args.route.is_empty());
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -319,5 +323,19 @@ mod tests {
         unsafe {
             destroy_proxy_cli_args(empty_args_ffi);
         }
+
+        // Test verbose
+        let args = CliArgs {
+            config_file: None,
+            log_file: None,
+            log_level: 2,
+            verbose: true,
+            ipc_prefix: None,
+            route: Vec::new(),
+        };
+
+        // Test verify() method
+        let verified_args = args.verify();
+        assert_eq!(verified_args.log_level, 3);
     }
 }

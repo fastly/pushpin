@@ -169,6 +169,7 @@ mod tests {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
+            verbose: false,
             ipc_prefix: Some("ipc".to_string()),
             port_offset: Some(8080),
         };
@@ -180,6 +181,7 @@ mod tests {
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
         assert_eq!(verified_args.log_level, 3);
+        assert_eq!(verified_args.verbose, false);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
 
@@ -217,6 +219,7 @@ mod tests {
             config_file: None,
             log_file: None,
             log_level: 2,
+            verbose: false,
             ipc_prefix: None,
             port_offset: None,
         };
@@ -235,6 +238,7 @@ mod tests {
         );
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
+        assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.port_offset, None);
 
@@ -266,5 +270,19 @@ mod tests {
         unsafe {
             destroy_handler_cli_args(empty_args_ffi);
         }
+
+        // Test verbose
+        let args = CliArgs {
+            config_file: None,
+            log_file: None,
+            log_level: 2,
+            verbose: true,
+            ipc_prefix: None,
+            port_offset: None,
+        };
+
+        // Test verify() method
+        let verified_args = args.verify();
+        assert_eq!(verified_args.log_level, 3);
     }
 }
