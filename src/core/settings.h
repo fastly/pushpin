@@ -31,18 +31,18 @@ class QSettings;
 class Settings
 {
 public:
-
 	Settings(const QString &fileName);
 	~Settings();
+
 	bool contains(const QString &key) const;
 	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	int adjustedPort(const QString &key, int defaultValue = -1) const;
 
+	QString ipcPrefix() const;
+	int portOffset() const;
 	void setIpcPrefix(const QString &s);
 	void setPortOffset(int x);
-	QString getIpcPrefix() const;
-	int getPortOffset() const;
 
 private:
 	QSettings *main_;

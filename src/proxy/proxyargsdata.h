@@ -30,14 +30,14 @@
 
 class ProxyArgsData
 {
-	public:
-		QString configFile;
-		QString logFile;
-		int logLevel;
-		QString ipcPrefix;
-		QStringList routeLines;
+public:
+	QString configFile;
+	QString logFile;
+	int logLevel;
+	QString ipcPrefix;
+	QStringList routeLines;
 
-		ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
+	ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
 };
 
 #endif

@@ -20,70 +20,70 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include "rust/bindings.h"
+#include "test.h"
+#include "log.h"
 #include "config.h"
 #include "settings.h"
-#include "test.h"
 #include "handlerargsdata.h"
-#include "rust/bindings.h"
-#include "log.h"
 
-void handlerargstest()
+static void handlerargstest()
 {
-    // Get file for example config
-    std::string configFile = "examples/config/pushpin.conf";
+	// Get file for example config
+	std::string configFile = "examples/config/pushpin.conf";
 
-    ffi::HandlerCliArgs argsFfi = {
-        const_cast<char*>(configFile.c_str()),  // config_file
-        const_cast<char*>("handler-log.txt"),           // log_file
-        3,                                      // log_level
-        const_cast<char*>("ipc:prefix"),        // ipc_prefix
-        81                                      // port_offset
-    };
+	ffi::HandlerCliArgs argsFfi = {
+		const_cast<char*>(configFile.c_str()),  // config_file
+		const_cast<char*>("handler-log.txt"),   // log_file
+		3,                                      // log_level
+		const_cast<char*>("ipc:prefix"),        // ipc_prefix
+		81                                      // port_offset
+	};
 
-    // Verify HandlerArgsData parsing
-    HandlerArgsData args(&argsFfi);
-    TEST_ASSERT_EQ(args.configFile, QString("examples/config/pushpin.conf"));
-    TEST_ASSERT_EQ(args.logFile, QString("handler-log.txt"));
-    TEST_ASSERT_EQ(args.logLevel, 3);
-    TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
-    TEST_ASSERT_EQ(args.portOffset, 81);
+	// Verify HandlerArgsData parsing
+	HandlerArgsData args(&argsFfi);
+	TEST_ASSERT_EQ(args.configFile, QString("examples/config/pushpin.conf"));
+	TEST_ASSERT_EQ(args.logFile, QString("handler-log.txt"));
+	TEST_ASSERT_EQ(args.logLevel, 3);
+	TEST_ASSERT_EQ(args.ipcPrefix, QString("ipc:prefix"));
+	TEST_ASSERT_EQ(args.portOffset, 81);
 
-    Settings settings(args.configFile);
-    if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
-    if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
+	Settings settings(args.configFile);
+	if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
+	if (args.portOffset != -1) settings.setPortOffset(args.portOffset);
 
-    // Test command-line overrides were applied
-    TEST_ASSERT_EQ(settings.getPortOffset(), 81);
-    TEST_ASSERT_EQ(settings.getIpcPrefix(), QString("ipc:prefix"));
+	// Test command-line overrides were applied
+	TEST_ASSERT_EQ(settings.portOffset(), 81);
+	TEST_ASSERT_EQ(settings.ipcPrefix(), QString("ipc:prefix"));
 
-    ffi::HandlerCliArgs argsFfiEmpty = {
-        const_cast<char*>(configFile.c_str()),  // config_file
-        const_cast<char*>(""),                  // log_file
-        2,                                      // log_level
-        const_cast<char*>(""),                  // ipc_prefix
-        -1                                      // port_offset
-    };
+	ffi::HandlerCliArgs argsFfiEmpty = {
+		const_cast<char*>(configFile.c_str()),  // config_file
+		const_cast<char*>(""),                  // log_file
+		2,                                      // log_level
+		const_cast<char*>(""),                  // ipc_prefix
+		-1                                      // port_offset
+	};
 
-    // Verify HandlerArgsData parsing with empty arguments
-    HandlerArgsData argsEmpty(&argsFfiEmpty);
-    TEST_ASSERT_EQ(argsEmpty.configFile, QString("examples/config/pushpin.conf"));
-    TEST_ASSERT_EQ(argsEmpty.logFile, QString(""));
-    TEST_ASSERT_EQ(argsEmpty.logLevel, 2);
-    TEST_ASSERT_EQ(argsEmpty.ipcPrefix, QString(""));
-    TEST_ASSERT_EQ(argsEmpty.portOffset, -1);
-    
-    Settings settingsEmpty(argsEmpty.configFile);
-    if (!argsEmpty.ipcPrefix.isEmpty()) settingsEmpty.setIpcPrefix(argsEmpty.ipcPrefix);
-    if (argsEmpty.portOffset != -1) settingsEmpty.setPortOffset(argsEmpty.portOffset);
+	// Verify HandlerArgsData parsing with empty arguments
+	HandlerArgsData argsEmpty(&argsFfiEmpty);
+	TEST_ASSERT_EQ(argsEmpty.configFile, QString("examples/config/pushpin.conf"));
+	TEST_ASSERT_EQ(argsEmpty.logFile, QString(""));
+	TEST_ASSERT_EQ(argsEmpty.logLevel, 2);
+	TEST_ASSERT_EQ(argsEmpty.ipcPrefix, QString(""));
+	TEST_ASSERT_EQ(argsEmpty.portOffset, -1);
 
-    // Test that no overrides were applied (should use config file defaults)
-    TEST_ASSERT_EQ(settingsEmpty.getPortOffset(), 0);
-    TEST_ASSERT_EQ(settingsEmpty.getIpcPrefix(), QString("pushpin-"));
+	Settings settingsEmpty(argsEmpty.configFile);
+	if (!argsEmpty.ipcPrefix.isEmpty()) settingsEmpty.setIpcPrefix(argsEmpty.ipcPrefix);
+	if (argsEmpty.portOffset != -1) settingsEmpty.setPortOffset(argsEmpty.portOffset);
+
+	// Test that no overrides were applied (should use config file defaults)
+	TEST_ASSERT_EQ(settingsEmpty.portOffset(), 0);
+	TEST_ASSERT_EQ(settingsEmpty.ipcPrefix(), QString("pushpin-"));
 }
 
 extern "C" int handlerargs_test(ffi::TestException *out_ex)
 {
-    TEST_CATCH(handlerargstest());
+	TEST_CATCH(handlerargstest());
 
-    return 0;
+	return 0;
 }
