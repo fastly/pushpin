@@ -66,8 +66,8 @@ public:
 
 	// routeId may be empty for non-identified route
 
-	void addActivity(const QByteArray &routeId, quint32 count = 1);
-	void addMessage(const QString &channel, const QString &itemId, const QString &transport, quint32 count = 1, int blocks = -1);
+	void addActivity(const QByteArray &routeId, uint32_t count = 1);
+	void addMessage(const QString &channel, const QString &itemId, const QString &transport, uint32_t count = 1, int blocks = -1);
 
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset = -1);
 	int removeConnection(const QByteArray &id, bool linger, const QByteArray &source = QByteArray()); // return unreported time
@@ -76,7 +76,7 @@ public:
 	//   send before removing with linger
 	void refreshConnection(const QByteArray &id);
 
-	void addSubscription(const QString &mode, const QString &channel, quint32 subscriberCount);
+	void addSubscription(const QString &mode, const QString &channel, uint32_t subscriberCount);
 
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);
@@ -84,10 +84,10 @@ public:
 	// for reporting and combined
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
-	void incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count = 1);
+	void incCounter(const QByteArray &routeId, Stats::Counter c, uint32_t count = 1);
 
 	// for combined only
-	void addRequestsReceived(quint32 count);
+	void addRequestsReceived(uint32_t count);
 
 	bool checkConnection(const QByteArray &id) const;
 
@@ -101,7 +101,7 @@ public:
 
 	void flushReport(const QByteArray &routeId);
 
-	qint64 lastRetrySeq(const QByteArray &source) const;
+	int64_t lastRetrySeq(const QByteArray &source) const;
 
 	StatsPacket getConnMaxPacket(const QByteArray &routeId);
 	void setRetrySeq(const QByteArray &routeId, int value);

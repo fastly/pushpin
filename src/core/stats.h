@@ -68,7 +68,7 @@ public:
         _empty = true;
     }
 
-    quint32 get(Counter c)
+    uint32_t get(Counter c)
     {
         int index = (int)c;
 
@@ -77,7 +77,7 @@ public:
         return _values[index];
     }
 
-    void inc(Counter c, quint32 count = 1)
+    void inc(Counter c, uint32_t count = 1)
     {
         int index = (int)c;
 
@@ -92,7 +92,7 @@ public:
     void add(const Counters &other);
 
 private:
-    quint32 _values[STATS_COUNTERS_MAX];
+    uint32_t _values[STATS_COUNTERS_MAX];
     bool _empty;
 };
 

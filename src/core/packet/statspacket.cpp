@@ -168,7 +168,7 @@ QVariant StatsPacket::toVariant() const
 		obj["ttl"] = qMax(ttl, 0);
 
 		if(retrySeq >= 0)
-			obj["retry-seq"] = retrySeq;
+			obj["retry-seq"] = (qint64)retrySeq;
 	}
 
 	return obj;

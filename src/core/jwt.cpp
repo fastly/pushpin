@@ -51,14 +51,14 @@ EncodingKey::Private::~Private()
 EncodingKey EncodingKey::fromSecret(const QByteArray &key)
 {
 	EncodingKey k;
-	k.d = new Private(ffi::jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_encoding_key_from_secret((const uint8_t *)key.data(), key.size()));
 	return k;
 }
 
 EncodingKey EncodingKey::fromPem(const QByteArray &key)
 {
 	EncodingKey k;
-	k.d = new Private(ffi::jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_encoding_key_from_pem((const uint8_t *)key.data(), key.size()));
 	return k;
 }
 
@@ -122,14 +122,14 @@ DecodingKey::Private::~Private()
 DecodingKey DecodingKey::fromSecret(const QByteArray &key)
 {
 	DecodingKey k;
-	k.d = new Private(ffi::jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_decoding_key_from_secret((const uint8_t *)key.data(), key.size()));
 	return k;
 }
 
 DecodingKey DecodingKey::fromPem(const QByteArray &key)
 {
 	DecodingKey k;
-	k.d = new Private(ffi::jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_decoding_key_from_pem((const uint8_t *)key.data(), key.size()));
 	return k;
 }
 

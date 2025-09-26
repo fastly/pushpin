@@ -34,7 +34,7 @@ TimerWheel::~TimerWheel()
 	ffi::timer_wheel_destroy(raw_);
 }
 
-int TimerWheel::add(quint64 expires, size_t userData)
+int TimerWheel::add(uint64_t expires, size_t userData)
 {
 	return ffi::timer_add(raw_, expires, userData);
 }
@@ -44,12 +44,12 @@ void TimerWheel::remove(int key)
 	ffi::timer_remove(raw_, key);
 }
 
-qint64 TimerWheel::timeout() const
+int64_t TimerWheel::timeout() const
 {
 	return ffi::timer_wheel_timeout(raw_);
 }
 
-void TimerWheel::update(quint64 curtime)
+void TimerWheel::update(uint64_t curtime)
 {
 	ffi::timer_wheel_update(raw_, curtime);
 }

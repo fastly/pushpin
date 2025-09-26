@@ -30,7 +30,7 @@ TcpListener::~TcpListener()
 	reset();
 }
 
-bool TcpListener::bind(const QHostAddress &addr, quint16 port)
+bool TcpListener::bind(const QHostAddress &addr, uint16_t port)
 {
 	reset();
 
@@ -54,13 +54,13 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 	return true;
 }
 
-std::tuple<QHostAddress, quint16> TcpListener::localAddress() const
+std::tuple<QHostAddress, uint16_t> TcpListener::localAddress() const
 {
 	assert(inner_);
 
 	QByteArray ip(256, 0);
 	size_t ip_size = ip.size();
-	quint16 port;
+	uint16_t port;
 	if(ffi::tcp_listener_local_addr(inner_, ip.data(), &ip_size, &port) != 0)
 		return {QHostAddress(), 0};
 

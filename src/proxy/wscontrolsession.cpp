@@ -42,7 +42,7 @@ public:
 	WsControlManager *manager;
 	int nextReqId;
 	QList<WsControlPacket::Item> pendingItems;
-	QHash<int, qint64> pendingRequests;
+	QHash<int, int64_t> pendingRequests;
 	QList<QByteArray> pendingSendEventWrites;
 	std::unique_ptr<Timer> requestTimer;
 	QByteArray peer;
@@ -115,12 +115,12 @@ public:
 		if(!pendingRequests.isEmpty())
 		{
 			// find next expiring request
-			qint64 lowestTime = -1;
-			QHashIterator<int, qint64> it(pendingRequests);
+			int64_t lowestTime = -1;
+			QHashIterator<int, int64_t> it(pendingRequests);
 			while(it.hasNext())
 			{
 				it.next();
-				qint64 time = it.value();
+				int64_t time = it.value();
 
 				if(lowestTime == -1 || time < lowestTime)
 					lowestTime = time;
