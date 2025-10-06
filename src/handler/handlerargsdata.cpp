@@ -22,18 +22,12 @@
  */
 
 #include "handlerargsdata.h"
-#include "settings.h"
-#include "config.h"
-#include "log.h"
-#include "rust/bindings.h"
-#include <QCoreApplication>
-#include <QFile>
 
 HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
 {
-    configFile  = QString::fromUtf8(argsFfi->config_file);
-    logFile     = QString::fromUtf8(argsFfi->log_file);
-    logLevel 	= argsFfi->log_level;
-    ipcPrefix 	= QString::fromUtf8(argsFfi->ipc_prefix);
-    portOffset  = argsFfi->port_offset;
+	configFile = QString::fromUtf8(argsFfi->config_file);
+	logFile    = QString::fromUtf8(argsFfi->log_file);
+	logLevel   = argsFfi->log_level;
+	ipcPrefix  = QString::fromUtf8(argsFfi->ipc_prefix);
+	portOffset = argsFfi->port_offset;
 }

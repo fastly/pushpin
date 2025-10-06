@@ -180,6 +180,16 @@ int Settings::adjustedPort(const QString &key, int defaultValue) const
 	return x;
 }
 
+QString Settings::ipcPrefix() const
+{
+	return ipcPrefix_;
+}
+
+int Settings::portOffset() const
+{
+	return portOffset_;
+}
+
 void Settings::setIpcPrefix(const QString &s)
 {
 	ipcPrefix_ = s;
@@ -188,14 +198,4 @@ void Settings::setIpcPrefix(const QString &s)
 void Settings::setPortOffset(int x)
 {
 	portOffset_ = x;
-}
-
-QString Settings::getIpcPrefix() const
-{
-	return ipcPrefix_;
-}
-
-int Settings::getPortOffset() const 
-{
-	return portOffset_;
 }

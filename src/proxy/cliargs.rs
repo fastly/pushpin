@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 // Struct to hold the command line arguments
 #[derive(Parser, Debug)]
 #[command(
-    name= "Pushpin Proxy",
+    name= "pushpin-proxy",
     version = version(),
     about = "Pushpin proxy component."
 )]
@@ -41,13 +41,17 @@ pub struct CliArgs {
     #[arg(short = 'L', long = "loglevel", value_name = "x", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=4))]
     pub log_level: u32,
 
-    /// Override ipc_prefix config option, which is used to add a prefix to all ZeroMQ IPC filenames
+    /// Set verbose output; same as --loglevel=3
+    #[arg(long = "verbose")]
+    pub verbose: bool,
+
+    /// Add a prefix to all ZeroMQ IPC filenames
     #[arg(long, value_name = "prefix")]
     pub ipc_prefix: Option<String>,
 
     /// Add route (overrides routes file)
-    #[arg(long, value_name = "route")]
-    pub route: Option<Vec<String>>,
+    #[arg(long, value_name = "route line")]
+    pub route: Vec<String>,
 }
 
 impl CliArgs {
@@ -64,6 +68,10 @@ impl CliArgs {
                 std::process::exit(1);
             }
         };
+
+        if self.verbose {
+            self.log_level = 3;
+        }
 
         self
     }
@@ -101,28 +109,25 @@ impl CliArgs {
             )
             .into_raw();
 
-        let (routes, routes_count) = match &self.route {
-            Some(routes_vec) if !routes_vec.is_empty() => {
-                // Allocate array of string pointers
-                let routes_array = unsafe {
-                    libc::malloc(routes_vec.len() * std::mem::size_of::<*mut libc::c_char>())
-                        as *mut *mut libc::c_char
-                };
+        let (routes, routes_count) = if !self.route.is_empty() {
+            // Allocate array of string pointers
+            let routes_array = unsafe {
+                libc::malloc(self.route.len() * std::mem::size_of::<*mut libc::c_char>())
+                    as *mut *mut libc::c_char
+            };
 
-                // Convert each route to CString and store pointer in array
-                for (i, item) in routes_vec.iter().enumerate() {
-                    let c_string = CString::new(item.to_string()).unwrap().into_raw();
-                    unsafe {
-                        *routes_array.add(i) = c_string;
-                    }
+            // Convert each route to CString and store pointer in array
+            for (i, item) in self.route.iter().enumerate() {
+                let c_string = CString::new(item.to_string()).unwrap().into_raw();
+                unsafe {
+                    *routes_array.add(i) = c_string;
                 }
+            }
 
-                (routes_array, routes_vec.len() as libc::c_uint)
-            }
-            _ => {
-                let routes_array = unsafe { libc::malloc(0) as *mut *mut libc::c_char };
-                (routes_array, 0)
-            }
+            (routes_array, self.route.len() as libc::c_uint)
+        } else {
+            let routes_array = unsafe { libc::malloc(0) as *mut *mut libc::c_char };
+            (routes_array, 0)
         };
 
         ffi::ProxyCliArgs {
@@ -199,8 +204,9 @@ mod tests {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
+            verbose: false,
             ipc_prefix: Some("ipc".to_string()),
-            route: Some(vec!["route1".to_string(), "route2".to_string()]),
+            route: vec!["route1".to_string(), "route2".to_string()],
         };
 
         let args_ffi = args.to_ffi();
@@ -210,10 +216,11 @@ mod tests {
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
         assert_eq!(verified_args.log_level, 3);
+        assert_eq!(verified_args.verbose, false);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(
             verified_args.route,
-            Some(vec!["route1".to_string(), "route2".to_string()])
+            vec!["route1".to_string(), "route2".to_string()]
         );
 
         // Test conversion to C++-compatible struct
@@ -265,8 +272,9 @@ mod tests {
             config_file: None,
             log_file: None,
             log_level: 2,
+            verbose: false,
             ipc_prefix: None,
-            route: None,
+            route: Vec::new(),
         };
 
         let empty_args_ffi = empty_args.to_ffi();
@@ -283,8 +291,9 @@ mod tests {
         );
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
+        assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
-        assert_eq!(verified_empty_args.route, None);
+        assert!(verified_empty_args.route.is_empty());
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -314,5 +323,19 @@ mod tests {
         unsafe {
             destroy_proxy_cli_args(empty_args_ffi);
         }
+
+        // Test verbose
+        let args = CliArgs {
+            config_file: None,
+            log_file: None,
+            log_level: 2,
+            verbose: true,
+            ipc_prefix: None,
+            route: Vec::new(),
+        };
+
+        // Test verify() method
+        let verified_args = args.verify();
+        assert_eq!(verified_args.log_level, 3);
     }
 }

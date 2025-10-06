@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 // Struct to hold the command line arguments
 #[derive(Parser, Debug)]
 #[command(
-    name= "Pushpin Handler",
+    name= "pushpin-handler",
     version = version(),
     about = "Pushpin handler component."
 )]
@@ -41,11 +41,15 @@ pub struct CliArgs {
     #[arg(short = 'L', long = "loglevel", value_name = "x", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=4))]
     pub log_level: u32,
 
-    /// Override ipc_prefix config option, which is used to add a prefix to all ZeroMQ IPC filenames
+    /// Set verbose output; same as --loglevel=3
+    #[arg(long = "verbose")]
+    pub verbose: bool,
+
+    /// Add a prefix to all ZeroMQ IPC filenames
     #[arg(long, value_name = "prefix")]
     pub ipc_prefix: Option<String>,
 
-    /// Override port_offset config option, which is used to increment all ZeroMQ TCP ports and the HTTP control server port
+    /// Increment all ZeroMQ TCP ports and the HTTP control server port
     #[arg(long, value_name = "offset", value_parser = clap::value_parser!(u32))]
     pub port_offset: Option<u32>,
 }
@@ -64,6 +68,10 @@ impl CliArgs {
                 std::process::exit(1);
             }
         };
+
+        if self.verbose {
+            self.log_level = 3;
+        }
 
         self
     }
@@ -161,6 +169,7 @@ mod tests {
             config_file: Some(config_test_file.clone()),
             log_file: Some("pushpin.log".to_string()),
             log_level: 3,
+            verbose: false,
             ipc_prefix: Some("ipc".to_string()),
             port_offset: Some(8080),
         };
@@ -172,6 +181,7 @@ mod tests {
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
         assert_eq!(verified_args.log_file, Some("pushpin.log".to_string()));
         assert_eq!(verified_args.log_level, 3);
+        assert_eq!(verified_args.verbose, false);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
 
@@ -209,6 +219,7 @@ mod tests {
             config_file: None,
             log_file: None,
             log_level: 2,
+            verbose: false,
             ipc_prefix: None,
             port_offset: None,
         };
@@ -227,6 +238,7 @@ mod tests {
         );
         assert_eq!(verified_empty_args.log_file, None);
         assert_eq!(verified_empty_args.log_level, 2);
+        assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.port_offset, None);
 
@@ -258,5 +270,19 @@ mod tests {
         unsafe {
             destroy_handler_cli_args(empty_args_ffi);
         }
+
+        // Test verbose
+        let args = CliArgs {
+            config_file: None,
+            log_file: None,
+            log_level: 2,
+            verbose: true,
+            ipc_prefix: None,
+            port_offset: None,
+        };
+
+        // Test verify() method
+        let verified_args = args.verify();
+        assert_eq!(verified_args.log_level, 3);
     }
 }
