@@ -240,7 +240,7 @@ fn check_qmake(qmake_path: &Path) -> Result<LibVersion, Box<dyn Error>> {
         }
     };
 
-    check_version("qt", version.clone(), 5, 12)?;
+    check_version("qt", version.clone(), 6, 0)?;
 
     Ok(version)
 }
