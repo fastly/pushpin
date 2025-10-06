@@ -420,7 +420,7 @@ public:
 		}
 		else if(method == "GET" && s->path == "/info")
 		{
-			quint32 x = QRandomGenerator::global()->generate();
+			uint32_t x = QRandomGenerator::global()->generate();
 
 			QVariantMap out;
 			out["websocket"] = true;
