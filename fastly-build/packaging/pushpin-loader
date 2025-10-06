@@ -418,11 +418,17 @@ def cert_info_filename(service_id, backend_name):
     return f'{service_id}:{shortname}-{hash}.crtinfo'
 
 
+def backend_info_filename(backend_name, service_id):
+    hash = hashlib.sha1(backend_name.encode('utf-8')).hexdigest()[:4]
+    shortname = urllib.parse.quote(backend_name[:32], safe='')
+    return f'{service_id}:{shortname}-{hash}.backendinfo'
+
+
 def in_dir(fname, dir):
     return os.path.abspath(os.path.join(dir, fname))
 
 
-def make_routes(service, backend, sig_keys_dir):
+def make_routes(service, backend, sig_keys_dir, backends_dir):
     service_id = validate_id(service.id)
     backend_name = validate_backend(backend['name'])
     host = validate_host(backend['address'])
@@ -641,20 +647,19 @@ def write_sig_keys(keys, dir, user=None, group=None):
     return update_dir(dir, '.key', files, mode=0o400, user=user, group=group)
 
 
-def write_certs(certs, dir, user=None, group=None):
+def write_backends(backends, dir, user=None, group=None):
     """
     Returns True if any files were changed/removed.
     """
     files = {}
-    for service_id, backend_certs in certs.items():
-        for backend_name, cert_info in backend_certs.items():
-            fname = cert_info_filename(service_id, backend_name)
-            files[fname] = json.dumps(cert_info) + '\n'
+    for (backend_name, service_id), backend in backends.items():
+        fname = backend_info_filename(backend_name, service_id)
+        files[fname] = json.dumps(backend, indent=6) + '\n'
 
-    return update_dir(dir, '.crtinfo', files, mode=0o400, user=user, group=group)
+    return update_dir(dir, '.backendinfo', files, mode=0o400, user=user, group=group)
 
 
-def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, certs_dir, secrets_user=None, secrets_group=None):
+def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, secrets_user=None, secrets_group=None):
     try:
         os.mkdir(cache_dir)
     except FileExistsError:
@@ -692,37 +697,22 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, certs_dir, secr
     if keys_changed:
         logging.info("sig keys changed")
 
-    client_certs = {}
+    # Save backend data blobs as JSON to disk
+    backends_services = {}
     for service, backends in services.values():
         for backend in backends:
-            client_cert = backend.get('ssl_client_cert') or ''
-            client_key_info = backend.get('encrypted_ssl_client_key') or {}
+            backend_data = {**backend, 'service_id': service.id}
 
-            if client_cert and client_key_info.get('secret_id') and client_key_info.get('secret_value'):
-                backend_certs = client_certs.get(service.id)
-                if backend_certs is None:
-                    backend_certs = {}
-                    client_certs[service.id] = backend_certs
+            backends_services[(backend['name'], service.id)] = backend_data
 
-                backend_name = validate_backend(backend['name'])
-
-                backend_certs[backend_name] = {
-                    'cert': client_cert,
-                    'key': {
-                        'secret-id': client_key_info['secret_id'],
-                        'secret-value': client_key_info['secret_value']
-                    }
-                }
-
-    # NOTE(jkarneges): Avoid littering until approach reevaluated [08-13-2025]
-    #certs_changed = write_certs(client_certs, certs_dir, user=secrets_user, group=secrets_group)
-    #if certs_changed:
-    #    logging.info("client certs changed")
+    backends_changed = write_backends(backends_services, backends_dir, user=secrets_user, group=secrets_group)
+    if backends_changed:
+        logging.info(f"backends changed")
 
     for service, backends in services.values():
         for backend in backends:
             try:
-                routes.extend(make_routes(service, backend, sig_keys_dir))
+                routes.extend(make_routes(service, backend, sig_keys_dir, backends_dir))
             except Exception as e:
                 logging.error(
                     'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
@@ -771,14 +761,14 @@ def main():
                         default='routes', help='location of routes file (default: ./routes)')
     parser.add_argument('--cache-dir', metavar='PATH', dest='cache_dir',
                         default='cache', help='directory to keep cached data (default: ./cache)')
-    parser.add_argument('--certs-dir', metavar='PATH', dest='certs_dir',
-                        default='certs', help='directory to write client certs/keys (default: ./certs)')
     parser.add_argument('--sig-keys-dir', metavar='PATH', dest='sig_keys_dir',
                         default='sig-keys', help='directory to write sig keys (default: ./sig-keys)')
+    parser.add_argument('--backends-dir', metavar='PATH', dest='backends_dir',
+                        default='backends', help='directory to write backends (default: ./backends)')
     parser.add_argument('--secrets-user', metavar='USERNAME', dest='secrets_user',
-                        help='owning user to set for certs/keys')
+                        help='owning user to set for keys/backends')
     parser.add_argument('--secrets-group', metavar='GROUP', dest='secrets_group',
-                        help='owning group to set for certs/keys')
+                        help='owning group to set for keys/backends')
     parser.add_argument('--loop', metavar='SECONDS', type=int,
                         dest='loop', help='repeat the process on an interval')
 
@@ -799,7 +789,7 @@ def main():
 
     while True:
         try:
-            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, args.certs_dir, secrets_user=args.secrets_user, secrets_group=args.secrets_group)
+            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, args.backends_dir, secrets_user=args.secrets_user, secrets_group=args.secrets_group)
         except Exception:
             logging.exception('update_routes failed')
 
