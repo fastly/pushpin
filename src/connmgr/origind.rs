@@ -1,5 +1,6 @@
 use crate::core::io::{AsyncRead, AsyncWrite};
 use crate::core::net::AsyncUnixStream;
+use origind_common::{ClientCertificate, ClientKey, ClientKeyScheme, HeavenlySecret};
 use std::cell::RefCell;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -145,6 +146,61 @@ impl AsyncWrite for OrigindStream {
     }
 }
 
+#[derive(serde::Deserialize, Debug)]
+pub struct EncryptedKeyInfo {
+    pub secret_id: String,
+    pub secret_value: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct BackendConfig {
+    pub service_id: String,
+    pub ssl_client_cert: Option<String>,
+    pub encrypted_ssl_client_key: Option<EncryptedKeyInfo>,
+}
+
+#[derive(Debug)]
+pub struct MtlsConfig {
+    pub service_id: String,
+    pub client_cert: String,
+    pub client_key: EncryptedKeyInfo,
+}
+
+impl MtlsConfig {
+    /// Parses mTLS configuration from backend data.
+    ///
+    /// Returns `Ok(None)` if no mTLS configuration is present.
+    ///
+    /// Returns [`Err`] if the configuration is invalid or incomplete.
+    pub fn from_backend_data(data: &str) -> Result<Option<Self>, origind_client::OrigindError> {
+        if data.is_empty() {
+            return Ok(None);
+        }
+
+        let backend: BackendConfig = match serde_json::from_str(data) {
+            Ok(b) => b,
+            Err(e) => {
+                return Err(origind_client::OrigindError::Io(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid mTLS configuration: {}", e),
+                )))
+            }
+        };
+
+        let (Some(client_cert), Some(client_key)) =
+            (backend.ssl_client_cert, backend.encrypted_ssl_client_key)
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(Self {
+            service_id: backend.service_id,
+            client_cert,
+            client_key,
+        }))
+    }
+}
+
 pub struct OrigindManager {
     path: PathBuf,
 }
@@ -156,15 +212,47 @@ impl OrigindManager {
         }
     }
 
+    /// Connects to origind and establishes a TLS connection, with optional mTLS authentication.
+    ///
+    /// Returns an `OrigindStream` on success
+    ///
+    /// Returns an `origind_client::OrigindError` on failure
     pub async fn connect_tls(
         &self,
         host: &str,
         port: u16,
         cert_hostname: &str,
         check_cert: bool,
+        mtls_config: Option<MtlsConfig>,
     ) -> Result<OrigindStream, origind_client::OrigindError> {
+        let (sid, client_certificate) = if let Some(mtls_config) = mtls_config {
+            let secret = match base64::decode(mtls_config.client_key.secret_value) {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(origind_client::OrigindError::InvalidBackend(format!(
+                        "failed to base64-decode encrypted client key: {e}"
+                    )))
+                }
+            };
+
+            (
+                Some(mtls_config.service_id),
+                Some(ClientCertificate {
+                    certificate: mtls_config.client_cert.into(),
+                    key: ClientKey {
+                        scheme: ClientKeyScheme::Heavenly(HeavenlySecret {
+                            secret_key_id: mtls_config.client_key.secret_id,
+                            secret: secret.into(),
+                        }),
+                    },
+                }),
+            )
+        } else {
+            (None, None)
+        };
+
         let backend = origind_client::BackendDef {
-            sid: None, // NOTE: need valid sid for mtls
+            sid,
             name: format!("pushpin_{host}"),
             host: host.to_string(),
             port,
@@ -176,7 +264,7 @@ impl OrigindManager {
                 max_tls_version: None,
                 cert_hostname: cert_hostname.to_string(),
                 ca_cert: None,
-                client_certificate: None,
+                client_certificate,
                 ciphers: None,
                 check_cert,
                 sni_hostname: Some(cert_hostname.to_string()),
@@ -241,7 +329,7 @@ mod tests {
                 let l = AsyncUnixListener::bind(&path).unwrap();
 
                 let m = OrigindManager::new(&path);
-                let mut f = pin!(m.connect_tls("127.0.0.1", 80, "localhost", false));
+                let mut f = pin!(m.connect_tls("127.0.0.1", 80, "localhost", false, None));
 
                 // initiate connection
                 assert!(poll_async(f.as_mut()).await.is_pending());
@@ -384,5 +472,70 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_mtls_config_parsing() {
+        use serde_json::json;
+
+        // Test empty data
+        assert!(MtlsConfig::from_backend_data("").unwrap().is_none());
+
+        // Test complete mTLS configuration with all fields
+        let backend_data = json!({
+            "service_id": "test-service-123",
+            "name": "example-backend",
+            "address": "api.example.com",
+            "port": 443,
+            "use_ssl": "1",
+            "ssl_client_cert": "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
+            "encrypted_ssl_client_key": {
+                "secret_id": "secret-123",
+                "secret_value": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+            },
+            "ca_cert": "-----BEGIN CERTIFICATE-----\nMIID...\n-----END CERTIFICATE-----",
+            "ssl_check_cert": "1",
+            "ssl_cert_hostname": "api.example.com"
+        });
+
+        let backend_data_str = serde_json::to_string(&backend_data).unwrap();
+
+        // Test parsing the MtlsConfig
+        let mtls_config = MtlsConfig::from_backend_data(&backend_data_str)
+            .unwrap()
+            .unwrap();
+
+        // Verify all fields are parsed correctly
+        assert_eq!(mtls_config.service_id, "test-service-123");
+        assert_eq!(
+            mtls_config.client_cert,
+            "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"
+        );
+        assert_eq!(mtls_config.client_key.secret_id, "secret-123");
+        assert_eq!(
+            mtls_config.client_key.secret_value,
+            "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+        );
+
+        // Test with missing required fields - parsing should fail
+        let missing_data = json!({
+            // missing service_id
+            "ssl_client_cert": "-----BEGIN CERTIFICATE-----\ntest-cert\n-----END CERTIFICATE-----"
+        });
+
+        let missing_str = serde_json::to_string(&missing_data).unwrap();
+        let missing_result = MtlsConfig::from_backend_data(&missing_str);
+        assert!(missing_result.is_err());
+
+        // Test with incomplete mtls fields
+        let incomplete_data = json!({
+            "service_id": "incomplete-service"
+            // missing ssl_client_cert and encrypted_ssl_client_key
+        });
+
+        let incomplete_str = serde_json::to_string(&incomplete_data).unwrap();
+        assert!(MtlsConfig::from_backend_data(&incomplete_str)
+            .unwrap()
+            .is_none());
     }
 }

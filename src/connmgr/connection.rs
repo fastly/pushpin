@@ -4378,6 +4378,7 @@ async fn client_connect_to_origind<'a>(
     connect_host: &str,
     connect_port: u16,
     origindman: &origind::OrigindManager,
+    mtls_config: Option<origind::MtlsConfig>,
 ) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let host = if rdata.trust_connect_host {
         connect_host
@@ -4386,7 +4387,13 @@ async fn client_connect_to_origind<'a>(
     };
 
     let stream = origindman
-        .connect_tls(connect_host, connect_port, host, !rdata.ignore_tls_errors)
+        .connect_tls(
+            connect_host,
+            connect_port,
+            host,
+            !rdata.ignore_tls_errors,
+            mtls_config,
+        )
         .await
         .map_err(|e| {
             debug!("client-conn {log_id}: failed to create origind connection: {e}");
@@ -4398,7 +4405,7 @@ async fn client_connect_to_origind<'a>(
     // origind connections are not reused so this value doesn't matter
     let bogus_peer_addr = "0.0.0.0:0".parse().unwrap();
 
-    return Ok((bogus_peer_addr, true, AsyncStream::Origind(stream)));
+    Ok((bogus_peer_addr, true, AsyncStream::Origind(stream)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4430,7 +4437,10 @@ async fn client_connect<'a>(
     };
 
     if let Some(origindman) = origindman {
-        if use_tls && origind_rate > ((random() % 100) as u8) {
+        // Parse mTLS configuration if available
+        let mtls_config = origind::MtlsConfig::from_backend_data(rdata.backend_data)?;
+
+        if use_tls && (mtls_config.is_some() || origind_rate > ((random() % 100) as u8)) {
             return client_connect_to_origind(
                 log_id,
                 rdata,
@@ -4438,6 +4448,7 @@ async fn client_connect<'a>(
                 connect_host,
                 connect_port,
                 origindman,
+                mtls_config,
             )
             .await;
         }

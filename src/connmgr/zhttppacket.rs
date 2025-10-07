@@ -341,6 +341,7 @@ pub struct RequestData<'buf, 'headers> {
     pub trust_connect_host: bool,
     pub ignore_tls_errors: bool,
     pub follow_redirects: bool,
+    pub backend_data: &'buf str,
 }
 
 #[allow(clippy::new_without_default)]
@@ -366,6 +367,7 @@ impl RequestData<'_, '_> {
             trust_connect_host: false,
             ignore_tls_errors: false,
             follow_redirects: false,
+            backend_data: "",
         }
     }
 }
@@ -450,6 +452,11 @@ impl<'a> Serialize<'a> for RequestData<'a, 'a> {
             w.write_int(self.peer_port as isize)?;
         }
 
+        if !self.backend_data.is_empty() {
+            w.write_string(b"backend-data")?;
+            w.write_string(self.backend_data.as_bytes())?;
+        }
+
         Ok(())
     }
 }
@@ -479,6 +486,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
         let mut trust_connect_host = false;
         let mut ignore_tls_errors = false;
         let mut follow_redirects = false;
+        let mut backend_data = "";
 
         for e in root {
             let e = e?;
@@ -646,6 +654,13 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
 
                     follow_redirects = b;
                 }
+                "backend-data" => {
+                    let s = tnetstring::parse_string(e.data).field("backend-data")?;
+
+                    let s = str::from_utf8(s).field("backend-data")?;
+
+                    backend_data = s;
+                }
                 _ => {} // skip unknown fields
             }
         }
@@ -670,6 +685,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
             trust_connect_host,
             ignore_tls_errors,
             follow_redirects,
+            backend_data,
         })
     }
 }
@@ -1816,13 +1832,15 @@ mod tests {
                         trust_connect_host: false,
                         ignore_tls_errors: false,
                         follow_redirects: false,
+                        backend_data: "{\"test\":\"data\"}",
                     }),
                     ptype_str: "",
                 },
                 expected: concat!(
-                    "T161:4:from,6:client,2:id,1:1,3:seq,1:0#6:method,4:POST,3:uri",
+                    "T196:4:from,6:client,2:id,1:1,3:seq,1:0#6:method,4:POST,3:uri",
                     ",23:http://example.com/path,7:headers,34:30:12:Content-Type,1",
-                    "0:text/plain,]]4:body,5:hello,4:more,4:true!}",
+                    "0:text/plain,]]4:body,5:hello,4:more,4:true!",
+                    "12:backend-data,15:{\"test\":\"data\"},}",
                 ),
             },
             Test {
@@ -1938,10 +1956,10 @@ mod tests {
     #[test]
     fn test_req_parse() {
         let data = concat!(
-            "T198:4:more,4:true!7:headers,34:30:12:Content-Type,10:text/pl",
+            "T233:4:more,4:true!7:headers,34:30:12:Content-Type,10:text/pl",
             "ain,]]12:content-type,6:binary,4:from,6:client,2:id,1:1,6:met",
             "hod,4:POST,3:uri,19:https://example.com,7:credits,3:100#3:seq",
-            ",1:0#4:body,5:hello,}"
+            ",1:0#4:body,5:hello,12:backend-data,15:{\"test\":\"data\"},}"
         )
         .as_bytes();
 
@@ -1966,6 +1984,7 @@ mod tests {
         assert_eq!(rdata.headers[0].name, "Content-Type");
         assert_eq!(rdata.headers[0].value, b"text/plain");
         assert_eq!(rdata.body, b"hello");
+        assert_eq!(rdata.backend_data, "{\"test\":\"data\"}");
 
         let ctype = rdata.content_type.unwrap();
         assert_eq!(ctype, ContentType::Binary);
