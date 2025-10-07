@@ -1854,12 +1854,11 @@ private:
 
 	void removeSessionChannels(WsSession *s)
 	{
-		QHashIterator it(s->channels);
+		QHashIterator<QString, Instruct::Channel> it(s->channels);
 		while(it.hasNext())
 		{
 			it.next();
 			const QString &channel = it.key();
-
 			removeSessionChannel(s, channel);
 		}
 	}
