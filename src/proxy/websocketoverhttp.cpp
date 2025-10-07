@@ -193,6 +193,7 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString backendData;
 	State state;
 	QByteArray cid;
 	HttpRequestData requestData;
@@ -568,6 +569,7 @@ private:
 		req->setIgnorePolicies(ignorePolicies);
 		req->setTrustConnectHost(trustConnectHost);
 		req->setIgnoreTlsErrors(ignoreTlsErrors);
+		req->setBackendData(backendData);
 		req->setSendBodyAfterAcknowledgement(true);
 
 		HttpHeaders headers = requestData.headers;
@@ -1112,6 +1114,11 @@ void WebSocketOverHttp::setTrustConnectHost(bool on)
 void WebSocketOverHttp::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void WebSocketOverHttp::setBackendData(const QString &data)
+{
+	d->backendData = data;
 }
 
 void WebSocketOverHttp::start(const QUrl &uri, const HttpHeaders &headers)

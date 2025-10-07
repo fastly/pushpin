@@ -44,6 +44,26 @@
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
 
+static QString readFile(const QString &name, QString *errorMessage)
+{
+	QFile f(name);
+	if(!f.open(QFile::ReadOnly))
+	{
+		*errorMessage = QString("failed to open %1: %2").arg(name, f.errorString());
+		return QByteArray();
+	}
+
+	QByteArray data = f.readAll();
+
+	if(f.error() != QFileDevice::NoError)
+	{
+		*errorMessage = QString("failed to read %1: %2").arg(name, f.errorString());
+		return QByteArray();
+	}
+
+	return QString::fromUtf8(data);
+}
+
 class DomainMap::Worker
 {
 public:
@@ -546,6 +566,7 @@ private:
 			r.logLevel = props.value("log_level").toInt();
 		}
 
+		// Parse target host, port, and other properties
 		ok = true;
 		for(int n = 1; n < sections.count(); ++n)
 		{
@@ -656,6 +677,26 @@ private:
 				int x = props.value("ipc_file_mode").toInt(&ok_, 8);
 				if(ok_ && x >= 0)
 					target.zhttpRoute.ipcFileMode = x;
+			}
+
+			// Check if target has backend info property
+			if(props.contains("backendinfo"))
+			{
+				QString backendFilePath = props.value("backendinfo");
+
+				// Read backend file
+				QString err;
+				QString data = readFile(backendFilePath, &err);
+				if(!err.isEmpty())
+				{
+					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
+					ok = false;
+					break;
+				}
+
+				target.backendData = data;
+
+				log_debug("loaded backend data from %s (%d bytes)", qPrintable(backendFilePath), target.backendData.size());
 			}
 
 			r.targets += target;

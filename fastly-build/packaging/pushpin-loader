@@ -432,6 +432,7 @@ def make_routes(service, backend, sig_keys_dir, backends_dir):
     service_id = validate_id(service.id)
     backend_name = validate_backend(backend['name'])
     host = validate_host(backend['address'])
+    backend_file = in_dir(backend_info_filename(backend_name, service_id), backends_dir)
 
     backend_extensions = service.extensions.get('backends', {}).get(backend_name, {})
 
@@ -469,6 +470,8 @@ def make_routes(service, backend, sig_keys_dir, backends_dir):
         target += ',over_http'
 
     target += ',untrusted'
+
+    target += ',backendinfo={}'.format(backend_file)
 
     routes = []
 
@@ -654,7 +657,7 @@ def write_backends(backends, dir, user=None, group=None):
     files = {}
     for (backend_name, service_id), backend in backends.items():
         fname = backend_info_filename(backend_name, service_id)
-        files[fname] = json.dumps(backend, indent=6) + '\n'
+        files[fname] = json.dumps(backend, indent=2) + '\n'
 
     return update_dir(dir, '.backendinfo', files, mode=0o400, user=user, group=group)
 

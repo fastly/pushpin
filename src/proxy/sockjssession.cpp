@@ -1171,6 +1171,14 @@ void SockJsSession::setIgnoreTlsErrors(bool on)
 	assert(0);
 }
 
+void SockJsSession::setBackendData(const QString &data)
+{
+	Q_UNUSED(data);
+
+	// this class is server only
+	assert(0);
+}
+
 void SockJsSession::start(const QUrl &uri, const HttpHeaders &headers)
 {
 	Q_UNUSED(uri);

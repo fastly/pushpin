@@ -72,6 +72,7 @@ public:
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int timeout;
+	QString backendData;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
 	QString requestMethod;
@@ -972,6 +973,7 @@ public:
 						p.ignoreTlsErrors = true;
 					if(passthrough.isValid())
 						p.passthrough = passthrough;
+					p.backendData = backendData;
 					if(quiet)
 						p.quiet = true;
 					writePacket(p);
@@ -1023,6 +1025,7 @@ public:
 					p.ignoreTlsErrors = true;
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
+				p.backendData = backendData;
 				if(quiet)
 					p.quiet = true;
 				p.credits = IDEAL_CREDITS;
@@ -1231,6 +1234,11 @@ void ZhttpRequest::setIgnoreTlsErrors(bool on)
 void ZhttpRequest::setTimeout(int msecs)
 {
 	d->timeout = msecs;
+}
+
+void ZhttpRequest::setBackendData(const QString &data)
+{
+	d->backendData = data;
 }
 
 void ZhttpRequest::setIsTls(bool on)

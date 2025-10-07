@@ -474,6 +474,8 @@ public:
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
 
+		zhttpRequest->setBackendData(target.backendData);
+
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(requestData.method, uri, requestData.headers));

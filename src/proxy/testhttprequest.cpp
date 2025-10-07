@@ -185,6 +185,11 @@ void TestHttpRequest::setTimeout(int msecs)
 	Q_UNUSED(msecs);
 }
 
+void TestHttpRequest::setBackendData(const QString &data)
+{
+	Q_UNUSED(data);
+}
+
 void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);

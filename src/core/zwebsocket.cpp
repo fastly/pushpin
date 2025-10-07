@@ -61,6 +61,7 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString backendData;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
 	int inSeq;
@@ -1031,6 +1032,7 @@ public:
 				p.trustConnectHost = true;
 			if(ignoreTlsErrors)
 				p.ignoreTlsErrors = true;
+			p.backendData = backendData;
 			p.credits = IDEAL_CREDITS;
 			p.multi = true;
 			writePacket(p);
@@ -1116,6 +1118,11 @@ void ZWebSocket::setTrustConnectHost(bool on)
 void ZWebSocket::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void ZWebSocket::setBackendData(const QString &data)
+{
+	d->backendData = data;
 }
 
 void ZWebSocket::setIsTls(bool on)

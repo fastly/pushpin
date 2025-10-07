@@ -94,6 +94,7 @@ public:
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	bool followRedirects;
+	QString backendData;
 	QVariant passthrough; // if valid, may contain pushpin-specific passthrough info
 	bool multi;
 	bool quiet;

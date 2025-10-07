@@ -193,6 +193,11 @@ void TestWebSocket::setIgnoreTlsErrors(bool on)
 	Q_UNUSED(on);
 }
 
+void TestWebSocket::setBackendData(const QString &data)
+{
+	Q_UNUSED(data);
+}
+
 void TestWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
 {
 	d->request.uri = uri;

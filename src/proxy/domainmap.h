@@ -116,6 +116,7 @@ public:
 		QStringList subscriptions; // implicit subscriptions
 		bool overHttp; // use websocket-over-http protocol
 		bool oneEvent; // send one event at a time with overHttp
+		QString backendData; // heavenly backend configuration JSON
 
 		Target() :
 			type(Default),

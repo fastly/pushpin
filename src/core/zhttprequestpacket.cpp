@@ -150,6 +150,9 @@ QVariant ZhttpRequestPacket::toVariant() const
 	if(ignoreTlsErrors)
 		obj["ignore-tls-errors"] = true;
 
+	if(!backendData.isEmpty())
+		obj["backend-data"] = backendData.toUtf8();
+
 	if(followRedirects)
 		obj["follow-redirects"] = true;
 
@@ -475,6 +478,14 @@ bool ZhttpRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		followRedirects = obj["follow-redirects"].toBool();
+	}
+
+	if(obj.contains("backend-data"))
+	{
+		if(typeId(obj["backend-data"]) != QMetaType::QByteArray)
+			return false;
+
+		backendData = QString::fromUtf8(obj["backend-data"].toByteArray());
 	}
 
 	passthrough = obj.value("passthrough");

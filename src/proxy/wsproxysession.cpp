@@ -594,6 +594,8 @@ public:
 			outSock->setConnectPort(target.connectPort);
 		}
 
+		outSock->setBackendData(target.backendData);
+
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes("GET", uri, requestData.headers));

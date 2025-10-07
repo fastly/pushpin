@@ -72,6 +72,7 @@ public:
 	virtual void setIgnorePolicies(bool on);
 	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
+	virtual void setBackendData(const QString &data);
 
 	virtual void start(const QUrl &uri, const HttpHeaders &headers);
 
