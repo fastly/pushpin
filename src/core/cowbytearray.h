@@ -80,12 +80,14 @@ class CowByteArray
 {
 public:
 	CowByteArray() = default;
+	CowByteArray(const CowByteArray &other): inner_(other.inner_) {}
 	CowByteArray(CowByteArrayConstRef ref): inner_(ref.inner_) {}
 	CowByteArray(CowByteArrayRef ref): inner_(ref.inner_) {}
 	CowByteArray(const char *data, ssize_t size = -1) : inner_(data, size) {}
 	CowByteArray(ssize_t size, char ch) : inner_(size, ch) {}
 	CowByteArray(const QByteArray &other) : inner_(other) {}
 
+	bool isNull() const { return inner_.isNull(); }
 	bool isEmpty() const { return inner_.isEmpty(); }
 	ssize_t size() const { return inner_.size(); }
 	ssize_t length() const { return size(); }
@@ -95,6 +97,7 @@ public:
 	ssize_t indexOf(char ch, ssize_t from = 0) const { return inner_.indexOf(ch, from); }
 	CowByteArray mid(ssize_t pos, ssize_t len = -1) const { return inner_.mid(pos, len); }
 
+	void clear() { inner_.clear(); }
 	void resize(ssize_t size) { inner_.resize(size); }
 
 	char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }

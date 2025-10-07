@@ -64,8 +64,14 @@ static void constructors()
 
 static void methods()
 {
+	// isNull
+	CowByteArray n;
+	TEST_ASSERT(n.isNull());
+	TEST_ASSERT(n.isEmpty());
+
 	// isEmpty
-	CowByteArray empty;
+	CowByteArray empty("");
+	TEST_ASSERT(!empty.isNull());
 	TEST_ASSERT(empty.isEmpty());
 
 	// size and length
@@ -87,6 +93,12 @@ static void methods()
 	CowByteArray c = a.mid(3);
 	TEST_ASSERT_EQ(b, "hel");
 	TEST_ASSERT_EQ(c, "lo");
+
+	// clear
+	CowByteArray d("hello");
+	TEST_ASSERT(!d.isEmpty());
+	d.clear();
+	TEST_ASSERT(d.isEmpty());
 
 	// resize down
 	a.resize(3);

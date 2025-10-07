@@ -1480,7 +1480,7 @@ public:
 		}
 
 		foreach(const ZhttpResponsePacket::Id &id, zresp.ids)
-			handleZhttpIn(logprefix, mode, id.id, id.seq, zresp);
+			handleZhttpIn(logprefix, mode, id.id.asQByteArray(), id.seq, zresp);
 	}
 
 	void handleZhttpIn(const char *logprefix, Mode mode, const QByteArray &id, int seq, const ZhttpResponsePacket &zresp)
@@ -1502,7 +1502,7 @@ public:
 				zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(id);
 				zreq.type = ZhttpRequestPacket::Cancel;
-				zhttp_out_write(mode, zreq, zresp.from);
+				zhttp_out_write(mode, zreq, zresp.from.asQByteArray());
 			}
 
 			return;
@@ -1524,7 +1524,7 @@ public:
 					return;
 				}
 
-				s->zhttpAddress = zresp.from;
+				s->zhttpAddress = zresp.from.asQByteArray();
 
 				if(seq != 0)
 				{
@@ -1540,7 +1540,7 @@ public:
 			{
 				// if not sequenced, then there might be a from address
 				if(!zresp.from.isEmpty())
-					s->zhttpAddress = zresp.from;
+					s->zhttpAddress = zresp.from.asQByteArray();
 
 				// if not sequenced, but seq is provided, then it must be 0
 				if(seq != -1 && seq != 0)
@@ -1573,7 +1573,7 @@ public:
 
 			// if a new from address is provided, update our copy
 			if(!zresp.from.isEmpty())
-				s->zhttpAddress = zresp.from;
+				s->zhttpAddress = zresp.from.asQByteArray();
 		}
 
 		// only bump sequence if seq was provided
@@ -1783,7 +1783,7 @@ public:
 
 						log_info("OUT %s id=%s code=%d %d%s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size(), zresp.more ? " M": "");
 
-						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
+						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason.asQByteArray(), headers));
 					}
 
 					if(!zresp.body.isEmpty())
@@ -1808,7 +1808,7 @@ public:
 							return;
 						}
 
-						m2_queueResponse(s->conn, zresp.body, s->chunked);
+						m2_queueResponse(s->conn, zresp.body.asQByteArray(), s->chunked);
 					}
 
 					if(!zresp.more && s->chunked)
@@ -1859,7 +1859,7 @@ public:
 
 					QByteArray reason;
 					if(!zresp.reason.isEmpty())
-						reason = zresp.reason;
+						reason = zresp.reason.asQByteArray();
 					else
 						reason = "Switching Protocols";
 
@@ -1884,7 +1884,7 @@ public:
 
 					s->conn->continuation = zresp.more;
 
-					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
+					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body.asQByteArray();
 
 					m2_queueFrame(s->conn, frame, zresp.body.size());
 				}
@@ -1917,8 +1917,8 @@ public:
 
 				log_info("OUT %s id=%s code=%d %d", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size());
 
-				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
-				m2_queueResponse(s->conn, zresp.body, false);
+				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason.asQByteArray(), headers));
+				m2_queueResponse(s->conn, zresp.body.asQByteArray(), false);
 
 				M2Connection *conn = s->conn;
 				destroySession(s);
@@ -1981,7 +1981,7 @@ public:
 					memcpy(data.data() + 2, zresp.body.data(), zresp.body.size());
 				}
 			} else {
-				data = zresp.body;
+				data = zresp.body.asQByteArray();
 			}
 
 			QByteArray frame = makeWsHeader(true, opcode, data.size()) + data;

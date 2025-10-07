@@ -30,7 +30,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 	QVariantHash obj;
 
 	if(!from.isEmpty())
-		obj["from"] = from;
+		obj["from"] = from.asQByteArray();
 
 	if(!ids.isEmpty())
 	{
@@ -38,7 +38,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 		{
 			const Id &id = ids.first();
 			if(!id.id.isEmpty())
-				obj["id"] = id.id;
+				obj["id"] = id.id.asQByteArray();
 			if(id.seq != -1)
 				obj["seq"] = id.seq;
 		}
@@ -49,7 +49,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 			{
 				QVariantHash vh;
 				if(!id.id.isEmpty())
-					vh["id"] = id.id;
+					vh["id"] = id.id.asQByteArray();
 				if(id.seq != -1)
 					vh["seq"] = id.seq;
 				vl += vh;
@@ -77,7 +77,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 		obj["type"] = typeStr;
 
 	if(type == Error && !condition.isEmpty())
-		obj["condition"] = condition;
+		obj["condition"] = condition.asQByteArray();
 
 	if(credits != -1)
 		obj["credits"] = credits;
@@ -98,7 +98,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 		obj["timeout"] = timeout;
 
 	if(!method.isEmpty())
-		obj["method"] = method.toLatin1();
+		obj["method"] = method.toUtf8().asQByteArray();
 
 	if(!uri.isEmpty())
 		obj["uri"] = uri.toEncoded();
@@ -118,10 +118,10 @@ QVariant ZhttpRequestPacket::toVariant() const
 	}
 
 	if(!body.isNull())
-		obj["body"] = body;
+		obj["body"] = body.asQByteArray();
 
 	if(!contentType.isEmpty())
-		obj["content-type"] = contentType;
+		obj["content-type"] = contentType.asQByteArray();
 
 	if(code != -1)
 		obj["code"] = code;
@@ -136,7 +136,7 @@ QVariant ZhttpRequestPacket::toVariant() const
 		obj["peer-port"] = QByteArray::number(peerPort);
 
 	if(!connectHost.isEmpty())
-		obj["connect-host"] = connectHost.toUtf8();
+		obj["connect-host"] = connectHost.toUtf8().asQByteArray();
 
 	if(connectPort != -1)
 		obj["connect-port"] = connectPort;
@@ -151,10 +151,10 @@ QVariant ZhttpRequestPacket::toVariant() const
 		obj["ignore-tls-errors"] = true;
 
 	if(!clientCert.isEmpty())
-		obj["client-cert"] = clientCert.toUtf8();
+		obj["client-cert"] = clientCert.toUtf8().asQByteArray();
 
 	if(!clientKey.isEmpty())
-		obj["client-key"] = clientKey.toUtf8();
+		obj["client-key"] = clientKey.toUtf8().asQByteArray();
 
 	if(followRedirects)
 		obj["follow-redirects"] = true;

@@ -206,17 +206,17 @@ private:
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			if(!responses.contains(zresp.ids.first().id))
+			if(!responses.contains(zresp.ids.first().id.asQByteArray()))
 			{
 				HttpResponseData rd;
 				rd.code = zresp.code;
-				rd.reason = zresp.reason;
+				rd.reason = zresp.reason.asQByteArray();
 				rd.headers = zresp.headers;
-				responses[zresp.ids.first().id] = rd;
+				responses[zresp.ids.first().id.asQByteArray()] = rd;
 			}
 
-			responses[zresp.ids.first().id].body += zresp.body;
-			in += zresp.body;
+			responses[zresp.ids.first().id.asQByteArray()].body += zresp.body.asQByteArray();
+			in += zresp.body.asQByteArray();
 
 			if(!isWs && !zresp.more)
 			{
@@ -271,10 +271,10 @@ private:
 		zreq.fromVariant(v);
 
 		HttpRequestData rd;
-		rd.method = zreq.method;
+		rd.method = zreq.method.asQString();
 		rd.uri = zreq.uri;
 		rd.headers = zreq.headers;
-		serverReqs[zreq.ids[0].id] = rd;
+		serverReqs[zreq.ids[0].id.asQByteArray()] = rd;
 
 		handleServerIn(zreq);
 	}
@@ -302,10 +302,10 @@ private:
 			return;
 		}
 
-		serverReqs[zreq.ids[0].id].body += zreq.body;
+		serverReqs[zreq.ids[0].id.asQByteArray()].body += zreq.body.asQByteArray();
 
 		if(zreq.type == ZhttpRequestPacket::Data)
-			requestBody += zreq.body;
+			requestBody += zreq.body.asQByteArray();
 
 		if(zreq.more)
 		{
@@ -317,7 +317,7 @@ private:
 				zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
-				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+				QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 				zhttpServerOutSock->write(QList<QByteArray>() << buf);
 			}
 
@@ -337,7 +337,7 @@ private:
 			zresp.code = 101;
 			zresp.reason = "Switching Protocols";
 			zresp.credits = 200000;
-			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 			zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 			// send message
@@ -346,7 +346,7 @@ private:
 			zresp.code = -1;
 			zresp.reason.clear();
 			zresp.body = "hello world";
-			buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 			zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 			return;
@@ -356,7 +356,7 @@ private:
 		{
 			// close
 			zresp.type = ZhttpResponsePacket::Close;
-			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 			zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 			return;
@@ -461,7 +461,7 @@ private:
 			}
 		}
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
-		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+		QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 		// zero out so we can accept another request
