@@ -30,6 +30,7 @@ public:
 	CowString(const CowString &other): inner_(other.inner_) {}
 	CowString(const char *str) : inner_(str) {}
 	CowString(const QString &other) : inner_(other) {}
+	CowString & operator=(const CowString &other) { inner_ = other.inner_; return *this; }
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 

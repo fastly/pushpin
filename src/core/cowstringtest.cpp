@@ -63,6 +63,10 @@ static void methods()
 
 static void operators()
 {
+	CowString a;
+	a = CowString("hello");
+	TEST_ASSERT_EQ(a, "hello");
+
 	TEST_ASSERT(CowString("hello") == CowString("hello"));
 	TEST_ASSERT(CowString("hello") == "hello");
 	TEST_ASSERT("hello" == CowString("hello"));

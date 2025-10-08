@@ -111,7 +111,10 @@ static void methods()
 
 static void operators()
 {
-	CowByteArray a("hello");
+	CowByteArray a;
+	a = CowByteArray("hello");
+	TEST_ASSERT_EQ(a, "hello");
+
 	TEST_ASSERT_EQ(std::as_const(a)[1], 'e');
 	TEST_ASSERT_EQ(a[1], 'e');
 

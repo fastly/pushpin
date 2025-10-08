@@ -86,6 +86,7 @@ public:
 	CowByteArray(const char *data, ssize_t size = -1) : inner_(data, size) {}
 	CowByteArray(ssize_t size, char ch) : inner_(size, ch) {}
 	CowByteArray(const QByteArray &other) : inner_(other) {}
+	CowByteArray & operator=(const CowByteArray &other) { inner_ = other.inner_; return *this; }
 
 	bool isNull() const { return inner_.isNull(); }
 	bool isEmpty() const { return inner_.isEmpty(); }
