@@ -1854,8 +1854,13 @@ private:
 
 	void removeSessionChannels(WsSession *s)
 	{
-		foreach(const QString &channel, s->channels)
+		QHashIterator<QString, Instruct::Channel> it(s->channels);
+		while(it.hasNext())
+		{
+			it.next();
+			const QString &channel = it.key();
 			removeSessionChannel(s, channel);
+		}
 	}
 
 	static void hs_subscribe_cb(void *data, std::tuple<HttpSession *, const QString &> value)
@@ -2648,8 +2653,12 @@ private:
 						}
 
 						QString channel = s->channelPrefix + cm.channel;
-						s->channels += channel;
-						s->channelFilters[channel] = cm.filters;
+
+						Instruct::Channel c;
+						c.name = cm.channel;
+						c.filters = cm.filters;
+
+						s->channels.insert(channel, c);
 
 						if(!cs.wsSessionsByChannel.contains(channel))
 							cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
@@ -2676,7 +2685,6 @@ private:
 					if(!s->implicitChannels.contains(channel))
 					{
 						s->channels.remove(channel);
-						s->channelFilters.remove(channel);
 
 						removeSessionChannel(s, channel);
 					}
@@ -2782,8 +2790,12 @@ private:
 			else if(item.type == WsControlPacket::Item::Subscribe)
 			{
 				QString channel = QString::fromUtf8(item.channel);
-				s->channels += channel;
+
 				s->implicitChannels += channel;
+
+				Instruct::Channel c;
+				c.name = channel;
+				s->channels.insert(channel, c);
 
 				if(!cs.wsSessionsByChannel.contains(channel))
 					cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
