@@ -327,8 +327,6 @@ public:
 		QCoreApplication::setApplicationVersion(Config::get().version);
 
 		ProxyArgsData args(argsFfi);
-		Settings settings(args.configFile);
-		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
 
 		// Set the log level
 		if(args.logLevel != -1)
@@ -353,12 +351,16 @@ public:
 			QFile file(args.configFile);
 			if(!file.open(QIODevice::ReadOnly))
 			{
-				log_error("failed to open %s", qPrintable(args.configFile));
+				log_error("failed to open config file: %s", qPrintable(args.configFile));
 				return 1;
 			}
 		}
 
 		QDir configDir = QFileInfo(args.configFile).absoluteDir();
+
+		Settings settings(args.configFile);
+		if (!args.ipcPrefix.isEmpty()) settings.setIpcPrefix(args.ipcPrefix);
+
 		QStringList services = settings.value("runner/services").toStringList();
 
 		int workerCount = settings.value("proxy/workers", 1).toInt();
