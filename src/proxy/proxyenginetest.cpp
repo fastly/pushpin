@@ -615,7 +615,7 @@ public:
 
 		wrapper->startHttp();
 
-		domainMap = new DomainMap(configDir.filePath("routes.test"), true);
+		domainMap = new DomainMap(configDir.filePath("routes.test"));
 
 		engine = new Engine(domainMap);
 

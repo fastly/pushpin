@@ -33,7 +33,6 @@
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
-#include <QCoreApplication>
 #include "log.h"
 #include "timer.h"
 #include "defercall.h"
@@ -789,19 +788,12 @@ private:
 class DomainMap::Thread
 {
 public:
-	bool newEventLoop;
 	QString fileName;
 	std::thread thread;
 	std::unique_ptr<EventLoop> loop;
-	std::unique_ptr<QEventLoop> qloop;
 	std::unique_ptr<Worker> worker;
 	QMutex m;
 	QWaitCondition w;
-
-	Thread() :
-		newEventLoop(false)
-	{
-	}
 
 	~Thread()
 	{
@@ -809,10 +801,7 @@ public:
 		{
 			worker->deferCall.defer([&] {
 				// NOTE: called from worker thread
-				if(newEventLoop)
-					loop->exit(0);
-				else
-					qloop->quit();
+				loop->exit(0);
 			});
 		}
 
@@ -841,24 +830,8 @@ public:
 		// will unlock during exec
 		m.lock();
 
-		int timersMax = WORKER_THREAD_TIMERS;
-
-		if(newEventLoop)
-		{
-			log_debug("domainmap: using new event loop");
-
-			int socketNotifiersMax = WORKER_THREAD_SOCKETNOTIFIERS;
-
-			int registrationsMax = timersMax + socketNotifiersMax;
-			loop = std::make_unique<EventLoop>(registrationsMax);
-		}
-		else
-		{
-			// for qt event loop, timer subsystem must be explicitly initialized
-			Timer::init(timersMax);
-
-			qloop = std::make_unique<QEventLoop>();
-		}
+		int registrationsMax = WORKER_THREAD_TIMERS + WORKER_THREAD_SOCKETNOTIFIERS;
+		loop = std::make_unique<EventLoop>(registrationsMax);
 
 		worker = std::make_unique<Worker>();
 		worker->fileName = fileName;
@@ -870,31 +843,10 @@ public:
 
 		worker->deferCall.defer([=] { worker->start(); });
 
-		if(newEventLoop)
-			loop->exec();
-		else
-			qloop->exec();
+		loop->exec();
 
 		worker.reset();
-
-		if(!newEventLoop)
-		{
-			// ensure deferred deletes are processed
-			QCoreApplication::instance()->sendPostedEvents();
-		}
-
-		// deinit here, after all event loop activity has completed
-
-		if(!newEventLoop)
-		{
-			DeferCall::cleanup();
-			Timer::deinit();
-		}
-
-		if(newEventLoop)
-			loop.reset();
-		else
-			qloop.reset();
+		loop.reset();
 	}
 };
 
@@ -918,10 +870,9 @@ public:
 		delete thread;
 	}
 
-	void start(bool newEventLoop, const QString &fileName = QString())
+	void start(const QString &fileName = QString())
 	{
 		thread = new Thread;
-		thread->newEventLoop = newEventLoop;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -945,16 +896,16 @@ private:
 	}
 };
 
-DomainMap::DomainMap(bool newEventLoop)
+DomainMap::DomainMap()
 {
 	d = new Private(this);
-	d->start(newEventLoop);
+	d->start();
 }
 
-DomainMap::DomainMap(const QString &fileName, bool newEventLoop)
+DomainMap::DomainMap(const QString &fileName)
 {
 	d = new Private(this);
-	d->start(newEventLoop, fileName);
+	d->start(fileName);
 }
 
 DomainMap::~DomainMap()

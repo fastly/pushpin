@@ -22,12 +22,12 @@
  */
 
 #include <assert.h>
+#include <unistd.h>
 #include <string>
 #include <vector>
 #include <thread>
 #include <pthread.h>
 #include <boost/algorithm/string.hpp>
-#include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
@@ -158,13 +158,11 @@ public:
 	QWaitCondition w;
 	Engine::Configuration config;
 	DomainMap *domainMap;
-	bool newEventLoop;
 	std::unique_ptr<EngineWorker> worker;
 
-	EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap, bool _newEventLoop) :
+	EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap) :
 		config(_config),
-		domainMap(_domainMap),
-		newEventLoop(_newEventLoop)
+		domainMap(_domainMap)
 	{
 	}
 
@@ -228,26 +226,11 @@ public:
 		// enough timers for sessions and zroutes, plus an extra 100 for misc
 		int timersMax = (config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100;
 
-		std::unique_ptr<EventLoop> loop;
-		std::unique_ptr<QEventLoop> qloop;
+		// enough for zroutes and prometheus requests, plus an extra 100 for misc
+		int socketNotifiersMax = (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) + (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
 
-		if(newEventLoop)
-		{
-			log_debug("worker %d: using new event loop", config.id);
-
-			// enough for zroutes and prometheus requests, plus an extra 100 for misc
-			int socketNotifiersMax = (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) + (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
-
-			int registrationsMax = timersMax + socketNotifiersMax;
-			loop = std::make_unique<EventLoop>(registrationsMax);
-		}
-		else
-		{
-			// for qt event loop, timer subsystem must be explicitly initialized
-			Timer::init(timersMax);
-
-			qloop = std::make_unique<QEventLoop>();
-		}
+		int registrationsMax = timersMax + socketNotifiersMax;
+		std::unique_ptr<EventLoop> loop = std::make_unique<EventLoop>(registrationsMax);
 
 		worker = std::make_unique<EngineWorker>(config, domainMap);
 
@@ -264,19 +247,13 @@ public:
 
 			log_debug("worker %d: stopped", config.id);
 
-			if(newEventLoop)
-				loop->exit(0);
-			else
-				qloop->quit();
+			loop->exit(0);
 		});
 
 		worker->error.connect([&] {
 			worker.reset();
 
-			if(newEventLoop)
-				loop->exit(0);
-			else
-				qloop->quit();
+			loop->exit(0);
 
 			// unblock start()
 			w.wakeOne();
@@ -285,24 +262,7 @@ public:
 
 		worker->deferCall.defer([=] { worker->start(); });
 
-		if(newEventLoop)
-			loop->exec();
-		else
-			qloop->exec();
-
-		if(!newEventLoop)
-		{
-			// ensure deferred deletes are processed
-			QCoreApplication::instance()->sendPostedEvents();
-		}
-
-		// deinit here, after all event loop activity has completed
-
-		if(!newEventLoop)
-		{
-			DeferCall::cleanup();
-			Timer::deinit();
-		}
+		loop->exec();
 	}
 };
 
@@ -323,9 +283,6 @@ class App::Private
 public:
 	static int run(const ffi::ProxyCliArgs *argsFfi)
 	{
-		QCoreApplication::setApplicationName("pushpin-proxy");
-		QCoreApplication::setApplicationVersion(Config::get().version);
-
 		ProxyArgsData args(argsFfi);
 
 		// Set the log level
@@ -480,7 +437,7 @@ public:
 
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
-		config.clientId = "proxy_" + QByteArray::number(QCoreApplication::applicationPid());
+		config.clientId = "proxy_" + QByteArray::number(getpid());
 		if(!services.contains("mongrel2") && (!connmgr_in_specs.isEmpty() || !connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
 			config.serverInSpecs = connmgr_in_specs;
@@ -540,32 +497,20 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, args.routeLines, routesFile, workerCount, true);
+		return runLoop(config, args.routeLines, routesFile, workerCount);
 	}
 
 private:
-	static int runLoop(const Engine::Configuration &config, const QStringList &routeLines, const QString &routesFile, int workerCount, bool newEventLoop)
+	static int runLoop(const Engine::Configuration &config, const QStringList &routeLines, const QString &routesFile, int workerCount)
 	{
 		// plenty for the main thread
 		int timersMax = 100;
 
-		std::unique_ptr<EventLoop> loop;
+		// for processquit
+		int socketNotifiersMax = 1;
 
-		if(newEventLoop)
-		{
-			log_debug("using new event loop");
-
-			// for processquit
-			int socketNotifiersMax = 1;
-
-			int registrationsMax = timersMax + socketNotifiersMax;
-			loop = std::make_unique<EventLoop>(registrationsMax);
-		}
-		else
-		{
-			// for qt event loop, timer subsystem must be explicitly initialized
-			Timer::init(timersMax);
-		}
+		int registrationsMax = timersMax + socketNotifiersMax;
+		std::unique_ptr<EventLoop> loop = std::make_unique<EventLoop>(registrationsMax);
 
 		std::unique_ptr<DomainMap> domainMap;
 		std::list<EngineThread*> threads;
@@ -574,12 +519,12 @@ private:
 		deferCall.defer([&] {
 			if(!routeLines.isEmpty())
 			{
-				domainMap = std::make_unique<DomainMap>(newEventLoop);
+				domainMap = std::make_unique<DomainMap>();
 				foreach(const QString &line, routeLines)
 					domainMap->addRouteLine(line);
 			}
 			else
-				domainMap = std::make_unique<DomainMap>(routesFile, newEventLoop);
+				domainMap = std::make_unique<DomainMap>(routesFile);
 
 			domainMap->changed.connect([&] {
 				for(EngineThread *t : threads)
@@ -602,10 +547,7 @@ private:
 
 				log_debug("stopped");
 
-				if(newEventLoop)
-					loop->exit(0);
-				else
-					QCoreApplication::exit(0);
+				loop->exit(0);
 			});
 
 			ProcessQuit::instance()->hup.connect([&] {
@@ -636,7 +578,7 @@ private:
 					wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
 				}
 
-				EngineThread *t = new EngineThread(wconfig, domainMap.get(), newEventLoop);
+				EngineThread *t = new EngineThread(wconfig, domainMap.get());
 				if(!t->start())
 				{
 					delete t;
@@ -645,12 +587,7 @@ private:
 						delete t;
 
 					threads.clear();
-
-					if(newEventLoop)
-						loop->exit(1);
-					else
-						QCoreApplication::exit(1);
-
+					loop->exit(1);
 					return;
 				}
 
@@ -660,27 +597,7 @@ private:
 			log_info("started");
 		});
 
-		int ret;
-		if(newEventLoop)
-			ret = loop->exec();
-		else
-			ret = QCoreApplication::exec();
-
-		if(!newEventLoop)
-		{
-			// ensure deferred deletes are processed
-			QCoreApplication::instance()->sendPostedEvents();
-		}
-
-		// deinit here, after all event loop activity has completed
-
-		if(!newEventLoop)
-		{
-			DeferCall::cleanup();
-			Timer::deinit();
-		}
-
-		return ret;
+		return loop->exec();
 	}
 };
 
@@ -697,13 +614,6 @@ extern "C" {
 
 int proxy_init(const ffi::ProxyCliArgs *argsFfi)
 {	
-	// Create dummy argc/argv for QCoreApplication
-	int argc = 1;
-	char app_name[] = "pushpin-proxy";
-	char* argv[] = { app_name, nullptr };
-	
-	QCoreApplication qapp(argc, argv);
-
 	App app;
 	return app.run(argsFfi);
 }
