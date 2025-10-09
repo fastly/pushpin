@@ -142,8 +142,8 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool ge
 	foreach(const HttpHeader &h, hdata.headers)
 	{
 		QVariantList vheader;
-		vheader += h.first;
-		vheader += h.second;
+		vheader += h.first.asQByteArray();
+		vheader += h.second.asQByteArray();
 		vheaders += QVariant(vheader);
 	}
 

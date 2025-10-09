@@ -106,7 +106,7 @@ static QByteArray createResponseHeader(int code, const QByteArray &reason, const
 {
 	QByteArray out = "HTTP/1.1 " + QByteArray::number(code) + ' ' + reason + "\r\n";
 	foreach(const HttpHeader &h, headers)
-		out += h.first + ": " + h.second + "\r\n";
+		out += (h.first + ": " + h.second + "\r\n").asQByteArray();
 	out += "\r\n";
 	return out;
 }
@@ -1753,7 +1753,7 @@ public:
 							s->responseHeadersOnly = true;
 
 						HttpHeaders headers = zresp.headers;
-						QList<QByteArray> connHeaders = headers.takeAll("Connection");
+						QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 						foreach(const QByteArray &h, connHeaders)
 							headers.removeAll(h);
 
@@ -1846,7 +1846,7 @@ public:
 						s->conn->flowControl = false;
 
 					HttpHeaders headers = zresp.headers;
-					QList<QByteArray> connHeaders = headers.takeAll("Connection");
+					QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 					foreach(const QByteArray &h, connHeaders)
 						headers.removeAll(h);
 					headers.removeAll("Transfer-Encoding");
@@ -1897,7 +1897,7 @@ public:
 			if(s->mode == WebSocket && zresp.condition == "rejected")
 			{
 				HttpHeaders headers = zresp.headers;
-				QList<QByteArray> connHeaders = headers.takeAll("Connection");
+				QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 				foreach(const QByteArray &h, connHeaders)
 					headers.removeAll(h);
 
@@ -2499,7 +2499,7 @@ public:
 					scheme = "ws";
 			}
 
-			QByteArray host = mreq.headers.get("Host");
+			QByteArray host = mreq.headers.get("Host").asQByteArray();
 			if(host.isEmpty())
 				host = "localhost";
 

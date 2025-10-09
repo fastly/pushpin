@@ -293,7 +293,7 @@ public:
 
 		QByteArray origin;
 		if(in.contains("Origin"))
-			origin = in.get("Origin");
+			origin = in.get("Origin").asQByteArray();
 		else
 			origin = "*";
 		*out += HttpHeader("Access-Control-Allow-Origin", origin);
@@ -434,7 +434,7 @@ public:
 			HttpHeaders headers;
 			headers += HttpHeader("ETag", iframeHtmlEtag);
 
-			QByteArray ifNoneMatch = s->req->requestHeaders().get("If-None-Match");
+			QByteArray ifNoneMatch = s->req->requestHeaders().get("If-None-Match").asQByteArray();
 			if(ifNoneMatch == iframeHtmlEtag)
 			{
 				respond(s->req, 304, "Not Modified", headers, QByteArray());

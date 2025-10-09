@@ -898,7 +898,7 @@ public:
 		incCounter(Stats::ServerHeaderBytesReceived, ZhttpManager::estimateResponseHeaderBytes(101, outSock->responseReason(), headers));
 
 		// don't proxy extensions, as we may not know how to handle them
-		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions");
+		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions").asQByteArrayList();
 
 		HttpExtension grip = getExtension(wsExtensions, "grip");
 		if(!grip.isNull() || !target.subscriptions.isEmpty())

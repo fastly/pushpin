@@ -573,8 +573,8 @@ public:
 			QVariantMap vheaders;
 			foreach(const HttpHeader h, headers)
 			{
-				if(!vheaders.contains(h.first))
-					vheaders[h.first] = h.second;
+				if(!vheaders.contains(h.first.asQByteArray()))
+					vheaders[h.first.asQByteArray()] = h.second.asQByteArray();
 			}
 
 			QByteArray headersJson = QJsonDocument(QJsonObject::fromVariantMap(vheaders)).toJson(QJsonDocument::Compact);

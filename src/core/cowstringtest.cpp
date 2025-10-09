@@ -63,14 +63,17 @@ static void methods()
 
 static void operators()
 {
+	// operator=
 	CowString a;
 	a = CowString("hello");
 	TEST_ASSERT_EQ(a, "hello");
 
+	// operator==
 	TEST_ASSERT(CowString("hello") == CowString("hello"));
 	TEST_ASSERT(CowString("hello") == "hello");
 	TEST_ASSERT("hello" == CowString("hello"));
 
+	// operator!=
 	TEST_ASSERT(CowString("hello") != CowString("world"));
 	TEST_ASSERT(CowString("hello") != "world");
 	TEST_ASSERT("hello" != CowString("world"));

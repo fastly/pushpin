@@ -533,7 +533,7 @@ private:
 		}
 		else
 		{
-			hold = acceptHeaders.get("Grip-Hold");
+			hold = acceptHeaders.get("Grip-Hold").asQByteArray();
 		}
 
 		QVariantList vheaders = vresponse["headers"].toList();
@@ -943,8 +943,8 @@ static void acceptResponse(TestState &state, std::function<void (int)> loop_wait
 
 	engine->statsManager()->flushReport(QByteArray());
 
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("response"));
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), CowByteArray("response"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), CowByteArray("test-channel"));
 	TEST_ASSERT(wrapper->acceptIn.isEmpty());
 
 	HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
@@ -984,8 +984,8 @@ static void acceptStream(TestState &state, std::function<void (int)> loop_wait)
 
 	engine->statsManager()->flushReport(QByteArray());
 
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), CowByteArray("stream"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), CowByteArray("test-channel"));
 	TEST_ASSERT_EQ(wrapper->acceptIn, QByteArray("stream open\n"));
 	TEST_ASSERT(wrapper->in.isEmpty());
 
@@ -1111,8 +1111,8 @@ static void passthroughThenAcceptStream(TestState &state, std::function<void (in
 
 	TEST_ASSERT_EQ(wrapper->in.size(), 110001);
 	TEST_ASSERT_EQ(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Hold"), CowByteArray("stream"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Channel"), CowByteArray("test-channel"));
 	TEST_ASSERT(wrapper->acceptIn.isEmpty());
 
 	HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
@@ -1155,7 +1155,7 @@ static void passthroughThenAcceptNext(TestState &state, std::function<void (int)
 	TEST_ASSERT_EQ(wrapper->in.size(), 110001);
 	TEST_ASSERT_EQ(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
 	TEST_ASSERT(wrapper->acceptIn.isEmpty());
-	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Link"), QByteArray("</path3>; rel=next"));
+	TEST_ASSERT_EQ(wrapper->acceptHeaders.get("Grip-Link"), CowByteArray("</path3>; rel=next"));
 
 	HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 

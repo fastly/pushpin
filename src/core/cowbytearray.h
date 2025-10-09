@@ -97,14 +97,22 @@ public:
 
 	ssize_t indexOf(char ch, ssize_t from = 0) const { return inner_.indexOf(ch, from); }
 	CowByteArray mid(ssize_t pos, ssize_t len = -1) const { return inner_.mid(pos, len); }
+	CowByteArray trimmed() const { return inner_.trimmed(); }
 
 	void clear() { inner_.clear(); }
 	void resize(ssize_t size) { inner_.resize(size); }
 
 	char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }
 	char & operator[](ssize_t i) { return inner_[(qsizetype)i]; }
+	CowByteArray & operator+=(const CowByteArray &other) { inner_ += other.inner_; return *this; }
+	CowByteArray & operator+=(char ch) { inner_ += ch; return *this; }
+	CowByteArray & operator+=(const char *str) { inner_ += str; return *this; }
 
 	const QByteArray & asQByteArray() const { return inner_; }
+
+	friend CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs);
+	friend CowByteArray operator+(const CowByteArray &lhs, const char *rhs);
+	friend CowByteArray operator+(const char *lhs, const CowByteArray &rhs);
 
 	friend bool operator==(const CowByteArray &lhs, const CowByteArray &rhs);
 	friend bool operator==(const CowByteArray &lhs, const char *const &rhs);
@@ -115,6 +123,10 @@ private:
 
 	QByteArray inner_;
 };
+
+inline CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs) { return lhs.inner_ + rhs.inner_; }
+inline CowByteArray operator+(const CowByteArray &lhs, const char *rhs) { return lhs.inner_ + rhs; }
+inline CowByteArray operator+(const char *lhs, const CowByteArray &rhs) { return lhs + rhs.inner_; }
 
 inline bool operator==(const CowByteArray &lhs, const CowByteArray &rhs) { return lhs.inner_ == rhs.inner_; }
 inline bool operator==(const CowByteArray &lhs, const char *const &rhs) { return lhs.inner_ == rhs; }
@@ -185,6 +197,7 @@ public:
 
 	bool isEmpty() const { return inner_.isEmpty(); }
 	ssize_t count() const { return inner_.count(); }
+	bool contains(const CowByteArray &a) const { return inner_.contains(a.asQByteArray()); }
 
 	iterator begin() { return inner_.begin(); }
 	const_iterator begin() const { return inner_.begin(); }

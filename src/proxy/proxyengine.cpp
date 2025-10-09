@@ -479,9 +479,9 @@ public:
 
 	bool isXForwardedProtocolTls(const HttpHeaders &headers)
 	{
-		QByteArray xfp = headers.get("X-Forwarded-Proto");
+		QByteArray xfp = headers.get("X-Forwarded-Proto").asQByteArray();
 		if(xfp.isEmpty())
-			xfp = headers.get("X-Forwarded-Protocol");
+			xfp = headers.get("X-Forwarded-Protocol").asQByteArray();
 		return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
 	}
 
@@ -530,7 +530,7 @@ public:
 				req->setIsTls(true);
 
 			if(config.acceptPushpinRoute)
-				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
+				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
 		}
 
 		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
@@ -627,7 +627,7 @@ public:
 		QString routeId;
 
 		if(config.acceptPushpinRoute)
-			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route"));
+			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route").asQByteArray());
 
 		// look up the route
 		DomainMap::Entry route;
