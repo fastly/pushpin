@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-use crate::core::config::get_config_file;
+use crate::core::config::default_config_file;
 use crate::core::version;
 use clap::{arg, Parser};
-use std::env;
 use std::ffi::CString;
 use std::path::PathBuf;
 
@@ -57,17 +56,18 @@ pub struct CliArgs {
 impl CliArgs {
     /// Verifies the command line arguments.
     pub fn verify(mut self) -> Self {
-        let work_dir = env::current_dir().unwrap_or_default();
-        let config_path: Option<PathBuf> = self.config_file.as_ref().map(PathBuf::from);
+        let config_file = self
+            .config_file
+            .map(PathBuf::from)
+            .unwrap_or_else(default_config_file);
 
-        // Resolve the config file path using get_config_file
-        self.config_file = match get_config_file(&work_dir, config_path) {
-            Ok(path) => Some(path.to_string_lossy().to_string()),
-            Err(e) => {
-                eprintln!("error: failed to find configuration file: {}", e);
-                std::process::exit(1);
-            }
-        };
+        // FIXME: don't put back as a string after resolving
+        self.config_file = Some(
+            config_file
+                .to_str()
+                .expect("path sourced from string should convert")
+                .to_string(),
+        );
 
         if self.verbose {
             self.log_level = 3;
@@ -81,12 +81,7 @@ impl CliArgs {
             .config_file
             .as_ref()
             .map_or_else(
-                || {
-                    let work_dir = std::env::current_dir().unwrap_or_default();
-                    let default_config = get_config_file(&work_dir, None)
-                        .unwrap_or_else(|_| "examples/config/pushpin.conf".into());
-                    CString::new(default_config.to_string_lossy().to_string()).unwrap()
-                },
+                || CString::new("").unwrap(),
                 |s| CString::new(s.as_str()).unwrap(),
             )
             .into_raw();
@@ -120,13 +115,15 @@ impl CliArgs {
 }
 
 pub mod ffi {
+    use std::ffi::{c_char, c_int, c_uint};
+
     #[repr(C)]
     pub struct HandlerCliArgs {
-        pub config_file: *mut libc::c_char,
-        pub log_file: *mut libc::c_char,
-        pub log_level: libc::c_uint,
-        pub ipc_prefix: *mut libc::c_char,
-        pub port_offset: libc::c_int,
+        pub config_file: *mut c_char,
+        pub log_file: *mut c_char,
+        pub log_level: c_uint,
+        pub ipc_prefix: *mut c_char,
+        pub port_offset: c_int,
     }
 }
 
@@ -174,8 +171,6 @@ mod tests {
             port_offset: Some(8080),
         };
 
-        let args_ffi = args.to_ffi();
-
         // Test verify() method
         let verified_args = args.verify();
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
@@ -184,6 +179,8 @@ mod tests {
         assert_eq!(verified_args.verbose, false);
         assert_eq!(verified_args.ipc_prefix, Some("ipc".to_string()));
         assert_eq!(verified_args.port_offset, Some(8080));
+
+        let args_ffi = verified_args.to_ffi();
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -224,14 +221,9 @@ mod tests {
             port_offset: None,
         };
 
-        let empty_args_ffi = empty_args.to_ffi();
-
         // Test verify() with empty args
         let verified_empty_args = empty_args.verify();
-        let default_config_file = get_config_file(&env::current_dir().unwrap(), None)
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let default_config_file = default_config_file().to_str().unwrap().to_string();
         assert_eq!(
             verified_empty_args.config_file,
             Some(default_config_file.clone())
@@ -241,6 +233,8 @@ mod tests {
         assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert_eq!(verified_empty_args.port_offset, None);
+
+        let empty_args_ffi = verified_empty_args.to_ffi();
 
         // Test conversion to C++-compatible struct
         unsafe {

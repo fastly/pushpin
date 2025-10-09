@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-use crate::core::config::get_config_file;
+use crate::core::config::default_config_file;
 use crate::core::version;
 use clap::{arg, Parser};
-use std::env;
-use std::ffi::CString;
+use std::ffi::{c_char, CString};
 use std::path::PathBuf;
+use std::slice;
 
 // Struct to hold the command line arguments
 #[derive(Parser, Debug)]
@@ -57,17 +57,18 @@ pub struct CliArgs {
 impl CliArgs {
     /// Verifies the command line arguments.
     pub fn verify(mut self) -> Self {
-        let work_dir = env::current_dir().unwrap_or_default();
-        let config_path: Option<PathBuf> = self.config_file.as_ref().map(PathBuf::from);
+        let config_file = self
+            .config_file
+            .map(PathBuf::from)
+            .unwrap_or_else(default_config_file);
 
-        // Resolve the config file path using get_config_file
-        self.config_file = match get_config_file(&work_dir, config_path) {
-            Ok(path) => Some(path.to_string_lossy().to_string()),
-            Err(e) => {
-                eprintln!("error: failed to find configuration file: {}", e);
-                std::process::exit(1);
-            }
-        };
+        // FIXME: don't put back as a string after resolving
+        self.config_file = Some(
+            config_file
+                .to_str()
+                .expect("path sourced from string should convert")
+                .to_string(),
+        );
 
         if self.verbose {
             self.log_level = 3;
@@ -81,12 +82,7 @@ impl CliArgs {
             .config_file
             .as_ref()
             .map_or_else(
-                || {
-                    let work_dir = std::env::current_dir().unwrap_or_default();
-                    let default_config = get_config_file(&work_dir, None)
-                        .unwrap_or_else(|_| "examples/config/pushpin.conf".into());
-                    CString::new(default_config.to_string_lossy().to_string()).unwrap()
-                },
+                || CString::new("").unwrap(),
                 |s| CString::new(s.as_str()).unwrap(),
             )
             .into_raw();
@@ -109,47 +105,47 @@ impl CliArgs {
             )
             .into_raw();
 
-        let (routes, routes_count) = if !self.route.is_empty() {
-            // Allocate array of string pointers
-            let routes_array = unsafe {
-                libc::malloc(self.route.len() * std::mem::size_of::<*mut libc::c_char>())
-                    as *mut *mut libc::c_char
-            };
+        let mut routes: Vec<*mut c_char> = Vec::new();
 
-            // Convert each route to CString and store pointer in array
-            for (i, item) in self.route.iter().enumerate() {
-                let c_string = CString::new(item.to_string()).unwrap().into_raw();
-                unsafe {
-                    *routes_array.add(i) = c_string;
-                }
-            }
+        // Convert each route to CString and store pointer in array
+        for item in &self.route {
+            let item = item.as_bytes();
 
-            (routes_array, self.route.len() as libc::c_uint)
-        } else {
-            let routes_array = unsafe { libc::malloc(0) as *mut *mut libc::c_char };
-            (routes_array, 0)
-        };
+            // ensure no trailing nul byte
+            let end = item.iter().position(|b| *b == 0).unwrap_or(item.len());
+            let item = &item[..end];
+
+            let c_string = CString::new(item).unwrap().into_raw();
+            routes.push(c_string);
+        }
+
+        let routes = routes.into_boxed_slice();
+
+        let routes_count = routes.len();
+        let routes: *mut [*mut c_char] = Box::into_raw(routes);
 
         ffi::ProxyCliArgs {
             config_file,
             log_file,
             log_level: self.log_level,
             ipc_prefix,
-            routes,
+            routes: routes as *mut *mut c_char,
             routes_count,
         }
     }
 }
 
 pub mod ffi {
+    use std::ffi::{c_char, c_uint};
+
     #[repr(C)]
     pub struct ProxyCliArgs {
-        pub config_file: *mut libc::c_char,
-        pub log_file: *mut libc::c_char,
-        pub log_level: libc::c_uint,
-        pub ipc_prefix: *mut libc::c_char,
-        pub routes: *mut *mut libc::c_char,
-        pub routes_count: libc::c_uint,
+        pub config_file: *mut c_char,
+        pub log_file: *mut c_char,
+        pub log_level: c_uint,
+        pub ipc_prefix: *mut c_char,
+        pub routes: *mut *mut c_char,
+        pub routes_count: libc::size_t,
     }
 }
 
@@ -177,15 +173,18 @@ pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgs) {
         let _ = CString::from_raw(ffi_args.ipc_prefix);
     }
     if !ffi_args.routes.is_null() {
-        // Free each individual route string
-        for i in 0..ffi_args.routes_count {
-            let route_ptr = *ffi_args.routes.add(i as usize);
-            if !route_ptr.is_null() {
-                let _ = CString::from_raw(route_ptr);
-            }
-        }
+        // SAFETY: the raw parts were originally derived from a boxed slice
+        let routes = unsafe {
+            Box::from_raw(slice::from_raw_parts_mut(
+                ffi_args.routes,
+                ffi_args.routes_count,
+            ))
+        };
 
-        libc::free(ffi_args.routes as *mut libc::c_void);
+        // Free each individual route string
+        for item in routes.iter() {
+            let _ = CString::from_raw(*item);
+        }
     }
 }
 
@@ -209,8 +208,6 @@ mod tests {
             route: vec!["route1".to_string(), "route2".to_string()],
         };
 
-        let args_ffi = args.to_ffi();
-
         // Test verify() method
         let verified_args = args.verify();
         assert_eq!(verified_args.config_file, Some(config_test_file.clone()));
@@ -222,6 +219,8 @@ mod tests {
             verified_args.route,
             vec!["route1".to_string(), "route2".to_string()]
         );
+
+        let args_ffi = verified_args.to_ffi();
 
         // Test conversion to C++-compatible struct
         unsafe {
@@ -277,14 +276,9 @@ mod tests {
             route: Vec::new(),
         };
 
-        let empty_args_ffi = empty_args.to_ffi();
-
         // Test verify() with empty args
         let verified_empty_args = empty_args.verify();
-        let default_config_file = get_config_file(&env::current_dir().unwrap(), None)
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let default_config_file = default_config_file().to_str().unwrap().to_string();
         assert_eq!(
             verified_empty_args.config_file,
             Some(default_config_file.clone())
@@ -294,6 +288,8 @@ mod tests {
         assert_eq!(verified_empty_args.verbose, false);
         assert_eq!(verified_empty_args.ipc_prefix, None);
         assert!(verified_empty_args.route.is_empty());
+
+        let empty_args_ffi = verified_empty_args.to_ffi();
 
         // Test conversion to C++-compatible struct
         unsafe {
