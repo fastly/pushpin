@@ -167,16 +167,16 @@ public:
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			if(!responses.contains(zresp.ids.first().id))
+			if(!responses.contains(zresp.ids.first().id.asQByteArray()))
 			{
 				HttpResponseData rd;
 				rd.code = zresp.code;
-				rd.reason = zresp.reason;
+				rd.reason = zresp.reason.asQByteArray();
 				rd.headers = zresp.headers;
-				responses[zresp.ids.first().id] = rd;
+				responses[zresp.ids.first().id.asQByteArray()] = rd;
 			}
 
-			responses[zresp.ids.first().id].body += zresp.body;
+			responses[zresp.ids.first().id.asQByteArray()].body += zresp.body.asQByteArray();
 
 			if(!zresp.more)
 				finished = true;
@@ -231,7 +231,7 @@ public:
 		}
 
 		if(zreq.type == ZhttpRequestPacket::Data)
-			requestBody += zreq.body;
+			requestBody += zreq.body.asQByteArray();
 
 		if(zreq.more)
 		{
@@ -243,7 +243,7 @@ public:
 				zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
-				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+				QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 				zhttpServerOutSock->write(QList<QByteArray>() << buf);
 			}
 
@@ -263,7 +263,7 @@ public:
 		zresp.body = "this is what's next\n";
 
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
-		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+		QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 		// zero out so we can accept another request

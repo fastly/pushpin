@@ -23,16 +23,71 @@
 #include "test.h"
 #include "cowstring.h"
 
-static void basicUsage()
+static void constructors()
 {
-	CowString s("hello");
-	CowByteArray a = s.toUtf8();
-	TEST_ASSERT_EQ(s.asQString().toUtf8(), a.asQByteArray());
+	// default
+	CowString a;
+	TEST_ASSERT(a.isEmpty());
+
+	// char*
+	CowString b("hello");
+	TEST_ASSERT_EQ(b, "hello");
+
+	// copy
+	CowString c(b);
+	TEST_ASSERT_EQ(c, "hello");
+
+	// QString
+	QString qs("hello");
+	CowString d(qs);
+	TEST_ASSERT_EQ(d, "hello");
+}
+
+static void methods()
+{
+	// isEmpty
+	CowString empty;
+	TEST_ASSERT(empty.isEmpty());
+
+	// clear
+	CowString a("hello");
+	TEST_ASSERT(!a.isEmpty());
+	a.clear();
+	TEST_ASSERT(a.isEmpty());
+
+	// toUtf8
+	CowString b("hello");
+	CowByteArray ba = b.toUtf8();
+	TEST_ASSERT_EQ(ba, "hello");
+}
+
+static void operators()
+{
+	CowString a;
+	a = CowString("hello");
+	TEST_ASSERT_EQ(a, "hello");
+
+	TEST_ASSERT(CowString("hello") == CowString("hello"));
+	TEST_ASSERT(CowString("hello") == "hello");
+	TEST_ASSERT("hello" == CowString("hello"));
+
+	TEST_ASSERT(CowString("hello") != CowString("world"));
+	TEST_ASSERT(CowString("hello") != "world");
+	TEST_ASSERT("hello" != CowString("world"));
+}
+
+static void conversions()
+{
+	CowString a("hello");
+	TEST_ASSERT_EQ(a, "hello");
 }
 
 extern "C" int cowstring_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(basicUsage());
+	TEST_CATCH(constructors());
+	TEST_CATCH(methods());
+	TEST_CATCH(operators());
+	TEST_CATCH(conversions());
 
 	return 0;
 }

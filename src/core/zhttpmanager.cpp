@@ -359,7 +359,7 @@ public:
 			out.from = instanceId;
 			out.ids += ZhttpResponsePacket::Id(id);
 			out.type = ZhttpResponsePacket::Cancel;
-			write(type, out, packet.from, packet.routerResp);
+			write(type, out, packet.from.asQByteArray(), packet.routerResp);
 		}
 	}
 
@@ -577,10 +577,10 @@ public:
 
 			const ZhttpResponsePacket::Id &id = p.ids.first();
 
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id.asQByteArray()));
 			if(req)
 			{
-				req->handle(id.id, id.seq, p);
+				req->handle(id.id.asQByteArray(), id.seq, p);
 				if(self.expired())
 					return;
 
@@ -628,10 +628,10 @@ public:
 		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
 			// is this for a websocket?
-			ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id));
+			ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id.asQByteArray()));
 			if(sock)
 			{
-				sock->handle(id.id, id.seq, p);
+				sock->handle(id.id.asQByteArray(), id.seq, p);
 				if(self.expired())
 					return;
 
@@ -639,10 +639,10 @@ public:
 			}
 
 			// is this for an http request?
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id.asQByteArray()));
 			if(req)
 			{
-				req->handle(id.id, id.seq, p);
+				req->handle(id.id.asQByteArray(), id.seq, p);
 				if(self.expired())
 					return;
 
@@ -738,18 +738,18 @@ public:
 
 		if(p.uri.scheme() == "wss" || p.uri.scheme() == "ws")
 		{
-			ZWebSocket::Rid rid(p.from, id.id);
+			ZWebSocket::Rid rid(p.from.asQByteArray(), id.id.asQByteArray());
 
 			ZWebSocket *sock = serverSocksByRid.value(rid);
 			if(sock)
 			{
 				log_warning("zws server: received message for existing request id, canceling");
-				tryRespondCancel(WebSocketSession, id.id, p);
+				tryRespondCancel(WebSocketSession, id.id.asQByteArray(), p);
 				return;
 			}
 
 			sock = new ZWebSocket;
-			if(!sock->setupServer(q, id.id, id.seq, p))
+			if(!sock->setupServer(q, id.id.asQByteArray(), id.seq, p))
 			{
 				delete sock;
 				return;
@@ -765,18 +765,18 @@ public:
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
 		{
-			ZhttpRequest::Rid rid(p.from, id.id);
+			ZhttpRequest::Rid rid(p.from.asQByteArray(), id.id.asQByteArray());
 
 			ZhttpRequest *req = serverReqsByRid.value(rid);
 			if(req)
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
-				tryRespondCancel(HttpSession, id.id, p);
+				tryRespondCancel(HttpSession, id.id.asQByteArray(), p);
 				return;
 			}
 
 			req = new ZhttpRequest;
-			if(!req->setupServer(q, id.id, id.seq, p))
+			if(!req->setupServer(q, id.id.asQByteArray(), id.seq, p))
 			{
 				delete req;
 				return;
@@ -793,7 +793,7 @@ public:
 		else
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
-			tryRespondCancel(UnknownSession, id.id, p);
+			tryRespondCancel(UnknownSession, id.id.asQByteArray(), p);
 			return;
 		}
 	}
@@ -841,10 +841,10 @@ public:
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
 			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
 			if(sock)
 			{
-				sock->handle(id.id, id.seq, p);
+				sock->handle(id.id.asQByteArray(), id.seq, p);
 				if(self.expired())
 					return;
 
@@ -852,10 +852,10 @@ public:
 			}
 
 			// is this for an http request?
-			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
+			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
 			if(req)
 			{
-				req->handle(id.id, id.seq, p);
+				req->handle(id.id.asQByteArray(), id.seq, p);
 				if(self.expired())
 					return;
 

@@ -26,15 +26,34 @@
 class CowString
 {
 public:
+	CowString() = default;
+	CowString(const CowString &other): inner_(other.inner_) {}
+	CowString(const char *str) : inner_(str) {}
 	CowString(const QString &other) : inner_(other) {}
+	CowString & operator=(const CowString &other) { inner_ = other.inner_; return *this; }
+
+	bool isEmpty() const { return inner_.isEmpty(); }
+
+	void clear() { inner_.clear(); }
 
 	CowByteArray toUtf8() const { return inner_.toUtf8(); }
 
 	const QString & asQString() const { return inner_; }
 	QString & asQString() { return inner_; }
 
+	friend bool operator==(const CowString &lhs, const CowString &rhs);
+	friend bool operator==(const CowString &lhs, const char *const &rhs);
+	friend bool operator==(const char *const &lhs, const CowString &rhs);
+
 private:
 	QString inner_;
 };
+
+inline bool operator==(const CowString &lhs, const CowString &rhs) { return lhs.inner_ == rhs.inner_; }
+inline bool operator==(const CowString &lhs, const char *const &rhs) { return lhs.inner_ == rhs; }
+inline bool operator==(const char *const &lhs, const CowString &rhs) { return lhs == rhs.inner_; }
+inline bool operator!=(const CowString &lhs, const CowString &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const CowString &lhs, const char *const &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const char *const &lhs, const CowString &rhs) { return !(lhs == rhs); }
 
 #endif
