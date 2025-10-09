@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -110,7 +110,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 	if(response.headers.contains("Grip-Hold"))
 	{
-		QByteArray gripHoldStr = response.headers.get("Grip-Hold");
+		QByteArray gripHoldStr = response.headers.get("Grip-Hold").asQByteArray();
 		if(gripHoldStr == "response")
 		{
 			holdMode = ResponseHold;
@@ -136,8 +136,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 
 		Channel c;
-		c.name = QString::fromUtf8(gripChannel[0].first);
-		QByteArray param = gripChannel.get("prev-id");
+		c.name = QString::fromUtf8(gripChannel[0].first.asQByteArray());
+		QByteArray param = gripChannel.get("prev-id").asQByteArray();
 		if(!param.isNull())
 			c.prevId = QString::fromUtf8(param);
 
@@ -145,7 +145,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		{
 			const HttpHeaderParameter &param = gripChannel[n];
 			if(param.first == "filter")
-				c.filters += QString::fromUtf8(param.second);
+				c.filters += QString::fromUtf8(param.second.asQByteArray());
 		}
 
 		if(c.filters.count() > MESSAGEFILTERSTACK_SIZE_MAX)
@@ -160,7 +160,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	if(response.headers.contains("Grip-Timeout"))
 	{
 		bool x;
-		timeout = response.headers.get("Grip-Timeout").toInt(&x);
+		timeout = response.headers.get("Grip-Timeout").asQByteArray().toInt(&x);
 		if(!x)
 		{
 			setError(ok, errorMessage, "failed to parse Grip-Timeout");
@@ -174,19 +174,19 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 	}
 
-	exposeHeaders = response.headers.getAll("Grip-Expose-Headers");
+	exposeHeaders = response.headers.getAll("Grip-Expose-Headers").asQByteArrayList();
 
 	HttpHeaderParameters keepAliveParams = response.headers.getAsParameters("Grip-Keep-Alive");
 	if(!keepAliveParams.isEmpty())
 	{
-		QByteArray val = keepAliveParams[0].first;
+		QByteArray val = keepAliveParams[0].first.asQByteArray();
 		if(val.isEmpty())
 		{
 			setError(ok, errorMessage, "Grip-Keep-Alive cannot be empty");
 			return Instruct();
 		}
 
-		QByteArray mode = keepAliveParams.get("mode");
+		QByteArray mode = keepAliveParams.get("mode").asQByteArray();
 		if(mode.isEmpty() || mode == "idle")
 		{
 			keepAliveMode = Idle;
@@ -204,7 +204,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		if(keepAliveParams.contains("timeout"))
 		{
 			bool x;
-			keepAliveTimeout = keepAliveParams.get("timeout").toInt(&x);
+			keepAliveTimeout = keepAliveParams.get("timeout").asQByteArray().toInt(&x);
 			if(!x)
 			{
 				setError(ok, errorMessage, "failed to parse Grip-Keep-Alive timeout value");
@@ -222,7 +222,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			keepAliveTimeout = DEFAULT_RESPONSE_TIMEOUT;
 		}
 
-		QByteArray format = keepAliveParams.get("format");
+		QByteArray format = keepAliveParams.get("format").asQByteArray();
 		if(format.isEmpty() || format == "raw")
 		{
 			keepAliveData = val;
@@ -256,15 +256,15 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			return Instruct();
 		}
 
-		QString key = QString::fromUtf8(metaParam[0].first);
-		QString val = QString::fromUtf8(metaParam[0].second);
+		QString key = QString::fromUtf8(metaParam[0].first.asQByteArray());
+		QString val = QString::fromUtf8(metaParam[0].second.asQByteArray());
 
 		meta[key] = val;
 	}
 
 	newResponse = response;
 
-	QByteArray statusHeader = response.headers.get("Grip-Status");
+	QByteArray statusHeader = response.headers.get("Grip-Status").asQByteArray();
 	if(!statusHeader.isEmpty())
 	{
 		QByteArray codeStr;
@@ -300,7 +300,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		if(params.count() < 2)
 			continue;
 
-		QByteArray linkParam = params[0].first;
+		QByteArray linkParam = params[0].first.asQByteArray();
 		if(linkParam.length() <= 2 || linkParam[0] != '<' || linkParam[linkParam.length() - 1] != '>')
 		{
 			setError(ok, errorMessage, "failed to parse Grip-Link value");
@@ -314,7 +314,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			return Instruct();
 		}
 
-		QByteArray rel = params.get("rel");
+		QByteArray rel = params.get("rel").asQByteArray();
 		if(rel == "next")
 		{
 			nextLink = link;
@@ -322,7 +322,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(params.contains("timeout"))
 			{
 				bool x;
-				nextLinkTimeout = params.get("timeout").toInt(&x);
+				nextLinkTimeout = params.get("timeout").asQByteArray().toInt(&x);
 				if(!x)
 				{
 					setError(ok, errorMessage, "failed to parse Grip-Link timeout value");
@@ -372,7 +372,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		newResponse.headers += HttpHeader(h.first, h.second);
 	}
 
-	QByteArray contentType = response.headers.getAsFirstParameter("Content-Type");
+	QByteArray contentType = response.headers.getAsFirstParameter("Content-Type").asQByteArray();
 	if(contentType == "application/grip-instruct")
 	{
 		if(response.code != 200)

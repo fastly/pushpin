@@ -32,53 +32,53 @@ static void parseParameters()
 
 	QList<HttpHeaderParameters> params = h.getAllAsParameters("Fruit");
 	TEST_ASSERT_EQ(params.count(), 3);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
+	TEST_ASSERT_EQ(params[0][0].first, CowByteArray("apple"));
+	TEST_ASSERT_EQ(params[1][0].first, CowByteArray("banana"));
+	TEST_ASSERT_EQ(params[2][0].first, CowByteArray("cherry"));
 
 	h.clear();
 	h += HttpHeader("Fruit", "apple, banana, cherry");
 
 	params = h.getAllAsParameters("Fruit");
 	TEST_ASSERT_EQ(params.count(), 3);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
+	TEST_ASSERT_EQ(params[0][0].first, CowByteArray("apple"));
+	TEST_ASSERT_EQ(params[1][0].first, CowByteArray("banana"));
+	TEST_ASSERT_EQ(params[2][0].first, CowByteArray("cherry"));
 
 	h.clear();
 	h += HttpHeader("Fruit", "apple; type=\"granny, smith\", banana; type=\"\\\"yellow\\\"\"");
 
 	params = h.getAllAsParameters("Fruit");
 	TEST_ASSERT_EQ(params.count(), 2);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[0][1].second, QByteArray("granny, smith"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[1][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[1][1].second, QByteArray("\"yellow\""));
+	TEST_ASSERT_EQ(params[0][0].first, CowByteArray("apple"));
+	TEST_ASSERT_EQ(params[0][1].first, CowByteArray("type"));
+	TEST_ASSERT_EQ(params[0][1].second, CowByteArray("granny, smith"));
+	TEST_ASSERT_EQ(params[1][0].first, CowByteArray("banana"));
+	TEST_ASSERT_EQ(params[1][1].first, CowByteArray("type"));
+	TEST_ASSERT_EQ(params[1][1].second, CowByteArray("\"yellow\""));
 
 	h.clear();
 	h += HttpHeader("Fruit", "\"apple");
 
-	QList<QByteArray> l = h.getAll("Fruit");
+	CowByteArrayList l = h.getAll("Fruit");
 	TEST_ASSERT_EQ(l.count(), 1);
-	TEST_ASSERT_EQ(l[0], QByteArray("\"apple"));
+	TEST_ASSERT_EQ(l[0], CowByteArray("\"apple"));
 
 	h.clear();
 	h += HttpHeader("Fruit", "\"apple\\");
 
 	l = h.getAll("Fruit");
 	TEST_ASSERT_EQ(l.count(), 1);
-	TEST_ASSERT_EQ(l[0], QByteArray("\"apple\\"));
+	TEST_ASSERT_EQ(l[0], CowByteArray("\"apple\\"));
 
 	h.clear();
 	h += HttpHeader("Fruit", "apple; type=gala, banana; type=\"yellow, cherry");
 
 	params = h.getAllAsParameters("Fruit");
 	TEST_ASSERT_EQ(params.count(), 1);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[0][1].second, QByteArray("gala"));
+	TEST_ASSERT_EQ(params[0][0].first, CowByteArray("apple"));
+	TEST_ASSERT_EQ(params[0][1].first, CowByteArray("type"));
+	TEST_ASSERT_EQ(params[0][1].second, CowByteArray("gala"));
 }
 
 extern "C" int httpheaders_test(ffi::TestException *out_ex)

@@ -267,7 +267,7 @@ private:
 			QUrl uri = requestData.uri;
 			uri.setQuery(QString()); // remove the query part
 
-			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last");
+			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last").asQByteArrayList();
 			std::sort(gripLastHeaders.begin(), gripLastHeaders.end());
 
 			QByteArray key = "auto|" + uri.toEncoded();
@@ -770,7 +770,7 @@ public:
 			useSession = args["use-session"].toBool();
 		}
 
-		sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id"));
+		sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id").asQByteArray());
 
 		QList<DetectRule> rules;
 		QList<HttpHeaderParameters> ruleHeaders = responseData.headers.getAllAsParameters("Grip-Session-Detect", HttpHeaders::ParseAllParameters);
@@ -780,10 +780,10 @@ public:
 			{
 				DetectRule rule;
 				rule.domain = requestData.uri.host();
-				rule.pathPrefix = params.get("path-prefix");
-				rule.sidPtr = QString::fromUtf8(params.get("sid-ptr"));
+				rule.pathPrefix = params.get("path-prefix").asQByteArray();
+				rule.sidPtr = QString::fromUtf8(params.get("sid-ptr").asQByteArray());
 				if(params.contains("json-param"))
-					rule.jsonParam = QString::fromUtf8(params.get("json-param"));
+					rule.jsonParam = QString::fromUtf8(params.get("json-param").asQByteArray());
 				rules += rule;
 			}
 		}
@@ -791,7 +791,7 @@ public:
 		QList<HttpHeaderParameters> lastHeaders = responseData.headers.getAllAsParameters("Grip-Last");
 		foreach(const HttpHeaderParameters &params, lastHeaders)
 		{
-			lastIds.insert(params[0].first, params.get("last-id"));
+			lastIds.insert(params[0].first.asQByteArray(), params.get("last-id").asQByteArray());
 		}
 
 		// we need to "atomically" process conn-max packets and add
@@ -965,8 +965,8 @@ private:
 				foreach(const HttpHeader &h, instruct.response.headers)
 				{
 					QVariantList vheader;
-					vheader += h.first;
-					vheader += h.second;
+					vheader += h.first.asQByteArray();
+					vheader += h.second.asQByteArray();
 					vheaders += QVariant(vheader);
 				}
 				vresponse["headers"] = vheaders;
@@ -2127,7 +2127,7 @@ private:
 
 			PublishFormat &f = i.format;
 
-			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
+			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers").asQByteArrayList();
 
 			// remove grip headers from the push
 			for(int n = 0; n < f.headers.count(); ++n)
@@ -2943,7 +2943,7 @@ private:
 				if(params.isEmpty() || params[0].first.isEmpty())
 					continue;
 
-				QByteArray type = params[0].first;
+				QByteArray type = params[0].first.asQByteArray();
 
 				if(type == "text/plain" || type == "text/*" || type == "*/*" || type == "*")
 				{

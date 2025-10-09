@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -57,7 +58,7 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
 {
 	if(!responseHeaders->contains("Access-Control-Allow-Methods"))
 	{
-		QByteArray method = requestHeaders.get("Access-Control-Request-Method");
+		QByteArray method = requestHeaders.get("Access-Control-Request-Method").asQByteArray();
 
 		if(!method.isEmpty())
 			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", method);
@@ -67,8 +68,10 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
 
 	if(!responseHeaders->contains("Access-Control-Allow-Headers"))
 	{
-		QList<QByteArray> allowHeaders;
-		foreach(const QByteArray &h, requestHeaders.getAll("Access-Control-Request-Headers", true))
+		CowByteArrayList allowHeaders;
+
+		CowByteArrayList l = requestHeaders.getAll("Access-Control-Request-Headers", true);
+		for(CowByteArrayConstRef h : std::as_const(l))
 		{
 			if(!h.isEmpty())
 				allowHeaders += h;
@@ -83,8 +86,8 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
 		QList<QByteArray> exposeHeaders;
 		foreach(const HttpHeader &h, *responseHeaders)
 		{
-			if(!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") && !headerNameStartsWith(h.first, "Grip-") && !headerNamesContains(exposeHeaders, h.first))
-				exposeHeaders += h.first;
+			if(!isSimpleHeader(h.first.asQByteArray()) && !headerNameStartsWith(h.first.asQByteArray(), "Access-Control-") && !headerNameStartsWith(h.first.asQByteArray(), "Grip-") && !headerNamesContains(exposeHeaders, h.first.asQByteArray()))
+				exposeHeaders += h.first.asQByteArray();
 		}
 
 		if(!exposeHeaders.isEmpty())
@@ -96,7 +99,7 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
 
 	if(!responseHeaders->contains("Access-Control-Allow-Origin"))
 	{
-		QByteArray origin = requestHeaders.get("Origin");
+		CowByteArray origin = requestHeaders.get("Origin");
 
 		if(origin.isEmpty())
 			origin = "*";

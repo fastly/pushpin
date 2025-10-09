@@ -934,7 +934,7 @@ private:
 						if(found)
 							continue;
 
-						QList<QByteArray> values = headers.getAll(h.first);
+						QList<QByteArray> values = headers.getAll(h.first).asQByteArrayList();
 						QString mergedValue;
 						for(int n = 0; n < values.count(); ++n)
 						{
@@ -942,7 +942,7 @@ private:
 							if(n + 1 < values.count())
 								mergedValue += ", ";
 						}
-						vheaders[h.first] = mergedValue;
+						vheaders[h.first.asQByteArray()] = mergedValue;
 					}
 					result["headers"] = vheaders;
 
