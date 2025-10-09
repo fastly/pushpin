@@ -109,8 +109,8 @@ QVariant ZhttpRequestPacket::toVariant() const
 		foreach(const HttpHeader &h, headers)
 		{
 			QVariantList vheader;
-			vheader += h.first;
-			vheader += h.second;
+			vheader += h.first.asQByteArray();
+			vheader += h.second.asQByteArray();
 			vheaders += QVariant(vheader);
 		}
 

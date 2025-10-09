@@ -112,7 +112,7 @@ public:
 			respData += "1.1 ";
 		respData += QByteArray::number(code) + " " + reason + "\r\n";
 		foreach(const HttpHeader &h, outHeaders)
-			respData += h.first + ": " + h.second + "\r\n";
+			respData += (h.first + ": " + h.second + "\r\n").asQByteArray();
 		respData += "\r\n";
 		respData += body;
 
@@ -295,7 +295,7 @@ private:
 				if(reqHeaders.contains("Content-Length"))
 				{
 					bool ok;
-					contentLength = reqHeaders.get("Content-Length").toInt(&ok);
+					contentLength = reqHeaders.get("Content-Length").asQByteArray().toInt(&ok);
 					if(!ok)
 					{
 						respondBadRequest("Bad Content-Length.");

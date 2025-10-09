@@ -94,6 +94,9 @@ static void methods()
 	TEST_ASSERT_EQ(b, "hel");
 	TEST_ASSERT_EQ(c, "lo");
 
+	// trimmed
+	TEST_ASSERT_EQ(CowByteArray(" hel lo ").trimmed(), "hel lo");
+
 	// clear
 	CowByteArray d("hello");
 	TEST_ASSERT(!d.isEmpty());
@@ -111,20 +114,39 @@ static void methods()
 
 static void operators()
 {
+	// operator=
 	CowByteArray a;
 	a = CowByteArray("hello");
 	TEST_ASSERT_EQ(a, "hello");
 
+	// operator[] (const)
 	TEST_ASSERT_EQ(std::as_const(a)[1], 'e');
 	TEST_ASSERT_EQ(a[1], 'e');
 
+	// operator[] (non-const)
 	a[1] = 'a';
 	TEST_ASSERT_EQ(a, "hallo");
 
+	// operator+
+	TEST_ASSERT_EQ(CowByteArray("hello") + CowByteArray(" world"), "hello world");
+	TEST_ASSERT_EQ(CowByteArray("hello") + " world", "hello world");
+	TEST_ASSERT_EQ("hello" + CowByteArray(" world"), "hello world");
+
+	// operator+=
+	a += CowByteArray(" world");
+	TEST_ASSERT_EQ(a, "hallo world");
+	a += '!';
+	TEST_ASSERT_EQ(a, "hallo world!");
+	a += "11";
+	TEST_ASSERT_EQ(a, "hallo world!11");
+
+	// operator==
+	a = "hello";
 	TEST_ASSERT(CowByteArray("hello") == CowByteArray("hello"));
 	TEST_ASSERT(CowByteArray("hello") == "hello");
 	TEST_ASSERT("hello" == CowByteArray("hello"));
 
+	// operator!=
 	TEST_ASSERT(CowByteArray("hello") != CowByteArray("world"));
 	TEST_ASSERT(CowByteArray("hello") != "world");
 	TEST_ASSERT("hello" != CowByteArray("world"));
@@ -162,6 +184,10 @@ static void listMethods()
 	a += CowByteArray("hello");
 	a += CowByteArray("world");
 	TEST_ASSERT_EQ(a.count(), 2);
+
+	// contains
+	TEST_ASSERT(a.contains("world"));
+	TEST_ASSERT(!a.contains("foo"));
 
 	// begin/end (const)
 	CowByteArrayList::const_iterator cit = std::as_const(a).begin();
