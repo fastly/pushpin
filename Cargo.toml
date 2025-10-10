@@ -1,6 +1,6 @@
 [package]
 name = "pushpin"
-version = "1.41.0-dev"
+version = "1.41.0"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
@@ -100,3 +100,46 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt"
 
 [lints.clippy]
 uninlined_format_args = "allow"
+
+[package.metadata.deb]
+assets = [
+    { source = "dist/usr/bin/*", dest = "usr/bin/", mode = "755" },
+    { source = "dist/usr/lib/pushpin/internal.conf", dest = "usr/lib/pushpin/", mode = "644" },
+    { source = "dist/usr/lib/pushpin/runner/*", dest = "usr/lib/pushpin/runner/", mode = "644" },
+    { source = "packaging/pushpin.init", dest = "etc/init.d/pushpin", mode = "755" },
+    { source = "packaging/pushpin.logrotate", dest = "etc/logrotate.d/pushpin", mode = "644" },
+    { source = "dist/etc/pushpin/pushpin.conf", dest = "usr/share/pushpin/", mode = "644" },
+    { source = "dist/etc/pushpin/routes", dest = "etc/pushpin/", mode = "644" },
+    { source = "dist/etc/pushpin/runner/certs/*", dest = "etc/pushpin/runner/certs/", mode = "644" },
+    { source = "packaging/pushpin.tmpfile", dest = "usr/lib/tmpfiles.d/pushpin.conf", mode = "644" },
+    { source = "packaging/pushpin.service", dest = "lib/systemd/system/", mode = "644" },
+    { source = "dist/usr/share/man/man1/*", dest = "usr/share/man/man1/", mode = "644" },
+    { source = "dist/usr/share/doc/pushpin/README.md.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
+    { source = "dist/usr/share/doc/pushpin/NEWS.Debian.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
+    { source = "dist/usr/share/doc/pushpin/changelog.Debian.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
+    { source = "tools/*.py", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.php", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.js", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.sh", dest = "usr/share/doc/pushpin/examples/tools/", mode = "755" },
+    { source = "tools/zhttp/*.py", dest = "usr/share/doc/pushpin/examples/tools/zhttp/", mode = "644" },
+    { source = "tools/echo/*", dest = "usr/share/doc/pushpin/examples/tools/echo/", mode = "644" },
+]
+preserve-symlinks = true
+maintainer-scripts = "packaging/debian"
+depends = "$auto, adduser, lsb-base (>= 3.0-6), ucf"
+extended-description = """\
+Pushpin is a reverse proxy server that makes it easy to implement
+WebSocket, HTTP streaming, and HTTP long-polling services. It communicates
+with backend web applications using regular, short-lived HTTP requests
+(GRIP protocol). This allows backend applications to be written in any
+language and use any webserver.
+.
+Additionally, Pushpin does all of this without exposing a proprietary
+protocol to clients. The HTTP/WebSocket content between the client
+and your server is whatever you want it to be. This makes it ideal for
+implementing APIs.
+.
+Pushpin is written in Rust and C++. The name means to "pin" (hold)
+connections open for "pushing"."""
+section = "net"
+license-file = ["packaging/license-file", "0"]

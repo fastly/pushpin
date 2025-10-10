@@ -1,0 +1,39 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" (C) Copyright 2013 Jan Niehusmann <jan@debian.org>,
+.\"
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH "PUSHPIN-HANDLER" 1 "November  7, 2013"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.de URL
+\\$2 \(laURL: \\$1 \(ra\\$3
+..
+.if \n[.g] .mso www.tmac
+.\"
+.SH NAME
+pushpin-handler \- handles incoming publish requests (part of pushpin)
+.SH SYNOPSIS
+.B pushpin-handler
+.RI [--verbose] " " --config= CONFIG
+
+.SH DESCRIPTION
+This starts
+.B pushpin-handler
+using the specified configuration (pushpin.conf).
+
+In the default configuration, pushpin-handler is started automatically by pushpin.
+
+.SH "SEE ALSO"
+\&\fIpushpin\fR\|(1)

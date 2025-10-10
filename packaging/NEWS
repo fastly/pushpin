@@ -1,0 +1,61 @@
+pushpin (1.38.0-0) experimental; urgency=medium
+
+  With version 1.38.0, upstream bundles condure with pushpin, named
+  pushpin-condure. Therefore, an external condure or mongrel2 binary
+  is no longer used.
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 07 Feb 2024 22:45:01 +0100
+
+pushpin (1.31.0-1) unstable; urgency=medium
+
+  With version 1.31.0, upstream defaults to using condure instead of
+  mongrel2. (https://github.com/fanout/condure/)
+
+  As this is not yet packaged for debian, we can't simply
+  adopt that approach. Instead, we use a slightly more complex migration
+  strategy:
+
+  For new installations, we check if a condure binary is in the path.
+  If it is, we install a config file referring to condure, otherwise we
+  use mongrel2.
+
+  For upgrades of existing installations, the current selection from
+  pushpin.conf is preserved.
+
+  If you want to switch to condure, first install it (from source,
+  future debian/ubuntu packages, or the packages provides by
+  upstream, https://pushpin.org/docs/install/#debian-and-ubuntu).
+
+  Then, replace mongrel2 and m2adapter with condure in pushpin.conf.
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 10 Nov 2020 09:03:14 +0100
+
+pushpin (1.9.0-2) experimental; urgency=medium
+
+  The file /etc/default/pushpin is not used any more.
+
+  Pushpin is now started by default. If you disabled pushpin using
+  RUN=no before, please disable it using your init system. For example,
+  with systemd, you could run "systemctl disable pushpin".
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 05 May 2016 23:02:17 +0200
+
+pushpin (1.6.0-1~) fanout; urgency=medium
+
+  For the fanout repository on bintray, the updates check which
+  was disabled in debian version 1.2.0-1 gets enabled by default.
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 16 Oct 2015 08:40:27 +0200
+
+pushpin (1.2.0-1) unstable; urgency=medium
+
+  Pushpin 1.2.0 contains a new feature which checks for updates daily
+  and reports new versions to the logfile.
+
+  Upstream enables this feature by default, but in Debian, it's disabled
+  for privacy reasons.
+
+  You can enable the feature in /etc/pushpin/pushpin.conf by
+  setting updates_check=true
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 04 Jun 2015 20:27:44 +0200

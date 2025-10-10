@@ -1,0 +1,459 @@
+pushpin (1.40.0-1~jammy1) fanout-jammy; urgency=medium
+
+  * Backport to jammy
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 01 Aug 2024 18:05:54 +0200
+
+pushpin (1.40.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 01 Aug 2024 18:05:54 +0200
+
+pushpin (1.39.1-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Sun, 24 Mar 2024 22:36:02 +0100
+
+pushpin (1.38.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Change pushpin home directory in adduser call to /run/pushpin,
+    fixing lintian warning "adduser-with-home-var-run".
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 28 Feb 2024 18:40:29 +0100
+
+pushpin (1.35.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 11 Mar 2022 22:02:56 +0100
+
+pushpin (1.34.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 10 Dec 2021 13:34:25 +0100
+
+pushpin (1.32.2-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 11 Jun 2021 17:01:51 +0200
+
+pushpin (1.32.1-1) unstable; urgency=medium
+
+  * New upstream version
+  * Revert debian-specific changes, build using crates.io dependencies
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 14 May 2021 23:32:37 +0200
+
+pushpin (1.32.0-1) unstable; urgency=medium
+
+  * New upstream release, with some modifications:
+    - for now, disable use of rustls-native-certs
+      (This effectively breaks https in pushpin-publish unusable)
+    - downgrade dependency on rustls to 0.18
+  * Fix watch file
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 14 May 2021 21:33:30 +0200
+
+pushpin (1.31.0-2) unstable; urgency=medium
+
+  * Updated watch file (point to github instead of bintray)
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 28 Apr 2021 14:53:33 +0200
+
+pushpin (1.31.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Keep mongrel2 as default instead of condure as the latter is not yet
+    available in debian. But in case condure is installed, do use it on
+    new installations of pushpin.
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 10 Nov 2020 09:47:27 +0100
+
+pushpin (1.30.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 04 Aug 2020 21:14:58 +0200
+
+pushpin (1.29.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 15 Jul 2020 23:41:54 +0200
+
+pushpin (1.28.0-2) unstable; urgency=medium
+
+  * Create dbgsym package
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 14 May 2020 23:47:20 +0200
+
+pushpin (1.28.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 10 Apr 2020 14:32:05 +0200
+
+pushpin (1.27.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 11 Mar 2020 15:26:29 +0100
+
+pushpin (1.26.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 13 Dec 2019 20:29:26 +0100
+
+pushpin (1.25.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 20 Nov 2019 17:37:43 +0100
+
+pushpin (1.24.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 13 Aug 2019 10:25:28 +0200
+
+pushpin (1.23.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 04 Jul 2019 13:41:02 +0200
+
+pushpin (1.22.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 18 Jun 2019 09:13:31 +0200
+
+pushpin (1.21.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 02 May 2019 10:55:08 +0200
+
+pushpin (1.20.3-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 09 Apr 2019 15:14:21 +0200
+
+pushpin (1.20.2-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 29 Mar 2019 17:46:02 +0100
+
+pushpin (1.20.1-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 21 Feb 2019 18:17:01 +0100
+
+pushpin (1.20.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 20 Feb 2019 09:36:05 +0100
+
+pushpin (1.19.1-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 10 Jan 2019 21:17:11 +0100
+
+pushpin (1.19.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 31 Dec 2018 15:57:13 +0100
+
+pushpin (1.18.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 22 Aug 2018 15:32:05 +0200
+
+pushpin (1.17.2-3) unstable; urgency=medium
+
+  * Point Vcs-* to salsa repository
+  * Set standards-version to 4.1.4
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 11 May 2018 23:20:07 +0200
+
+pushpin (1.17.2-2) unstable; urgency=medium
+
+  * Add "Restart=always" to systemd unit file
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 08 May 2018 23:34:52 +0200
+
+pushpin (1.17.2-1) unstable; urgency=medium
+
+  * New upstream version
+  * Fix logrotate when running with systemd. (Don't rely on PIDFILE).
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 16 Jan 2018 09:56:14 +0100
+
+pushpin (1.17.1-1) unstable; urgency=medium
+
+  * New upstream version
+  * Set standards-version to 4.1.2
+  * Set priority to optional
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 18 Dec 2017 21:11:03 +0100
+
+pushpin (1.17.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 07 Nov 2017 19:59:28 +0100
+
+pushpin (1.16.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 14 Jul 2017 21:32:50 +0200
+
+pushpin (1.15.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 23 Jan 2017 15:38:23 +0100
+
+pushpin (1.14.0-2) unstable; urgency=medium
+
+  * Fix build on GNU Hurd.
+    (GNU Hurd doesn't define PATH_MAX)
+  * Update Vcs-Browser URL
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 22 Nov 2016 18:03:19 +0100
+
+pushpin (1.14.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 16 Nov 2016 17:33:45 +0100
+
+pushpin (1.13.1-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 27 Oct 2016 19:23:51 +0200
+
+pushpin (1.13.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 24 Oct 2016 13:16:10 +0200
+
+pushpin (1.12.0-2) unstable; urgency=medium
+
+  * Set INSTALL_ROOT when calling dh_auto_install. (Closes: Bug#841580)
+  * Depend on lsb-base (>= 3.0-6) to fix lintian warning
+    init.d-script-needs-depends-on-lsb-base
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 21 Oct 2016 17:56:34 +0200
+
+pushpin (1.12.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Don't install generated Makefiles with examples.
+    They contain paths from the build environment, which are not
+    valid after installation, and break reproducible builds.
+  * Remove CHANGELOG.md from debian/docs. File gets installed by
+    dh_installchangelogs, so including it in docs results in a duplicate
+    file. (Fixes lintian warning "duplicate-changelog-files")
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 05 Sep 2016 14:33:43 +0200
+
+pushpin (1.11.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Remove dependencies on python-setproctitle, python-jinja2, python
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 13 Jul 2016 10:15:54 +0200
+
+pushpin (1.10.1-1) unstable; urgency=medium
+
+  * Set standards-version to 3.9.8 (no changes necessary)
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 30 May 2016 21:58:51 +0200
+
+pushpin (1.10.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Fri, 27 May 2016 15:49:27 +0200
+
+pushpin (1.9.0-2) experimental; urgency=medium
+
+  * Add systemd service file
+  * Remove /etc/default/pushpin
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 05 May 2016 23:36:34 +0200
+
+pushpin (1.9.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Sun, 17 Apr 2016 00:20:41 +0200
+
+pushpin (1.8.0-2) unstable; urgency=medium
+
+  * Remove dependency on python-tnetstring and python-zmq.
+    They got obsolete because pushpin-publish was rewritten in C++.
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 03 Mar 2016 20:43:22 +0100
+
+pushpin (1.8.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * apply hardening flags via ./configure --extraconf
+  * Remove internal.conf from /etc/pushpin/; it was never meant to be
+    modified locally.
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 25 Feb 2016 16:17:33 +0100
+
+pushpin (1.7.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Fix /etc/default/pushpin, use DAEMON_ARGS instead of DAEMON_OPTS
+  * Remove obsolete dependency on python-sortedcontainers | python-blist
+  * Remove code to build DFSG-free source package. (Upstream
+    removed configure.exe from the tarballs with version 1.6.0, so we
+    can use the original upstream tarball.
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 12 Jan 2016 12:53:10 +0100
+
+pushpin (1.6.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update watch file
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 24 Sep 2015 13:10:50 +0200
+
+pushpin (1.5.0-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 28 Jul 2015 22:57:01 +0200
+
+pushpin (1.4.0-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update dependency: Allow to use python-sortedcontainers as an
+    alternative to python-blist.
+
+ -- Jan Niehusmann <jan@debian.org>  Sat, 18 Jul 2015 00:42:03 +0200
+
+pushpin (1.3.3-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 06 Jul 2015 22:53:51 +0200
+
+pushpin (1.3.1-1) unstable; urgency=medium
+
+  * New upstream version 1.3.1
+  * Update watch file
+
+ -- Jan Niehusmann <jan@debian.org>  Mon, 22 Jun 2015 15:08:33 +0200
+
+pushpin (1.3.0-1) unstable; urgency=medium
+
+  * New upstream version 1.3.0
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 04 Jun 2015 21:44:02 +0200
+
+pushpin (1.2.0-1) unstable; urgency=medium
+
+  * Merge upstream version 1.2.0
+  * Add get-orig-source target to debian/rules
+  * Add Files-Excluded header to debian/copyright
+  * Add watch file
+  * Set updates_check to false, by default
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 02 Jun 2015 21:56:08 +0200
+
+pushpin (1.1.0-1) unstable; urgency=low
+
+  * Set standards-version to 3.9.6 (no changes)
+  * Merge upstream version 1.1.0
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 11 Mar 2015 22:13:02 +0100
+
+pushpin (1.0.0-3) unstable; urgency=low
+
+  * Fix typo in debian/rules, which prevented proper use of hardening flags.
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 18 Sep 2014 20:24:58 +0200
+
+pushpin (1.0.0-2) unstable; urgency=low
+
+  * Remove dependencies on redis-server, python-redis
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 16 Sep 2014 23:51:11 +0200
+
+pushpin (1.0.0-1) unstable; urgency=low
+
+  * New upstream version 1.0.0
+  * Update Vcs URL
+  * implement hardening using buildflags instead of hardening-wrapper
+
+ -- Jan Niehusmann <jan@debian.org>  Tue, 16 Sep 2014 21:51:41 +0200
+
+pushpin (0.0~20140620-1) unstable; urgency=low
+
+  * Merge changes from upstream git. (upstream commit id 897ed1b)
+  * Upload to unstable
+  * Add lintian-override for dependency on hardening-wrapper
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 26 Jun 2014 11:30:43 +0200
+
+pushpin (0.0~20140430-2) experimental; urgency=low
+
+  * use system-provided zurl instance
+  * put temporary files / sockets to /var/run/pushpin/ instead of /tmp/
+  * add logrotate config
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 18 Jun 2014 23:29:39 +0200
+
+pushpin (0.0~20140430-1) experimental; urgency=low
+
+  * Merge changes from upstream git. (upstream commit id 6a1518f)
+
+ -- Jan Niehusmann <jan@debian.org>  Thu, 12 Jun 2014 21:58:39 +0200
+
+pushpin (0.0~20140301-1) experimental; urgency=low
+
+  * Merge changes from upstream git. (upstream commit id 62b974e)
+  * Build against libzmq3 (closes: Bug#740415)
+  * Set standards-version to 3.9.5 (no changes)
+  * Build-depend on libqca2-plugin-ossl. This is only needed
+    for a test case.
+  * Fix init-script. (start-stop-daemon was not properly detecting
+    an already running instance when start was called twice.)
+
+ -- Jan Niehusmann <jan@debian.org>  Sat, 01 Mar 2014 20:43:42 +0100
+
+pushpin (0.0~20130920-1) experimental; urgency=low
+
+  * Merge changes from upstream git. (upstream commit id 9196297)
+  * Closes: #727055
+
+ -- Jan Niehusmann <jan@debian.org>  Sun, 27 Oct 2013 23:16:04 +0100
+
+pushpin (0.0~20130916-1) experimental; urgency=low
+
+  * Initial debian package
+
+ -- Jan Niehusmann <jan@debian.org>  Wed, 18 Sep 2013 16:06:33 +0200
