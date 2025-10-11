@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "pushpin"
-version = "1.41.0-dev"
+version = "1.41.0"
 dependencies = [
  "arrayvec",
  "base64 0.13.1",
