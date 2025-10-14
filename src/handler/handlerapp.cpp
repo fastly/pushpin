@@ -22,8 +22,8 @@
  */
 
 #include <assert.h>
+#include <unistd.h>
 #include <iostream>
-#include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
@@ -100,9 +100,6 @@ class HandlerApp::Private
 public:
 	static int run(const ffi::HandlerCliArgs *argsFfi)
 	{
-		QCoreApplication::setApplicationName("pushpin-handler");
-		QCoreApplication::setApplicationVersion(Config::get().version);
-
 		HandlerArgsData args(argsFfi);
 
 		// Set the log level
@@ -233,7 +230,7 @@ public:
 
 		HandlerEngine::Configuration config;
 		config.appVersion = Config::get().version;
-		config.instanceId = "handler_" + QByteArray::number(QCoreApplication::applicationPid());
+		config.instanceId = "handler_" + QByteArray::number(getpid());
 		if(!services.contains("mongrel2") && (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
 			config.serverInStreamSpecs = connmgr_in_stream_specs;
@@ -283,11 +280,11 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config, true);
+		return runLoop(config);
 	}
 
 private:
-	static int runLoop(const HandlerEngine::Configuration &config, bool newEventLoop)
+	static int runLoop(const HandlerEngine::Configuration &config)
 	{
 		// includes worst-case subscriptions and update registrations
 		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
@@ -297,24 +294,12 @@ private:
 		// enough timers for sessions, plus an extra 100 for misc
 		int timersMax = (config.connectionsMax * timersPerSession) + 100;
 
-		std::unique_ptr<EventLoop> loop;
+		// enough for control requests and prometheus requests, plus an
+		// extra 100 for misc. client sessions don't use socket notifiers
+		int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
 
-		if(newEventLoop)
-		{
-			log_debug("using new event loop");
-
-			// enough for control requests and prometheus requests, plus an
-			// extra 100 for misc. client sessions don't use socket notifiers
-			int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
-
-			int registrationsMax = timersMax + socketNotifiersMax;
-			loop = std::make_unique<EventLoop>(registrationsMax);
-		}
-		else
-		{
-			// for qt event loop, timer subsystem must be explicitly initialized
-			Timer::init(timersMax);
-		}
+		int registrationsMax = timersMax + socketNotifiersMax;
+		std::unique_ptr<EventLoop> loop = std::make_unique<EventLoop>(registrationsMax);
 
 		std::unique_ptr<HandlerEngine> engine;
 
@@ -332,10 +317,7 @@ private:
 
 				log_debug("stopped");
 
-				if(newEventLoop)
-					loop->exit(0);
-				else
-					QCoreApplication::exit(0);
+				loop->exit(0);
 			});
 
 			ProcessQuit::instance()->hup.connect([&] {
@@ -347,39 +329,14 @@ private:
 			if(!engine->start(config))
 			{
 				engine.reset();
-
-				if(newEventLoop)
-					loop->exit(1);
-				else
-					QCoreApplication::exit(1);
-
+				loop->exit(1);
 				return;
 			}
 
 			log_info("started");
 		});
 
-		int ret;
-		if(newEventLoop)
-			ret = loop->exec();
-		else
-			ret = QCoreApplication::exec();
-
-		if(!newEventLoop)
-		{
-			// ensure deferred deletes are processed
-			QCoreApplication::instance()->sendPostedEvents();
-		}
-
-		// deinit here, after all event loop activity has completed
-
-		if(!newEventLoop)
-		{
-			DeferCall::cleanup();
-			Timer::deinit();
-		}
-
-		return ret;
+		return loop->exec();
 	}
 };
 
@@ -396,13 +353,6 @@ extern "C" {
 
 int handler_init(const ffi::HandlerCliArgs *argsFfi)
 {
-	// Create dummy argc/argv for QCoreApplication
-	int argc = 1;
-	char app_name[] = "pushpin-handler";
-	char* argv[] = { app_name, nullptr };
-	
-	QCoreApplication qapp(argc, argv);
-
 	HandlerApp app;
 	return app.run(argsFfi);
 }
