@@ -426,6 +426,10 @@ impl CustomConfig {
     }
 }
 
+pub fn default_config_file() -> PathBuf {
+    PathBuf::from(env!("CONFIG_DIR")).join("pushpin.conf")
+}
+
 pub fn get_config_file(
     work_dir: &Path,
     arg_config: Option<PathBuf>,
@@ -446,10 +450,7 @@ pub fn get_config_file(
                     .join("pushpin.conf"),
             );
             // default
-            config_files.push(PathBuf::from(format!(
-                "{}/pushpin.conf",
-                env!("CONFIG_DIR")
-            )));
+            config_files.push(default_config_file());
         }
     }
 
