@@ -21,49 +21,20 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQREPROUTER_H
-#define QZMQREPROUTER_H
+#ifndef ZMQCONTEXT_H
+#define ZMQCONTEXT_H
 
-#include <boost/signals2.hpp>
-
-class QString;
-
-using Signal = boost::signals2::signal<void()>;
-using SignalInt = boost::signals2::signal<void(int)>;
-using Connection = boost::signals2::scoped_connection;
-
-namespace QZmq {
-
-class ReqMessage;
-
-class RepRouter
+class ZmqContext
 {
 public:
-	RepRouter();
-	~RepRouter();
+	ZmqContext(int ioThreads = 1);
+	~ZmqContext();
 
-	void setShutdownWaitTime(int msecs);
-
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
-
-	bool canRead() const;
-
-	ReqMessage read();
-	void write(const ReqMessage &message);
-
-	Signal readyRead;
-	SignalInt messagesWritten;
+	// the zmq context
+	void *context() { return context_; }
 
 private:
-	RepRouter(const RepRouter &) = delete;
-	RepRouter &operator=(const RepRouter &) = delete;
-
-	class Private;
-	friend class Private;
-	std::unique_ptr<Private> d;
+	void *context_;
 };
-
-}
 
 #endif

@@ -39,6 +39,8 @@ public:
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	int adjustedPort(const QString &key, int defaultValue = -1) const;
 
+	QString ipcPrefix() const;
+	int portOffset() const;
 	void setIpcPrefix(const QString &s);
 	void setPortOffset(int x);
 

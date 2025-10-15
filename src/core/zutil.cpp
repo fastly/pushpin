@@ -23,11 +23,12 @@
 #include "zutil.h"
 
 #include <QFile>
-#include "qzmqsocket.h"
+#include "zmqsocket.h"
+#include "cowstring.h"
 
 namespace ZUtil {
 
-bool bindSpec(QZmq::Socket *sock, const QString &spec, int ipcFileMode, QString *errorMessage)
+bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage)
 {
 	if(!sock->bind(spec))
 	{
@@ -71,7 +72,7 @@ bool bindSpec(QZmq::Socket *sock, const QString &spec, int ipcFileMode, QString 
 	return true;
 }
 
-bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage)
+bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage)
 {
 	if(bind)
 	{
@@ -90,7 +91,7 @@ bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ip
 	return true;
 }
 
-bool setupSocket(QZmq::Socket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage)
+bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage)
 {
 	return setupSocket(sock, QStringList() << spec, bind, ipcFileMode, errorMessage);
 }

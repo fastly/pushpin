@@ -33,17 +33,17 @@
 #define UPDATE_TICKS_MAX 1000
 #define EXPIRES_PER_CYCLE_MAX 100
 
-static qint64 durationToTicksRoundDown(qint64 msec)
+static int64_t durationToTicksRoundDown(int64_t msec)
 {
 	return msec / TICK_DURATION_MS;
 }
 
-static qint64 durationToTicksRoundUp(qint64 msec)
+static int64_t durationToTicksRoundUp(int64_t msec)
 {
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
 
-static qint64 ticksToDuration(qint64 ticks)
+static int64_t ticksToDuration(int64_t ticks)
 {
 	return ticks * TICK_DURATION_MS;
 }
@@ -58,12 +58,12 @@ public:
 
 private:
 	TimerWheel wheel_;
-	qint64 startTime_;
-	quint64 currentTicks_;
+	int64_t startTime_;
+	uint64_t currentTicks_;
 	std::unique_ptr<QTimer> t_;
 
 	void t_timeout();
-	void updateTimeout(qint64 currentTime);
+	void updateTimeout(int64_t currentTime);
 };
 
 TimerManager::TimerManager(int capacity) :
@@ -84,9 +84,9 @@ TimerManager::TimerManager(int capacity) :
 
 int TimerManager::add(int msec, Timer *r)
 {
-	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	qint64 expiresTicks;
+	int64_t expiresTicks;
 	if(msec <= 0)
 	{
 		// for timeouts of zero, set immediate expiration with no rounding up
@@ -95,7 +95,7 @@ int TimerManager::add(int msec, Timer *r)
 	else
 	{
 		// expireTime must be >= startTime_
-		qint64 expireTime = qMax(currentTime + msec, startTime_);
+		int64_t expireTime = qMax(currentTime + msec, startTime_);
 
 		expiresTicks = durationToTicksRoundUp(expireTime - startTime_);
 	}
@@ -114,19 +114,19 @@ void TimerManager::remove(int key)
 {
 	wheel_.remove(key);
 
-	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
 	updateTimeout(currentTime);
 }
 
 void TimerManager::t_timeout()
 {
-	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
 	// time must go forward
 	if(currentTime > startTime_)
 	{
-		currentTicks_ = (quint64)durationToTicksRoundDown(currentTime - startTime_);
+		currentTicks_ = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
 
 		wheel_.update(currentTicks_);
 	}
@@ -148,27 +148,27 @@ void TimerManager::t_timeout()
 	updateTimeout(currentTime);
 }
 
-void TimerManager::updateTimeout(qint64 currentTime)
+void TimerManager::updateTimeout(int64_t currentTime)
 {
-	qint64 timeoutTicks = wheel_.timeout();
+	int64_t timeoutTicks = wheel_.timeout();
 
 	if(timeoutTicks >= 0)
 	{
 		// currentTime must be >= startTime_
 		currentTime = qMax(currentTime, startTime_);
 
-		quint64 currentTicks = (quint64)durationToTicksRoundDown(currentTime - startTime_);
+		uint64_t currentTicks = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
 
 		// time must go forward
 		currentTicks = qMax(currentTicks, currentTicks_);
 
-		qint64 ticksSinceWheelUpdate = (qint64)(currentTicks - currentTicks_);
+		int64_t ticksSinceWheelUpdate = (int64_t)(currentTicks - currentTicks_);
 
 		// reduce the timeout by the time already elapsed
-		timeoutTicks = qMax(timeoutTicks - ticksSinceWheelUpdate, (qint64)0);
+		timeoutTicks = qMax(timeoutTicks - ticksSinceWheelUpdate, (int64_t)0);
 
 		// cap the timeout so the wheel is regularly updated
-		qint64 maxTimeoutTicks = qMax(UPDATE_TICKS_MAX - ticksSinceWheelUpdate, (qint64)0);
+		int64_t maxTimeoutTicks = qMax(UPDATE_TICKS_MAX - ticksSinceWheelUpdate, (int64_t)0);
 		timeoutTicks = qMin(timeoutTicks, maxTimeoutTicks);
 
 		int msec = ticksToDuration(timeoutTicks);

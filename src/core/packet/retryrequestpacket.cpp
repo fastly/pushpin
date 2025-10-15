@@ -91,8 +91,8 @@ QVariant RetryRequestPacket::toVariant() const
 	foreach(const HttpHeader &h, requestData.headers)
 	{
 		QVariantList vheader;
-		vheader += h.first;
-		vheader += h.second;
+		vheader += h.first.asQByteArray();
+		vheader += h.second.asQByteArray();
 		vheaders += QVariant(vheader);
 	}
 	vrequestData["headers"] = vheaders;

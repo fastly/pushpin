@@ -47,14 +47,14 @@ public:
 	TimerWheel & operator=(const TimerWheel &) = delete;
 
 	// returns <0 if no capacity
-	int add(quint64 expires, size_t userData);
+	int add(uint64_t expires, size_t userData);
 
 	void remove(int key);
 
 	// returns <0 if no timers
-	qint64 timeout() const;
+	int64_t timeout() const;
 
-	void update(quint64 curtime);
+	void update(uint64_t curtime);
 
 	Expired takeExpired();
 

@@ -72,6 +72,8 @@ public:
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	int timeout;
+	QString clientCert;
+	QString clientKey;
 	QString backendData;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
@@ -210,10 +212,10 @@ public:
 		if(packet.credits != -1)
 			outCredits = packet.credits;
 
-		requestMethod = packet.method;
+		requestMethod = packet.method.asQString();
 		requestUri = packet.uri;
 		requestHeaders = packet.headers;
-		requestBodyBuf += packet.body;
+		requestBodyBuf += packet.body.asQByteArray();
 
 		passthrough = packet.passthrough;
 
@@ -518,7 +520,7 @@ public:
 		if(packet.type == ZhttpRequestPacket::Error)
 		{
 			errored = true;
-			errorCondition = convertError(packet.condition);
+			errorCondition = convertError(packet.condition.asQByteArray());
 
 			log_debug("zhttp server: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -580,7 +582,7 @@ public:
 
 		if(packet.type == ZhttpRequestPacket::Data)
 		{
-			requestBodyBuf += packet.body;
+			requestBodyBuf += packet.body.asQByteArray();
 
 			bool done = haveRequestBody;
 
@@ -645,7 +647,7 @@ public:
 				return;
 			}
 
-			toAddress = packet.from;
+			toAddress = packet.from.asQByteArray();
 
 			state = ClientRequesting;
 
@@ -653,7 +655,7 @@ public:
 		}
 		else if(state == ClientRequestFinishWait)
 		{
-			toAddress = packet.from;
+			toAddress = packet.from.asQByteArray();
 
 			state = ClientReceiving;
 
@@ -664,7 +666,7 @@ public:
 		if(packet.type == ZhttpResponsePacket::Error)
 		{
 			errored = true;
-			errorCondition = convertError(packet.condition);
+			errorCondition = convertError(packet.condition.asQByteArray());
 
 			log_debug("zhttp client: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -738,7 +740,7 @@ public:
 				haveResponseValues = true;
 
 				responseCode = packet.code;
-				responseReason = packet.reason;
+				responseReason = packet.reason.asQByteArray();
 				responseHeaders = packet.headers;
 
 				needToSendHeaders = true;
@@ -755,7 +757,7 @@ public:
 					log_warning("zhttp client: id=%s server is sending too fast", id.data());
 			}
 
-			responseBodyBuf += packet.body;
+			responseBodyBuf += packet.body.asQByteArray();
 
 			if(packet.more)
 			{
@@ -971,6 +973,8 @@ public:
 						p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
+					p.clientCert = clientCert;
+					p.clientKey = clientKey;
 					if(passthrough.isValid())
 						p.passthrough = passthrough;
 					p.backendData = backendData;
@@ -1023,6 +1027,8 @@ public:
 					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
+				p.clientCert = clientCert;
+				p.clientKey = clientKey;
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
 				p.backendData = backendData;
@@ -1236,6 +1242,12 @@ void ZhttpRequest::setTimeout(int msecs)
 	d->timeout = msecs;
 }
 
+void ZhttpRequest::setClientCert(const QString &cert, const QString &key)
+{
+	d->clientCert = cert;
+	d->clientKey = key;
+}
+
 void ZhttpRequest::setBackendData(const QString &data)
 {
 	d->backendData = data;
@@ -1417,7 +1429,7 @@ bool ZhttpRequest::setupServer(ZhttpManager *manager, const QByteArray &id, int 
 {
 	d->manager = manager;
 	d->server = true;
-	d->rid = Rid(packet.from, id);
+	d->rid = Rid(packet.from.asQByteArray(), id);
 	return d->setupServer(seq, packet);
 }
 

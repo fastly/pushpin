@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
-use pushpin::core::call_c_main;
+use clap::Parser;
 use pushpin::import_cpp;
-use std::env;
+use pushpin::proxy::cliargs::ffi::ProxyCliArgs;
+use pushpin::proxy::cliargs::{destroy_proxy_cli_args, CliArgs};
 use std::process::ExitCode;
 
 import_cpp! {
-    fn proxy_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn proxy_init(args: *const ProxyCliArgs) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
-    unsafe { ExitCode::from(call_c_main(proxy_main, env::args_os())) }
+    let cli_args = CliArgs::parse().verify();
+    let cli_args_ffi = cli_args.to_ffi();
+
+    let exit_code = unsafe { proxy_init(&cli_args_ffi) };
+
+    // Clean up the allocated memory
+    unsafe { destroy_proxy_cli_args(cli_args_ffi) };
+
+    ExitCode::from(exit_code as u8)
 }

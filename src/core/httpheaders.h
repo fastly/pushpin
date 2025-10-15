@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -21,20 +22,20 @@
 #ifndef HTTPHEADERS_H
 #define HTTPHEADERS_H
 
-#include <QByteArray>
 #include <QPair>
 #include <QList>
+#include "cowbytearray.h"
 
-typedef QPair<QByteArray, QByteArray> HttpHeaderParameter;
+typedef QPair<CowByteArray, CowByteArray> HttpHeaderParameter;
 
 class HttpHeaderParameters : public QList<HttpHeaderParameter>
 {
 public:
-	bool contains(const QByteArray &key) const;
-	QByteArray get(const QByteArray &key) const;
+	bool contains(const CowByteArray &key) const;
+	CowByteArray get(const CowByteArray &key) const;
 };
 
-typedef QPair<QByteArray, QByteArray> HttpHeader;
+typedef QPair<CowByteArray, CowByteArray> HttpHeader;
 
 class HttpHeaders : public QList<HttpHeader>
 {
@@ -45,17 +46,17 @@ public:
 		ParseAllParameters
 	};
 
-	bool contains(const QByteArray &key) const;
-	QByteArray get(const QByteArray &key) const;
-	HttpHeaderParameters getAsParameters(const QByteArray &key, ParseMode mode = NoParseFirstParameter) const;
-	QByteArray getAsFirstParameter(const QByteArray &key) const;
-	QList<QByteArray> getAll(const QByteArray &key, bool split = true) const;
-	QList<HttpHeaderParameters> getAllAsParameters(const QByteArray &key, ParseMode mode = NoParseFirstParameter, bool split = true) const;
-	QList<QByteArray> takeAll(const QByteArray &key, bool split = true);
-	void removeAll(const QByteArray &key);
+	bool contains(const CowByteArray &key) const;
+	CowByteArray get(const CowByteArray &key) const;
+	HttpHeaderParameters getAsParameters(const CowByteArray &key, ParseMode mode = NoParseFirstParameter) const;
+	CowByteArray getAsFirstParameter(const CowByteArray &key) const;
+	CowByteArrayList getAll(const CowByteArray &key, bool split = true) const;
+	QList<HttpHeaderParameters> getAllAsParameters(const CowByteArray &key, ParseMode mode = NoParseFirstParameter, bool split = true) const;
+	CowByteArrayList takeAll(const CowByteArray &key, bool split = true);
+	void removeAll(const CowByteArray &key);
 
-	static QByteArray join(const QList<QByteArray> &values);
-	static HttpHeaderParameters parseParameters(const QByteArray &in, ParseMode mode = NoParseFirstParameter, bool *ok = 0);
+	static CowByteArray join(const CowByteArrayList &values);
+	static HttpHeaderParameters parseParameters(const CowByteArray &in, ParseMode mode = NoParseFirstParameter, bool *ok = 0);
 };
 
 #endif

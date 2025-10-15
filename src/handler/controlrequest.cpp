@@ -111,32 +111,6 @@ private:
 	}
 };
 
-class Report : public Deferred
-{
-public:
-	Report(ZrpcManager *controlClient, const StatsPacket &packet)
-	{
-		req = std::make_unique<ZrpcRequest>(controlClient);
-		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this));
-
-		QVariantHash args;
-		args["stats"] = packet.toVariant();
-		req->start("report", args);
-	}
-
-private:
-	std::unique_ptr<ZrpcRequest> req;
-	Connection finishedConnection;
-
-	void req_finished()
-	{
-		if(req->success())
-			setFinished(true);
-		else
-			setFinished(false, req->errorCondition());
-	}
-};
-
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
 {
 	return new ConnCheck(controlClient, cids);
@@ -145,11 +119,6 @@ Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
 Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
 {
 	return new Refresh(controlClient, cid);
-}
-
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet)
-{
-	return new Report(controlClient, packet);
 }
 
 }

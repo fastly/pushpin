@@ -130,9 +130,9 @@ public:
 				return;
 			}
 
-			QJsonDocument subMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta"));
+			QJsonDocument subMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta").asQByteArray());
 			QJsonObject subMeta = subMetaDoc.object();
-			QJsonDocument pubMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta"));
+			QJsonDocument pubMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta").asQByteArray());
 			QJsonObject pubMeta = pubMetaDoc.object();
 
 			QString prepend = subMeta["prepend"].toString();

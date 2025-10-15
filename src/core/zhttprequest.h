@@ -92,6 +92,7 @@ public:
 	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
 	virtual void setTimeout(int msecs);
+	virtual void setClientCert(const QString &cert, const QString &key);
 	virtual void setBackendData(const QString &data);
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -21,7 +22,7 @@
 #include "httpheaders.h"
 
 // return position, end of string if not found, -1 on error
-static int findNonQuoted(const QByteArray &in, char c, int offset = 0)
+static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
 {
 	bool inQuote = false;
 
@@ -67,7 +68,7 @@ static int findNonQuoted(const QByteArray &in, char c, int offset = 0)
 }
 
 // search for one of many chars
-static int findNext(const QByteArray &in, const char *charList, int offset = 0)
+static int findNext(const CowByteArray &in, const char *charList, int offset = 0)
 {
 	int len = qstrlen(charList);
 	for(int n = offset; n < in.size(); ++n)
@@ -83,9 +84,9 @@ static int findNext(const QByteArray &in, const char *charList, int offset = 0)
 	return -1;
 }
 
-static QList<QByteArray> headerSplit(const QByteArray &in)
+static CowByteArrayList headerSplit(const CowByteArray &in)
 {
-	QList<QByteArray> parts;
+	CowByteArrayList parts;
 	int pos = 0;
 	while(pos < in.size())
 	{
@@ -109,7 +110,7 @@ static QList<QByteArray> headerSplit(const QByteArray &in)
 	return parts;
 }
 
-bool HttpHeaderParameters::contains(const QByteArray &key) const
+bool HttpHeaderParameters::contains(const CowByteArray &key) const
 {
 	for(int n = 0; n < count(); ++n)
 	{
@@ -120,7 +121,7 @@ bool HttpHeaderParameters::contains(const QByteArray &key) const
 	return false;
 }
 
-QByteArray HttpHeaderParameters::get(const QByteArray &key) const
+CowByteArray HttpHeaderParameters::get(const CowByteArray &key) const
 {
 	for(int n = 0; n < count(); ++n)
 	{
@@ -129,10 +130,10 @@ QByteArray HttpHeaderParameters::get(const QByteArray &key) const
 			return h.second;
 	}
 
-	return QByteArray();
+	return CowByteArray();
 }
 
-bool HttpHeaders::contains(const QByteArray &key) const
+bool HttpHeaders::contains(const CowByteArray &key) const
 {
 	for(int n = 0; n < count(); ++n)
 	{
@@ -143,7 +144,7 @@ bool HttpHeaders::contains(const QByteArray &key) const
 	return false;
 }
 
-QByteArray HttpHeaders::get(const QByteArray &key) const
+CowByteArray HttpHeaders::get(const CowByteArray &key) const
 {
 	for(int n = 0; n < count(); ++n)
 	{
@@ -152,30 +153,30 @@ QByteArray HttpHeaders::get(const QByteArray &key) const
 			return h.second;
 	}
 
-	return QByteArray();
+	return CowByteArray();
 }
 
-HttpHeaderParameters HttpHeaders::getAsParameters(const QByteArray &key, ParseMode mode) const
+HttpHeaderParameters HttpHeaders::getAsParameters(const CowByteArray &key, ParseMode mode) const
 {
-	QByteArray h = get(key);
+	CowByteArray h = get(key);
 	if(h.isEmpty())
 		return HttpHeaderParameters();
 
 	return parseParameters(h, mode);
 }
 
-QByteArray HttpHeaders::getAsFirstParameter(const QByteArray &key) const
+CowByteArray HttpHeaders::getAsFirstParameter(const CowByteArray &key) const
 {
 	HttpHeaderParameters p = getAsParameters(key);
 	if(p.isEmpty())
-		return QByteArray();
+		return CowByteArray();
 
 	return p[0].first;
 }
 
-QList<QByteArray> HttpHeaders::getAll(const QByteArray &key, bool split) const
+CowByteArrayList HttpHeaders::getAll(const CowByteArray &key, bool split) const
 {
-	QList<QByteArray> out;
+	CowByteArrayList out;
 
 	for(int n = 0; n < count(); ++n)
 	{
@@ -192,11 +193,12 @@ QList<QByteArray> HttpHeaders::getAll(const QByteArray &key, bool split) const
 	return out;
 }
 
-QList<HttpHeaderParameters> HttpHeaders::getAllAsParameters(const QByteArray &key, ParseMode mode, bool split) const
+QList<HttpHeaderParameters> HttpHeaders::getAllAsParameters(const CowByteArray &key, ParseMode mode, bool split) const
 {
 	QList<HttpHeaderParameters> out;
 
-	foreach(const QByteArray &h, getAll(key, split))
+	CowByteArrayList l = getAll(key, split);
+	for(CowByteArrayConstRef h : std::as_const(l))
 	{
 		bool ok;
 		HttpHeaderParameters params = parseParameters(h, mode, &ok);
@@ -207,9 +209,9 @@ QList<HttpHeaderParameters> HttpHeaders::getAllAsParameters(const QByteArray &ke
 	return out;
 }
 
-QList<QByteArray> HttpHeaders::takeAll(const QByteArray &key, bool split)
+CowByteArrayList HttpHeaders::takeAll(const CowByteArray &key, bool split)
 {
-	QList<QByteArray> out;
+	CowByteArrayList out;
 
 	for(int n = 0; n < count(); ++n)
 	{
@@ -229,7 +231,7 @@ QList<QByteArray> HttpHeaders::takeAll(const QByteArray &key, bool split)
 	return out;
 }
 
-void HttpHeaders::removeAll(const QByteArray &key)
+void HttpHeaders::removeAll(const CowByteArray &key)
 {
 	for(int n = 0; n < count(); ++n)
 	{
@@ -241,12 +243,12 @@ void HttpHeaders::removeAll(const QByteArray &key)
 	}
 }
 
-QByteArray HttpHeaders::join(const QList<QByteArray> &values)
+CowByteArray HttpHeaders::join(const CowByteArrayList &values)
 {
-	QByteArray out;
+	CowByteArray out;
 
 	bool first = true;
-	foreach(const QByteArray &val, values)
+	for(CowByteArrayConstRef val : std::as_const(values))
 	{
 		if(!first)
 			out += ", ";
@@ -258,7 +260,7 @@ QByteArray HttpHeaders::join(const QList<QByteArray> &values)
 	return out;
 }
 
-HttpHeaderParameters HttpHeaders::parseParameters(const QByteArray &in, ParseMode mode, bool *ok)
+HttpHeaderParameters HttpHeaders::parseParameters(const CowByteArray &in, ParseMode mode, bool *ok)
 {
 	HttpHeaderParameters out;
 
@@ -268,20 +270,20 @@ HttpHeaderParameters HttpHeaders::parseParameters(const QByteArray &in, ParseMod
 		int at = in.indexOf(';');
 		if(at != -1)
 		{
-			out += HttpHeaderParameter(in.mid(0, at).trimmed(), QByteArray());
+			out += HttpHeaderParameter(in.mid(0, at).trimmed(), CowByteArray());
 			start = at + 1;
 		}
 		else
 		{
-			out += HttpHeaderParameter(in.trimmed(), QByteArray());
+			out += HttpHeaderParameter(in.trimmed(), CowByteArray());
 			start = in.size();
 		}
 	}
 
 	while(start < in.size())
 	{
-		QByteArray var;
-		QByteArray val;
+		CowByteArray var;
+		CowByteArray val;
 
 		int at = findNext(in, "=;", start);
 		if(at != -1)

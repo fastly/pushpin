@@ -1171,6 +1171,15 @@ void SockJsSession::setIgnoreTlsErrors(bool on)
 	assert(0);
 }
 
+void SockJsSession::setClientCert(const QString &cert, const QString &key)
+{
+	Q_UNUSED(cert);
+	Q_UNUSED(key);
+
+	// this class is server only
+	assert(0);
+}
+
 void SockJsSession::setBackendData(const QString &data)
 {
 	Q_UNUSED(data);

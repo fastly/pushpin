@@ -340,6 +340,8 @@ pub struct RequestData<'buf, 'headers> {
     pub ignore_policies: bool,
     pub trust_connect_host: bool,
     pub ignore_tls_errors: bool,
+    pub client_cert: &'buf str,
+    pub client_key: &'buf str,
     pub follow_redirects: bool,
     pub backend_data: &'buf str,
 }
@@ -366,6 +368,8 @@ impl RequestData<'_, '_> {
             ignore_policies: false,
             trust_connect_host: false,
             ignore_tls_errors: false,
+            client_cert: "",
+            client_key: "",
             follow_redirects: false,
             backend_data: "",
         }
@@ -485,6 +489,8 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
         let mut ignore_policies = false;
         let mut trust_connect_host = false;
         let mut ignore_tls_errors = false;
+        let mut client_cert = "";
+        let mut client_key = "";
         let mut follow_redirects = false;
         let mut backend_data = "";
 
@@ -649,6 +655,20 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
 
                     ignore_tls_errors = b;
                 }
+                "client-cert" => {
+                    let s = tnetstring::parse_string(e.data).field("client-cert")?;
+
+                    let s = str::from_utf8(s).field("client-cert")?;
+
+                    client_cert = s;
+                }
+                "client-key" => {
+                    let s = tnetstring::parse_string(e.data).field("client-key")?;
+
+                    let s = str::from_utf8(s).field("client-key")?;
+
+                    client_key = s;
+                }
                 "follow-redirects" => {
                     let b = tnetstring::parse_bool(e.data).field("follow-redirects")?;
 
@@ -684,6 +704,8 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
             ignore_policies,
             trust_connect_host,
             ignore_tls_errors,
+            client_cert,
+            client_key,
             follow_redirects,
             backend_data,
         })
@@ -1831,6 +1853,8 @@ mod tests {
                         ignore_policies: false,
                         trust_connect_host: false,
                         ignore_tls_errors: false,
+                        client_cert: "",
+                        client_key: "",
                         follow_redirects: false,
                         backend_data: "{\"test\":\"data\"}",
                     }),

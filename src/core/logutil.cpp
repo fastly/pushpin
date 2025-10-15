@@ -59,7 +59,7 @@ static QString makeLastIdsStr(const HttpHeaders &headers)
 	{
 		if(!first)
 			out += ' ';
-		out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
+		out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first.asQByteArray()), QString::fromUtf8(params.get("last-id").asQByteArray()));
 		first = false;
 	}
 
@@ -155,7 +155,7 @@ void logRequest(int level, const RequestData &data, const Config &config)
 	if(config.fromAddress && !data.fromAddress.isNull())
 		msg += QString(" from=%1").arg(data.fromAddress.toString());
 
-	QUrl ref = QUrl(QString::fromUtf8(data.requestData.headers.get("Referer")));
+	QUrl ref = QUrl(QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray()));
 	if(!ref.isEmpty())
 		msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
 
@@ -183,7 +183,7 @@ void logRequest(int level, const RequestData &data, const Config &config)
 
 	if(config.userAgent)
 	{
-		QString userAgent = data.requestData.headers.get("User-Agent");
+		QString userAgent = data.requestData.headers.get("User-Agent").asQByteArray();
 		if(!userAgent.isEmpty())
 			msg += QString(" ua=%1").arg(userAgent);
 	}

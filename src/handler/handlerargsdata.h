@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
@@ -21,21 +21,22 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
-#include "rust/log.h"
-#include "handlerapp.h"
+#ifndef HANDLERARGSDATA_H
+#define HANDLERARGSDATA_H
 
-extern "C" {
+#include <QString>
+#include "rust/bindings.h"
 
-int handler_main(int argc, char **argv)
+class HandlerArgsData
 {
-	// initialize logger as early as possible
-	log_init();
+public:
+	QString configFile;
+	QString logFile;
+	int logLevel;
+	QString ipcPrefix;
+	int portOffset;
 
-	QCoreApplication qapp(argc, argv);
+	HandlerArgsData(const ffi::HandlerCliArgs *argsFfi);
+};
 
-	HandlerApp app;
-	return app.run();
-}
-
-}
+#endif
