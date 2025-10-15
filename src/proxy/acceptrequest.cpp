@@ -101,8 +101,8 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		foreach(const HttpHeader &h, requestData.headers)
 		{
 			QVariantList vheader;
-			vheader += h.first;
-			vheader += h.second;
+			vheader += h.first.asQByteArray();
+			vheader += h.second.asQByteArray();
 			vheaders += QVariant(vheader);
 		}
 
@@ -124,8 +124,8 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		foreach(const HttpHeader &h, requestData.headers)
 		{
 			QVariantList vheader;
-			vheader += h.first;
-			vheader += h.second;
+			vheader += h.first.asQByteArray();
+			vheader += h.second.asQByteArray();
 			vheaders += QVariant(vheader);
 		}
 
@@ -178,8 +178,8 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		foreach(const HttpHeader &h, adata.response.headers)
 		{
 			QVariantList vheader;
-			vheader += h.first;
-			vheader += h.second;
+			vheader += h.first.asQByteArray();
+			vheader += h.second.asQByteArray();
 			vheaders += QVariant(vheader);
 		}
 		vresponse["headers"] = vheaders;

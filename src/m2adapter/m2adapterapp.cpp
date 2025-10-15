@@ -33,8 +33,10 @@
 #include <QTimer>
 #include <QDir>
 #include <QSettings>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
+#include "cowstring.h"
+#include "cowbytearray.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
 #include "qtcompat.h"
 #include "processquit.h"
 #include "tnetstring.h"
@@ -104,7 +106,7 @@ static QByteArray createResponseHeader(int code, const QByteArray &reason, const
 {
 	QByteArray out = "HTTP/1.1 " + QByteArray::number(code) + ' ' + reason + "\r\n";
 	foreach(const HttpHeader &h, headers)
-		out += h.first + ": " + h.second + "\r\n";
+		out += (h.first + ": " + h.second + "\r\n").asQByteArray();
 	out += "\r\n";
 	return out;
 }
@@ -255,7 +257,7 @@ public:
 			ExpectingResponse
 		};
 
-		QZmq::Socket *sock;
+		ZmqSocket *sock;
 		State state;
 		bool works;
 		int reqStartTime;
@@ -420,17 +422,17 @@ public:
 	ArgsData args;
 	QByteArray zhttpInstanceId;
 	QByteArray zwsInstanceId;
-	std::unique_ptr<QZmq::Socket> m2_in_sock;
-	std::unique_ptr<QZmq::Socket> m2_out_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_in_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_out_sock;
-	std::unique_ptr<QZmq::Socket> zhttp_out_stream_sock;
-	std::unique_ptr<QZmq::Socket> zws_in_sock;
-	std::unique_ptr<QZmq::Socket> zws_out_sock;
-	std::unique_ptr<QZmq::Socket> zws_out_stream_sock;
-	std::unique_ptr<QZmq::Valve> m2_in_valve;
-	std::unique_ptr<QZmq::Valve> zhttp_in_valve;
-	std::unique_ptr<QZmq::Valve> zws_in_valve;
+	std::unique_ptr<ZmqSocket> m2_in_sock;
+	std::unique_ptr<ZmqSocket> m2_out_sock;
+	std::unique_ptr<ZmqSocket> zhttp_in_sock;
+	std::unique_ptr<ZmqSocket> zhttp_out_sock;
+	std::unique_ptr<ZmqSocket> zhttp_out_stream_sock;
+	std::unique_ptr<ZmqSocket> zws_in_sock;
+	std::unique_ptr<ZmqSocket> zws_out_sock;
+	std::unique_ptr<ZmqSocket> zws_out_stream_sock;
+	std::unique_ptr<ZmqValve> m2_in_valve;
+	std::unique_ptr<ZmqValve> zhttp_in_valve;
+	std::unique_ptr<ZmqValve> zws_in_valve;
 	QList<QByteArray> m2_send_idents;
 	QHash<Rid, M2Connection*> m2ConnectionsByRid;
 	QHash<Rid, Session*> sessionsByM2Rid;
@@ -456,7 +458,7 @@ public:
 	QTimer *refreshTimer;
 	Connection quitConnection;
 	Connection hupConnection;
-	map<QZmq::Socket*, Connection> rrConnection;
+	map<ZmqSocket*, Connection> rrConnection;
 	Connection m2InValveConnection;
 	Connection zhttpInValveConnection;
 	Connection zwsInValveConnection;
@@ -648,7 +650,7 @@ public:
 		zhttpInstanceId = "m2zhttp_" + pidStr;
 		zwsInstanceId = "m2zws_" + pidStr;
 
-		m2_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+		m2_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 		m2_in_sock->setHwm(DEFAULT_HWM);
 		foreach(const QString &spec, m2_in_specs)
 		{
@@ -656,10 +658,10 @@ public:
 			m2_in_sock->connectToAddress(spec);
 		}
 
-		m2_in_valve = std::make_unique<QZmq::Valve>(m2_in_sock.get());
+		m2_in_valve = std::make_unique<ZmqValve>(m2_in_sock.get());
 		m2InValveConnection = m2_in_valve->readyRead.connect(boost::bind(&Private::m2_in_readyRead, this, boost::placeholders::_1));
 
-		m2_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		m2_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 		m2_out_sock->setShutdownWaitTime(0);
 		m2_out_sock->setHwm(DEFAULT_HWM);
 		m2_out_sock->setWriteQueueEnabled(false);
@@ -673,7 +675,7 @@ public:
 		{
 			const QString &spec = m2_control_specs[n];
 
-			QZmq::Socket *sock = new QZmq::Socket(QZmq::Socket::Dealer);
+			ZmqSocket *sock = new ZmqSocket(ZmqSocket::Dealer);
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
@@ -689,7 +691,7 @@ public:
 
 		if(!zhttp_in_specs.isEmpty())
 		{
-			zhttp_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			zhttp_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			zhttp_in_sock->setHwm(DEFAULT_HWM);
 			zhttp_in_sock->setShutdownWaitTime(0);
 			zhttp_in_sock->subscribe(zhttpInstanceId + ' ');
@@ -711,10 +713,10 @@ public:
 				}
 			}
 
-			zhttp_in_valve = std::make_unique<QZmq::Valve>(zhttp_in_sock.get());
+			zhttp_in_valve = std::make_unique<ZmqValve>(zhttp_in_sock.get());
 			zhttpInValveConnection = zhttp_in_valve->readyRead.connect(boost::bind(&Private::zhttp_in_readyRead, this, boost::placeholders::_1));
 
-			zhttp_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+			zhttp_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 			zhttp_out_sock->setShutdownWaitTime(0);
 			zhttp_out_sock->setHwm(DEFAULT_HWM);
 			if(zhttp_connect)
@@ -735,7 +737,7 @@ public:
 				}
 			}
 
-			zhttp_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			zhttp_out_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			zhttp_out_stream_sock->setShutdownWaitTime(0);
 			zhttp_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zhttp_connect)
@@ -759,7 +761,7 @@ public:
 
 		if(!zws_in_specs.isEmpty())
 		{
-			zws_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			zws_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			zws_in_sock->setHwm(DEFAULT_HWM);
 			zws_in_sock->subscribe(zwsInstanceId + ' ');
 			if(zws_connect)
@@ -780,10 +782,10 @@ public:
 				}
 			}
 
-			zws_in_valve = std::make_unique<QZmq::Valve>(zws_in_sock.get());
+			zws_in_valve = std::make_unique<ZmqValve>(zws_in_sock.get());
 			zwsInValveConnection = zws_in_valve->readyRead.connect(boost::bind(&Private::zws_in_readyRead, this, boost::placeholders::_1));
 
-			zws_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+			zws_out_sock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 			zws_out_sock->setShutdownWaitTime(0);
 			zws_out_sock->setHwm(DEFAULT_HWM);
 			if(zws_connect)
@@ -804,7 +806,7 @@ public:
 				}
 			}
 
-			zws_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			zws_out_stream_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			zws_out_stream_sock->setShutdownWaitTime(0);
 			zws_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zws_connect)
@@ -1436,7 +1438,7 @@ public:
 		}
 	}
 
-	void handleZhttpIn(Mode mode, const QList<QByteArray> &message)
+	void handleZhttpIn(Mode mode, const CowByteArrayList &message)
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
@@ -1453,7 +1455,7 @@ public:
 			return;
 		}
 
-		QByteArray dataRaw = message[0].mid(at + 1);
+		CowByteArray dataRaw = message[0].mid(at + 1);
 		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
 		{
 			log_warning("%s: received message with invalid format (missing type), skipping", logprefix);
@@ -1478,7 +1480,7 @@ public:
 		}
 
 		foreach(const ZhttpResponsePacket::Id &id, zresp.ids)
-			handleZhttpIn(logprefix, mode, id.id, id.seq, zresp);
+			handleZhttpIn(logprefix, mode, id.id.asQByteArray(), id.seq, zresp);
 	}
 
 	void handleZhttpIn(const char *logprefix, Mode mode, const QByteArray &id, int seq, const ZhttpResponsePacket &zresp)
@@ -1500,7 +1502,7 @@ public:
 				zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(id);
 				zreq.type = ZhttpRequestPacket::Cancel;
-				zhttp_out_write(mode, zreq, zresp.from);
+				zhttp_out_write(mode, zreq, zresp.from.asQByteArray());
 			}
 
 			return;
@@ -1522,7 +1524,7 @@ public:
 					return;
 				}
 
-				s->zhttpAddress = zresp.from;
+				s->zhttpAddress = zresp.from.asQByteArray();
 
 				if(seq != 0)
 				{
@@ -1538,7 +1540,7 @@ public:
 			{
 				// if not sequenced, then there might be a from address
 				if(!zresp.from.isEmpty())
-					s->zhttpAddress = zresp.from;
+					s->zhttpAddress = zresp.from.asQByteArray();
 
 				// if not sequenced, but seq is provided, then it must be 0
 				if(seq != -1 && seq != 0)
@@ -1571,7 +1573,7 @@ public:
 
 			// if a new from address is provided, update our copy
 			if(!zresp.from.isEmpty())
-				s->zhttpAddress = zresp.from;
+				s->zhttpAddress = zresp.from.asQByteArray();
 		}
 
 		// only bump sequence if seq was provided
@@ -1751,7 +1753,7 @@ public:
 							s->responseHeadersOnly = true;
 
 						HttpHeaders headers = zresp.headers;
-						QList<QByteArray> connHeaders = headers.takeAll("Connection");
+						QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 						foreach(const QByteArray &h, connHeaders)
 							headers.removeAll(h);
 
@@ -1781,7 +1783,7 @@ public:
 
 						log_info("OUT %s id=%s code=%d %d%s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size(), zresp.more ? " M": "");
 
-						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
+						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason.asQByteArray(), headers));
 					}
 
 					if(!zresp.body.isEmpty())
@@ -1806,7 +1808,7 @@ public:
 							return;
 						}
 
-						m2_queueResponse(s->conn, zresp.body, s->chunked);
+						m2_queueResponse(s->conn, zresp.body.asQByteArray(), s->chunked);
 					}
 
 					if(!zresp.more && s->chunked)
@@ -1844,7 +1846,7 @@ public:
 						s->conn->flowControl = false;
 
 					HttpHeaders headers = zresp.headers;
-					QList<QByteArray> connHeaders = headers.takeAll("Connection");
+					QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 					foreach(const QByteArray &h, connHeaders)
 						headers.removeAll(h);
 					headers.removeAll("Transfer-Encoding");
@@ -1857,7 +1859,7 @@ public:
 
 					QByteArray reason;
 					if(!zresp.reason.isEmpty())
-						reason = zresp.reason;
+						reason = zresp.reason.asQByteArray();
 					else
 						reason = "Switching Protocols";
 
@@ -1882,7 +1884,7 @@ public:
 
 					s->conn->continuation = zresp.more;
 
-					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
+					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body.asQByteArray();
 
 					m2_queueFrame(s->conn, frame, zresp.body.size());
 				}
@@ -1895,7 +1897,7 @@ public:
 			if(s->mode == WebSocket && zresp.condition == "rejected")
 			{
 				HttpHeaders headers = zresp.headers;
-				QList<QByteArray> connHeaders = headers.takeAll("Connection");
+				QList<QByteArray> connHeaders = headers.takeAll("Connection").asQByteArrayList();
 				foreach(const QByteArray &h, connHeaders)
 					headers.removeAll(h);
 
@@ -1915,8 +1917,8 @@ public:
 
 				log_info("OUT %s id=%s code=%d %d", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size());
 
-				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
-				m2_queueResponse(s->conn, zresp.body, false);
+				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason.asQByteArray(), headers));
+				m2_queueResponse(s->conn, zresp.body.asQByteArray(), false);
 
 				M2Connection *conn = s->conn;
 				destroySession(s);
@@ -1979,7 +1981,7 @@ public:
 					memcpy(data.data() + 2, zresp.body.data(), zresp.body.size());
 				}
 			} else {
-				data = zresp.body;
+				data = zresp.body.asQByteArray();
 			}
 
 			QByteArray frame = makeWsHeader(true, opcode, data.size()) + data;
@@ -2317,7 +2319,7 @@ public:
 		}
 	}
 
-	void m2_in_readyRead(const QList<QByteArray> &message)
+	void m2_in_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2326,10 +2328,10 @@ public:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logByteArray(LOG_LEVEL_DEBUG, message[0], "m2: IN");
+			LogUtil::logByteArray(LOG_LEVEL_DEBUG, message[0].asQByteArray(), "m2: IN");
 
 		M2RequestPacket mreq;
-		if(!mreq.fromByteArray(message[0]))
+		if(!mreq.fromByteArray(message[0].asQByteArray()))
 		{
 			log_warning("m2: received message with invalid format, skipping");
 			return;
@@ -2497,7 +2499,7 @@ public:
 					scheme = "ws";
 			}
 
-			QByteArray host = mreq.headers.get("Host");
+			QByteArray host = mreq.headers.get("Host").asQByteArray();
 			if(host.isEmpty())
 				host = "localhost";
 
@@ -2736,7 +2738,7 @@ public:
 		}
 	}
 
-	void m2_control_readyRead(QZmq::Socket *sock)
+	void m2_control_readyRead(ZmqSocket *sock)
 	{
 		int index = -1;
 		for(int n = 0; n < controlPorts.count(); ++n)
@@ -2753,7 +2755,7 @@ public:
 
 		while(sock->canRead())
 		{
-			QList<QByteArray> message = sock->read();
+			CowByteArrayList message = sock->read();
 
 			if(message.count() != 2)
 			{
@@ -2812,12 +2814,12 @@ public:
 		}
 	}
 
-	void zhttp_in_readyRead(const QList<QByteArray> &message)
+	void zhttp_in_readyRead(const CowByteArrayList &message)
 	{
 		handleZhttpIn(Http, message);
 	}
 
-	void zws_in_readyRead(const QList<QByteArray> &message)
+	void zws_in_readyRead(const CowByteArrayList &message)
 	{
 		handleZhttpIn(WebSocket, message);
 	}

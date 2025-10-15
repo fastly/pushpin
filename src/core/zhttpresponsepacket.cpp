@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2013 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -28,7 +28,7 @@ QVariant ZhttpResponsePacket::toVariant() const
 	QVariantHash obj;
 
 	if(!from.isEmpty())
-		obj["from"] = from;
+		obj["from"] = from.asQByteArray();
 
 	if(!ids.isEmpty())
 	{
@@ -36,7 +36,7 @@ QVariant ZhttpResponsePacket::toVariant() const
 		{
 			const Id &id = ids.first();
 			if(!id.id.isEmpty())
-				obj["id"] = id.id;
+				obj["id"] = id.id.asQByteArray();
 			if(id.seq != -1)
 				obj["seq"] = id.seq;
 		}
@@ -47,7 +47,7 @@ QVariant ZhttpResponsePacket::toVariant() const
 			{
 				QVariantHash vh;
 				if(!id.id.isEmpty())
-					vh["id"] = id.id;
+					vh["id"] = id.id.asQByteArray();
 				if(id.seq != -1)
 					vh["seq"] = id.seq;
 				vl += vh;
@@ -75,7 +75,7 @@ QVariant ZhttpResponsePacket::toVariant() const
 		obj["type"] = typeStr;
 
 	if(type == Error && !condition.isEmpty())
-		obj["condition"] = condition;
+		obj["condition"] = condition.asQByteArray();
 
 	if(credits != -1)
 		obj["credits"] = credits;
@@ -89,13 +89,13 @@ QVariant ZhttpResponsePacket::toVariant() const
 
 		if(type == Data || (type == Error && condition == "rejected"))
 		{
-			obj["reason"] = reason;
+			obj["reason"] = reason.asQByteArray();
 			QVariantList vheaders;
 			foreach(const HttpHeader &h, headers)
 			{
 				QVariantList vheader;
-				vheader += h.first;
-				vheader += h.second;
+				vheader += h.first.asQByteArray();
+				vheader += h.second.asQByteArray();
 				vheaders += QVariant(vheader);
 			}
 			obj["headers"] = vheaders;
@@ -103,10 +103,10 @@ QVariant ZhttpResponsePacket::toVariant() const
 	}
 
 	if(!body.isNull())
-		obj["body"] = body;
+		obj["body"] = body.asQByteArray();
 
 	if(!contentType.isEmpty())
-		obj["content-type"] = contentType;
+		obj["content-type"] = contentType.asQByteArray();
 
 	if(userData.isValid())
 		obj["user-data"] = userData;

@@ -36,8 +36,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		int logLevel,
-		const QStringList &routeLines,
-		bool quietCheck);
+		const QStringList &routeLines);
 
 	// reimplemented
 

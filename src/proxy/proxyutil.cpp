@@ -61,7 +61,7 @@ bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestDa
 {
 	if(!defaultUpstreamKey.isNull())
 	{
-		QByteArray token = requestData.headers.get("Grip-Sig");
+		QByteArray token = requestData.headers.get("Grip-Sig").asQByteArray();
 		if(!token.isEmpty())
 		{
 			if(validate_token(token, defaultUpstreamKey))
@@ -152,7 +152,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 	if(!cdnLoop.isEmpty())
 	{
-		QList<QByteArray> values = requestData->headers.takeAll("CDN-Loop", true);
+		QList<QByteArray> values = requestData->headers.takeAll("CDN-Loop", true).asQByteArrayList();
 		values += cdnLoop;
 
 		requestData->headers += HttpHeader("CDN-Loop", values.join(", "));
@@ -226,7 +226,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	else
 		xr = &xffRule;
 
-	QList<QByteArray> xffValues = requestData->headers.takeAll("X-Forwarded-For");
+	QList<QByteArray> xffValues = requestData->headers.takeAll("X-Forwarded-For").asQByteArrayList();
 	if(xr->truncate >= 0)
 		xffValues = xffValues.mid(qMax(xffValues.count() - xr->truncate, 0));
 	if(xr->append)
@@ -256,7 +256,7 @@ void applyHostHeader(HttpHeaders *headers, const QUrl &uri)
 	if(uri.port() != -1)
 		hostHeader += ':' + QByteArray::number(uri.port());
 
-	if(headers->get("Host") != hostHeader)
+	if(headers->get("Host").asQByteArray() != hostHeader)
 	{
 		headers->removeAll("Host");
 		headers->append(HttpHeader("Host", hostHeader));
@@ -302,7 +302,7 @@ QString targetToString(const DomainMap::Target &target)
 
 QHostAddress getLogicalAddress(const HttpHeaders &headers, const XffRule &xffRule, const QHostAddress &peerAddress)
 {
-	QList<QByteArray> xffValues = headers.getAll("X-Forwarded-For");
+	QList<QByteArray> xffValues = headers.getAll("X-Forwarded-For").asQByteArrayList();
 	if(!xffValues.isEmpty() && xffRule.truncate != 0)
 	{
 		QHostAddress addr;

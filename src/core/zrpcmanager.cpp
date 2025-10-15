@@ -26,9 +26,9 @@
 #include <assert.h>
 #include <QStringList>
 #include <QFile>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "packet/zrpcrequestpacket.h"
@@ -61,10 +61,10 @@ public:
 	int timeout;
 	QStringList clientSpecs;
 	QStringList serverSpecs;
-	std::unique_ptr<QZmq::Socket> clientSock;
-	std::unique_ptr<QZmq::Socket> serverSock;
-	std::unique_ptr<QZmq::Valve> clientValve;
-	std::unique_ptr<QZmq::Valve> serverValve;
+	std::unique_ptr<ZmqSocket> clientSock;
+	std::unique_ptr<ZmqSocket> serverSock;
+	std::unique_ptr<ZmqValve> clientValve;
+	std::unique_ptr<ZmqValve> serverValve;
 	QHash<QByteArray, ZrpcRequest*> clientReqsById;
 	QList<PendingItem> pending;
 	Connection clientValveConnection;
@@ -89,7 +89,7 @@ public:
 		clientValve.reset();
 		clientSock.reset();
 
-		clientSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
+		clientSock = std::make_unique<ZmqSocket>(ZmqSocket::Dealer);
 
 		clientSock->setSendHwm(OUT_HWM);
 		clientSock->setShutdownWaitTime(REQ_WAIT_TIME);
@@ -101,7 +101,7 @@ public:
 			return false;
 		}
 
-		clientValve = std::make_unique<QZmq::Valve>(clientSock.get());
+		clientValve = std::make_unique<ZmqValve>(clientSock.get());
 		clientValveConnection = clientValve->readyRead.connect(boost::bind(&Private::client_readyRead, this, boost::placeholders::_1));
 
 		clientValve->open();
@@ -115,7 +115,7 @@ public:
 		serverValve.reset();
 		serverSock.reset();
 
-		serverSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		serverSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
 		serverSock->setReceiveHwm(IN_HWM);
 		serverSock->setShutdownWaitTime(REP_WAIT_TIME);
@@ -127,7 +127,7 @@ public:
 			return false;
 		}
 
-		serverValve = std::make_unique<QZmq::Valve>(serverSock.get());
+		serverValve = std::make_unique<ZmqValve>(serverSock.get());
 		serverValveConnection = serverValve->readyRead.connect(boost::bind(&Private::server_readyRead, this, boost::placeholders::_1));
 
 		serverValve->open();
@@ -168,7 +168,7 @@ public:
 		serverSock->write(message);
 	}
 
-	void client_readyRead(const QList<QByteArray> &message)
+	void client_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 2)
 		{
@@ -209,9 +209,9 @@ public:
 		req->handle(p);
 	}
 
-	void server_readyRead(const QList<QByteArray> &message)
+	void server_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{
@@ -237,7 +237,7 @@ public:
 		}
 
 		PendingItem i;
-		i.headers = req.headers();
+		i.headers = req.headers().asQByteArrayList();
 		i.packet = p;
 		pending += i;
 

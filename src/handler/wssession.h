@@ -30,6 +30,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/wscontrolpacket.h"
 #include "ratelimiter.h"
+#include "instruct.h"
 #include "filter.h"
 #include "clientsession.h"
 
@@ -60,15 +61,14 @@ public:
 	bool targetTrusted;
 	QString sid;
 	QHash<QString, QString> meta;
-	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
-	QSet<QString> channels;
+	QHash<QString, Instruct::Channel> channels;
 	QSet<QString> implicitChannels;
 	int ttl;
 	QByteArray keepAliveType;
 	QByteArray keepAliveMessage;
 	QByteArray delayedType;
 	QByteArray delayedMessage;
-	QHash<int, qint64> pendingRequests;
+	QHash<int, int64_t> pendingRequests;
 	std::unique_ptr<Timer> expireTimer;
 	std::unique_ptr<Timer> delayedTimer;
 	std::unique_ptr<Timer> requestTimer;

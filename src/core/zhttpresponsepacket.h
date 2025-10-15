@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -22,6 +23,8 @@
 #define ZHTTPRESPONSEPACKET_H
 
 #include <QVariant>
+#include "cowstring.h"
+#include "cowbytearray.h"
 #include "httpheaders.h"
 
 class ZhttpResponsePacket
@@ -30,7 +33,7 @@ public:
 	class Id
 	{
 	public:
-		QByteArray id;
+		CowByteArray id;
 		int seq;
 
 		Id() :
@@ -38,7 +41,7 @@ public:
 		{
 		}
 
-		Id(const QByteArray &_id, int _seq = -1) :
+		Id(const CowByteArray &_id, int _seq = -1) :
 			id(_id),
 			seq(_seq)
 		{
@@ -59,21 +62,21 @@ public:
 		Pong // WebSocket
 	};
 
-	QByteArray from;
+	CowByteArray from;
 	QList<Id> ids;
 
 	Type type;
-	QByteArray condition;
+	CowByteArray condition;
 
 	int credits;
 	bool more;
 
 	int code;
-	QByteArray reason;
+	CowByteArray reason;
 	HttpHeaders headers;
-	QByteArray body;
+	CowByteArray body;
 
-	QByteArray contentType; // WebSocket
+	CowByteArray contentType; // WebSocket
 
 	QVariant userData;
 

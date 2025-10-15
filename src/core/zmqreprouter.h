@@ -21,24 +21,45 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qzmqcontext.h"
+#ifndef ZMQREPROUTER_H
+#define ZMQREPROUTER_H
 
-#include <assert.h>
-#include "rust/bindings.h"
+#include <boost/signals2.hpp>
 
-using namespace ffi;
+class CowString;
 
-namespace QZmq {
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::scoped_connection;
 
-Context::Context(int ioThreads)
+class ZmqReqMessage;
+
+class ZmqRepRouter
 {
-	context_ = wzmq_init(ioThreads);
-	assert(context_);
-}
+public:
+	ZmqRepRouter();
+	~ZmqRepRouter();
 
-Context::~Context()
-{
-	wzmq_term(context_);
-}
+	void setShutdownWaitTime(int msecs);
 
-}
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
+
+	bool canRead() const;
+
+	ZmqReqMessage read();
+	void write(const ZmqReqMessage &message);
+
+	Signal readyRead;
+	SignalInt messagesWritten;
+
+private:
+	ZmqRepRouter(const ZmqRepRouter &) = delete;
+	ZmqRepRouter &operator=(const ZmqRepRouter &) = delete;
+
+	class Private;
+	friend class Private;
+	std::unique_ptr<Private> d;
+};
+
+#endif

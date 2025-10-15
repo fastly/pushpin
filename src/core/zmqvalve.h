@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Justin Karneges
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -21,66 +22,36 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQREQMESSAGE_H
-#define QZMQREQMESSAGE_H
+#ifndef ZMQVALVE_H
+#define ZMQVALVE_H
 
-namespace QZmq {
+#include <boost/signals2.hpp>
+#include "cowbytearray.h"
 
-class ReqMessage
+using SignalList = boost::signals2::signal<void(const CowByteArrayList&)>;
+using Connection = boost::signals2::scoped_connection;
+
+class ZmqSocket;
+
+class ZmqValve
 {
 public:
-	ReqMessage()
-	{
-	}
+	ZmqValve(ZmqSocket *sock);
+	~ZmqValve();
 
-	ReqMessage(const QList<QByteArray> &headers, const QList<QByteArray> &content) :
-		headers_(headers),
-		content_(content)
-	{
-	}
+	bool isOpen() const;
 
-	ReqMessage(const QList<QByteArray> &rawMessage)
-	{
-		bool collectHeaders = true;
-		foreach(const QByteArray &part, rawMessage)
-		{
-			if(part.isEmpty())
-			{
-				collectHeaders = false;
-				continue;
-			}
+	void setMaxReadsPerEvent(int max);
 
-			if(collectHeaders)
-				headers_ += part;
-			else
-				content_ += part;
-		}
-	}
+	void open();
+	void close();
 
-	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
-
-	QList<QByteArray> headers() const { return headers_; }
-	QList<QByteArray> content() const { return content_; }
-
-	ReqMessage createReply(const QList<QByteArray> &content)
-	{
-		return ReqMessage(headers_, content);
-	}
-
-	QList<QByteArray> toRawMessage() const
-	{
-		QList<QByteArray> out;
-		out += headers_;
-		out += QByteArray();
-		out += content_;
-		return out;
-	}
+	SignalList readyRead;
 
 private:
-	QList<QByteArray> headers_;
-	QList<QByteArray> content_;
+	class Private;
+	friend class Private;
+	std::shared_ptr<Private> d;
 };
-
-}
 
 #endif

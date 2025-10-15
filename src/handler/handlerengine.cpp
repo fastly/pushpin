@@ -29,11 +29,11 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
 #include "rust/log.h"
 #include "rust/security.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "timer.h"
@@ -314,7 +314,7 @@ private:
 			QUrl uri = requestData.uri;
 			uri.setQuery(QString()); // remove the query part
 
-			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last");
+			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last").asQByteArrayList();
 			std::sort(gripLastHeaders.begin(), gripLastHeaders.end());
 
 			QByteArray key = "auto|" + uri.toEncoded();
@@ -817,7 +817,7 @@ public:
 			useSession = args["use-session"].toBool();
 		}
 
-		sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id"));
+		sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id").asQByteArray());
 
 		QList<DetectRule> rules;
 		QList<HttpHeaderParameters> ruleHeaders = responseData.headers.getAllAsParameters("Grip-Session-Detect", HttpHeaders::ParseAllParameters);
@@ -827,10 +827,10 @@ public:
 			{
 				DetectRule rule;
 				rule.domain = requestData.uri.host();
-				rule.pathPrefix = params.get("path-prefix");
-				rule.sidPtr = QString::fromUtf8(params.get("sid-ptr"));
+				rule.pathPrefix = params.get("path-prefix").asQByteArray();
+				rule.sidPtr = QString::fromUtf8(params.get("sid-ptr").asQByteArray());
 				if(params.contains("json-param"))
-					rule.jsonParam = QString::fromUtf8(params.get("json-param"));
+					rule.jsonParam = QString::fromUtf8(params.get("json-param").asQByteArray());
 				rules += rule;
 			}
 		}
@@ -838,7 +838,7 @@ public:
 		QList<HttpHeaderParameters> lastHeaders = responseData.headers.getAllAsParameters("Grip-Last");
 		foreach(const HttpHeaderParameters &params, lastHeaders)
 		{
-			lastIds.insert(params[0].first, params.get("last-id"));
+			lastIds.insert(params[0].first.asQByteArray(), params.get("last-id").asQByteArray());
 		}
 
 		// we need to "atomically" process conn-max packets and add
@@ -1012,8 +1012,8 @@ private:
 				foreach(const HttpHeader &h, instruct.response.headers)
 				{
 					QVariantList vheader;
-					vheader += h.first;
-					vheader += h.second;
+					vheader += h.first.asQByteArray();
+					vheader += h.second.asQByteArray();
 					vheaders += QVariant(vheader);
 				}
 				vresponse["headers"] = vheaders;
@@ -1296,18 +1296,18 @@ public:
 	std::unique_ptr<ZrpcManager> stateClient;
 	std::unique_ptr<ZrpcManager> controlServer;
 	std::unique_ptr<ZrpcManager> proxyControlClient;
-	std::unique_ptr<QZmq::Socket> inPullSock;
-	std::unique_ptr<QZmq::Valve> inPullValve;
-	std::unique_ptr<QZmq::Socket> inSubSock;
-	std::unique_ptr<QZmq::Valve> inSubValve;
-	std::unique_ptr<QZmq::Socket> retrySock;
-	std::unique_ptr<QZmq::Socket> wsControlInitSock;
-	std::unique_ptr<QZmq::Valve> wsControlInitValve;
-	std::unique_ptr<QZmq::Socket> wsControlStreamSock;
-	std::unique_ptr<QZmq::Valve> wsControlStreamValve;
-	std::unique_ptr<QZmq::Socket> statsSock;
-	std::unique_ptr<QZmq::Socket> proxyStatsSock;
-	std::unique_ptr<QZmq::Valve> proxyStatsValve;
+	std::unique_ptr<ZmqSocket> inPullSock;
+	std::unique_ptr<ZmqValve> inPullValve;
+	std::unique_ptr<ZmqSocket> inSubSock;
+	std::unique_ptr<ZmqValve> inSubValve;
+	std::unique_ptr<ZmqSocket> retrySock;
+	std::unique_ptr<ZmqSocket> wsControlInitSock;
+	std::unique_ptr<ZmqValve> wsControlInitValve;
+	std::unique_ptr<ZmqSocket> wsControlStreamSock;
+	std::unique_ptr<ZmqValve> wsControlStreamValve;
+	std::unique_ptr<ZmqSocket> statsSock;
+	std::unique_ptr<ZmqSocket> proxyStatsSock;
+	std::unique_ptr<ZmqValve> proxyStatsValve;
 	std::unique_ptr<SimpleHttpServer> controlHttpServer;
 	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<RateLimiter> publishLimiter;
@@ -1328,7 +1328,6 @@ public:
 	map<Subscription*, Connection> subscribedConnection;
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
-	Connection reportedConnection;
 	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
 	Connection pullConnection;
 	Connection controlInitValveConnection;
@@ -1456,7 +1455,7 @@ public:
 
 		if(!config.pushInSpec.isEmpty())
 		{
-			inPullSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+			inPullSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 			inPullSock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
@@ -1466,7 +1465,7 @@ public:
 				return false;
 			}
 
-			inPullValve = std::make_unique<QZmq::Valve>(inPullSock.get());
+			inPullValve = std::make_unique<ZmqValve>(inPullSock.get());
 			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in pull: %s", qPrintable(config.pushInSpec));
@@ -1474,7 +1473,7 @@ public:
 
 		if(!config.pushInSubSpecs.isEmpty())
 		{
-			inSubSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			inSubSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			inSubSock->setSendHwm(SUB_SNDHWM);
 			inSubSock->setShutdownWaitTime(0);
 
@@ -1493,7 +1492,7 @@ public:
 				inSubSock->setTcpKeepAliveParameters(30, 6, 5);
 			}
 
-			inSubValve = std::make_unique<QZmq::Valve>(inSubSock.get());
+			inSubValve = std::make_unique<ZmqValve>(inSubSock.get());
 			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
@@ -1501,7 +1500,7 @@ public:
 
 		if(!config.retryOutSpecs.isEmpty())
 		{
-			retrySock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			retrySock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			retrySock->setImmediateEnabled(true);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
@@ -1522,7 +1521,7 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControlInitSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+			wsControlInitSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
 			wsControlInitSock->setHwm(DEFAULT_HWM);
 
 			foreach(const QString &spec, config.wsControlInitSpecs)
@@ -1535,12 +1534,12 @@ public:
 				}
 			}
 
-			wsControlInitValve = std::make_unique<QZmq::Valve>(wsControlInitSock.get());
+			wsControlInitValve = std::make_unique<ZmqValve>(wsControlInitSock.get());
 			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
-			wsControlStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			wsControlStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 			wsControlStreamSock->setIdentity(config.instanceId);
 			wsControlStreamSock->setImmediateEnabled(true);
 			wsControlStreamSock->setHwm(DEFAULT_HWM);
@@ -1556,7 +1555,7 @@ public:
 				}
 			}
 
-			wsControlStreamValve = std::make_unique<QZmq::Valve>(wsControlStreamSock.get());
+			wsControlStreamValve = std::make_unique<ZmqValve>(wsControlStreamSock.get());
 			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
@@ -1565,7 +1564,6 @@ public:
 		stats = std::make_unique<StatsManager>(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
-		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
 
 		stats->setConnectionSendEnabled(config.statsConnectionSend);
 		stats->setConnectionTtl(config.statsConnectionTtl);
@@ -1609,7 +1607,7 @@ public:
 
 		if(!config.proxyStatsSpecs.isEmpty())
 		{
-			proxyStatsSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+			proxyStatsSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
 			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
@@ -1624,7 +1622,7 @@ public:
 				}
 			}
 
-			proxyStatsValve = std::make_unique<QZmq::Valve>(proxyStatsSock.get());
+			proxyStatsValve = std::make_unique<ZmqValve>(proxyStatsSock.get());
 			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
 			log_debug("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
@@ -1910,8 +1908,13 @@ private:
 
 	void removeSessionChannels(WsSession *s)
 	{
-		foreach(const QString &channel, s->channels)
+		QHashIterator<QString, Instruct::Channel> it(s->channels);
+		while(it.hasNext())
+		{
+			it.next();
+			const QString &channel = it.key();
 			removeSessionChannel(s, channel);
+		}
 	}
 
 	static void hs_subscribe_cb(void *data, std::tuple<HttpSession *, const QString &> value)
@@ -2178,7 +2181,7 @@ private:
 
 			PublishFormat &f = i.format;
 
-			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
+			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers").asQByteArrayList();
 
 			// remove grip headers from the push
 			for(int n = 0; n < f.headers.count(); ++n)
@@ -2439,41 +2442,13 @@ private:
 			removeSub(channel);
 	}
 
-	void stats_reported(const QList<StatsPacket> &packets)
+	QVariant parseJsonOrTnetstring(const CowByteArray &message, bool *ok = 0, QString *errorMessage = 0)
 	{
-		// only one outstanding report at a time
-		if(report)
-			return;
-
-		// consolidate data
-		StatsPacket all;
-		all.type = StatsPacket::Report;
-		all.connectionsMax = 0;
-		all.connectionsMinutes = 0;
-		all.messagesReceived = 0;
-		all.messagesSent = 0;
-		all.httpResponseMessagesSent = 0;
-		foreach(const StatsPacket &p, packets)
-		{
-			all.connectionsMax += qMax(p.connectionsMax, 0);
-			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
-			all.messagesReceived += qMax(p.messagesReceived, 0);
-			all.messagesSent += qMax(p.messagesSent, 0);
-			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
-		}
-
-		report = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
-
-		// safe to not track, since report can't outlive this
-		report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
-	}
-
-	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
 		bool ok_;
 		if(message.length() > 0 && message[0] == 'J') {
 			QJsonParseError e;
-			QJsonDocument doc = QJsonDocument::fromJson(message.mid(1), &e);
+			QJsonDocument doc = QJsonDocument::fromJson(message.mid(1).asQByteArray(), &e);
 			if(e.error != QJsonParseError::NoError)
 			{
 				if(errorMessage)
@@ -2518,7 +2493,7 @@ private:
 		return data;
 	}
 
-	void inPull_readyRead(const QList<QByteArray> &message)
+	void inPull_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2548,7 +2523,7 @@ private:
 		handlePublishItem(item);
 	}
 
-	void inSub_readyRead(const QList<QByteArray> &message)
+	void inSub_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 2)
 		{
@@ -2556,7 +2531,7 @@ private:
 			return;
 		}
 
-		QByteArray payload = message[1];
+		QByteArray payload = message[1].asQByteArray();
 
 		if(payload.startsWith("E:"))
 		{
@@ -2577,7 +2552,7 @@ private:
 			return;
 		}
 
-		QString channel = QString::fromUtf8(message[0]);
+		QString channel = QString::fromUtf8(message[0].asQByteArray());
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
@@ -2592,7 +2567,7 @@ private:
 		handlePublishItem(item);
 	}
 
-	void wsControlInit_readyRead(const QList<QByteArray> &message)
+	void wsControlInit_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2603,9 +2578,9 @@ private:
 		wsControlIn_readyRead(message[0]);
 	}
 
-	void wsControlStream_readyRead(const QList<QByteArray> &message)
+	void wsControlStream_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{
@@ -2616,7 +2591,7 @@ private:
 		wsControlIn_readyRead(req.content()[0]);
 	}
 
-	void wsControlIn_readyRead(const QByteArray &message)
+	void wsControlIn_readyRead(const CowByteArray &message)
 	{
 		bool ok;
 		QVariant data = TnetString::toVariant(message, 0, &ok);
@@ -2745,8 +2720,12 @@ private:
 						}
 
 						QString channel = s->channelPrefix + cm.channel;
-						s->channels += channel;
-						s->channelFilters[channel] = cm.filters;
+
+						Instruct::Channel c;
+						c.name = cm.channel;
+						c.filters = cm.filters;
+
+						s->channels.insert(channel, c);
 
 						if(!cs.wsSessionsByChannel.contains(channel))
 							cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
@@ -2773,7 +2752,6 @@ private:
 					if(!s->implicitChannels.contains(channel))
 					{
 						s->channels.remove(channel);
-						s->channelFilters.remove(channel);
 
 						removeSessionChannel(s, channel);
 					}
@@ -2879,8 +2857,12 @@ private:
 			else if(item.type == WsControlPacket::Item::Subscribe)
 			{
 				QString channel = QString::fromUtf8(item.channel);
-				s->channels += channel;
+
 				s->implicitChannels += channel;
+
+				Instruct::Channel c;
+				c.name = channel;
+				s->channels.insert(channel, c);
 
 				if(!cs.wsSessionsByChannel.contains(channel))
 					cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
@@ -2928,7 +2910,7 @@ private:
 		}
 	}
 
-	void proxyStats_readyRead(const QList<QByteArray> &message)
+	void proxyStats_readyRead(const CowByteArrayList &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2943,7 +2925,7 @@ private:
 			return;
 		}
 
-		QByteArray type = message[0].mid(0, at);
+		QByteArray type = message[0].mid(0, at).asQByteArray();
 
 		if(at + 1 >= message[0].length() || message[0][at + 1] != 'T')
 		{
@@ -3028,7 +3010,7 @@ private:
 				if(params.isEmpty() || params[0].first.isEmpty())
 					continue;
 
-				QByteArray type = params[0].first;
+				QByteArray type = params[0].first.asQByteArray();
 
 				if(type == "text/plain" || type == "text/*" || type == "*/*" || type == "*")
 				{

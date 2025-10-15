@@ -21,24 +21,18 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQCONTEXT_H
-#define QZMQCONTEXT_H
+#include "zmqcontext.h"
 
-namespace QZmq {
+#include <assert.h>
+#include "rust/bindings.h"
 
-class Context
+ZmqContext::ZmqContext(int ioThreads)
 {
-public:
-	Context(int ioThreads = 1);
-	~Context();
-
-	// the zmq context
-	void *context() { return context_; }
-
-private:
-	void *context_;
-};
-
+	context_ = ffi::wzmq_init(ioThreads);
+	assert(context_);
 }
 
-#endif
+ZmqContext::~ZmqContext()
+{
+	ffi::wzmq_term(context_);
+}

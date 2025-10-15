@@ -40,7 +40,7 @@ public:
 	class PendingItem
 	{
 	public:
-		qint64 time;
+		int64_t time;
 		PublishItem item;
 	};
 
@@ -58,7 +58,7 @@ public:
 	class CachedId
 	{
 	public:
-		qint64 expireTime;
+		int64_t expireTime;
 		QString channel;
 		QString id;
 	};
@@ -66,12 +66,12 @@ public:
 	Sequencer *q;
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
-	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
+	QMap<QPair<int64_t, PendingItem*>, PendingItem*> pendingItemsByTime;
 	std::unique_ptr<Timer> expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
-	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
+	QMap<QPair<int64_t, CachedId*>, CachedId*> idCacheByExpireTime;
 
 	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
 		q(_q),
@@ -90,11 +90,11 @@ public:
 
 	void addItem(const PublishItem &item, bool seq)
 	{
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
 		while(!idCacheByExpireTime.isEmpty())
 		{
-			QMap<QPair<qint64, CachedId*>, CachedId*>::iterator it = idCacheByExpireTime.begin();
+			QMap<QPair<int64_t, CachedId*>, CachedId*>::iterator it = idCacheByExpireTime.begin();
 			CachedId *i = it.value();
 
 			if(i->expireTime > now)
@@ -119,7 +119,7 @@ public:
 			i->channel = item.channel;
 			i->id = item.id;
 			idCacheById.insert(idKey, i);
-			idCacheByExpireTime.insert(QPair<qint64, CachedId*>(i->expireTime, i), i);
+			idCacheByExpireTime.insert(QPair<int64_t, CachedId*>(i->expireTime, i), i);
 		}
 
 		if(!seq)
@@ -151,7 +151,7 @@ public:
 			i->item = item;
 
 			channelPendingItems.itemsByPrevId.insert(item.prevId, i);
-			pendingItemsByTime.insert(QPair<qint64, PendingItem*>(i->time, i), i);
+			pendingItemsByTime.insert(QPair<int64_t, PendingItem*>(i->time, i), i);
 
 			if(!expireTimer->isActive())
 				expireTimer->start(EXPIRE_INTERVAL);
@@ -173,7 +173,7 @@ public:
 			it.next();
 			PendingItem *i = it.value();
 
-			pendingItemsByTime.remove(QPair<qint64, PendingItem*>(i->time, i));
+			pendingItemsByTime.remove(QPair<int64_t, PendingItem*>(i->time, i));
 		}
 
 		pendingItemsByChannel.remove(channel);
@@ -201,7 +201,7 @@ public:
 
 				PublishItem pitem = i->item;
 				channelPendingItems.itemsByPrevId.remove(i->item.prevId);
-				pendingItemsByTime.remove(QPair<qint64, PendingItem*>(i->time, i));
+				pendingItemsByTime.remove(QPair<int64_t, PendingItem*>(i->time, i));
 				delete i;
 
 				if(!pitem.id.isNull())
@@ -226,12 +226,12 @@ public:
 
 	void expireTimer_timeout()
 	{
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
-		qint64 threshold = now - pendingExpireMSecs;
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
+		int64_t threshold = now - pendingExpireMSecs;
 
 		while(!pendingItemsByTime.isEmpty())
 		{
-			QMap<QPair<qint64, PendingItem*>, PendingItem*>::iterator it = pendingItemsByTime.begin();
+			QMap<QPair<int64_t, PendingItem*>, PendingItem*>::iterator it = pendingItemsByTime.begin();
 			PendingItem *i = it.value();
 
 			if(i->time > threshold)
