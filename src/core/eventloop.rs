@@ -445,6 +445,7 @@ impl<C: Callback> Future for Exec<'_, C> {
 
 mod ffi {
     use super::*;
+    use crate::core::future::ffi::UnitFuture;
     use event::ffi::{interest_int_to_mio, READABLE, WRITABLE};
     use std::ops::Deref;
 
@@ -489,6 +490,7 @@ mod ffi {
         }
     }
 
+    #[repr(transparent)]
     pub struct EventLoopRaw(EventLoop<RawCallback>);
 
     impl Deref for EventLoopRaw {
@@ -642,6 +644,38 @@ mod ffi {
         }
 
         0
+    }
+
+    /// SAFETY: `setup_fn` must be safe to call with the provided
+    /// `setup_ctx`, and `done_fn` must be safe to call with the provided
+    /// `done_ctx`. The implementation of `setup_fn` may retain the pointer
+    /// to EventLoopRaw`, but must not use it after `done_fn` returns.
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_task(
+        capacity: libc::size_t,
+        setup_fn: unsafe extern "C" fn(*mut libc::c_void, *const EventLoopRaw),
+        setup_ctx: *mut libc::c_void,
+        done_fn: unsafe extern "C" fn(*mut libc::c_void, libc::c_int),
+        done_ctx: *mut libc::c_void,
+    ) -> *mut UnitFuture {
+        let fut = EventLoop::<RawCallback>::task(
+            capacity,
+            Box::new(move |l: &Rc<EventLoop<RawCallback>>| {
+                // SAFETY: calling with the provided ctx
+                unsafe {
+                    setup_fn(
+                        setup_ctx,
+                        &**l as *const EventLoop<RawCallback> as *const EventLoopRaw,
+                    )
+                };
+            }),
+            Box::new(move |code| {
+                // SAFETY: calling with the provided ctx
+                unsafe { done_fn(done_ctx, code) };
+            }),
+        );
+
+        Box::into_raw(Box::new(UnitFuture(Box::pin(fut))))
     }
 }
 
