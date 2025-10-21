@@ -471,6 +471,51 @@ impl Spawner {
     }
 }
 
+mod ffi {
+    use super::*;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn executor_create(tasks_max: libc::size_t) -> *mut Executor {
+        Box::into_raw(Box::new(Executor::new(tasks_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_destroy(ex: *mut Executor) {
+        if !ex.is_null() {
+            drop(Box::from_raw(ex));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_run(
+        ex: *mut Executor,
+        park_fn: unsafe extern "C" fn(*mut libc::c_void, c_int) -> c_int,
+        park_ctx: *mut libc::c_void,
+    ) -> c_int {
+        let ex = unsafe { ex.as_ref().unwrap() };
+
+        let park = |d: Option<Duration>| {
+            let ms = match d {
+                Some(d) => d.as_millis() as c_int,
+                None => -1,
+            };
+
+            if park_fn(park_ctx, ms) != 0 {
+                return Err(io::Error::from(io::ErrorKind::Other));
+            }
+
+            Ok(())
+        };
+
+        if ex.run(park).is_err() {
+            return -1;
+        }
+
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1006,6 +1007,37 @@ impl TimerEvented {
 
         self.expires.set(expires);
         self.registration.reregister_timer(expires)
+    }
+}
+
+mod ffi {
+    use super::*;
+    use std::convert::TryInto;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn reactor_create(registrations_max: libc::size_t) -> *mut Reactor {
+        Box::into_raw(Box::new(Reactor::new(registrations_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_destroy(r: *mut Reactor) {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_poll(r: *const Reactor, ms: c_int) -> c_int {
+        let r = unsafe { r.as_ref().unwrap() };
+
+        let duration = ms.try_into().ok().map(Duration::from_millis);
+
+        if r.poll(duration).is_err() {
+            return -1;
+        }
+
+        0
     }
 }
 
