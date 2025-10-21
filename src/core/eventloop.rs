@@ -948,9 +948,7 @@ mod tests {
         };
 
         executor
-            .spawn(async {
-                EventLoop::<Box<dyn Callback>>::task(1, setup_fn, done_fn).await;
-            })
+            .spawn(EventLoop::<Box<dyn Callback>>::task(1, setup_fn, done_fn))
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
