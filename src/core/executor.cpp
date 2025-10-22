@@ -17,33 +17,41 @@
 #include "executor.h"
 
 Executor::Executor(int tasksMax) :
-    inner_(ffi::executor_create(tasksMax))
+	inner_(ffi::executor_create(tasksMax))
 {
 }
 
 Executor::~Executor()
 {
-    ffi::executor_destroy(inner_);
+	ffi::executor_destroy(inner_);
 }
 
 int Executor::park_cb(void *ctx, int ms)
 {
-    std::function<bool (std::optional<int>)> *park = (std::function<bool (std::optional<int>)> *)ctx;
+	std::function<bool (std::optional<int>)> *park = (std::function<bool (std::optional<int>)> *)ctx;
 
-    std::optional<int> x;
-    if(ms >= 0)
-        x = ms;
+	std::optional<int> x;
+	if(ms >= 0)
+		x = ms;
 
-    if(!(*park)(x))
-        return -1;
+	if(!(*park)(x))
+		return -1;
 
-    return 0;
+	return 0;
 }
 
 bool Executor::run(std::function<bool (std::optional<int>)> park)
 {
-    if(ffi::executor_run(inner_, park_cb, &park) != 0)
-        return false;
+	if(ffi::executor_run(inner_, park_cb, &park) != 0)
+		return false;
 
-    return true;
+	return true;
+}
+
+bool Executor::currentSpawn(ffi::UnitFuture *fut)
+{
+	if(ffi::executor_current_spawn(fut) != 0)
+		return false;
+
+	return true;
 }
