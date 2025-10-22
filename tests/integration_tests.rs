@@ -60,18 +60,6 @@ fn test_mtls() {
             .expect("Failed to get server output")
     );
 
-    // let _hello_mock = server.mock(|when, then| {
-    //     when.method(GET)
-    //         .path("/v1/config/service")
-    //         .header("Accept-Encoding", "gzip")
-    //         .header("Accept", "application/json")
-    //         .header("Host", "")
-    //         .header("User-Agent", "pushpin-loader/1.0.0");
-    //     then.status(200)
-    //         .header("content-type", "text/html")
-    //         .body("ohi");
-    // });
-
     // Start pushpin
 
     // Send request

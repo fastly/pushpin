@@ -26,6 +26,7 @@ strip = "none"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+hyperlocal = "0.9"
 aegis = "^0.4.2"
 arrayvec = "0.7"
 backtrace = { version = "0.3", features = ["cpp_demangle"] }
@@ -61,7 +62,9 @@ url = "2.3"
 zmq = "0.9"
 ctor = "^0.1.20"
 http = "1"
-hyper = { version = "^0.14.11", features = ["full"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
 hyper-openssl = "0.9.1"
 lazy_static = "^1.4.0"
 pin-project = "1.0.8"

@@ -217,10 +217,12 @@ class BaseClient(object):
 
         return Response(resp.status, data, resp.getheader('ETag'))
 
+
 class TestClient(BaseClient):
     def get_request_details(self):
         consumer_name = 'pushpin-loader/' + PKG_VERSION
         return ('./mock_server.sock', 'unix', '', {'Fetchly-Consumer': consumer_name})
+
 
 class FetchlyClient(BaseClient):
     def get_request_details(self):
