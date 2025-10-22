@@ -23,6 +23,7 @@ pub mod event;
 pub mod eventloop;
 pub mod executor;
 pub mod fs;
+pub mod future;
 pub mod http1;
 pub mod io;
 pub mod jwt;
