@@ -661,13 +661,10 @@ mod ffi {
         let fut = EventLoop::<RawCallback>::task(
             capacity,
             Box::new(move |l: &Rc<EventLoop<RawCallback>>| {
+                let l_ptr = &**l as *const EventLoop<RawCallback> as *const EventLoopRaw;
+
                 // SAFETY: calling with the provided ctx
-                unsafe {
-                    setup_fn(
-                        setup_ctx,
-                        &**l as *const EventLoop<RawCallback> as *const EventLoopRaw,
-                    )
-                };
+                unsafe { setup_fn(setup_ctx, l_ptr) };
             }),
             Box::new(move |code| {
                 // SAFETY: calling with the provided ctx
