@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 import urllib.parse
-
+import os
 
 PKG_VERSION = '1.0.0'
 
@@ -154,6 +154,7 @@ class BaseClient(object):
     def request(self, url, accept, inm=None):
         connect_hostport, conn_type, host, headers = self.get_request_details()
 
+
         # Use an established connection, open a new one if that fails.
         for reuse in (True, False):
             if reuse and self.conn is None:
@@ -187,6 +188,7 @@ class BaseClient(object):
             headers[k] = v
 
         nredirs = 0
+        
         while True:
             conn.request('GET', url, None, headers)
             resp = conn.getresponse()
@@ -215,6 +217,10 @@ class BaseClient(object):
 
         return Response(resp.status, data, resp.getheader('ETag'))
 
+class TestClient(BaseClient):
+    def get_request_details(self):
+        consumer_name = 'pushpin-loader/' + PKG_VERSION
+        return ('./mock_server.sock', 'unix', '', {'Fetchly-Consumer': consumer_name})
 
 class FetchlyClient(BaseClient):
     def get_request_details(self):
@@ -299,7 +305,7 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
     """
     Returns {service_id: (service, [backend])}.
     """
-    fetchly_client = FetchlyClient()
+    fetchly_client = FetchlyClient() if not os.getenv("LOADER_TEST") else TestClient()
     internal_client = FanoutInternalClient(api_key)
 
     logging.info('fetching service manifest')
@@ -781,8 +787,15 @@ def main():
 
     configure_logging(sys.stdout, log_level)
 
-    with open(args.key, 'r') as f:
-        api_key = f.read().strip()
+    try:
+        with open(args.key, 'r') as f:
+            api_key = f.read().strip()
+    except FileNotFoundError:
+        print(f"API key file not found in file path: {args.key}.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Failed to read API key file: {e}", file=sys.stderr)
+        sys.exit(1)
 
     routes_file = args.output
 
