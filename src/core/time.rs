@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,28 +17,45 @@
 
 use crate::core::reactor::TimerEvented;
 use crate::core::task::get_reactor;
+use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
 pub struct Timeout {
-    evented: TimerEvented,
+    evented: RefCell<Option<TimerEvented>>,
 }
 
 impl Timeout {
     pub fn new(deadline: Instant) -> Self {
-        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
+        let reactor = get_reactor();
 
-        evented.registration().set_ready(true);
+        let evented = if deadline > reactor.now() {
+            Some(TimerEvented::new(deadline, &reactor).unwrap())
+        } else {
+            None
+        };
 
-        Self { evented }
+        Self {
+            evented: RefCell::new(evented),
+        }
     }
 
     pub fn set_deadline(&self, deadline: Instant) {
-        self.evented.set_expires(deadline).unwrap();
+        let reactor = get_reactor();
 
-        self.evented.registration().set_ready(true);
+        if deadline > reactor.now() {
+            if let Some(evented) = self.evented.borrow().as_ref() {
+                evented.set_expires(deadline).unwrap();
+                evented.registration().set_ready(false);
+            } else {
+                self.evented
+                    .replace(Some(TimerEvented::new(deadline, &reactor).unwrap()));
+            }
+        } else {
+            self.evented.replace(None);
+        }
     }
 
     pub fn elapsed(&self) -> TimeoutFuture<'_> {
@@ -53,31 +71,35 @@ impl Future for TimeoutFuture<'_> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let evented = &self.t.evented;
+        let evented = self.t.evented.borrow();
+
+        let Some(evented) = evented.as_ref() else {
+            // no registration means we are ready immediately
+            return Poll::Ready(());
+        };
+
+        if evented.registration().is_ready() {
+            let now = evented.registration().reactor().now();
+
+            // reactor guarantees enough time has passed
+            assert!(now >= evented.expires());
+
+            return Poll::Ready(());
+        }
 
         evented
             .registration()
             .set_waker(cx.waker(), mio::Interest::READABLE);
 
-        if !evented.registration().is_ready() {
-            return Poll::Pending;
-        }
-
-        let now = get_reactor().now();
-
-        if now >= evented.expires() {
-            Poll::Ready(())
-        } else {
-            evented.registration().set_ready(false);
-
-            Poll::Pending
-        }
+        Poll::Pending
     }
 }
 
 impl Drop for TimeoutFuture<'_> {
     fn drop(&mut self) {
-        self.t.evented.registration().clear_waker();
+        if let Some(evented) = self.t.evented.borrow().as_ref() {
+            evented.registration().clear_waker();
+        }
     }
 }
 
