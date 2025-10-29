@@ -17,19 +17,19 @@
 #include "reactor.h"
 
 Reactor::Reactor(int registrationsMax) :
-    inner_(ffi::reactor_create(registrationsMax))
+	inner_(ffi::reactor_create(registrationsMax))
 {
 }
 
 Reactor::~Reactor()
 {
-    ffi::reactor_destroy(inner_);
+	ffi::reactor_destroy(inner_);
 }
 
 bool Reactor::poll(std::optional<int> ms)
 {
-    if(ffi::reactor_poll(inner_, ms.value_or(-1)) != 0)
-        return false;
+	if(ffi::reactor_poll(inner_, ms.value_or(-1)) != 0)
+		return false;
 
-    return true;
+	return true;
 }
