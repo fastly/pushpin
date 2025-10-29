@@ -40,7 +40,7 @@ fn duration_to_ticks_round_down(d: Duration) -> u64 {
 }
 
 fn duration_to_ticks_round_up(d: Duration) -> u64 {
-    d.as_millis().div_ceil(TICK_DURATION_MS as u128) as u64
+    d.as_nanos().div_ceil((TICK_DURATION_MS * 1000000) as u128) as u64
 }
 
 fn ticks_to_duration(t: u64) -> Duration {
@@ -453,7 +453,9 @@ impl Registration {
             timer.wheel.remove(timer_key);
         }
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, self.key) {
             Ok(timer_key) => timer_key,
@@ -661,7 +663,9 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, key) {
             Ok(timer_key) => timer_key,
@@ -1171,7 +1175,9 @@ mod tests {
 
         let reactor = Reactor::new_with_time(1, now);
 
-        let evented = TimerEvented::new(now + Duration::from_millis(100), &reactor).unwrap();
+        // to test rounding, set a 10 tick timeout using a 90.1ms duration
+        let evented =
+            TimerEvented::new(now + Duration::from_micros((90 * 1000) + 100), &reactor).unwrap();
 
         let waker = Rc::new(TestWaker::new());
 
@@ -1191,18 +1197,18 @@ mod tests {
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
-            .poll_nonblocking(now + Duration::from_millis(40))
+            .poll_nonblocking(now + Duration::from_millis(90))
             .unwrap();
 
         assert_eq!(timeout, Some(Duration::from_millis(80)));
-        assert_eq!(reactor.now(), now + Duration::from_millis(40));
+        assert_eq!(reactor.now(), now + Duration::from_millis(90));
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
             .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
-        assert_eq!(timeout, Some(Duration::from_millis(60)));
+        assert_eq!(timeout, Some(Duration::from_millis(10)));
         assert_eq!(waker.was_waked(), true);
         assert_eq!(reactor.now(), now + Duration::from_millis(100));
     }
