@@ -453,7 +453,9 @@ impl Registration {
             timer.wheel.remove(timer_key);
         }
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, self.key) {
             Ok(timer_key) => timer_key,
@@ -661,7 +663,9 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, key) {
             Ok(timer_key) => timer_key,

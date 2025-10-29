@@ -17,73 +17,55 @@
 
 use crate::core::reactor::TimerEvented;
 use crate::core::task::get_reactor;
-use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
 pub struct Timeout {
-    evented: RefCell<Option<TimerEvented>>,
+    evented: TimerEvented,
 }
 
 impl Timeout {
     pub fn new(deadline: Instant) -> Self {
-        let reactor = get_reactor();
+        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
 
-        let evented = if deadline > reactor.now() {
-            Some(TimerEvented::new(deadline, &reactor).unwrap())
-        } else {
-            None
-        };
-
-        Self {
-            evented: RefCell::new(evented),
-        }
+        Self { evented }
     }
 
     pub fn set_deadline(&self, deadline: Instant) {
-        let reactor = get_reactor();
+        // in case a previous timeout had completed, set the registration
+        // readiness to false to ensure we get notified again
+        self.evented.registration().set_ready(false);
 
-        if deadline > reactor.now() {
-            if let Some(evented) = self.evented.borrow().as_ref() {
-                evented.set_expires(deadline).unwrap();
-                evented.registration().set_ready(false);
-            } else {
-                self.evented
-                    .replace(Some(TimerEvented::new(deadline, &reactor).unwrap()));
-            }
-        } else {
-            self.evented.replace(None);
-        }
+        self.evented.set_expires(deadline).unwrap();
     }
 
-    pub fn elapsed(&self) -> TimeoutFuture<'_> {
-        TimeoutFuture { t: self }
+    pub fn elapsed(&self) -> ElapsedFuture<'_> {
+        ElapsedFuture { t: self }
     }
 }
 
-pub struct TimeoutFuture<'a> {
+pub struct ElapsedFuture<'a> {
     t: &'a Timeout,
 }
 
-impl Future for TimeoutFuture<'_> {
+impl Future for ElapsedFuture<'_> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let evented = self.t.evented.borrow();
+        let evented = &self.t.evented;
 
-        let Some(evented) = evented.as_ref() else {
-            // no registration means we are ready immediately
-            return Poll::Ready(());
-        };
+        let now = evented.registration().reactor().now();
+        let expired = now >= evented.expires();
 
-        if evented.registration().is_ready() {
-            let now = evented.registration().reactor().now();
+        // if registration ready, reactor guarantees enough time has passed
+        assert!(!evented.registration().is_ready() || expired);
 
-            // reactor guarantees enough time has passed
-            assert!(now >= evented.expires());
-
+        // even if the registration is not ready, we can still return ready
+        // if the timeout has elapsed. notably, this enables a timeout of
+        // zero to poll as ready immediately
+        if expired {
             return Poll::Ready(());
         }
 
@@ -95,11 +77,9 @@ impl Future for TimeoutFuture<'_> {
     }
 }
 
-impl Drop for TimeoutFuture<'_> {
+impl Drop for ElapsedFuture<'_> {
     fn drop(&mut self) {
-        if let Some(evented) = self.t.evented.borrow().as_ref() {
-            evented.registration().clear_waker();
-        }
+        self.t.evented.registration().clear_waker();
     }
 }
 
