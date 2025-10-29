@@ -30,6 +30,8 @@
 #include <QFileInfo>
 #include <QDir>
 #include "rust/bindings.h"
+#include "reactor.h"
+#include "executor.h"
 #include "timer.h"
 #include "defercall.h"
 #include "eventloop.h"
@@ -98,44 +100,66 @@ static int runLoop(const HandlerEngine::Configuration &config)
 	int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
 
 	int registrationsMax = timersMax + socketNotifiersMax;
-	std::unique_ptr<EventLoop> loop = std::make_unique<EventLoop>(registrationsMax);
 
+	Reactor reactor(registrationsMax);
+	Executor executor(1); // for the one event loop task
+
+	EventLoop *loop = nullptr;
+	std::unique_ptr<DeferCall> deferCall;
 	std::unique_ptr<HandlerEngine> engine;
+	std::optional<int> exitCode;
 
-	DeferCall deferCall;
-	deferCall.defer([&] {
-		engine = std::make_unique<HandlerEngine>();
+	std::function<void ()> setup = [&] {
+		loop = EventLoop::instance();
 
-		ProcessQuit::instance()->quit.connect([&] {
-			log_info("stopping...");
+		deferCall = std::make_unique<DeferCall>();
 
-			// remove the handler, so if we get another signal then we crash out
-			ProcessQuit::cleanup();
+		deferCall->defer([&] {
+			engine = std::make_unique<HandlerEngine>();
 
-			engine.reset();
+			ProcessQuit::instance()->quit.connect([&] {
+				log_info("stopping...");
 
-			log_debug("stopped");
+				// remove the handler, so if we get another signal then we crash out
+				ProcessQuit::cleanup();
 
-			loop->exit(0);
+				engine.reset();
+
+				log_debug("stopped");
+
+				loop->exit(0);
+			});
+
+			ProcessQuit::instance()->hup.connect([&] {
+				log_info("reloading");
+				log_rotate();
+				engine->reload();
+			});
+
+			if(!engine->start(config))
+			{
+				engine.reset();
+				loop->exit(1);
+				return;
+			}
+
+			log_info("started");
 		});
+	};
 
-		ProcessQuit::instance()->hup.connect([&] {
-			log_info("reloading");
-			log_rotate();
-			engine->reload();
-		});
+	std::function<void (int)> done = [&](int code) {
+		deferCall.reset();
 
-		if(!engine->start(config))
-		{
-			engine.reset();
-			loop->exit(1);
-			return;
-		}
+		exitCode = code;
+	};
 
-		log_info("started");
-	});
+	auto fut = EventLoop::task(registrationsMax, &setup, &done);
 
-	return loop->exec();
+	assert(Executor::currentSpawn(fut));
+
+	assert(executor.run([&](std::optional<int> ms) { return reactor.poll(ms); }));
+
+	return exitCode.value();
 }
 
 extern "C" {
