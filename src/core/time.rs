@@ -59,7 +59,8 @@ impl Future for ElapsedFuture<'_> {
         let now = evented.registration().reactor().now();
         let expired = now >= evented.expires();
 
-        // if registration ready, reactor guarantees enough time has passed
+        // if the registration is ready, the reactor guarantees enough time
+        // has passed
         assert!(!evented.registration().is_ready() || expired);
 
         // even if the registration is not ready, we can still return ready
