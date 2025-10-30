@@ -1835,7 +1835,7 @@ dependencies = [
 [[package]]
 name = "origind-client"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1783-471a7f2#471a7f2d0c2d0f100f0c56080ada86700196f4e3"
+source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1840-8275d8f#8275d8f334005df50bda3a2f7aaa3326a3aa4457"
 dependencies = [
  "futures",
  "origind-common",
@@ -1848,7 +1848,7 @@ dependencies = [
 [[package]]
 name = "origind-common"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1783-471a7f2#471a7f2d0c2d0f100f0c56080ada86700196f4e3"
+source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1840-8275d8f#8275d8f334005df50bda3a2f7aaa3326a3aa4457"
 dependencies = [
  "bytes",
  "futures",
@@ -1870,7 +1870,7 @@ dependencies = [
 [[package]]
 name = "origind-socket"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1783-471a7f2#471a7f2d0c2d0f100f0c56080ada86700196f4e3"
+source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1840-8275d8f#8275d8f334005df50bda3a2f7aaa3326a3aa4457"
 dependencies = [
  "futures-util",
  "libc",
@@ -2247,7 +2247,7 @@ checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 [[package]]
 name = "protobuf-build-utils"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1783-471a7f2#471a7f2d0c2d0f100f0c56080ada86700196f4e3"
+source = "git+ssh://git@github.com/fastly/origind.git?tag=jenkins/release-1840-8275d8f#8275d8f334005df50bda3a2f7aaa3326a3aa4457"
 dependencies = [
  "bytes",
  "codegen",

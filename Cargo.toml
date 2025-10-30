@@ -42,8 +42,8 @@ miniz_oxide = "0.6"
 mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
 notify = "7"
 openssl = "=0.10.72"
-origind-client = { git = "ssh://git@github.com/fastly/origind.git", tag = "jenkins/release-1783-471a7f2" }
-origind-common = { git = "ssh://git@github.com/fastly/origind.git", tag = "jenkins/release-1783-471a7f2" }
+origind-client = { git = "ssh://git@github.com/fastly/origind.git", tag = "jenkins/release-1840-8275d8f" }
+origind-common = { git = "ssh://git@github.com/fastly/origind.git", tag = "jenkins/release-1840-8275d8f" }
 paste = "1.0"
 rustls = "0.21"
 rustls-native-certs = "0.6"
