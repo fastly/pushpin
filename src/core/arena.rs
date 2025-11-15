@@ -64,11 +64,16 @@ impl<T> Memory<T> {
         }
     }
 
-    #[cfg(test)]
     pub fn len(&self) -> usize {
         let entries = self.entries.borrow();
 
         entries.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        let entries = self.entries.borrow();
+
+        entries.capacity()
     }
 
     fn insert(&self, e: T) -> Result<usize, ()> {
@@ -341,6 +346,10 @@ impl<T> Rc<T> {
             memory: rc.memory.clone(),
             key: rc.key,
         }
+    }
+
+    pub fn ptr_eq(this: &Rc<T>, other: &Rc<T>) -> bool {
+        std::rc::Rc::ptr_eq(&this.memory, &other.memory) && this.key == other.key
     }
 
     pub fn get<'a>(&'a self) -> &'a T {
