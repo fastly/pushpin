@@ -18,6 +18,7 @@
 
 use crate::core::list;
 use slab::Slab;
+use std::array;
 use std::cmp;
 
 const WHEEL_BITS: usize = 6;
@@ -132,9 +133,9 @@ struct Timer {
 }
 
 pub struct TimerWheel {
-    nodes: Slab<list::Node<Timer>>,
-    wheel: [[list::List; WHEEL_LEN]; WHEEL_NUM],
-    expired: list::List,
+    nodes: Slab<list::SlabNode<Timer>>,
+    wheel: [[list::SlabList<Timer>; WHEEL_LEN]; WHEEL_NUM],
+    expired: list::SlabList<Timer>,
     pending: [u64; WHEEL_NUM],
     curtime: u64,
 }
@@ -143,8 +144,8 @@ impl TimerWheel {
     pub fn new(capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            wheel: [[list::List::default(); WHEEL_LEN]; WHEEL_NUM],
-            expired: list::List::default(),
+            wheel: array::from_fn(|_| array::from_fn(|_| list::SlabList::default())),
+            expired: list::SlabList::default(),
             pending: [0; WHEEL_NUM],
             curtime: 0,
         }
@@ -162,7 +163,7 @@ impl TimerWheel {
             user_data,
         };
 
-        let key = self.nodes.insert(list::Node::new(t));
+        let key = self.nodes.insert(list::SlabNode::new(t));
 
         self.sched(key);
 
@@ -240,7 +241,7 @@ impl TimerWheel {
 
         let need = need_resched(self.curtime, curtime);
 
-        let mut l = list::List::default();
+        let mut l = list::SlabList::default();
 
         for (wheel, &pending) in need.iter().enumerate() {
             // Loop as long as we still have slots to process
@@ -256,7 +257,7 @@ impl TimerWheel {
 
         self.curtime = curtime;
 
-        while let Some(key) = l.head {
+        while let Some(key) = l.head() {
             l.remove(&mut self.nodes, key);
 
             let n = &mut self.nodes[key];
@@ -489,12 +490,12 @@ mod tests {
         // Wheel 3 slot 63
         let t6 = w.add(0b1_000000_000000_000000_000000, 1).unwrap();
 
-        assert_eq!(w.expired.head, Some(t1));
-        assert_eq!(w.wheel[0][8].head, Some(t2));
-        assert_eq!(w.wheel[0][63].head, Some(t3));
-        assert_eq!(w.wheel[0][0].head, Some(t4));
-        assert_eq!(w.wheel[1][0].head, Some(t5));
-        assert_eq!(w.wheel[3][63].head, Some(t6));
+        assert_eq!(w.expired.head(), Some(t1));
+        assert_eq!(w.wheel[0][8].head(), Some(t2));
+        assert_eq!(w.wheel[0][63].head(), Some(t3));
+        assert_eq!(w.wheel[0][0].head(), Some(t4));
+        assert_eq!(w.wheel[1][0].head(), Some(t5));
+        assert_eq!(w.wheel[3][63].head(), Some(t6));
     }
 
     #[test]

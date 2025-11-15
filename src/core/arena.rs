@@ -51,9 +51,16 @@ impl<T> Memory<T> {
         }
     }
 
-    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.entries.borrow().is_empty()
+    }
+
     pub fn len(&self) -> usize {
         self.entries.borrow().len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.entries.borrow().capacity()
     }
 
     // Returns a key and a pointer to the inserted entry.
@@ -388,6 +395,11 @@ impl<T> Rc<T> {
     #[inline(always)]
     pub fn get(&self) -> &T {
         &self.inner().value
+    }
+
+    #[inline]
+    pub fn ptr_eq(this: &Rc<T>, other: &Rc<T>) -> bool {
+        this.ptr.as_ptr() == other.ptr.as_ptr()
     }
 
     #[inline(always)]
