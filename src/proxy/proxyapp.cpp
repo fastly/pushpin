@@ -104,6 +104,7 @@ enum CommandLineParseResult
 	CommandLineHelpRequested
 };
 
+/// Wraps Engine with lifecycle signals and defer call support 
 class EngineWorker
 {
 public:
@@ -150,6 +151,7 @@ private:
 	std::unique_ptr<Engine> engine_;
 };
 
+/// Wraps an Engine instance to run in its own thread
 class EngineThread
 {
 public:
@@ -268,10 +270,10 @@ public:
 
 static int runLoop(const Engine::Configuration &config, const QStringList &routeLines, const QString &routesFile, int workerCount)
 {
-	// plenty for the main thread
+	// Plenty for the main thread
 	int timersMax = 100;
 
-	// for processquit
+	// For processQuit
 	int socketNotifiersMax = 1;
 
 	int registrationsMax = timersMax + socketNotifiersMax;
@@ -498,7 +500,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi)
 	foreach(const QString &s, origHeadersNeedMarkStr)
 		origHeadersNeedMark += s.toUtf8();
 
-	// if routesfile is a relative path, then use it relative to the config file location
+	// If routesFile is a relative path, then use it relative to the config file location
 	QFileInfo fi(routesFile);
 	if(fi.isRelative())
 		routesFile = QFileInfo(configDir, routesFile).filePath();

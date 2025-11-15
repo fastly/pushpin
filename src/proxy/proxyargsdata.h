@@ -28,6 +28,7 @@
 #include <QStringList>
 #include "rust/bindings.h"
 
+/// Stores the arguments passed into the proxy application from command line
 class ProxyArgsData
 {
 public:
