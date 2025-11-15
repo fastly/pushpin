@@ -193,6 +193,8 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString clientCert;
+	QString clientKey;
 	State state;
 	QByteArray cid;
 	HttpRequestData requestData;
@@ -568,6 +570,8 @@ private:
 		req->setIgnorePolicies(ignorePolicies);
 		req->setTrustConnectHost(trustConnectHost);
 		req->setIgnoreTlsErrors(ignoreTlsErrors);
+		if(!clientCert.isEmpty())
+			req->setClientCert(clientCert, clientKey);
 		req->setSendBodyAfterAcknowledgement(true);
 
 		HttpHeaders headers = requestData.headers;
@@ -626,7 +630,7 @@ private:
 			responseData.headers = responseHeaders;
 		}
 
-		QByteArray contentType = responseHeaders.get("Content-Type");
+		QByteArray contentType = responseHeaders.get("Content-Type").asQByteArray();
 
 		if(responseCode != 200 || contentType != "application/websocket-events")
 		{
@@ -646,7 +650,7 @@ private:
 		if(responseHeaders.contains("Keep-Alive-Interval"))
 		{
 			bool ok;
-			int x = responseHeaders.get("Keep-Alive-Interval").toInt(&ok);
+			int x = responseHeaders.get("Keep-Alive-Interval").asQByteArray().toInt(&ok);
 			if(ok && x > 0)
 			{
 				if(x < 20)
@@ -666,7 +670,7 @@ private:
 		if(responseHeaders.contains("Content-Bytes-Accepted"))
 		{
 			bool ok;
-			int x = responseHeaders.get("Content-Bytes-Accepted").toInt(&ok);
+			int x = responseHeaders.get("Content-Bytes-Accepted").asQByteArray().toInt(&ok);
 			if(ok && x >= 0)
 				contentBytesAccepted = x;
 
@@ -742,7 +746,7 @@ private:
 		{
 			if(h.first.size() >= 10 && qstrnicmp(h.first.data(), "Set-Meta-", 9) == 0)
 			{
-				QByteArray name = h.first.mid(9);
+				QByteArray name = h.first.mid(9).asQByteArray();
 				if(meta.contains(name))
 					meta.removeAll(name);
 				if(!h.second.isEmpty())
@@ -1112,6 +1116,12 @@ void WebSocketOverHttp::setTrustConnectHost(bool on)
 void WebSocketOverHttp::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void WebSocketOverHttp::setClientCert(const QString &cert, const QString &key)
+{
+	d->clientCert = cert;
+	d->clientKey = key;
 }
 
 void WebSocketOverHttp::start(const QUrl &uri, const HttpHeaders &headers)

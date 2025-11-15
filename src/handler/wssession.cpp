@@ -116,7 +116,7 @@ void WsSession::processPublishQueue()
 		{
 			// ensure content filters match
 			QStringList contentFilters;
-			foreach(const QString &f, channelFilters[item.channel])
+			foreach(const QString &f, channels[item.channel].filters)
 			{
 				if(Filter::targets(f) & Filter::MessageContent)
 					contentFilters += f;
@@ -136,10 +136,23 @@ void WsSession::processPublishQueue()
 			}
 		}
 
-		filters = std::make_unique<Filter::MessageFilterStack>(channelFilters[item.channel]);
+		filters = std::make_unique<Filter::MessageFilterStack>(channels[item.channel].filters);
 		filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
 
+		// websocket sessions currently don't support previous IDs on
+		// subscriptions, but we still need to populate the channel names in
+		// in the filter context even if all the values will be null
+		QHash<QString, QString> prevIds;
+		QHashIterator<QString, Instruct::Channel> it(channels);
+		while(it.hasNext())
+		{
+			it.next();
+			const Instruct::Channel &c = it.value();
+			prevIds[c.name] = c.prevId;
+		}
+
 		Filter::Context fc;
+		fc.prevIds = prevIds;
 		fc.subscriptionMeta = meta;
 		fc.publishMeta = item.meta;
 		fc.zhttpOut = zhttpOut;
@@ -248,12 +261,12 @@ void WsSession::setupRequestTimer()
 	if(!pendingRequests.isEmpty())
 	{
 		// find next expiring request
-		qint64 lowestTime = -1;
-		QHashIterator<int, qint64> it(pendingRequests);
+		int64_t lowestTime = -1;
+		QHashIterator<int, int64_t> it(pendingRequests);
 		while(it.hasNext())
 		{
 			it.next();
-			qint64 time = it.value();
+			int64_t time = it.value();
 
 			if(lowestTime == -1 || time < lowestTime)
 				lowestTime = time;

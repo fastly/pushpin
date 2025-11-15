@@ -53,7 +53,7 @@ public:
 	Type type;
 	QByteArray from;
 	QByteArray route;
-	qint64 retrySeq; // connections max
+	int64_t retrySeq; // connections max
 	int count; // activity, message
 	QByteArray connectionId; // connected, disconnected
 	ConnectionType connectionType; // connected

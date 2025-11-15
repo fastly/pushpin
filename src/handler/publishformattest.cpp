@@ -39,8 +39,8 @@ static void responseFormat()
 	TEST_ASSERT_EQ(f.code, 200);
 	TEST_ASSERT_EQ(f.reason, QByteArray("OK"));
 	TEST_ASSERT_EQ(f.headers.count(), 1);
-	TEST_ASSERT_EQ(f.headers[0].first, QByteArray("Content-Type"));
-	TEST_ASSERT_EQ(f.headers[0].second, QByteArray("text/plain"));
+	TEST_ASSERT_EQ(f.headers[0].first, CowByteArray("Content-Type"));
+	TEST_ASSERT_EQ(f.headers[0].second, CowByteArray("text/plain"));
 	TEST_ASSERT_EQ(f.body, QByteArray("hello world"));
 
 	data.clear();

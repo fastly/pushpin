@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +40,7 @@ fn duration_to_ticks_round_down(d: Duration) -> u64 {
 }
 
 fn duration_to_ticks_round_up(d: Duration) -> u64 {
-    d.as_millis().div_ceil(TICK_DURATION_MS as u128) as u64
+    d.as_nanos().div_ceil((TICK_DURATION_MS * 1000000) as u128) as u64
 }
 
 fn ticks_to_duration(t: u64) -> Duration {
@@ -452,7 +453,9 @@ impl Registration {
             timer.wheel.remove(timer_key);
         }
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, self.key) {
             Ok(timer_key) => timer_key,
@@ -660,7 +663,9 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, key) {
             Ok(timer_key) => timer_key,
@@ -1009,6 +1014,37 @@ impl TimerEvented {
     }
 }
 
+mod ffi {
+    use super::*;
+    use std::convert::TryInto;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn reactor_create(registrations_max: libc::size_t) -> *mut Reactor {
+        Box::into_raw(Box::new(Reactor::new(registrations_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_destroy(r: *mut Reactor) {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_poll(r: *const Reactor, ms: c_int) -> c_int {
+        let r = unsafe { r.as_ref().unwrap() };
+
+        let duration = ms.try_into().ok().map(Duration::from_millis);
+
+        if r.poll(duration).is_err() {
+            return -1;
+        }
+
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1139,7 +1175,9 @@ mod tests {
 
         let reactor = Reactor::new_with_time(1, now);
 
-        let evented = TimerEvented::new(now + Duration::from_millis(100), &reactor).unwrap();
+        // to test rounding, set a 10 tick timeout using a 90.1ms duration
+        let evented =
+            TimerEvented::new(now + Duration::from_micros((90 * 1000) + 100), &reactor).unwrap();
 
         let waker = Rc::new(TestWaker::new());
 
@@ -1159,18 +1197,18 @@ mod tests {
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
-            .poll_nonblocking(now + Duration::from_millis(40))
+            .poll_nonblocking(now + Duration::from_millis(90))
             .unwrap();
 
         assert_eq!(timeout, Some(Duration::from_millis(80)));
-        assert_eq!(reactor.now(), now + Duration::from_millis(40));
+        assert_eq!(reactor.now(), now + Duration::from_millis(90));
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
             .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
-        assert_eq!(timeout, Some(Duration::from_millis(60)));
+        assert_eq!(timeout, Some(Duration::from_millis(10)));
         assert_eq!(waker.was_waked(), true);
         assert_eq!(reactor.now(), now + Duration::from_millis(100));
     }

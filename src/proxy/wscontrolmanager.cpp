@@ -26,9 +26,9 @@
 #include <assert.h>
 #include <QDateTime>
 #include <boost/signals2.hpp>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "log.h"
 #include "timer.h"
 #include "tnetstring.h"
@@ -56,7 +56,7 @@ public:
 	{
 	public:
 		WsControlSession *s;
-		qint64 lastRefresh;
+		int64_t lastRefresh;
 		int refreshBucket;
 	};
 
@@ -65,13 +65,13 @@ public:
 	int ipcFileMode;
 	QStringList initSpecs;
 	QStringList streamSpecs;
-	std::unique_ptr<QZmq::Socket> initSock;
-	std::unique_ptr<QZmq::Socket> streamSock;
-	std::unique_ptr<QZmq::Valve> streamValve;
+	std::unique_ptr<ZmqSocket> initSock;
+	std::unique_ptr<ZmqSocket> streamSock;
+	std::unique_ptr<ZmqValve> streamValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
 	std::unique_ptr<Timer> refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
-	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
+	QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
 	Connection streamValveConnection;
@@ -96,7 +96,7 @@ public:
 	{
 		initSock.reset();
 
-		initSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+		initSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 
 		initSock->setHwm(DEFAULT_HWM);
 		initSock->setShutdownWaitTime(0);
@@ -119,7 +119,7 @@ public:
 		streamValve.reset();
 		streamSock.reset();
 
-		streamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		streamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
 		streamSock->setIdentity(identity);
 		streamSock->setHwm(DEFAULT_HWM);
@@ -135,7 +135,7 @@ public:
 			}
 		}
 
-		streamValve = std::make_unique<QZmq::Valve>(streamSock.get());
+		streamValve = std::make_unique<ZmqValve>(streamSock.get());
 		streamValveConnection = streamValve->readyRead.connect(boost::bind(&Private::stream_readyRead, this, boost::placeholders::_1));
 
 		streamValve->open();
@@ -211,14 +211,14 @@ public:
 		if(keepAliveRegistrations.contains(s))
 			return;
 
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
 		KeepAliveRegistration *r = new KeepAliveRegistration;
 		r->s = s;
 		keepAliveRegistrations.insert(s, r);
 
 		r->lastRefresh = now;
-		sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+		sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 		r->refreshBucket = smallestSessionRefreshBucket();
 		sessionRefreshBuckets[r->refreshBucket] += r;
@@ -233,7 +233,7 @@ public:
 			return;
 
 		sessionRefreshBuckets[r->refreshBucket].remove(r);
-		sessionsByLastRefresh.remove(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r));
+		sessionsByLastRefresh.remove(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r));
 		keepAliveRegistrations.remove(s);
 		delete r;
 
@@ -252,9 +252,9 @@ public:
 	}
 
 private:
-	void stream_readyRead(const QList<QByteArray> &message)
+	void stream_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{
@@ -315,7 +315,7 @@ private:
 
 	void refresh_timeout()
 	{
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
 		QHash<QByteArray, WsControlPacket> packets;
 
@@ -324,10 +324,10 @@ private:
 		foreach(KeepAliveRegistration *r, bucket)
 		{
 			// move to the end
-			QPair<qint64, KeepAliveRegistration*> k(r->lastRefresh, r);
+			QPair<int64_t, KeepAliveRegistration*> k(r->lastRefresh, r);
 			sessionsByLastRefresh.remove(k);
 			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
 			if(peer.isEmpty())
@@ -357,10 +357,10 @@ private:
 		}
 
 		// process any others
-		qint64 threshold = now - SESSION_MUST_PROCESS;
+		int64_t threshold = now - SESSION_MUST_PROCESS;
 		while(!sessionsByLastRefresh.isEmpty())
 		{
-			QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
+			QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
 			KeepAliveRegistration *r = it.value();
 
 			if(r->lastRefresh > threshold)
@@ -369,7 +369,7 @@ private:
 			// move to the end
 			sessionsByLastRefresh.erase(it);
 			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
 			if(peer.isEmpty())

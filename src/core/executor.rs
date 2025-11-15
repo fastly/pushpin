@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::core::future::SizedFuture;
 use crate::core::list;
 use crate::core::waker;
 use log::debug;
@@ -69,7 +70,7 @@ fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
 }
 
 struct Task {
-    fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    fut: Option<BoxFuture>,
     wakeable: bool,
     low: bool,
 }
@@ -124,10 +125,12 @@ impl Tasks {
         !self.data.borrow().next.is_empty() || !self.data.borrow().next_low.is_empty()
     }
 
-    fn add<F>(&self, fut: F) -> Result<(), ()>
+    fn add<T>(&self, get_fut: T, size: usize) -> Result<(), ()>
     where
-        F: Future<Output = ()> + 'static,
+        T: FnOnce() -> BoxFuture,
     {
+        debug!("spawning future with size {size}");
+
         let data = &mut *self.data.borrow_mut();
 
         if data.nodes.len() == data.nodes.capacity() {
@@ -138,7 +141,7 @@ impl Tasks {
         let nkey = entry.key();
 
         let task = Task {
-            fut: Some(Box::pin(fut)),
+            fut: Some(get_fut()),
             wakeable: false,
             low: false,
         };
@@ -340,9 +343,15 @@ impl Executor {
     where
         F: Future<Output = ()> + 'static,
     {
-        debug!("spawning future with size {}", mem::size_of::<F>());
+        self.tasks.add(move || Box::pin(fut), mem::size_of::<F>())
+    }
 
-        self.tasks.add(fut)
+    #[allow(clippy::result_unit_err)]
+    pub fn spawn_boxed(&self, fut: Pin<Box<dyn SizedFuture<Output = ()>>>) -> Result<(), ()> {
+        let size = (*fut).size();
+        let fut = fut.into_future();
+
+        self.tasks.add(move || fut, size)
     }
 
     pub fn set_pre_poll<F>(&self, pre_poll_fn: F)
@@ -468,6 +477,74 @@ impl Spawner {
         let ex = Executor { tasks };
 
         ex.spawn(fut)
+    }
+}
+
+mod ffi {
+    use super::*;
+    use crate::core::future::ffi::UnitFuture;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn executor_create(tasks_max: libc::size_t) -> *mut Executor {
+        Box::into_raw(Box::new(Executor::new(tasks_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_destroy(ex: *mut Executor) {
+        if !ex.is_null() {
+            drop(Box::from_raw(ex));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_run(
+        ex: *mut Executor,
+        park_fn: unsafe extern "C" fn(*mut libc::c_void, c_int) -> c_int,
+        park_ctx: *mut libc::c_void,
+    ) -> c_int {
+        let ex = unsafe { ex.as_ref().unwrap() };
+
+        let park = |d: Option<Duration>| {
+            let ms = match d {
+                Some(d) => d.as_millis() as c_int,
+                None => -1,
+            };
+
+            if park_fn(park_ctx, ms) != 0 {
+                return Err(io::Error::from(io::ErrorKind::Other));
+            }
+
+            Ok(())
+        };
+
+        if ex.run(park).is_err() {
+            return -1;
+        }
+
+        0
+    }
+
+    /// Spawns `fut` on the executor in the current thread. Returns 0 on
+    /// success or non-zero on error. An error can occur if there is no
+    /// executor in the current thread or if the executor is at capacity.
+    /// This function takes ownership of `fut` regardless of whether spawning
+    /// is successful.
+    ///
+    /// SAFETY: `fut` must point to a valid `UnitFuture`.
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_current_spawn(fut: *mut UnitFuture) -> c_int {
+        let Some(executor) = Executor::current() else {
+            return -1;
+        };
+
+        let fut = Box::from_raw(fut).0;
+
+        if executor.spawn_boxed(fut).is_err() {
+            return -1;
+        }
+
+        0
     }
 }
 

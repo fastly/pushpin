@@ -25,17 +25,16 @@
 #include <thread>
 #include <QDir>
 #include "test.h"
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "cowstring.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "qtcompat.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
-#include "timer.h"
-#include "defercall.h"
 #include "eventloop.h"
 #include "handlerengine.h"
 
@@ -46,17 +45,18 @@ namespace {
 class Wrapper
 {
 public:
-	std::unique_ptr<QZmq::Socket> zhttpClientOutStreamSock;
-	std::unique_ptr<QZmq::Socket> zhttpClientInSock;
-	std::unique_ptr<QZmq::Valve> zhttpClientInValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerInSock;
-	std::unique_ptr<QZmq::Valve> zhttpServerInValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerInStreamSock;
-	std::unique_ptr<QZmq::Valve> zhttpServerInStreamValve;
-	std::unique_ptr<QZmq::Socket> zhttpServerOutSock;
-	std::unique_ptr<QZmq::Socket> proxyAcceptSock;
-	std::unique_ptr<QZmq::Valve> proxyAcceptValve;
-	std::unique_ptr<QZmq::Socket> publishPushSock;
+	std::unique_ptr<ZmqSocket> zhttpClientOutStreamSock;
+	std::unique_ptr<ZmqValve> zhttpClientOutStreamValve;
+	std::unique_ptr<ZmqSocket> zhttpClientInSock;
+	std::unique_ptr<ZmqValve> zhttpClientInValve;
+	std::unique_ptr<ZmqSocket> zhttpServerInSock;
+	std::unique_ptr<ZmqValve> zhttpServerInValve;
+	std::unique_ptr<ZmqSocket> zhttpServerInStreamSock;
+	std::unique_ptr<ZmqValve> zhttpServerInStreamValve;
+	std::unique_ptr<ZmqSocket> zhttpServerOutSock;
+	std::unique_ptr<ZmqSocket> proxyAcceptSock;
+	std::unique_ptr<ZmqValve> proxyAcceptValve;
+	std::unique_ptr<ZmqSocket> publishPushSock;
 
 	QDir workDir;
 	bool acceptSuccess;
@@ -68,9 +68,12 @@ public:
 	int serverOutSeq;
 	QByteArray requestBody;
 	Connection zhttpClientInValveConnection;
+	Connection zhttpClientOutStreamValveConnection;
 	Connection zhttpServerInValveConnection;
 	Connection zhttpServerInStreamValveConnection;
 	Connection proxyAcceptValveConnection;
+
+	boost::signals2::signal<void()> connected;
 
 	Wrapper(QDir _workDir) :
 		workDir(_workDir),
@@ -82,59 +85,65 @@ public:
 	{
 		// http sockets
 
-		zhttpClientOutStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		zhttpClientOutStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
+		zhttpClientOutStreamValve = std::make_unique<ZmqValve>(zhttpClientOutStreamSock.get());
+		zhttpClientOutStreamValveConnection = zhttpClientOutStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientOutStream_readyRead, this, boost::placeholders::_1));
 
-		zhttpClientInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
-		zhttpClientInValve = std::make_unique<QZmq::Valve>(zhttpClientInSock.get());
+		zhttpClientInSock = std::make_unique<ZmqSocket>(ZmqSocket::Sub);
+		zhttpClientInValve = std::make_unique<ZmqValve>(zhttpClientInSock.get());
 		zhttpClientInValveConnection = zhttpClientInValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
-		zhttpServerInValve = std::make_unique<QZmq::Valve>(zhttpServerInSock.get());
+		zhttpServerInSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
+		zhttpServerInValve = std::make_unique<ZmqValve>(zhttpServerInSock.get());
 		zhttpServerInValveConnection = zhttpServerInValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		zhttpServerInStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 		zhttpServerInStreamSock->setIdentity("test-server");
-		zhttpServerInStreamValve = std::make_unique<QZmq::Valve>(zhttpServerInStreamSock.get());
+		zhttpServerInStreamValve = std::make_unique<ZmqValve>(zhttpServerInStreamSock.get());
 		zhttpServerInStreamValveConnection = zhttpServerInStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerInStream_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
+		zhttpServerOutSock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 
 		// proxy sockets
 
-		proxyAcceptSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
-		proxyAcceptValve = std::make_unique<QZmq::Valve>(proxyAcceptSock.get());
+		proxyAcceptSock = std::make_unique<ZmqSocket>(ZmqSocket::Dealer);
+		proxyAcceptValve = std::make_unique<ZmqValve>(proxyAcceptSock.get());
 		proxyAcceptValveConnection = proxyAcceptValve->readyRead.connect(boost::bind(&Wrapper::proxyAccept_readyRead, this, boost::placeholders::_1));
 
 		// publish sockets
 
-		publishPushSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
+		publishPushSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 	}
 
 	void startHttp()
 	{
-		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
-		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
-		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
-		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("server-in-stream"));
-		zhttpServerOutSock->bind("ipc://" + workDir.filePath("server-out"));
+		zhttpClientOutStreamSock->setIdentity("test-client");
+		zhttpClientOutStreamSock->setProbeRouterEnabled(true);
+
+		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("hndtst-client-out-stream"));
+		zhttpClientInSock->bind("ipc://" + workDir.filePath("hndtst-client-in"));
+		zhttpServerInSock->bind("ipc://" + workDir.filePath("hndtst-server-in"));
+		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("hndtst-server-in-stream"));
+		zhttpServerOutSock->bind("ipc://" + workDir.filePath("hndtst-server-out"));
 
 		zhttpClientInSock->subscribe("test-client ");
 
 		zhttpClientInValve->open();
+		zhttpClientOutStreamValve->open();
 		zhttpServerInValve->open();
 		zhttpServerInStreamValve->open();
 	}
 
 	void startProxy()
 	{
-		proxyAcceptSock->bind("ipc://" + workDir.filePath("accept"));
+		proxyAcceptSock->bind("ipc://" + workDir.filePath("hndtst-accept"));
 
 		proxyAcceptValve->open();
 	}
 
 	void startPublish()
 	{
-		publishPushSock->connectToAddress("ipc://" + workDir.filePath("publish-pull"));
+		publishPushSock->connectToAddress("ipc://" + workDir.filePath("hndtst-publish-pull"));
 	}
 
 	void reset()
@@ -149,33 +158,50 @@ public:
 		requestBody.clear();
 	}
 
-	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
+	void processClientIn(const CowByteArray &message)
 	{
 		log_debug("client in");
 
-		int at = message[0].indexOf(' ');
-		QVariant v = TnetString::toVariant(message[0].mid(at + 2));
+		QVariant v = TnetString::toVariant(message);
 		ZhttpResponsePacket zresp;
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			if(!responses.contains(zresp.ids.first().id))
+			if(!responses.contains(zresp.ids.first().id.asQByteArray()))
 			{
 				HttpResponseData rd;
 				rd.code = zresp.code;
-				rd.reason = zresp.reason;
+				rd.reason = zresp.reason.asQByteArray();
 				rd.headers = zresp.headers;
-				responses[zresp.ids.first().id] = rd;
+				responses[zresp.ids.first().id.asQByteArray()] = rd;
 			}
 
-			responses[zresp.ids.first().id].body += zresp.body;
+			responses[zresp.ids.first().id.asQByteArray()].body += zresp.body.asQByteArray();
 
 			if(!zresp.more)
 				finished = true;
 		}
 	}
 
-	void zhttpServerIn_readyRead(const QList<QByteArray> &message)
+	void zhttpClientIn_readyRead(const CowByteArrayList &message)
+	{
+		int at = message[0].indexOf(' ');
+
+		processClientIn(message[0].mid(at + 2));
+	}
+
+	void zhttpClientOutStream_readyRead(const CowByteArrayList &message)
+	{
+		if(message[2] == "probe-ack")
+		{
+			connected();
+			return;
+		}
+
+		processClientIn(message[2].mid(1));
+	}
+
+	void zhttpServerIn_readyRead(const CowByteArrayList &message)
 	{
 		++serverReqs;
 		log_debug("server in");
@@ -186,7 +212,7 @@ public:
 		handleServerIn(zreq);
 	}
 
-	void zhttpServerInStream_readyRead(const QList<QByteArray> &message)
+	void zhttpServerInStream_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server stream in");
 		QVariant v = TnetString::toVariant(message[2].mid(1));
@@ -205,7 +231,7 @@ public:
 		}
 
 		if(zreq.type == ZhttpRequestPacket::Data)
-			requestBody += zreq.body;
+			requestBody += zreq.body.asQByteArray();
 
 		if(zreq.more)
 		{
@@ -217,7 +243,7 @@ public:
 				zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
-				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+				QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 				zhttpServerOutSock->write(QList<QByteArray>() << buf);
 			}
 
@@ -237,16 +263,16 @@ public:
 		zresp.body = "this is what's next\n";
 
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
-		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+		QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
 		// zero out so we can accept another request
 		serverOutSeq = 0;
 	}
 
-	void proxyAccept_readyRead(const QList<QByteArray> &_message)
+	void proxyAccept_readyRead(const CowByteArrayList &_message)
 	{
-		QZmq::ReqMessage message(_message);
+		ZmqReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
 
 		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);
@@ -277,6 +303,12 @@ public:
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(workDir);
+
+		bool connected = false;
+		wrapper->connected.connect([&] {
+			connected = true;
+		});
+
 		wrapper->startHttp();
 		wrapper->startProxy();
 
@@ -284,20 +316,21 @@ public:
 
 		HandlerEngine::Configuration config;
 		config.instanceId = "handler";
-		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out-stream"));
-		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("client-in"));
-		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
-		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
-		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
-		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("accept"));
-		config.pushInSpec = ("ipc://" + workDir.filePath("publish-pull"));
+		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-client-out-stream"));
+		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-client-in"));
+		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-in"));
+		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-in-stream"));
+		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-server-out"));
+		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("hndtst-accept"));
+		config.pushInSpec = ("ipc://" + workDir.filePath("hndtst-publish-pull"));
 		config.connectionSubscriptionMax = 20;
 		config.connectionsMax = 20;
 		TEST_ASSERT(engine->start(config));
 
 		wrapper->startPublish();
 
-		loop_wait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()
@@ -309,48 +342,22 @@ public:
 
 }
 
-static void runWithEventLoops(std::function<void (Wrapper *, std::function<void (int)>)> f)
+static void runWithEventLoop(std::function<void (Wrapper *, std::function<void (int)>)> f)
 {
-	{
-		EventLoop loop(100);
+	EventLoop loop(100);
 
-		auto loop_wait = [&](int ms) {
-			for(int i = ms; i > 0; i -= 10)
-			{
-				std::this_thread::sleep_for(10ms);
-				loop.step();
-			}
-		};
-
+	auto loop_wait = [&](int ms) {
+		for(int i = ms; i > 0; i -= 10)
 		{
-			TestState state(loop_wait);
-
-			f(state.wrapper, loop_wait);
+			std::this_thread::sleep_for(10ms);
+			loop.step();
 		}
-
-		DeferCall::cleanup();
-	}
+	};
 
 	{
-		TestQCoreApplication qapp;
+		TestState state(loop_wait);
 
-		Timer::init(100);
-
-		auto loop_wait = [](int ms) {
-			QTest::qWait(ms);
-		};
-
-		{
-			TestState state(loop_wait);
-
-			f(state.wrapper, loop_wait);
-		}
-
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
-
-		DeferCall::cleanup();
-		Timer::deinit();
+		f(state.wrapper, loop_wait);
 	}
 }
 
@@ -369,6 +376,7 @@ static void acceptNoHold(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -420,6 +428,7 @@ static void acceptNoHoldResponseSent(Wrapper *wrapper, std::function<void (int)>
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -472,6 +481,7 @@ static void acceptNoHoldNext(Wrapper *wrapper, std::function<void (int)> loop_wa
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -529,6 +539,7 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (i
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 	reqState["response-code"] = 200;
 
 	QVariantHash req;
@@ -588,6 +599,7 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -657,6 +669,7 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -745,6 +758,7 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
+	reqState["router-resp"] = true;
 
 	QVariantHash req;
 	req["method"] = QByteArray("GET");
@@ -877,13 +891,13 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 
 extern "C" int handlerengine_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(runWithEventLoops(acceptNoHold));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldResponseSent));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldNext));
-	TEST_CATCH(runWithEventLoops(acceptNoHoldNextResponseSent));
-	TEST_CATCH(runWithEventLoops(publishResponse));
-	TEST_CATCH(runWithEventLoops(publishStream));
-	TEST_CATCH(runWithEventLoops(publishStreamReorder));
+	TEST_CATCH(runWithEventLoop(acceptNoHold));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldResponseSent));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldNext));
+	TEST_CATCH(runWithEventLoop(acceptNoHoldNextResponseSent));
+	TEST_CATCH(runWithEventLoop(publishResponse));
+	TEST_CATCH(runWithEventLoop(publishStream));
+	TEST_CATCH(runWithEventLoop(publishStreamReorder));
 
 	return 0;
 }

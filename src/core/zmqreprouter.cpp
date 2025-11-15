@@ -21,25 +21,24 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "qzmqreprouter.h"
+#include "zmqreprouter.h"
 
-#include "qzmqsocket.h"
-#include "qzmqreqmessage.h"
+#include "cowstring.h"
+#include "zmqsocket.h"
+#include "zmqreqmessage.h"
 
-namespace QZmq {
-
-class RepRouter::Private
+class ZmqRepRouter::Private
 {
 public:
-	RepRouter *q;
-	std::unique_ptr<Socket> sock;
+	ZmqRepRouter *q;
+	std::unique_ptr<ZmqSocket> sock;
 	Connection mWConnection;
 	Connection rrConnection;
 
-	Private(RepRouter *_q) :
+	Private(ZmqRepRouter *_q) :
 		q(_q)
 	{
-		sock = std::make_unique<Socket>(Socket::Router);
+		sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
 		mWConnection = sock->messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this,  boost::placeholders::_1));
 	}
@@ -55,42 +54,39 @@ public:
 	}
 };
 
-RepRouter::RepRouter()
+ZmqRepRouter::ZmqRepRouter()
 {
 	d = std::make_unique<Private>(this);
 }
 
-RepRouter::~RepRouter() = default;
+ZmqRepRouter::~ZmqRepRouter() = default;
 
-void RepRouter::setShutdownWaitTime(int msecs)
+void ZmqRepRouter::setShutdownWaitTime(int msecs)
 {
 	d->sock->setShutdownWaitTime(msecs);
 }
 
-void RepRouter::connectToAddress(const QString &addr)
+void ZmqRepRouter::connectToAddress(const CowString &addr)
 {
 	d->sock->connectToAddress(addr);
 }
 
-bool RepRouter::bind(const QString &addr)
+bool ZmqRepRouter::bind(const CowString &addr)
 {
 	return d->sock->bind(addr);
 }
 
-bool RepRouter::canRead() const
+bool ZmqRepRouter::canRead() const
 {
 	return d->sock->canRead();
 }
 
-ReqMessage RepRouter::read()
+ZmqReqMessage ZmqRepRouter::read()
 {
-	return ReqMessage(d->sock->read());
+	return ZmqReqMessage(d->sock->read());
 }
 
-void RepRouter::write(const ReqMessage &message)
+void ZmqRepRouter::write(const ZmqReqMessage &message)
 {
 	d->sock->write(message.toRawMessage());
 }
-
-}
-

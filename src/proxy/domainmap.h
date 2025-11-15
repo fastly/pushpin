@@ -115,6 +115,8 @@ public:
 		QStringList subscriptions; // implicit subscriptions
 		bool overHttp; // use websocket-over-http protocol
 		bool oneEvent; // send one event at a time with overHttp
+		QString clientCert;
+		QString clientKey;
 
 		Target() :
 			type(Default),
@@ -179,8 +181,8 @@ public:
 		}
 	};
 
-	DomainMap(bool newEventLoop);
-	DomainMap(const QString &fileName, bool newEventLoop);
+	DomainMap();
+	DomainMap(const QString &fileName);
 	~DomainMap();
 
 	// shouldn't really ever need to call this, but it's here in case the

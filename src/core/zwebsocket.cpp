@@ -61,6 +61,8 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	QString clientCert;
+	QString clientKey;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
 	int inSeq;
@@ -463,7 +465,7 @@ public:
 	{
 		if(packet.type == ZhttpRequestPacket::Error)
 		{
-			errorCondition = convertError(packet.condition);
+			errorCondition = convertError(packet.condition.asQByteArray());
 
 			log_debug("zws server: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -514,16 +516,16 @@ public:
 
 			if(packet.type == ZhttpRequestPacket::Data)
 			{
-				handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+				handleIncomingDataPacket(packet.contentType.asQByteArray(), packet.body.asQByteArray(), packet.more);
 			}
 			else if(packet.type == ZhttpRequestPacket::Ping)
 			{
-				inFrames += Frame(Frame::Ping, packet.body, false);
+				inFrames += Frame(Frame::Ping, packet.body.asQByteArray(), false);
 				inSize += packet.body.size();
 			}
 			else if(packet.type == ZhttpRequestPacket::Pong)
 			{
-				inFrames += Frame(Frame::Pong, packet.body, false);
+				inFrames += Frame(Frame::Pong, packet.body.asQByteArray(), false);
 				inSize += packet.body.size();
 			}
 
@@ -538,7 +540,7 @@ public:
 		}
 		else if(packet.type == ZhttpRequestPacket::Close)
 		{
-			handlePeerClose(packet.code, QString::fromUtf8(packet.body));
+			handlePeerClose(packet.code, QString::fromUtf8(packet.body.asQByteArray()));
 		}
 		else if(packet.type == ZhttpRequestPacket::Credit)
 		{
@@ -563,14 +565,14 @@ public:
 	{
 		if(packet.type == ZhttpResponsePacket::Error)
 		{
-			errorCondition = convertError(packet.condition);
+			errorCondition = convertError(packet.condition.asQByteArray());
 
 			log_debug("zws client: error id=%s cond=%s", id.data(), packet.condition.data());
 
 			responseCode = packet.code;
-			responseReason = packet.reason;
+			responseReason = packet.reason.asQByteArray();
 			responseHeaders = packet.headers;
-			responseBody = packet.body;
+			responseBody = packet.body.asQByteArray();
 
 			state = Idle;
 			cleanup();
@@ -589,7 +591,7 @@ public:
 		}
 
 		if(!packet.from.isEmpty())
-			toAddress = packet.from;
+			toAddress = packet.from.asQByteArray();
 
 		if(seq != inSeq)
 		{
@@ -649,7 +651,7 @@ public:
 				assert(packet.type == ZhttpResponsePacket::Data);
 
 				responseCode = packet.code;
-				responseReason = packet.reason;
+				responseReason = packet.reason.asQByteArray();
 				responseHeaders = packet.headers;
 
 				if(packet.credits > 0)
@@ -666,16 +668,16 @@ public:
 
 				if(packet.type == ZhttpResponsePacket::Data)
 				{
-					handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+					handleIncomingDataPacket(packet.contentType.asQByteArray(), packet.body.asQByteArray(), packet.more);
 				}
 				else if(packet.type == ZhttpResponsePacket::Ping)
 				{
-					inFrames += Frame(Frame::Ping, packet.body, false);
+					inFrames += Frame(Frame::Ping, packet.body.asQByteArray(), false);
 					inSize += packet.body.size();
 				}
 				else if(packet.type == ZhttpResponsePacket::Pong)
 				{
-					inFrames += Frame(Frame::Pong, packet.body, false);
+					inFrames += Frame(Frame::Pong, packet.body.asQByteArray(), false);
 					inSize += packet.body.size();
 				}
 
@@ -691,7 +693,7 @@ public:
 		}
 		else if(packet.type == ZhttpResponsePacket::Close)
 		{
-			handlePeerClose(packet.code, QString::fromUtf8(packet.body));
+			handlePeerClose(packet.code, QString::fromUtf8(packet.body.asQByteArray()));
 		}
 		else if(packet.type == ZhttpResponsePacket::Credit)
 		{
@@ -1031,6 +1033,8 @@ public:
 				p.trustConnectHost = true;
 			if(ignoreTlsErrors)
 				p.ignoreTlsErrors = true;
+			p.clientCert = clientCert;
+			p.clientKey = clientKey;
 			p.credits = IDEAL_CREDITS;
 			p.multi = true;
 			writePacket(p);
@@ -1121,6 +1125,12 @@ void ZWebSocket::setIgnoreTlsErrors(bool on)
 void ZWebSocket::setIsTls(bool on)
 {
 	d->requestUri.setScheme(on ? "wss" : "ws");
+}
+
+void ZWebSocket::setClientCert(const QString &cert, const QString &key)
+{
+	d->clientCert = cert;
+	d->clientKey = key;
 }
 
 void ZWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
@@ -1262,7 +1272,7 @@ bool ZWebSocket::setupServer(ZhttpManager *manager, const QByteArray &id, int se
 {
 	d->manager = manager;
 	d->server = true;
-	d->rid = Rid(packet.from, id);
+	d->rid = Rid(packet.from.asQByteArray(), id);
 	return d->setupServer(seq, packet);
 }
 

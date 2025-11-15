@@ -21,12 +21,12 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "engine.h"
+#include "proxyengine.h"
 
 #include <assert.h>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
-#include "qzmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zmqreqmessage.h"
 #include "tnetstring.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
@@ -55,7 +55,6 @@
 #include "zutil.h"
 #include "sockjsmanager.h"
 #include "sockjssession.h"
-#include "updater.h"
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
@@ -114,15 +113,14 @@ public:
 	std::unique_ptr<StatsManager> stats;
 	std::unique_ptr<ZrpcManager> command;
 	std::unique_ptr<ZrpcManager> accept;
-	std::unique_ptr<QZmq::Socket> handler_retry_in_sock;
-	std::unique_ptr<QZmq::Valve> handler_retry_in_valve;
+	std::unique_ptr<ZmqSocket> handler_retry_in_sock;
+	std::unique_ptr<ZmqValve> handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
 	std::unique_ptr<SockJsManager> sockJsManager;
 	ConnectionManager connectionManager;
-	std::unique_ptr<Updater> updater;
 	LogUtil::Config logConfig;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
@@ -147,8 +145,6 @@ public:
 
 		// need to delete all objects that may have connections before
 		// deleting zhttpmanagers/zroutes
-
-		updater.reset();
 
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
@@ -260,7 +256,7 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+			handler_retry_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
 			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
@@ -272,7 +268,7 @@ public:
 				return false;
 			}
 
-			handler_retry_in_valve = std::make_unique<QZmq::Valve>(handler_retry_in_sock.get());
+			handler_retry_in_valve = std::make_unique<ZmqValve>(handler_retry_in_sock.get());
 			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
@@ -346,11 +342,6 @@ public:
 				// zrpcmanager logs error
 				return false;
 			}
-		}
-
-		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
-		{
-			updater = std::make_unique<Updater>(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager());
 		}
 
 		// init zroutes
@@ -488,9 +479,9 @@ public:
 
 	bool isXForwardedProtocolTls(const HttpHeaders &headers)
 	{
-		QByteArray xfp = headers.get("X-Forwarded-Proto");
+		QByteArray xfp = headers.get("X-Forwarded-Proto").asQByteArray();
 		if(xfp.isEmpty())
-			xfp = headers.get("X-Forwarded-Protocol");
+			xfp = headers.get("X-Forwarded-Protocol").asQByteArray();
 		return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
 	}
 
@@ -539,7 +530,7 @@ public:
 				req->setIsTls(true);
 
 			if(config.acceptPushpinRoute)
-				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
+				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
 		}
 
 		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
@@ -636,7 +627,7 @@ public:
 		QString routeId;
 
 		if(config.acceptPushpinRoute)
-			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route"));
+			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route").asQByteArray());
 
 		// look up the route
 		DomainMap::Entry route;
@@ -836,9 +827,9 @@ private:
 	}
 
 private:
-	void handler_retry_in_readyRead(const QList<QByteArray> &message)
+	void handler_retry_in_readyRead(const CowByteArrayList &message)
 	{
-		QZmq::ReqMessage req(message);
+		ZmqReqMessage req(message);
 
 		if(req.content().count() != 1)
 		{
@@ -999,52 +990,6 @@ private:
 			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
 			if(woh)
 				woh->refresh();
-
-			req->respond();
-		}
-		else if(req->method() == "report")
-		{
-			QVariantHash args = req->args();
-			if(!args.contains("stats") || typeId(args["stats"]) != QMetaType::QVariantHash)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QVariant data = args["stats"];
-
-			StatsPacket p;
-			if(!p.fromVariant("report", data))
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			if(!updater)
-			{
-				req->respondError("service-unavailable");
-				delete req;
-				return;
-			}
-
-			int connectionsMax = qMax(p.connectionsMax, 0);
-			int connectionsMinutes = qMax(p.connectionsMinutes, 0);
-			int messagesReceived = qMax(p.messagesReceived, 0);
-			int messagesSent = qMax(p.messagesSent, 0);
-			int httpResponseMessagesSent = qMax(p.httpResponseMessagesSent, 0);
-
-			Updater::Report report;
-			report.connectionsMax = connectionsMax;
-			report.connectionsMinutes = connectionsMinutes;
-			report.messagesReceived = messagesReceived;
-			report.messagesSent = messagesSent;
-
-			// fanout cloud style ops calculation
-			report.ops = connectionsMinutes + messagesReceived + messagesSent - httpResponseMessagesSent;
-
-			updater->setReport(report);
 
 			req->respond();
 		}

@@ -21,13 +21,13 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef ENGINE_H
-#define ENGINE_H
+#ifndef PROXYENGINE_H
+#define PROXYENGINE_H
 
+#include <map>
 #include <QStringList>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
-#include <map>
 #include "jwt.h"
 #include "xffrule.h"
 
@@ -99,9 +99,6 @@ public:
 		Jwt::EncodingKey sigKey;
 		Jwt::DecodingKey upstreamKey;
 		QString sockJsUrl;
-		QString updatesCheck;
-		QString organizationName;
-		bool quietCheck;
 		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsConnectionsMaxTtl;
@@ -123,8 +120,6 @@ public:
 			acceptPushpinRoute(false),
 			logFrom(false),
 			logUserAgent(false),
-			updatesCheck("check"),
-			quietCheck(false),
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsConnectionsMaxTtl(-1),

@@ -22,24 +22,21 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef QZMQSOCKET_H
-#define QZMQSOCKET_H
+#ifndef ZMQSOCKET_H
+#define ZMQSOCKET_H
 
-#include <QByteArray>
-#include <QList>
 #include <boost/signals2.hpp>
+#include "cowbytearray.h"
 
-class QString;
+class CowString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
-namespace QZmq {
+class ZmqContext;
 
-class Context;
-
-class Socket
+class ZmqSocket
 {
 public:
 	enum Type
@@ -55,9 +52,9 @@ public:
 		Sub
 	};
 
-	Socket(Type type);
-	Socket(Type type, Context *context);
-	~Socket();
+	ZmqSocket(Type type);
+	ZmqSocket(Type type, ZmqContext *context);
+	~ZmqSocket();
 
 	// 0 means drop queue and don't block, -1 means infinite (default = -1)
 	void setShutdownWaitTime(int msecs);
@@ -71,11 +68,11 @@ public:
 	//   blocking policy.
 	void setWriteQueueEnabled(bool enable);
 
-	void subscribe(const QByteArray &filter);
-	void unsubscribe(const QByteArray &filter);
+	void subscribe(const CowByteArray &filter);
+	void unsubscribe(const CowByteArray &filter);
 
-	QByteArray identity() const;
-	void setIdentity(const QByteArray &id);
+	CowByteArray identity() const;
+	void setIdentity(const CowByteArray &id);
 
 	// deprecated, zmq 2.x
 	int hwm() const;
@@ -88,12 +85,13 @@ public:
 
 	void setImmediateEnabled(bool on);
 	void setRouterMandatoryEnabled(bool on);
+	void setProbeRouterEnabled(bool on);
 
 	void setTcpKeepAliveEnabled(bool on);
 	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
 
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
+	void connectToAddress(const CowString &addr);
+	bool bind(const CowString &addr);
 
 	bool canRead() const;
 
@@ -103,21 +101,19 @@ public:
 	//   needing to be queued, if the conditions change in between.
 	bool canWriteImmediately() const;
 
-	QList<QByteArray> read();
-	void write(const QList<QByteArray> &message);
+	CowByteArrayList read();
+	void write(const CowByteArrayList &message);
 
 	Signal readyRead;
 	SignalInt messagesWritten;
 
 private:
-	Socket(const Socket &) = delete;
-	Socket &operator=(const Socket &) = delete;
+	ZmqSocket(const ZmqSocket &) = delete;
+	ZmqSocket &operator=(const ZmqSocket &) = delete;
 
 	class Private;
 	friend class Private;
 	std::shared_ptr<Private> d;
 };
-
-}
 
 #endif

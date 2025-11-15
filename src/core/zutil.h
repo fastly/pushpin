@@ -26,19 +26,15 @@
 #include <QString>
 #include <QStringList>
 
-namespace QZmq {
-
-class Socket;
-
-}
+class ZmqSocket;
 
 namespace ZUtil {
 
-bool bindSpec(QZmq::Socket *sock, const QString &spec, int ipcFileMode, QString *errorMessage = 0);
+bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage = 0);
 
-bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage = 0);
+bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage = 0);
 
-bool setupSocket(QZmq::Socket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage = 0);
+bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage = 0);
 
 }
 

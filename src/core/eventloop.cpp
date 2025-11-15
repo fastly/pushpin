@@ -20,7 +20,8 @@
 
 static thread_local EventLoop *g_instance = nullptr;
 
-EventLoop::EventLoop(int capacity)
+EventLoop::EventLoop(int capacity) :
+	taskManaged_(false)
 {
 	// only one per thread allowed
 	assert(!g_instance);
@@ -30,11 +31,31 @@ EventLoop::EventLoop(int capacity)
 	g_instance = this;
 }
 
+EventLoop::EventLoop(ffi::EventLoopRaw *inner) :
+	inner_(inner),
+	taskManaged_(true)
+{
+	// instance is task-managed, meaning the task owns the inner handle and
+	// will manage where g_instance points. the instance should not destroy
+	// the inner handle nor modify g_instance.
+}
+
 EventLoop::~EventLoop()
 {
-	ffi::event_loop_destroy(inner_);
+	while(!cleanupHandlers_.empty())
+	{
+		CleanupHandler h = cleanupHandlers_.front();
+		cleanupHandlers_.pop_front();
 
-	g_instance = nullptr;
+		h.handler(h.ctx);
+	}
+
+	if(!taskManaged_)
+	{
+		ffi::event_loop_destroy(inner_);
+
+		g_instance = nullptr;
+	}
 }
 
 std::optional<int> EventLoop::step()
@@ -96,7 +117,57 @@ void EventLoop::deregister(int id)
 	assert(ffi::event_loop_deregister(inner_, id) == 0);
 }
 
+void EventLoop::addCleanupHandler(void (*handler)(void *), void *ctx)
+{
+	CleanupHandler h;
+	h.handler = handler;
+	h.ctx = ctx;
+
+	cleanupHandlers_.push_front(h);
+}
+
+void EventLoop::removeCleanupHandler(void (*handler)(void *), void *ctx)
+{
+	CleanupHandler h;
+	h.handler = handler;
+	h.ctx = ctx;
+
+	cleanupHandlers_.remove(h);
+}
+
 EventLoop *EventLoop::instance()
 {
 	return g_instance;
+}
+
+void EventLoop::setup_cb(void *ctx, const ffi::EventLoopRaw *l)
+{
+	std::function<void ()> *setup = (std::function<void ()> *)ctx;
+
+	// only one per thread allowed
+	assert(!g_instance);
+
+	// the task provides a const pointer but the EventLoop class needs a
+	// non-const pointer. however, we promise not to call any non-const
+	// methods with it.
+	ffi::EventLoopRaw *inner = (ffi::EventLoopRaw *)l;
+
+	g_instance = new EventLoop(inner);
+
+	(*setup)();
+}
+
+void EventLoop::done_cb(void *ctx, int code)
+{
+	std::function<void (int)> *done = (std::function<void (int)> *)ctx;
+
+	(*done)(code);
+
+	delete g_instance;
+	g_instance = nullptr;
+}
+
+ffi::UnitFuture *EventLoop::task(int capacity, std::function<void ()> *setup, std::function<void (int)> *done)
+{
+	return ffi::event_loop_task(capacity, setup_cb, setup, done_cb, done);
 }

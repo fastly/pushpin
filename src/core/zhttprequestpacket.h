@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -25,6 +25,8 @@
 #include <QUrl>
 #include <QVariant>
 #include <QHostAddress>
+#include "cowstring.h"
+#include "cowbytearray.h"
 #include "httpheaders.h"
 
 class ZhttpRequestPacket
@@ -33,7 +35,7 @@ public:
 	class Id
 	{
 	public:
-		QByteArray id;
+		CowByteArray id;
 		int seq;
 
 		Id() :
@@ -41,7 +43,7 @@ public:
 		{
 		}
 
-		Id(const QByteArray &_id, int _seq = -1) :
+		Id(const CowByteArray &_id, int _seq = -1) :
 			id(_id),
 			seq(_seq)
 		{
@@ -62,11 +64,11 @@ public:
 		Pong // WebSocket
 	};
 
-	QByteArray from;
+	CowByteArray from;
 	QList<Id> ids;
 
 	Type type;
-	QByteArray condition;
+	CowByteArray condition;
 
 	int credits;
 	bool more;
@@ -75,12 +77,12 @@ public:
 	int maxSize;
 	int timeout;
 
-	QString method;
+	CowString method;
 	QUrl uri;
 	HttpHeaders headers;
-	QByteArray body;
+	CowByteArray body;
 
-	QByteArray contentType; // WebSocket
+	CowByteArray contentType; // WebSocket
 	int code; // WebSocket
 
 	QVariant userData;
@@ -88,11 +90,13 @@ public:
 	QHostAddress peerAddress;
 	int peerPort;
 
-	QString connectHost;
+	CowString connectHost;
 	int connectPort;
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	CowString clientCert;
+	CowString clientKey;
 	bool followRedirects;
 	QVariant passthrough; // if valid, may contain pushpin-specific passthrough info
 	bool multi;

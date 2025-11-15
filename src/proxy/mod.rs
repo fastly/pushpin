@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+pub mod cliargs;
+
 #[cfg(test)]
 mod tests {
-    use crate::core::test::{run_serial, TestException};
+    use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
 
     fn websocketoverhttp_test(out_ex: &mut TestException) -> bool {
@@ -34,18 +36,28 @@ mod tests {
         unsafe { ffi::proxyengine_test(out_ex) == 0 }
     }
 
+    fn proxyargs_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::proxyargs_test(out_ex) == 0 }
+    }
+
     #[test]
     fn websocketoverhttp() {
-        run_serial(websocketoverhttp_test);
+        run_cpp(websocketoverhttp_test);
     }
 
     #[test]
     fn routesfile() {
-        run_serial(routesfile_test);
+        run_cpp(routesfile_test);
     }
 
     #[test]
     fn proxyengine() {
-        run_serial(proxyengine_test);
+        run_cpp(proxyengine_test);
+    }
+
+    #[test]
+    fn proxyargs() {
+        run_cpp(proxyargs_test);
     }
 }

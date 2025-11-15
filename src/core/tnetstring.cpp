@@ -22,6 +22,7 @@
 #include "tnetstring.h"
 
 #include <assert.h>
+#include "cowbytearray.h"
 #include "qtcompat.h"
 
 namespace TnetString {
@@ -31,7 +32,7 @@ QByteArray fromByteArray(const QByteArray &in)
 	return QByteArray::number(in.size()) + ':' + in + ',';
 }
 
-QByteArray fromInt(qint64 in)
+QByteArray fromInt(int64_t in)
 {
 	QByteArray val = QByteArray::number(in);
 	return QByteArray::number(val.size()) + ':' + val + '#';
@@ -140,12 +141,12 @@ QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dat
 	return in.mid(dataOffset, dataSize);
 }
 
-qint64 toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
+int64_t toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
 {
 	Q_UNUSED(offset);
 	QByteArray val = in.mid(dataOffset, dataSize);
 	bool ok_;
-	qint64 x = val.toLongLong(&ok_);
+	int64_t x = val.toLongLong(&ok_);
 	if(!ok_)
 		x = 0;
 	if(ok)
@@ -207,7 +208,7 @@ QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, 
 			val = toByteArray(in, offset, dataOffset, dataSize, &ok_);
 			break;
 		case Int:
-			val = toInt(in, offset, dataOffset, dataSize, &ok_);
+			val = (qint64)toInt(in, offset, dataOffset, dataSize, &ok_);
 			break;
 		case Double:
 			val = toDouble(in, offset, dataOffset, dataSize, &ok_);
@@ -251,6 +252,11 @@ QVariant toVariant(const QByteArray &in, int offset, bool *ok)
 	}
 
 	return toVariant(in, offset, type, dataOffset, dataSize, ok);
+}
+
+QVariant toVariant(const CowByteArray &in, int offset, bool *ok)
+{
+	return toVariant(in.asQByteArray(), offset, ok);
 }
 
 QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)

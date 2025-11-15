@@ -393,7 +393,7 @@ public:
 		{
 			// don't forward WOH requests from client unless trusted
 
-			QByteArray contentType = requestData.headers.get("Content-Type");
+			QByteArray contentType = requestData.headers.get("Content-Type").asQByteArray();
 			int at = contentType.indexOf(';');
 			if(at != -1)
 				contentType.truncate(at);
@@ -473,6 +473,9 @@ public:
 			zhttpRequest->setConnectHost(target.connectHost);
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
+
+		if(!target.clientCert.isEmpty())
+			zhttpRequest->setClientCert(target.clientCert, target.clientKey);
 
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
@@ -745,13 +748,13 @@ public:
 		{
 			if(responseBody.size() + zhttpRequest->bytesAvailable() > MAX_ACCEPT_RESPONSE_BODY)
 			{
-				QByteArray gripHold = responseData.headers.get("Grip-Hold");
+				QByteArray gripHold = responseData.headers.get("Grip-Hold").asQByteArray();
 
 				QByteArray gripNextLinkParam;
 				foreach(const HttpHeaderParameters &params, responseData.headers.getAllAsParameters("Grip-Link"))
 				{
 					if(params.count() >= 2 && params.get("rel") == "next")
-						gripNextLinkParam = params[0].first;
+						gripNextLinkParam = params[0].first.asQByteArray();
 				}
 
 				bool usingBuildIdFilter = false;
@@ -790,7 +793,7 @@ public:
 					responseData.headers.removeAll("Content-Length");
 
 					// interpret grip-status
-					QByteArray statusHeader = responseData.headers.get("Grip-Status");
+					QByteArray statusHeader = responseData.headers.get("Grip-Status").asQByteArray();
 					if(!statusHeader.isEmpty())
 					{
 						QByteArray codeStr;
@@ -1085,7 +1088,7 @@ public:
 			bool doAccept = false;
 			if(!passthrough)
 			{
-				QByteArray contentType = responseData.headers.get("Content-Type");
+				QByteArray contentType = responseData.headers.get("Content-Type").asQByteArray();
 				int at = contentType.indexOf(';');
 				if(at != -1)
 					contentType = contentType.mid(0, at);

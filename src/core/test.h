@@ -19,12 +19,12 @@
  *
  */
 
-#include "string.h"
-#include <QtTest/QtTest>
-#include "rust/bindings.h"
-
 #ifndef PUSHPIN_TEST_H
 #define PUSHPIN_TEST_H
+
+#include <string.h>
+#include <QtTest/QtTest>
+#include "rust/bindings.h"
 
 class TestException
 {
@@ -53,11 +53,27 @@ inline void test_assert(bool cond, const char *condStr, const char *file, int li
 }
 
 // uses QtTest to stringify values
+template <typename T>
+inline std::string test_value_to_string(const T &value)
+{
+    char *s = QTest::toString(value);
+    if(!s)
+        return std::string("<no output format>");
+
+    std::string out(s);
+    delete [] s;
+    return out;
+}
+
 template <typename T1, typename T2>
 inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line)
 {
     if(!(left == right))
-        throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + QTest::toString(left) + "\n right: " + QTest::toString(right));
+    {
+        std::string leftStr = test_value_to_string(left);
+        std::string rightStr = test_value_to_string(right);
+        throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + leftStr + std::string("\n right: ") + rightStr);
+    }
 }
 
 // if cond is false, throws an exception with similar message as rust's assert macro
@@ -75,26 +91,9 @@ do {\
 // for running a test and catching an exception if any. expects local variable ffi::TestException* out_ex to exist
 #define TEST_CATCH(statement) try { statement; } catch(const TestException &ex) { ex.toFfi(out_ex); return 1; }
 
-class TestQCoreApplication
-{
-public:
-    TestQCoreApplication()
-    {
-        argc_ = 1;
-        argv_[0] = strdup("qt-test");
-        qapp_ = new QCoreApplication(argc_, argv_);
-    }
-
-    ~TestQCoreApplication()
-    {
-        delete qapp_;
-        free(argv_[0]);
-    }
-
-private:
-    int argc_;
-    char *argv_[1];
-    QCoreApplication *qapp_;
-};
+// expects a test function that takes a wait function as an argument. the wait
+// function can be used by the test to wait for a number of milliseconds while
+// the event loop runs.
+void test_with_event_loop(std::function<void (std::function<void (int)>)> f);
 
 #endif

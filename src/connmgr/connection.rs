@@ -372,6 +372,16 @@ impl Error {
         matches!(self, Error::ValueActive)
     }
 
+    fn is_eof(&self) -> bool {
+        let e = match self {
+            Self::Io(e) => e,
+            Self::CoreHttp(CoreHttpError::Io(e)) => e,
+            _ => return false,
+        };
+
+        e.kind() == io::ErrorKind::UnexpectedEof
+    }
+
     fn log_level(&self) -> Level {
         if self.is_logical() {
             Level::Error
@@ -382,16 +392,16 @@ impl Error {
 
     fn to_condition(&self) -> &'static str {
         match self {
-            Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+            Self::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
                 "remote-connection-failed"
             }
-            Error::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
-            Error::BadRequest => "bad-request",
-            Error::StreamTimeout => "connection-timeout",
-            Error::Tls => "tls-error",
-            Error::PolicyViolation => "policy-violation",
-            Error::TooManyRedirects => "too-many-redirects",
-            Error::WebSocketRejectionTooLarge(_) => "rejection-too-large",
+            Self::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
+            Self::BadRequest => "bad-request",
+            Self::StreamTimeout => "connection-timeout",
+            Self::Tls => "tls-error",
+            Self::PolicyViolation => "policy-violation",
+            Self::TooManyRedirects => "too-many-redirects",
+            Self::WebSocketRejectionTooLarge(_) => "rejection-too-large",
             _ => "undefined-condition",
         }
     }
@@ -576,7 +586,7 @@ impl StreamSharedData {
         s.to_addr = addr;
     }
 
-    pub fn to_addr(&self) -> AddrRef {
+    pub fn to_addr(&self) -> AddrRef<'_> {
         AddrRef {
             s: Ref::map(self.inner.borrow(), |s| &s.to_addr),
         }
@@ -1537,7 +1547,7 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
             Ok(ret) => ret,
-            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
         }
     };
@@ -3406,7 +3416,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
             Ok(ret) => ret,
-            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
         }
     };
@@ -4214,11 +4224,25 @@ enum AsyncStream<'a> {
     Tls(AsyncTlsStream<'a>),
 }
 
-impl AsyncStream<'_> {
+impl<'a> AsyncStream<'a> {
+    async fn close(&mut self) -> Result<(), io::Error> {
+        match self {
+            Self::Plain(stream) => stream.close().await,
+            Self::Tls(stream) => stream.close().await,
+        }
+    }
+
     fn into_inner(self) -> Stream {
         match self {
             Self::Plain(stream) => Stream::Plain(stream.into_std()),
             Self::Tls(stream) => Stream::Tls(stream.into_std()),
+        }
+    }
+
+    fn from_stream(stream: Stream, tls_waker_data: &'a RefWakerData<TlsWaker>) -> Self {
+        match stream {
+            Stream::Plain(stream) => Self::Plain(AsyncTcpStream::from_std(stream)),
+            Stream::Tls(stream) => Self::Tls(AsyncTlsStream::from_std(stream, tls_waker_data)),
         }
     }
 }
@@ -4388,12 +4412,7 @@ async fn client_connect<'a>(
             log_id, peer_addr,
         );
 
-        let stream = match stream {
-            Stream::Plain(stream) => AsyncStream::Plain(AsyncTcpStream::from_std(stream)),
-            Stream::Tls(stream) => {
-                AsyncStream::Tls(AsyncTlsStream::from_std(stream, tls_waker_data))
-            }
-        };
+        let stream = AsyncStream::from_stream(stream, tls_waker_data);
 
         (peer_addr, stream, false)
     } else {
@@ -4422,12 +4441,19 @@ async fn client_connect<'a>(
                 VerifyMode::Full
             };
 
+            let client_cert = if !rdata.client_cert.is_empty() {
+                Some((rdata.client_cert, rdata.client_key))
+            } else {
+                None
+            };
+
             let stream = match AsyncTlsStream::connect(
                 host,
                 stream,
                 verify_mode,
                 tls_waker_data,
                 tls_config_cache,
+                client_cert,
             ) {
                 Ok(stream) => stream,
                 Err(e) => {
@@ -4758,7 +4784,7 @@ async fn client_req_connect(
             None => return Err(Error::BadRequest),
         };
 
-        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+        let mut tls_waker_data = RefWakerData::new(TlsWaker::new());
 
         let (peer_addr, using_tls, mut stream) = client_connect(
             log_id,
@@ -4809,19 +4835,29 @@ async fn client_req_connect(
             }
         };
 
-        if done.is_persistent() {
-            if pool
-                .push(
-                    peer_addr,
-                    using_tls,
-                    url_host.to_string(),
-                    stream.into_inner(),
-                    CONNECTION_POOL_TTL,
-                )
-                .is_ok()
-            {
-                debug!("client-conn {}: leaving connection intact", log_id);
+        let stream = if done.is_persistent() {
+            match pool.push(
+                peer_addr,
+                using_tls,
+                url_host.to_string(),
+                stream.into_inner(),
+                CONNECTION_POOL_TTL,
+            ) {
+                Ok(()) => {
+                    debug!("client-conn {}: leaving connection intact", log_id);
+                    None
+                }
+                Err(s) => {
+                    tls_waker_data = RefWakerData::new(TlsWaker::new());
+                    Some(AsyncStream::from_stream(s, &tls_waker_data))
+                }
             }
+        } else {
+            Some(stream)
+        };
+
+        if let Some(mut stream) = stream {
+            stream.close().await?;
         }
 
         match done {
@@ -5616,7 +5652,7 @@ where
             None => return Err(Error::BadRequest),
         };
 
-        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+        let mut tls_waker_data = RefWakerData::new(TlsWaker::new());
 
         let (peer_addr, using_tls, mut stream) = {
             let mut client_connect = pin!(client_connect(
@@ -5697,20 +5733,45 @@ where
             }
         };
 
-        if done.is_persistent() {
+        let stream = if done.is_persistent() {
             buf2.resize(buffer_size);
 
-            if pool
-                .push(
-                    peer_addr,
-                    using_tls,
-                    url_host.to_string(),
-                    stream.into_inner(),
-                    CONNECTION_POOL_TTL,
-                )
-                .is_ok()
-            {
-                debug!("client-conn {}: leaving connection intact", log_id);
+            match pool.push(
+                peer_addr,
+                using_tls,
+                url_host.to_string(),
+                stream.into_inner(),
+                CONNECTION_POOL_TTL,
+            ) {
+                Ok(()) => {
+                    debug!("client-conn {}: leaving connection intact", log_id);
+                    None
+                }
+                Err(s) => {
+                    tls_waker_data = RefWakerData::new(TlsWaker::new());
+                    Some(AsyncStream::from_stream(s, &tls_waker_data))
+                }
+            }
+        } else {
+            Some(stream)
+        };
+
+        if let Some(mut stream) = stream {
+            let mut stream_close = pin!(stream.close());
+
+            loop {
+                // ABR: select contains read
+                let ret = select_2(stream_close.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+                match ret {
+                    Select2::R1(ret) => break ret?,
+                    Select2::R2(ret) => {
+                        let zreq = ret?;
+
+                        // ABR: handle_other
+                        server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                    }
+                }
             }
         }
 

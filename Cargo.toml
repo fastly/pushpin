@@ -1,7 +1,7 @@
 [package]
 name = "pushpin"
-version = "1.41.0-dev"
-authors = ["Justin Karneges <jkarneges@fastly.com>"]
+version = "1.42.0-dev"
+authors = ["Fastly <oss@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
@@ -9,6 +9,11 @@ license = "Apache-2.0"
 edition = "2018"
 rust-version = "1.75"
 default-run = "pushpin"
+
+[features]
+default = ["do-qmake", "do-cpp-build"]
+do-qmake = []
+do-cpp-build = []
 
 [profile.dev]
 panic = "abort"
@@ -50,6 +55,7 @@ zmq = "0.9"
 [dev-dependencies]
 criterion = "0.5"
 env_logger = { version = "0.9", default-features = false }
+tempfile = "3.20.0"
 test-log = "0.2"
 
 [build-dependencies]
@@ -101,5 +107,7 @@ test = false
 bench = false
 
 [lints.rust]
-
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))'] }
+
+[lints.clippy]
+uninlined_format_args = "allow"

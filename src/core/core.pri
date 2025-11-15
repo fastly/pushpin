@@ -1,15 +1,19 @@
 HEADERS += \
-	$$PWD/qzmqcontext.h \
-	$$PWD/qzmqsocket.h \
-	$$PWD/qzmqvalve.h \
-	$$PWD/qzmqreqmessage.h \
-	$$PWD/qzmqreprouter.h
+	$$PWD/cowbytearray.h \
+	$$PWD/cowstring.h
+
+HEADERS += \
+	$$PWD/zmqcontext.h \
+	$$PWD/zmqsocket.h \
+	$$PWD/zmqvalve.h \
+	$$PWD/zmqreqmessage.h \
+	$$PWD/zmqreprouter.h
 
 SOURCES += \
-	$$PWD/qzmqcontext.cpp \
-	$$PWD/qzmqsocket.cpp \
-	$$PWD/qzmqvalve.cpp \
-	$$PWD/qzmqreprouter.cpp
+	$$PWD/zmqcontext.cpp \
+	$$PWD/zmqsocket.cpp \
+	$$PWD/zmqvalve.cpp \
+	$$PWD/zmqreprouter.cpp
 
 HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp
@@ -25,6 +29,7 @@ HEADERS += \
 	$$PWD/layertracker.h
 
 SOURCES += \
+	$$PWD/test.cpp \
 	$$PWD/tnetstring.cpp \
 	$$PWD/httpheaders.cpp \
 	$$PWD/zhttprequestpacket.cpp \
@@ -53,6 +58,8 @@ HEADERS += \
 	$$PWD/callback.h \
 	$$PWD/config.h \
 	$$PWD/timerwheel.h \
+	$$PWD/reactor.h \
+	$$PWD/executor.h \
 	$$PWD/jwt.h \
 	$$PWD/timer.h \
 	$$PWD/defercall.h \
@@ -86,6 +93,8 @@ HEADERS += \
 SOURCES += \
 	$$PWD/config.cpp \
 	$$PWD/timerwheel.cpp \
+	$$PWD/reactor.cpp \
+	$$PWD/executor.cpp \
 	$$PWD/jwt.cpp \
 	$$PWD/timer.cpp \
 	$$PWD/defercall.cpp \

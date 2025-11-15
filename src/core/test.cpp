@@ -1,8 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
- *
- * This file is part of Pushpin.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -19,21 +16,28 @@
  * limitations under the License.
  *
  * $FANOUT_END_LICENSE$
+ *
  */
 
-#ifndef HANDLERAPP_H
-#define HANDLERAPP_H
+#include "test.h"
 
-class HandlerApp
+#include <chrono>
+#include <thread>
+#include "eventloop.h"
+
+using namespace std::chrono_literals;
+
+void test_with_event_loop(std::function<void (std::function<void (int)>)> f)
 {
-public:
-	HandlerApp();
-	~HandlerApp();
+	EventLoop loop(100);
 
-	int run();
+	auto loop_wait = [&](int ms) {
+		for(int i = ms; i > 0; i -= 10)
+		{
+			std::this_thread::sleep_for(10ms);
+			loop.step();
+		}
+	};
 
-private:
-	class Private;
-};
-
-#endif
+	f(loop_wait);
+}

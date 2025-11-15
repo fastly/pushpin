@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2025 Fastly, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,17 +21,13 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
-#include "app.h"
+#include "handlerargsdata.h"
 
-extern "C" {
-
-int proxy_main(int argc, char **argv)
+HandlerArgsData::HandlerArgsData(const ffi::HandlerCliArgs *argsFfi)
 {
-	QCoreApplication qapp(argc, argv);
-
-	App app;
-	return app.run();
-}
-
+	configFile = QString::fromUtf8(argsFfi->config_file);
+	logFile    = QString::fromUtf8(argsFfi->log_file);
+	logLevel   = argsFfi->log_level;
+	ipcPrefix  = QString::fromUtf8(argsFfi->ipc_prefix);
+	portOffset = argsFfi->port_offset;
 }

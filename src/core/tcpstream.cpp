@@ -41,7 +41,7 @@ TcpStream::~TcpStream()
 	reset();
 }
 
-bool TcpStream::connect(const QHostAddress &addr, quint16 port)
+bool TcpStream::connect(const QHostAddress &addr, uint16_t port)
 {
 	reset();
 

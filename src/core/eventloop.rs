@@ -280,6 +280,20 @@ impl<C: Callback> EventLoop<C> {
         }
     }
 
+    /// Constructs an event loop and executes it asynchronously. `setup` is
+    /// called just prior to executing, and `done` is called when the event
+    /// loop exits.
+    pub async fn task<S, D>(registrations_max: usize, setup: S, done: D)
+    where
+        S: FnOnce(&Rc<Self>) + 'static,
+        D: FnOnce(i32) + 'static,
+    {
+        let l = Rc::new(Self::new(registrations_max));
+        setup(&l);
+        let code = l.exec_async().await;
+        done(code);
+    }
+
     pub fn step(&self) -> Option<i32> {
         self.poll_and_dispatch(Some(Duration::from_millis(0)))
     }
@@ -292,7 +306,7 @@ impl<C: Callback> EventLoop<C> {
         }
     }
 
-    pub fn exec_async(&self) -> Exec<C> {
+    pub fn exec_async(&self) -> Exec<'_, C> {
         Exec { l: self }
     }
 
@@ -431,6 +445,7 @@ impl<C: Callback> Future for Exec<'_, C> {
 
 mod ffi {
     use super::*;
+    use crate::core::future::ffi::UnitFuture;
     use event::ffi::{interest_int_to_mio, READABLE, WRITABLE};
     use std::ops::Deref;
 
@@ -475,6 +490,7 @@ mod ffi {
         }
     }
 
+    #[repr(transparent)]
     pub struct EventLoopRaw(EventLoop<RawCallback>);
 
     impl Deref for EventLoopRaw {
@@ -503,10 +519,10 @@ mod ffi {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn event_loop_step(
-        l: *mut EventLoopRaw,
+        l: *const EventLoopRaw,
         out_code: *mut libc::c_int,
     ) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+        let l = l.as_ref().unwrap();
 
         match l.step() {
             Some(code) => {
@@ -520,16 +536,16 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
-    pub unsafe extern "C" fn event_loop_exec(l: *mut EventLoopRaw) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+    pub unsafe extern "C" fn event_loop_exec(l: *const EventLoopRaw) -> libc::c_int {
+        let l = l.as_ref().unwrap();
 
         l.exec() as libc::c_int
     }
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
-    pub unsafe extern "C" fn event_loop_exit(l: *mut EventLoopRaw, code: libc::c_int) {
-        let l = l.as_mut().unwrap();
+    pub unsafe extern "C" fn event_loop_exit(l: *const EventLoopRaw, code: libc::c_int) {
+        let l = l.as_ref().unwrap();
 
         l.exit(code);
     }
@@ -537,14 +553,14 @@ mod ffi {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn event_loop_register_fd(
-        l: *mut EventLoopRaw,
+        l: *const EventLoopRaw,
         fd: std::os::raw::c_int,
         interest: u8,
         cb: unsafe extern "C" fn(*mut libc::c_void, u8),
         ctx: *mut libc::c_void,
         out_id: *mut libc::size_t,
     ) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+        let l = l.as_ref().unwrap();
 
         let Ok(interest) = interest_int_to_mio(interest) else {
             return -1;
@@ -567,13 +583,13 @@ mod ffi {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn event_loop_register_timer(
-        l: *mut EventLoopRaw,
+        l: *const EventLoopRaw,
         timeout: u64,
         cb: unsafe extern "C" fn(*mut libc::c_void, u8),
         ctx: *mut libc::c_void,
         out_id: *mut libc::size_t,
     ) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+        let l = l.as_ref().unwrap();
 
         // SAFETY: we assume caller guarantees that the callback is safe to
         // call for the lifetime of the registration
@@ -592,13 +608,13 @@ mod ffi {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn event_loop_register_custom(
-        l: *mut EventLoopRaw,
+        l: *const EventLoopRaw,
         cb: unsafe extern "C" fn(*mut libc::c_void, u8),
         ctx: *mut libc::c_void,
         out_id: *mut libc::size_t,
         out_set_readiness: *mut *mut event::ffi::SetReadiness,
     ) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+        let l = l.as_ref().unwrap();
 
         // SAFETY: we assume caller guarantees that the callback is safe to
         // call for the lifetime of the registration
@@ -618,16 +634,45 @@ mod ffi {
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
     pub unsafe extern "C" fn event_loop_deregister(
-        l: *mut EventLoopRaw,
+        l: *const EventLoopRaw,
         id: libc::size_t,
     ) -> libc::c_int {
-        let l = l.as_mut().unwrap();
+        let l = l.as_ref().unwrap();
 
         if l.deregister(id).is_err() {
             return -1;
         }
 
         0
+    }
+
+    /// SAFETY: `setup_fn` must be safe to call with the provided
+    /// `setup_ctx`, and `done_fn` must be safe to call with the provided
+    /// `done_ctx`. The implementation of `setup_fn` may retain the pointer
+    /// to EventLoopRaw`, but must not use it after `done_fn` returns.
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_task(
+        capacity: libc::size_t,
+        setup_fn: unsafe extern "C" fn(*mut libc::c_void, *const EventLoopRaw),
+        setup_ctx: *mut libc::c_void,
+        done_fn: unsafe extern "C" fn(*mut libc::c_void, libc::c_int),
+        done_ctx: *mut libc::c_void,
+    ) -> *mut UnitFuture {
+        let fut = EventLoop::<RawCallback>::task(
+            capacity,
+            Box::new(move |l: &Rc<EventLoop<RawCallback>>| {
+                let l_ptr = &**l as *const EventLoop<RawCallback> as *const EventLoopRaw;
+
+                // SAFETY: calling with the provided ctx
+                unsafe { setup_fn(setup_ctx, l_ptr) };
+            }),
+            Box::new(move |code| {
+                // SAFETY: calling with the provided ctx
+                unsafe { done_fn(done_ctx, code) };
+            }),
+        );
+
+        Box::into_raw(Box::new(UnitFuture(Box::pin(fut))))
     }
 }
 
@@ -860,5 +905,85 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn task() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        struct State {
+            listener: Option<std::net::TcpListener>,
+            listener_reg_id: Option<usize>,
+            stream: Option<mio::net::TcpStream>,
+            code: Option<i32>,
+        }
+
+        let state = Rc::new(RefCell::new(State {
+            listener: None,
+            listener_reg_id: None,
+            stream: None,
+            code: None,
+        }));
+
+        let setup_fn = {
+            let state = Rc::clone(&state);
+
+            Box::new(move |l: &Rc<EventLoop<Box<dyn Callback>>>| {
+                let cb = {
+                    let l = Rc::clone(&l);
+                    let state = Rc::clone(&state);
+
+                    Box::new(FnCallback(move |readiness: event::Readiness| {
+                        assert!(readiness.contains_any(mio::Interest::READABLE));
+
+                        let mut state = state.borrow_mut();
+                        let listener = state.listener.as_ref().unwrap();
+                        let id = state.listener_reg_id.unwrap();
+
+                        let _stream = listener.accept().unwrap();
+                        l.deregister(id).unwrap();
+
+                        state.listener = None;
+                        state.listener_reg_id = None;
+
+                        l.exit(0);
+                    }))
+                };
+
+                let mut state = state.borrow_mut();
+
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                listener.set_nonblocking(true).unwrap();
+
+                let addr = listener.local_addr().unwrap();
+                let fd = listener.as_raw_fd();
+
+                let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
+
+                // non-blocking connect attempt to trigger listener
+                let stream = mio::net::TcpStream::connect(addr).unwrap();
+
+                state.listener = Some(listener);
+                state.listener_reg_id = Some(id);
+                state.stream = Some(stream);
+            })
+        };
+
+        let done_fn = {
+            let state = Rc::clone(&state);
+
+            Box::new(move |code| {
+                state.borrow_mut().code = Some(code);
+            })
+        };
+
+        executor
+            .spawn(EventLoop::<Box<dyn Callback>>::task(1, setup_fn, done_fn))
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+
+        assert_eq!(state.borrow().code, Some(0));
     }
 }

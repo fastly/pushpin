@@ -24,12 +24,9 @@
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <qtestsupport_core.h>
 #include <boost/signals2.hpp>
 #include "test.h"
 #include "log.h"
-#include "timer.h"
-#include "defercall.h"
 #include "zhttpmanager.h"
 #include "ratelimiter.h"
 #include "filter.h"
@@ -133,9 +130,9 @@ public:
 				return;
 			}
 
-			QJsonDocument subMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta"));
+			QJsonDocument subMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta").asQByteArray());
 			QJsonObject subMeta = subMetaDoc.object();
-			QJsonDocument pubMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta"));
+			QJsonDocument pubMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta").asQByteArray());
 			QJsonObject pubMeta = pubMetaDoc.object();
 
 			QString prepend = subMeta["prepend"].toString();
@@ -164,26 +161,32 @@ public:
 	std::unique_ptr<ZhttpManager> zhttpOut;
 	std::shared_ptr<RateLimiter> limiter;
 
-	TestState()
+	TestState(std::function<void (int)> loop_wait)
 	{
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
-		Timer::init(100);
-
 		filterServer = std::make_unique<HttpFilterServer>(workDir);
 
 		zhttpOut = std::make_unique<ZhttpManager>();
+
+		limiter = std::make_shared<RateLimiter>();
+
+		bool connected = false;
+		zhttpOut->probeAcked.connect([&] {
+			connected = true;
+		});
+
 		zhttpOut->setInstanceId("filter-test-client");
+		zhttpOut->setProbe(true);
 		zhttpOut->setClientOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
 		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
 		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
 
-		limiter = std::make_shared<RateLimiter>();
-
-		QTest::qWait(500);
+		while(!connected)
+			loop_wait(10);
 	}
 
 	~TestState()
@@ -191,18 +194,12 @@ public:
 		limiter.reset();
 		zhttpOut.reset();
 		filterServer.reset();
-
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
-
-		DeferCall::cleanup();
-		Timer::deinit();
 	}
 };
 
 }
 
-static Filter::MessageFilter::Result runMessageFilters(const QStringList &filterNames, const Filter::Context &context, const QByteArray &content)
+static Filter::MessageFilter::Result runMessageFilters(const QStringList &filterNames, const Filter::Context &context, const QByteArray &content, std::function<void (int)> loop_wait)
 {
 	Filter::MessageFilterStack fs(filterNames);
 
@@ -217,15 +214,13 @@ static Filter::MessageFilter::Result runMessageFilters(const QStringList &filter
 	fs.start(context, content);
 
 	while(!finished)
-		QTest::qWait(10);
+		loop_wait(10);
 
 	return r;
 }
 
-static void messageFilters()
+static void messageFilters(std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-
 	QStringList filterNames = QStringList() << "skip-self" << "var-subst";
 
 	Filter::Context context;
@@ -234,7 +229,7 @@ static void messageFilters()
 	QByteArray content = "hello %(user)s";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
 		TEST_ASSERT_EQ(r.content, "hello alice");
@@ -242,16 +237,15 @@ static void messageFilters()
 
 	{
 		context.publishMeta["sender"] = "alice";
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
 	}
 }
 
-static void httpCheck()
+static void httpCheck(std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
+	TestState state(loop_wait);
 
 	QStringList filterNames = QStringList() << "http-check";
 
@@ -264,7 +258,7 @@ static void httpCheck()
 	QByteArray content = "hello world";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
 		TEST_ASSERT_EQ(r.content, "hello world");
@@ -273,7 +267,7 @@ static void httpCheck()
 	context.subscriptionMeta["url"] = "/filter/drop";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
 	}
@@ -281,15 +275,14 @@ static void httpCheck()
 	context.subscriptionMeta["url"] = "/filter/error";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT_EQ(r.errorMessage, "unexpected network request status: code=400");
 	}
 }
 
-static void httpModify()
+static void httpModify(std::function<void (int)> loop_wait)
 {
-	TestQCoreApplication qapp;
-	TestState state;
+	TestState state(loop_wait);
 
 	QStringList filterNames = QStringList() << "http-modify";
 
@@ -303,7 +296,7 @@ static void httpModify()
 	QByteArray content = "hello world";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
 		TEST_ASSERT_EQ(r.content, "hello world");
@@ -313,7 +306,7 @@ static void httpModify()
 	context.publishMeta["append"] = ">>>";
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT(r.errorMessage.isNull());
 		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
 		TEST_ASSERT_EQ(r.content, "<<<hello world>>>");
@@ -325,16 +318,16 @@ static void httpModify()
 	context.responseSizeMax = 1000;
 
 	{
-		auto r = runMessageFilters(filterNames, context, content);
+		auto r = runMessageFilters(filterNames, context, content, loop_wait);
 		TEST_ASSERT_EQ(r.errorMessage, "network response exceeded 1000 bytes");
 	}
 }
 
 extern "C" int filter_test(ffi::TestException *out_ex)
 {
-	TEST_CATCH(messageFilters());
-	TEST_CATCH(httpCheck());
-	TEST_CATCH(httpModify());
+	TEST_CATCH(test_with_event_loop(messageFilters));
+	TEST_CATCH(test_with_event_loop(httpCheck));
+	TEST_CATCH(test_with_event_loop(httpModify));
 
 	return 0;
 }

@@ -347,20 +347,27 @@ impl PushpinProxyService {
         let mut args: Vec<String> = vec![];
         let service_name = "proxy";
 
+        // Proxy bin path
         args.push(settings.proxy_bin.display().to_string());
+
+        // Config file
         args.push(format!("--config={}", settings.config_file.display()));
 
+        // Ipc prefix
         if !settings.ipc_prefix.is_empty() {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
+
+        // Log level
         let log_level = match settings.log_levels.get("proxy") {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };
         args.push(format!("--loglevel={}", log_level));
 
-        for route in settings.route_lines.clone() {
-            args.push(format!("--route={}", route));
+        // Routes
+        for route in &settings.route_lines {
+            args.push(format!("--route={route}"));
         }
 
         Self {
@@ -387,15 +394,23 @@ impl PushpinHandlerService {
         let mut args: Vec<String> = vec![];
         let service_name = "handler";
 
+        // Handler bin path
         args.push(settings.handler_bin.display().to_string());
+
+        // Config file
         args.push(format!("--config={}", settings.config_file.display()));
 
+        // Port offset
         if settings.port_offset > 0 {
             args.push(format!("--port-offset={}", settings.port_offset));
         }
+
+        // Ipc prefix
         if !settings.ipc_prefix.is_empty() {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
+
+        // Log level
         let log_level = match settings.log_levels.get("handler") {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
