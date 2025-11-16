@@ -260,9 +260,9 @@ private:
 		if(autoShare && requestData.method == "GET")
 		{
 			// auto share matches requests based on URI path (not query) and
-			//   Grip-Last headers. the reason the query part is not
-			//   considered is because it may vary per client and Grip-Last
-			//   supersedes whatever is in the query
+			// Grip-Last headers. the reason the query part is not
+			// considered is because it may vary per client and Grip-Last
+			// supersedes whatever is in the query
 
 			QUrl uri = requestData.uri;
 			uri.setQuery(QString()); // remove the query part
@@ -920,7 +920,7 @@ private:
 		}
 
 		// don't relay these headers. their meaning is handled by
-		//   zurl and they only apply to the outgoing hop.
+		// zurl and they only apply to the outgoing hop.
 		instruct.response.headers.removeAll("Connection");
 		instruct.response.headers.removeAll("Keep-Alive");
 		instruct.response.headers.removeAll("Content-Encoding");
@@ -1006,7 +1006,7 @@ private:
 						conflict = true;
 
 						// NOTE: don't exit loop here. we want to clear
-						//   the last ids of all conflicting channels
+						// the last ids of all conflicting channels
 					}
 				}
 			}
@@ -1055,7 +1055,7 @@ private:
 				}
 
 				// if prev-id set on channels, set as inspect lastids so the proxy
-				//   will pass as Grip-Last in the next request
+				// will pass as Grip-Last in the next request
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					if(!c.prevId.isNull())
@@ -1140,7 +1140,7 @@ private:
 		}
 
 		// engine should directly connect to this and register the holds
-		//   immediately, to avoid a race with the lastId check
+		// immediately, to avoid a race with the lastId check
 		sessionsReady();
 
 		setFinished(true);
@@ -1628,8 +1628,8 @@ private:
 	void handlePublishItem(const PublishItem &item)
 	{
 		// only sequence if someone is listening, because we
-		//   clear lastId on unsubscribe and don't want it to
-		//   be set again until after a subscription returns
+		// clear lastId on unsubscribe and don't want it to
+		// be set again until after a subscription returns
 
 		bool seq = (!item.noSeq && cs.subs.contains(item.channel));
 
@@ -2084,11 +2084,11 @@ private:
 			foreach(HttpSession *hs, sessions)
 			{
 				// note: we used to assert that the session was currently a
-				//   stream hold and subscribed to the target channel,
-				//   however with the new grip-link stuff it is possible for
-				//   the session to temporarily switch to NoHold, and for
-				//   channels to become unsubscribed. so we'll do a
-				//   conditional statement instead
+				// stream hold and subscribed to the target channel,
+				// however with the new grip-link stuff it is possible for
+				// the session to temporarily switch to NoHold, and for
+				// channels to become unsubscribed. so we'll do a
+				// conditional statement instead
 				if(!hs->channels().contains(item.channel))
 					continue;
 
@@ -2143,7 +2143,7 @@ private:
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
 			// FIXME: if bodyPatch is used then body is empty. we should
-			//   really be calculating blocks after applying patch
+			// really be calculating blocks after applying patch
 
 			int blocks;
 			if(item.size >= 0)
@@ -2380,7 +2380,7 @@ private:
 	void stats_unsubscribed(const QString &mode, const QString &channel)
 	{
 		// NOTE: this callback may be invoked while looping over certain structures,
-		//   so be careful what you touch
+		// so be careful what you touch
 
 		Q_UNUSED(mode);
 
@@ -2602,7 +2602,7 @@ private:
 			if(!s)
 			{
 				// send cancel, causing the proxy to close the connection. client
-				//   will need to retry to repair
+				// will need to retry to repair
 				WsControlPacket::Item i;
 				i.cid = item.cid;
 				i.type = WsControlPacket::Item::Cancel;

@@ -218,7 +218,7 @@ public:
 			if(keepAliveTimer->isActive())
 			{
 				// need to flush the current keepalive, since the
-				//   manager registration may extend the timeout
+				// manager registration may extend the timeout
 				keepAlive_timeout();
 
 				keepAliveTimer->stop();

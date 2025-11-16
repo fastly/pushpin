@@ -879,10 +879,10 @@ impl<T> Drop for LocalSendFuture<'_, T> {
 //
 // * creating two instances and awaiting them sequentially
 // * creating two instances and selecting on them in a loop. both will
-//   eventually complete
+// eventually complete
 // * creating one instance, polling it to pending, then creating a second
-//   instance and polling it to completion, then polling on the first
-//   instance again
+// instance and polling it to completion, then polling on the first
+// instance again
 pub struct CheckSendFuture<'a, T> {
     s: &'a AsyncLocalSender<T>,
 }

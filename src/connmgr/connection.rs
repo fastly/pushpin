@@ -1130,7 +1130,7 @@ where
 
                         if self.websocket && credits == 0 {
                             // workaround for pushpin-proxy, which doesn't
-                            //   send credits on websocket accept
+                            // send credits on websocket accept
                             credits = self.send_buf_size as u32;
                             debug!(
                                 "server-conn {}: no credits in websocket accept, assuming {}",

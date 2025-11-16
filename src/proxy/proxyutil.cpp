@@ -82,8 +82,8 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	if(!trustedClient && entry.origHeaders)
 	{
 		// copy headers to include magic prefix, so that the original
-		//   headers may be recovered later. if the client is trusted,
-		//   then we assume this has been done already.
+		// headers may be recovered later. if the client is trusted,
+		// then we assume this has been done already.
 
 		HttpHeaders origHeaders;
 		for(int n = 0; n < requestData->headers.count(); ++n)
@@ -125,7 +125,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	else if(!entry.origHeaders)
 	{
 		// if we don't want original headers, then filter them out
-		//   before proxying
+		// before proxying
 		for(int n = 0; n < requestData->headers.count(); ++n)
 		{
 			const HttpHeader &h = requestData->headers[n];
@@ -139,7 +139,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	}
 
 	// don't relay these headers. their meaning is handled by
-	//   mongrel2 and they only apply to the incoming hop.
+	// mongrel2 and they only apply to the incoming hop.
 	requestData->headers.removeAll("Connection");
 	requestData->headers.removeAll("Keep-Alive");
 	requestData->headers.removeAll("Accept-Encoding");

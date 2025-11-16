@@ -510,7 +510,7 @@ public:
 	void tryRequestRead()
 	{
 		// if the state changed before input finished, then
-		//   stop reading input
+		// stop reading input
 		if(state != Requesting)
 			return;
 
@@ -592,13 +592,13 @@ public:
 				else
 				{
 					// if we already started responding, then only provide an
-					//   error message in debug mode
+					// error message in debug mode
 
 					if(si->rs->debugEnabled())
 					{
 						// if debug enabled, append the message at the end.
-						//   this may ruin the content, but hey it's debug
-						//   mode
+						// this may ruin the content, but hey it's debug
+						// mode
 						QByteArray buf = "\n\nAccept service unavailable\n";
 
 						si->bytesToWrite += buf.size();
@@ -608,7 +608,7 @@ public:
 					else
 					{
 						// if debug not enabled, then the best we can do is
-						//   disconnect
+						// disconnect
 						si->state = SessionItem::Responded;
 						si->unclean = true;
 						si->bytesToWrite = -1;
@@ -656,13 +656,13 @@ public:
 				else // Responding
 				{
 					// if we already started responding, then only provide a
-					//   rejection message in debug mode
+					// rejection message in debug mode
 
 					if(si->rs->debugEnabled())
 					{
 						// if debug enabled, append the message at the end.
-						//   this may ruin the content, but hey it's debug
-						//   mode
+						// this may ruin the content, but hey it's debug
+						// mode
 						QByteArray buf = "\n\n" + debugErrorMessage.toUtf8() + '\n';
 
 						si->bytesToWrite += buf.size();
@@ -672,7 +672,7 @@ public:
 					else
 					{
 						// if debug not enabled, then the best we can do is
-						//   disconnect
+						// disconnect
 						si->state = SessionItem::Responded;
 						si->unclean = true;
 						si->bytesToWrite = -1;
@@ -736,7 +736,7 @@ public:
 	void tryResponseRead()
 	{
 		// if we're not buffering, then don't read (instead, sync to slowest
-		//   receiver before reading again)
+		// receiver before reading again)
 		if(!buffering && pendingWrites())
 			return;
 
@@ -782,12 +782,12 @@ public:
 				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())) && !usingBuildIdFilter)
 				{
 					// sending the initial response from the proxy means
-					//   we need to do some of the handler's job here
+					// we need to do some of the handler's job here
 
 					// NOTE: if we ever need to do more than what's
-					//   below, we should consider querying the handler
-					//   to perform these things while still letting
-					//   the proxy send the response body
+					// below, we should consider querying the handler
+					// to perform these things while still letting
+					// the proxy send the response body
 
 					// no content length
 					responseData.headers.removeAll("Content-Length");
@@ -983,7 +983,7 @@ public:
 		state = Responding;
 
 		// don't relay these headers. their meaning is handled by
-		//   zurl and they only apply to the outgoing hop.
+		// zurl and they only apply to the outgoing hop.
 		responseData.headers.removeAll("Connection");
 		responseData.headers.removeAll("Keep-Alive");
 		responseData.headers.removeAll("Content-Encoding");
@@ -1235,7 +1235,7 @@ public:
 		else if(wasInputRequest)
 		{
 			// this should never happen. for there to be more than
-			//   one SessionItem, inRequest must be 0.
+			// one SessionItem, inRequest must be 0.
 			assert(0);
 
 			rejectAll(500, "Internal Server Error", "Input request failed.");

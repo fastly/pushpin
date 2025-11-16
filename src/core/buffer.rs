@@ -555,8 +555,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
             buf.copy_within(self.start.., 0);
         } else if size <= self.start {
             // if the buffer has wrapped, but the wrapped part can be copied
-            //   without overlapping, then copy the wrapped part followed by
-            //   initial part
+            // without overlapping, then copy the wrapped part followed by
+            // initial part
 
             let left_size = self.end - buf.len();
             let right_size = buf.len() - self.start;
@@ -565,11 +565,11 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
             buf.copy_within(self.start..(self.start + right_size), 0);
         } else {
             // if the buffer has wrapped and the wrapped part can't be copied
-            //   without overlapping, then use a temporary buffer to
-            //   facilitate. smaller part is copied to the temp buffer, then
-            //   the larger and small parts (in that order) are copied into
-            //   their intended locations. in the worst case, up to 50% of
-            //   the buffer may be copied twice
+            // without overlapping, then use a temporary buffer to
+            // facilitate. smaller part is copied to the temp buffer, then
+            // the larger and small parts (in that order) are copied into
+            // their intended locations. in the worst case, up to 50% of
+            // the buffer may be copied twice
 
             let left_size = self.end - buf.len();
             let right_size = buf.len() - self.start;

@@ -348,7 +348,7 @@ public:
 			else
 			{
 				// if we aren't using outCredits, then limit pending packets
-				//   to hardcoded m2 value
+				// to hardcoded m2 value
 				if(packetsPending < M2_PENDING_MAX)
 					return true;
 			}
@@ -1605,7 +1605,7 @@ public:
 		if(!s->conn)
 		{
 			// if we were in handoff, it's okay to send right now since we'd
-			//   be clearing the handoff state later on in this method anyway
+			// be clearing the handoff state later on in this method anyway
 			if(!s->zhttpAddress.isEmpty())
 			{
 				ZhttpRequestPacket zreq;
@@ -1644,8 +1644,8 @@ public:
 			sessionRefreshBuckets[s->refreshBucket] += s;
 
 			// in order to have been in a handoff state, we would have
-			//   had to receive a from address sometime earlier, so it
-			//   should be safe to call zhttp_out_write with session.
+			// had to receive a from address sometime earlier, so it
+			// should be safe to call zhttp_out_write with session.
 
 			if(multiWasTurnedOn)
 			{
@@ -1664,9 +1664,9 @@ public:
 					zreq.type = ZhttpRequestPacket::Data;
 
 					// send credits too, if needed (though this probably can't happen,
-					//   since http data flows only in one direction at a time. we
-					//   can't have pending request body data while at the same
-					//   time be acking received response body data).
+					// since http data flows only in one direction at a time. we
+					// can't have pending request body data while at the same
+					// time be acking received response body data).
 					if(s->pendingInCredits > 0)
 					{
 						zreq.credits = s->pendingInCredits;
@@ -2424,13 +2424,13 @@ public:
 				}
 
 				// if we were in the middle of requesting control info when this
-				//   http request arrived, then there's a chance the control
-				//   response won't account for this request (for example if the
-				//   control response was generated and was in the middle of being
-				//   delivered when this http request arrived). we'll flag the
-				//   connection as "new" in this case, so in the control response
-				//   handler we know to skip over it until the next control
-				//   request.
+				// http request arrived, then there's a chance the control
+				// response won't account for this request (for example if the
+				// control response was generated and was in the middle of being
+				// delivered when this http request arrived). we'll flag the
+				// connection as "new" in this case, so in the control response
+				// handler we know to skip over it until the next control
+				// request.
 				if(controlPorts[index].state == ControlPort::ExpectingResponse)
 					conn->isNew = true;
 			}

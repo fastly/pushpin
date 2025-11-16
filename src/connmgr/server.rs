@@ -2754,8 +2754,8 @@ impl TestServer {
                 let seq = seq.unwrap();
 
                 // as a hack to make the test server stateless, respond to every message
-                //   using the received sequence number. for messages we don't care about,
-                //   respond with keep-alive in order to keep the sequencing going
+                // using the received sequence number. for messages we don't care about,
+                // respond with keep-alive in order to keep the sequencing going
                 if ptype.is_empty() || ptype == "ping" || ptype == "pong" || ptype == "close" {
                     if ptype == "ping" {
                         ptype = "pong";

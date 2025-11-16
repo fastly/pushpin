@@ -637,7 +637,7 @@ impl ReqHandles {
 
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
-                //   without downstream backpressure
+                // without downstream backpressure
                 match p.pe.sender.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
@@ -811,7 +811,7 @@ impl StreamHandles {
 
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
-                //   without downstream backpressure
+                // without downstream backpressure
                 match p
                     .pe
                     .sender
@@ -1297,7 +1297,7 @@ impl ServerStreamHandles {
 
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
-                //   without downstream backpressure
+                // without downstream backpressure
                 match p.pe.sender_direct.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
@@ -1349,12 +1349,12 @@ pub struct ClientSocketManager {
 
 impl ClientSocketManager {
     // retained_max is the maximum number of received messages that the user
-    //   will keep around at any moment. for example, if the user plans to
-    //   set up 4 handles on the manager and read 1 message at a time from
-    //   each of the handles (i.e. process and drop a message before reading
-    //   the next), then the value here should be 4, because there would be
-    //   no more than 4 dequeued messages alive at any one time. this number
-    //   is needed to help size the internal arena
+    // will keep around at any moment. for example, if the user plans to
+    // set up 4 handles on the manager and read 1 message at a time from
+    // each of the handles (i.e. process and drop a message before reading
+    // the next), then the value here should be 4, because there would be
+    // no more than 4 dequeued messages alive at any one time. this number
+    // is needed to help size the internal arena
     pub fn new(
         ctx: Arc<zmq::Context>,
         instance_id: &str,
@@ -1498,9 +1498,9 @@ impl ClientSocketManager {
         let control_receiver = AsyncReceiver::new(control_receiver);
 
         // the messages arena needs to fit the max number of potential incoming messages that
-        //   still need to be processed. this is the entire channel queue for every handle, plus
-        //   the most number of messages the user might retain, plus 1 extra for the next message
-        //   we are preparing to send to the handles
+        // still need to be processed. this is the entire channel queue for every handle, plus
+        // the most number of messages the user might retain, plus 1 extra for the next message
+        // we are preparing to send to the handles
         let arena_size = (HANDLES_MAX * handle_bound) + retained_max + 1;
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
@@ -1946,12 +1946,12 @@ pub struct ServerSocketManager {
 
 impl ServerSocketManager {
     // retained_max is the maximum number of received messages that the user
-    //   will keep around at any moment. for example, if the user plans to
-    //   set up 4 handles on the manager and read 1 message at a time from
-    //   each of the handles (i.e. process and drop a message before reading
-    //   the next), then the value here should be 4, because there would be
-    //   no more than 4 dequeued messages alive at any one time. this number
-    //   is needed to help size the internal arena
+    // will keep around at any moment. for example, if the user plans to
+    // set up 4 handles on the manager and read 1 message at a time from
+    // each of the handles (i.e. process and drop a message before reading
+    // the next), then the value here should be 4, because there would be
+    // no more than 4 dequeued messages alive at any one time. this number
+    // is needed to help size the internal arena
     pub fn new(
         ctx: Arc<zmq::Context>,
         instance_id: &str,
@@ -2094,10 +2094,10 @@ impl ServerSocketManager {
         let control_receiver = AsyncReceiver::new(control_receiver);
 
         // the messages arena needs to fit the max number of potential incoming messages that
-        //   still need to be processed. this is the entire channel queue for every handle, plus
-        //   the most number of messages the user might retain, plus 1 extra for the next message
-        //   we are preparing to send to the handles, x2 since there are two sending channels
-        //   per stream handle
+        // still need to be processed. this is the entire channel queue for every handle, plus
+        // the most number of messages the user might retain, plus 1 extra for the next message
+        // we are preparing to send to the handles, x2 since there are two sending channels
+        // per stream handle
         let arena_size = ((HANDLES_MAX * handle_bound) + retained_max + 1) * 2;
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
@@ -2925,8 +2925,8 @@ mod tests {
             .unwrap();
 
         // write four times, which will all succeed eventually. after this
-        //   we'll have filled the handle, the manager's temporary variable,
-        //   and the HWMs of both the sending and receiving zmq sockets
+        // we'll have filled the handle, the manager's temporary variable,
+        // and the HWMs of both the sending and receiving zmq sockets
         for i in 1..=4 {
             loop {
                 match h.send_to_addr(
@@ -2941,9 +2941,9 @@ mod tests {
         }
 
         // once we were able to write a fourth time, this means the manager
-        //   has started processing the third message. let's wait a short bit
-        //   for the manager to attempt to send the third message to the zmq
-        //   socket and fail with EAGAIN
+        // has started processing the third message. let's wait a short bit
+        // for the manager to attempt to send the third message to the zmq
+        // socket and fail with EAGAIN
         thread::sleep(Duration::from_millis(10));
 
         // fifth write will fail. there's no room

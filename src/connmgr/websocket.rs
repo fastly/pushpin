@@ -1195,7 +1195,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let is_control = msg.opcode & 0x08 != 0;
 
         // control frames (ping, pong, close) must have a small payload length
-        //   and must not be fragmented
+        // and must not be fragmented
         if is_control && (src_len > CONTROL_FRAME_PAYLOAD_MAX || !end) {
             return Err(Error::InvalidControlFrame);
         }

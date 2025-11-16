@@ -70,7 +70,7 @@ QByteArray BufferList::mid(int pos, int size) const
 	findPos(pos, &at, &offset);
 
 	// if we're reading the exact size of the current buffer, cheaply
-	//   return it
+	// return it
 	if(offset == 0 && bufs_[at].size() == toRead)
 		return bufs_[at];
 
@@ -127,7 +127,7 @@ QByteArray BufferList::take(int size)
 	assert(!bufs_.isEmpty());
 
 	// if we're reading the exact size of the first buffer, cheaply
-	//   return it
+	// return it
 	if(offset_ == 0 && bufs_.first().size() == toRead)
 	{
 		size_ -= toRead;

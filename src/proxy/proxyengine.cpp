@@ -733,7 +733,7 @@ private:
 	void rs_inspected(const InspectData &idata, RequestSession *rs)
 	{
 		// if we get here, then the request must be proxied. if it was to be directly
-		//   accepted, then finishedByAccept would have been emitted instead
+		// accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
@@ -897,8 +897,8 @@ private:
 				rs->setRouteId(QString::fromUtf8(p.route));
 
 			// note: if the routing table was changed, there's a chance the request
-			//   might get a different route id this time around. this could confuse
-			//   stats processors tracking route+connection mappings.
+			// might get a different route id this time around. this could confuse
+			// stats processors tracking route+connection mappings.
 			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);

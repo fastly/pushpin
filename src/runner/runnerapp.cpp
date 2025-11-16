@@ -353,7 +353,7 @@ public:
 		}
 
 		// QSettings doesn't inform us if the config file can't be accessed,
-		//   so do that ourselves
+		// so do that ourselves
 		{
 			QFile file(configFile);
 			if(!file.open(QIODevice::ReadOnly))
@@ -451,7 +451,7 @@ public:
 		int defaultLevel = logLevels.value("", 2);
 
 		// NOTE: since we only finally set the log level here, earlier
-		//   log messages outside the default level will be lost (if any)
+		// log messages outside the default level will be lost (if any)
 		log_setOutputLevel(logLevels.value("runner", defaultLevel));
 
 		int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();

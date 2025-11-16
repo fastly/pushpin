@@ -444,7 +444,7 @@ private:
 		if(!cscm && writeBytesAvailable() == 0)
 		{
 			// write buffer maxed with incomplete message. this is
-			//   unrecoverable. update to throw error right away.
+			// unrecoverable. update to throw error right away.
 			return true;
 		}
 
@@ -915,8 +915,8 @@ private:
 		else if(closeSent && keepAliveInterval == -1)
 		{
 			// if there are no keep alives, then the server has only one
-			//   chance to respond to a close. if it doesn't, then
-			//   consider the connection uncleanly disconnected.
+			// chance to respond to a close. if it doesn't, then
+			// consider the connection uncleanly disconnected.
 			disconnected = true;
 		}
 
@@ -965,7 +965,7 @@ private:
 			case ZhttpRequest::ErrorGeneric:
 			case ZhttpRequest::ErrorTimeout:
 				// these errors mean the server may have been reached, so
-				//   only retry if the request body wasn't completely sent
+				// only retry if the request body wasn't completely sent
 				if(reqPendingBytes > 0)
 					retry = true;
 				break;

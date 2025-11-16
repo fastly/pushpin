@@ -815,7 +815,7 @@ public:
 					break;
 
 				// note: inBytes may exceed BUFFER_SIZE at this point, but
-				//   it shouldn't be by more than double
+				// it shouldn't be by more than double
 
 				inFrames += frames;
 				inBytes += bytes;
