@@ -30,10 +30,11 @@ using Connection = boost::signals2::scoped_connection;
 
 class ZrpcRequest;
 
-// All requests should be passed to this class for monitoring. Use
-// watch() to have it monitor a request, but not own it. Use give() to have
-// this class take ownership of an already-watched request.
-
+/// Watches ZRPC requests for success/failure to determine if the handler is reachable
+///
+/// All requests should be passed to this class for monitoring. Use
+/// watch() to have it monitor a request, but not own it. Use give() to have
+/// this class take ownership of an already-watched request.
 class ZrpcChecker
 {
 public:

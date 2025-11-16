@@ -48,6 +48,8 @@ class ZrpcChecker;
 class StatsManager;
 class XffRule;
 
+/// Manages the lifecycle of an individual HTTP request including
+/// inspection, acceptance, and response handling
 class RequestSession
 {
 public:
