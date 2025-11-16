@@ -440,9 +440,9 @@ private:
 						if(large)
 						{
 							// Grip-Link required to trigger accept after
-							//   sending large response. note that the link
-							//   won't be followed in this test since that's
-							//   not a proxy issue
+							// sending large response. note that the link
+							// won't be followed in this test since that's
+							// not a proxy issue
 							zresp.headers += HttpHeader("Grip-Link", "</path3>; rel=next");
 							zresp.body = QByteArray(PROXY_MAX_ACCEPT_RESPONSE_BODY + 10000, 'a') + '\n';
 						}

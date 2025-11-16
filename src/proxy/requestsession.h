@@ -108,9 +108,9 @@ public:
 	SignalInt headerBytesSent;
 	SignalInt bodyBytesSent;
 	// this signal means some error was encountered while responding and
-	//   that you should not attempt to call further response-related
-	//   methods. the object remains in an active state though, and so you
-	//   should still wait for finished()
+	// that you should not attempt to call further response-related
+	// methods. the object remains in an active state though, and so you
+	// should still wait for finished()
 	Signal errorResponding;
 	Signal finished;
 

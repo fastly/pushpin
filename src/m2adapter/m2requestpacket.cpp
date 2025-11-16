@@ -36,7 +36,7 @@ static bool isAllCaps(const QString &s)
 		QChar c = s[n];
 
 		// non-letters are allowed, so what we really check against is
-		//   lowercase
+		// lowercase
 		if(c.isLower())
 			return false;
 	}
@@ -285,7 +285,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	if(!uploadDoneRaw.isEmpty())
 	{
 		// these headers must match for the packet to be valid. not
-		//   sure why mongrel2 can't enforce this for us but whatever
+		// sure why mongrel2 can't enforce this for us but whatever
 		if(uploadStartRaw != uploadDoneRaw)
 			return false;
 

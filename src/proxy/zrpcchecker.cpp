@@ -137,8 +137,8 @@ public:
 		else
 		{
 			// if we aren't watching (or were watching, but no
-			//   longer watching), then just delete what we were
-			//   given
+			// longer watching), then just delete what we were
+			// given
 			reqConnectionMap.erase(req);
 			delete req;
 		}

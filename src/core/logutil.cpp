@@ -111,7 +111,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 	else
 	{
 		// if data isn't a hash, then we can't extract content, so
-		//   the meta part will be the entire data
+		// the meta part will be the entire data
 		meta = data;
 	}
 

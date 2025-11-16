@@ -79,7 +79,7 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
         };
 
         // if the current wheel didn't finish a full rotation then we don't need to look
-        //   at higher wheels
+        // at higher wheels
         if pending & finished_bit == 0 {
             break;
         }
@@ -304,7 +304,7 @@ impl TimerWheel {
             let trunc_bits = (wheel * WHEEL_BITS) as u64;
 
             // for higher order wheels, schedule 1 slot early. this way, fractional
-            //   time remaining can be rescheduled to a lower wheel
+            // time remaining can be rescheduled to a lower wheel
             let offset = u64::from(wheel > 0);
 
             // slot is selected by absolute time

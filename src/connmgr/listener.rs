@@ -175,7 +175,7 @@ impl Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         // this should never fail. receiver won't disconnect unless
-        //   we tell it to
+        // we tell it to
         self.stop.send(()).unwrap();
 
         let thread = self.thread.take().unwrap();

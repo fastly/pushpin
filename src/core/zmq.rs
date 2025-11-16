@@ -542,7 +542,7 @@ impl Future for ZmqSendFuture<'_> {
         }
 
         // NOTE: when rust-zmq allows resending messages we can
-        //   avoid this copy
+        // avoid this copy
 
         let msg = zmq::Message::from(&f.msg[..]);
 
@@ -605,7 +605,7 @@ impl Future for ZmqSendToFuture<'_> {
         }
 
         // NOTE: when rust-zmq allows resending messages we can
-        //   avoid this copy
+        // avoid this copy
 
         let content = zmq::Message::from(&f.content[..]);
 

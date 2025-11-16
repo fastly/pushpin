@@ -470,7 +470,7 @@ public:
 		while(canWrite && !pendingWrites.empty())
 		{
 			// whether this write succeeds or not, we assume we
-			//   can't write afterwards
+			// can't write afterwards
 			canWrite = false;
 
 			if(zmqWrite(pendingWrites.front()))

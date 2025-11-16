@@ -22,9 +22,9 @@
  */
 
 // NOTE: this is a basic jinja-like template engine. its abilities are
-//   minimal, because at the time of this writing our templates aren't very
-//   complex. if someday we need more template functionality, we should
-//   consider throwing this code away and using a real template library.
+// minimal, because at the time of this writing our templates aren't very
+// complex. if someday we need more template functionality, we should
+// consider throwing this code away and using a real template library.
 
 #include "template.h"
 

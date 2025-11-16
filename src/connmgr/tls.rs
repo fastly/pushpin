@@ -243,11 +243,11 @@ impl IdentityCache {
         let name = domain.to_lowercase();
 
         // try to find a file named after the exact host, then try with a
-        //   wildcard pattern at the same subdomain level. the filename
-        //   format uses underscores instead of asterisks. so, a domain of
-        //   www.example.com will attempt to be matched against a file named
-        //   www.example.com.crt and _.example.com.crt. wildcards at other
-        //   levels are not supported
+        // wildcard pattern at the same subdomain level. the filename
+        // format uses underscores instead of asterisks. so, a domain of
+        // www.example.com will attempt to be matched against a file named
+        // www.example.com.crt and _.example.com.crt. wildcards at other
+        // levels are not supported
 
         if let Some(identity) = self.get_by_name(&name) {
             return Some(identity);

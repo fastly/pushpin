@@ -47,9 +47,9 @@ impl<T> DerefMut for EntryGuard<'_, T> {
 }
 
 // this is essentially a sharable slab for use within a single thread.
-//   operations are protected by a RefCell. when an element is retrieved for
-//   reading or modification, it is wrapped in a EntryGuard which keeps the
-//   entire slab borrowed until the caller is done working with the element
+// operations are protected by a RefCell. when an element is retrieved for
+// reading or modification, it is wrapped in a EntryGuard which keeps the
+// entire slab borrowed until the caller is done working with the element
 pub struct Memory<T> {
     entries: RefCell<Slab<T>>,
 }
@@ -75,7 +75,7 @@ impl<T> Memory<T> {
         let mut entries = self.entries.borrow_mut();
 
         // out of capacity. by preventing inserts beyond the capacity, we
-        //   ensure the underlying memory won't get moved due to a realloc
+        // ensure the underlying memory won't get moved due to a realloc
         if entries.len() == entries.capacity() {
             return Err(());
         }
@@ -89,11 +89,11 @@ impl<T> Memory<T> {
         let entry = entries.get_mut(key)?;
 
         // slab element addresses are guaranteed to be stable once created,
-        //   and the only place we remove the element is in EntryGuard's
-        //   remove method which consumes itself, therefore it is safe to
-        //   assume the element will live at least as long as the EntryGuard
-        //   and we can extend the lifetime of the reference beyond the
-        //   RefMut
+        // and the only place we remove the element is in EntryGuard's
+        // remove method which consumes itself, therefore it is safe to
+        // assume the element will live at least as long as the EntryGuard
+        // and we can extend the lifetime of the reference beyond the
+        // RefMut
         let entry = unsafe { mem::transmute::<&mut T, &'a mut T>(entry) };
 
         Some(EntryGuard {
@@ -104,10 +104,10 @@ impl<T> Memory<T> {
     }
 
     // for tests, as a way to confirm the memory isn't moving. be careful
-    //   with this. the very first element inserted will be at index 0, but
-    //   if the slab has been used and cleared, then the next element
-    //   inserted may not be at index 0 and calling this method afterward
-    //   will panic
+    // with this. the very first element inserted will be at index 0, but
+    // if the slab has been used and cleared, then the next element
+    // inserted may not be at index 0 and calling this method afterward
+    // will panic
     #[cfg(test)]
     fn entry0_ptr(&self) -> *const T {
         let entries = self.entries.borrow();
@@ -143,9 +143,9 @@ impl<T> DerefMut for SyncEntryGuard<'_, T> {
 }
 
 // this is essentially a thread-safe slab. operations are protected by a
-//   mutex. when an element is retrieved for reading or modification, it is
-//   wrapped in a EntryGuard which keeps the entire slab locked until the
-//   caller is done working with the element
+// mutex. when an element is retrieved for reading or modification, it is
+// wrapped in a EntryGuard which keeps the entire slab locked until the
+// caller is done working with the element
 pub struct SyncMemory<T> {
     entries: Mutex<Slab<T>>,
 }
@@ -171,7 +171,7 @@ impl<T> SyncMemory<T> {
         let mut entries = self.entries.lock().unwrap();
 
         // out of capacity. by preventing inserts beyond the capacity, we
-        //   ensure the underlying memory won't get moved due to a realloc
+        // ensure the underlying memory won't get moved due to a realloc
         if entries.len() == entries.capacity() {
             return Err(());
         }
@@ -185,11 +185,11 @@ impl<T> SyncMemory<T> {
         let entry = entries.get_mut(key)?;
 
         // slab element addresses are guaranteed to be stable once created,
-        //   and the only place we remove the element is in SyncEntryGuard's
-        //   remove method which consumes itself, therefore it is safe to
-        //   assume the element will live at least as long as the SyncEntryGuard
-        //   and we can extend the lifetime of the reference beyond the
-        //   MutexGuard
+        // and the only place we remove the element is in SyncEntryGuard's
+        // remove method which consumes itself, therefore it is safe to
+        // assume the element will live at least as long as the SyncEntryGuard
+        // and we can extend the lifetime of the reference beyond the
+        // MutexGuard
         let entry = unsafe { mem::transmute::<&mut T, &'a mut T>(entry) };
 
         Some(SyncEntryGuard {
@@ -200,10 +200,10 @@ impl<T> SyncMemory<T> {
     }
 
     // for tests, as a way to confirm the memory isn't moving. be careful
-    //   with this. the very first element inserted will be at index 0, but
-    //   if the slab has been used and cleared, then the next element
-    //   inserted may not be at index 0 and calling this method afterward
-    //   will panic
+    // with this. the very first element inserted will be at index 0, but
+    // if the slab has been used and cleared, then the next element
+    // inserted may not be at index 0 and calling this method afterward
+    // will panic
     #[cfg(test)]
     fn entry0_ptr(&self) -> *const T {
         let entries = self.entries.lock().unwrap();
@@ -220,10 +220,10 @@ pub struct ReusableValue<T> {
 
 impl<T> ReusableValue<T> {
     // vec element addresses are guaranteed to be stable once created,
-    //   and elements are only removed when the Reusable is dropped, and
-    //   the Arc'd Reusable is guaranteed to live as long as
-    //   ReusableValue, therefore it is safe to assume the element will
-    //   live at least as long as the ReusableValue
+    // and elements are only removed when the Reusable is dropped, and
+    // the Arc'd Reusable is guaranteed to live as long as
+    // ReusableValue, therefore it is safe to assume the element will
+    // live at least as long as the ReusableValue
 
     fn get(&self) -> &T {
         unsafe { &*self.value }
@@ -350,10 +350,10 @@ impl<T> Rc<T> {
         let value = &e.value;
 
         // entry addresses are guaranteed to be stable once created, and the
-        //   entry managed by this Rc won't be dropped until this Rc drops,
-        //   therefore it is safe to assume the entry managed by this Rc will
-        //   live at least as long as this Rc, and we can extend the lifetime
-        //   of the reference beyond the EntryGuard
+        // entry managed by this Rc won't be dropped until this Rc drops,
+        // therefore it is safe to assume the entry managed by this Rc will
+        // live at least as long as this Rc, and we can extend the lifetime
+        // of the reference beyond the EntryGuard
         unsafe { mem::transmute::<&T, &'a T>(value) }
     }
 }
@@ -408,10 +408,10 @@ impl<T> Arc<T> {
         let value = &e.value;
 
         // entry addresses are guaranteed to be stable once created, and the
-        //   entry managed by this Arc won't be dropped until this Arc drops,
-        //   therefore it is safe to assume the entry managed by this Arc will
-        //   live at least as long as this Arc, and we can extend the lifetime
-        //   of the reference beyond the SyncEntryGuard
+        // entry managed by this Arc won't be dropped until this Arc drops,
+        // therefore it is safe to assume the entry managed by this Arc will
+        // live at least as long as this Arc, and we can extend the lifetime
+        // of the reference beyond the SyncEntryGuard
         unsafe { mem::transmute::<&T, &'a T>(value) }
     }
 }

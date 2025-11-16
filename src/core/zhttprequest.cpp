@@ -333,7 +333,7 @@ public:
 			if(keepAliveTimer->isActive())
 			{
 				// need to flush the current keepalive, since the
-				//   manager registration may extend the timeout
+				// manager registration may extend the timeout
 				keepAlive_timeout();
 
 				keepAliveTimer->stop();
@@ -988,7 +988,7 @@ public:
 			else
 			{
 				// NOTE: not quite sure why we do this. maybe to avoid a
-				//   zhttp PUSH/SUB race?
+				// zhttp PUSH/SUB race?
 				if(!manager->canWriteImmediately())
 				{
 					state = Stopped;
@@ -1008,8 +1008,8 @@ public:
 				if(!sendBodyAfterAck)
 				{
 					// even though we don't have credits yet, we can act
-					//   like we do on the first packet. we'll still cap
-					//   our potential size though.
+					// like we do on the first packet. we'll still cap
+					// our potential size though.
 					p.body = requestBodyBuf.take(IDEAL_CREDITS);
 				}
 

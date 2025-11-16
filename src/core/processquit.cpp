@@ -89,7 +89,7 @@ public:
 		struct sigaction sa;
 		sigaction(sig, NULL, &sa);
 		// if the signal is ignored, don't take it over.  this is
-		//   recommended by the glibc manual
+		// recommended by the glibc manual
 		if(sa.sa_handler == SIG_IGN)
 			return;
 		sigemptyset(&(sa.sa_mask));
@@ -103,7 +103,7 @@ public:
 		struct sigaction sa;
 		sigaction(sig, NULL, &sa);
 		// ignored means we skipped it earlier, so we should
-		//   skip it again
+		// skip it again
 		if(sa.sa_handler == SIG_IGN)
 			return;
 		sigemptyset(&(sa.sa_mask));

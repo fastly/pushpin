@@ -345,12 +345,12 @@ public:
 		if(state == Proxying || state == SendingQueue)
 		{
 			// if we are already in the process of updating, flag to update
-			//   again after current one finishes
+			// again after current one finishes
 
 			if(needUpdate)
 			{
 				// if needUpdate was already flagged, then raise
-				//   priority if needed
+				// priority if needed
 				if(priority == HighPriority)
 					needUpdatePriority = priority;
 			}
@@ -672,8 +672,8 @@ private:
 		else // StreamHold
 		{
 			// if conflict on first hold, immediately recover. we don't
-			//   do this on subsequent holds because there may be queued
-			//   messages available to resolve the conflict
+			// do this on subsequent holds because there may be queued
+			// messages available to resolve the conflict
 			if(first)
 			{
 				bool conflict = false;
@@ -692,7 +692,7 @@ private:
 							conflict = true;
 
 							// NOTE: don't exit loop here. we want to clear
-							//   the last ids of all conflicting channels
+							// the last ids of all conflicting channels
 						}
 					}
 				}
@@ -1080,7 +1080,7 @@ private:
 			}
 
 			// if prev-id set on channels, set as inspect lastids so the proxy
-			//   will pass as Grip-Last in the next request
+			// will pass as Grip-Last in the next request
 			QHashIterator<QString, Instruct::Channel> it(channels);
 			while(it.hasNext())
 			{
@@ -1152,15 +1152,15 @@ private:
 		passthroughData["route"] = adata.route.toUtf8();
 
 		// if next link points to the same service as the current request,
-		//   then we can assume the network would send the request back to
-		//   us, so we can handle it internally. if the link points to a
-		//   different service, then we can't make this assumption and need
-		//   to make the request over the network. note that such a request
-		//   could still end up looping back to us
+		// then we can assume the network would send the request back to
+		// us, so we can handle it internally. if the link points to a
+		// different service, then we can't make this assumption and need
+		// to make the request over the network. note that such a request
+		// could still end up looping back to us
 		if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
 		{
 			// tell the proxy that we prefer the request to be handled
-			//   internally, using the same route
+			// internally, using the same route
 			passthroughData["prefer-internal"] = true;
 		}
 
@@ -1216,7 +1216,7 @@ private:
 				if(outReq->bytesAvailable() > 0)
 				{
 					// stop keep alive timer only if we have to send data. if the
-					//   response body is empty, then the timer is left alone
+					// response body is empty, then the timer is left alone
 					timer->stop();
 
 					int avail = req->writeBytesAvailable();
@@ -1435,7 +1435,7 @@ private:
 				return;
 
 			// NOTE: http-response mode doesn't support a close
-			//   action since it's better to send a real response
+			// action since it's better to send a real response
 
 			if(f.action == PublishFormat::Send)
 			{

@@ -552,15 +552,15 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 	passthroughData["route"] = context.route.toUtf8();
 
 	// if dest link points to the same service as the current request,
-	//   then we can assume the network would send the request back to
-	//   us, so we can handle it internally. if the link points to a
-	//   different service, then we can't make this assumption and need
-	//   to make the request over the network. note that such a request
-	//   could still end up looping back to us
+	// then we can assume the network would send the request back to
+	// us, so we can handle it internally. if the link points to a
+	// different service, then we can't make this assumption and need
+	// to make the request over the network. note that such a request
+	// could still end up looping back to us
 	if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
 	{
 		// tell the proxy that we prefer the request to be handled
-		//   internally, using the same route
+		// internally, using the same route
 		passthroughData["prefer-internal"] = true;
 	}
 

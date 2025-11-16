@@ -339,7 +339,7 @@ public:
 		}
 
 		// NOTE: per the license, this functionality may not be removed as it
-		//   is the interface for the copyright notice
+		// is the interface for the copyright notice
 		if(requestData.headers.contains("Pushpin-Check"))
 		{
 			QString str =
@@ -487,9 +487,9 @@ public:
 			if(in.size() >= MAX_SHARED_REQUEST_BODY || zhttpRequest->isInputFinished())
 			{
 				// we've read as much as we can for now. if there is still
-				//   more to read, then the engine will notice this and
-				//   disallow sharing before passing to proxysession. at that
-				//   point, proxysession will read the remainder of the data
+				// more to read, then the engine will notice this and
+				// disallow sharing before passing to proxysession. at that
+				// point, proxysession will read the remainder of the data
 
 				zhttpReqConnections.readyReadConnection.disconnect();
 
@@ -633,8 +633,8 @@ public:
 		QUrlQuery query(uri);
 
 		// two ways to activate JSON-P:
-		//   1) callback param present
-		//   2) default callback specified in configuration and body param present
+		// 1) callback param present
+		// 2) default callback specified in configuration and body param present
 		if(!query.hasQueryItem(callbackParam) &&
 			(config.defaultCallback.isEmpty() || bodyParam.isEmpty() || !query.hasQueryItem(bodyParam)))
 		{
@@ -898,7 +898,7 @@ public:
 			state = ReceivingForAccept;
 
 			// successful inspect indicated we should not proxy. in that case,
-			//   collect the body and accept
+			// collect the body and accept
 			zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 			processIncomingRequest();
 		}
@@ -907,7 +907,7 @@ public:
 			if(!idata.sharingKey.isEmpty())
 			{
 				// a request can only be shared if we've read the entire
-				//   request body, so let's try to read it now
+				// request body, so let's try to read it now
 				state = Receiving;
 
 				zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));

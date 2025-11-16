@@ -170,7 +170,7 @@ public:
 		assert(!s->ext);
 
 		// note: this method assumes the session has already been removed
-		//   from pendingSessions if needed
+		// from pendingSessions if needed
 		if(s->req)
 			sessionsByRequest.remove(s->req);
 		if(s->sock)
@@ -594,7 +594,7 @@ private:
 	void req_readyRead(ZhttpRequest *req)
 	{
 		// for a request to have been discardable, we must have read the
-		//   entire input already and handed to the session
+		// entire input already and handed to the session
 		assert(!discardedRequests.contains(req));
 
 		Session *s = sessionsByRequest.value(req);
