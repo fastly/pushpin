@@ -111,7 +111,7 @@ public:
 		serverOutSeq(0),
 		clientReqsFinished(0)
 	{
-		// http sockets
+		// Http sockets
 
 		zhttpClientOutSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 
@@ -134,7 +134,7 @@ public:
 
 		zhttpServerOutSock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 
-		// handler sockets
+		// Handler sockets
 
 		handlerInspectSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
@@ -309,7 +309,7 @@ private:
 
 		if(zreq.more)
 		{
-			// ack
+			// Ack
 			if(serverOutSeq == 0)
 			{
 				ZhttpResponsePacket zresp;
@@ -333,14 +333,14 @@ private:
 		{
 			isWs = true;
 
-			// accept websocket
+			// Accept websocket
 			zresp.code = 101;
 			zresp.reason = "Switching Protocols";
 			zresp.credits = 200000;
 			QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 			zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
-			// send message
+			// Send message
 			zresp.ids[0].seq = serverOutSeq++;
 			zresp.credits = -1;
 			zresp.code = -1;
@@ -354,7 +354,7 @@ private:
 
 		if(isWs)
 		{
-			// close
+			// Close
 			zresp.type = ZhttpResponsePacket::Close;
 			QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 			zhttpServerOutSock->write(QList<QByteArray>() << buf);
@@ -440,7 +440,7 @@ private:
 						if(large)
 						{
 							// Grip-Link required to trigger accept after
-							// sending large response. note that the link
+							// sending large response. Note that the link
 							// won't be followed in this test since that's
 							// not a proxy issue
 							zresp.headers += HttpHeader("Grip-Link", "</path3>; rel=next");
@@ -448,7 +448,7 @@ private:
 						}
 						else
 						{
-							zresp.headers += HttpHeader("Grip-Foo", "bar"); // something to trigger accept
+							zresp.headers += HttpHeader("Grip-Foo", "bar"); // Something to trigger accept
 							zresp.body = "hello world";
 						}
 					}
@@ -464,7 +464,7 @@ private:
 		QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
-		// zero out so we can accept another request
+		// Zero out so we can accept another request
 		serverOutSeq = 0;
 	}
 
@@ -543,7 +543,7 @@ private:
 			if(h[0].toByteArray().startsWith("Grip-"))
 			{
 				vheaders.removeAt(n);
-				--n; // adjust position
+				--n; // Adjust position
 			}
 		}
 		vresponse["headers"] = vheaders;
@@ -637,7 +637,7 @@ public:
 		config.sigIss = "pushpin";
 		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
 		config.statsConnectionTtl = 120;
-		config.statsReportInterval = 1000; // set a large interval so there's only one working report
+		config.statsReportInterval = 1000; // Set a large interval so there's only one working report
 		TEST_ASSERT(engine->start(config));
 
 		wrapper->startHandler();
@@ -812,7 +812,7 @@ static void passthroughPostStream(TestState &state, std::function<void (int)> lo
 	zreq.uri = "http://example/path";
 	zreq.method = "POST";
 	zreq.stream = true;
-	zreq.body = "hello"; // enough to hit the prefetch amount
+	zreq.body = "hello"; // Enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
 	zreq.routerResp = true;
@@ -821,11 +821,11 @@ static void passthroughPostStream(TestState &state, std::function<void (int)> lo
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-	// ensure the server gets hit without finishing the request
+	// Ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
 		loop_wait(10);
 
-	// now finish the request
+	// Now finish the request
 	zreq = ZhttpRequestPacket();
 	zreq.from = "test-client";
 	zreq.ids += ZhttpRequestPacket::Id("5", 1);
@@ -874,7 +874,7 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 	zreq.uri = "http://example/path";
 	zreq.method = "POST";
 	zreq.stream = true;
-	zreq.body = "hello"; // enough to hit the prefetch amount
+	zreq.body = "hello"; // Enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
 	zreq.routerResp = true;
@@ -883,11 +883,11 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-	// ensure the server gets hit without finishing the request
+	// Ensure the server gets hit without finishing the request
 	while(wrapper->serverReqs.count() < 1)
 		loop_wait(10);
 
-	// now cancel the request
+	// Now cancel the request
 	zreq = ZhttpRequestPacket();
 	zreq.from = "test-client";
 	zreq.ids += ZhttpRequestPacket::Id("6", 1);
@@ -900,7 +900,7 @@ static void passthroughPostStreamFail(TestState &state, std::function<void (int)
 	msg.append(buf);
 	wrapper->zhttpClientOutStreamSock->write(msg);
 
-	// wait for server side to receive error
+	// Wait for server side to receive error
 	while(!wrapper->serverFailed)
 		loop_wait(10);
 
@@ -1242,7 +1242,7 @@ static void passthroughShared(TestState &state, std::function<void (int)> loop_w
 
 	QByteArray buf;
 
-	// send two requests
+	// Send two requests
 
 	QByteArray id1 = "15";
 	QByteArray id2 = "16";
@@ -1262,7 +1262,7 @@ static void passthroughShared(TestState &state, std::function<void (int)> loop_w
 
 	engine->statsManager()->flushReport(QByteArray());
 
-	// there should have only been 1 request to the server
+	// There should have only been 1 request to the server
 	TEST_ASSERT_EQ(wrapper->serverReqs.count(), 1);
 
 	TEST_ASSERT_EQ(wrapper->responses[id1].body, QByteArray("hello world"));
@@ -1296,14 +1296,14 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	zreq.uri = "http://example/path";
 	zreq.method = "POST";
 	zreq.stream = true;
-	zreq.body = "hello"; // enough to hit the prefetch amount
+	zreq.body = "hello"; // Enough to hit the prefetch amount
 	zreq.more = true;
 	zreq.credits = 200000;
 	zreq.routerResp = true;
 
 	QByteArray buf;
 
-	// send two requests
+	// Send two requests
 
 	QByteArray id1 = "17";
 	QByteArray id2 = "18";
@@ -1318,11 +1318,11 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 	log_debug("writing: %s", buf.data());
 	wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-	// we've hit prefetch, wait for inspect
+	// We've hit prefetch, wait for inspect
 	while(!wrapper->inspected)
 		loop_wait(10);
 
-	// finish the requests
+	// Finish the requests
 
 	zreq = ZhttpRequestPacket();
 	zreq.from = "test-client";
@@ -1352,7 +1352,7 @@ static void passthroughSharedPost(TestState &state, std::function<void (int)> lo
 
 	engine->statsManager()->flushReport(QByteArray());
 
-	// there should have only been 1 request to the server
+	// There should have only been 1 request to the server
 	TEST_ASSERT_EQ(wrapper->serverReqs.count(), 1);
 
 	TEST_ASSERT_EQ(wrapper->responses[id1].body, QByteArray("hello world"));

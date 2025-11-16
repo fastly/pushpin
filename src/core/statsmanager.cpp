@@ -94,9 +94,9 @@ public:
 		bool linger;
 		int64_t lastReport;
 		int64_t retrySeq;
-		QByteArray from; // external or linger source
-		int ttl; // external
-		int64_t lastActive; // external
+		QByteArray from; // External or linger source
+		int ttl; // External
+		int64_t lastActive; // External
 
 		ConnectionInfo() :
 			ssl(false),
@@ -564,7 +564,7 @@ public:
 		int shouldProcessTime = SHOULD_PROCESS_TIME(connectionTtl);
 		QVector<QSet<ConnectionInfo*> > newBuckets(qMax(shouldProcessTime / REFRESH_INTERVAL, 1));
 
-		// rebalance (NOTE: this algorithm is not optimal)
+		// Rebalance (NOTE: this algorithm is not optimal)
 		int nextBucketIndex = 0;
 		for(int n = 0; n < connectionInfoRefreshBuckets.count(); ++n)
 		{
@@ -585,7 +585,7 @@ public:
 		int shouldProcessTime = SHOULD_PROCESS_TIME(subscriptionTtl);
 		QVector<QSet<Subscription*> > newBuckets(qMax(shouldProcessTime / REFRESH_INTERVAL, 1));
 
-		// rebalance (NOTE: this algorithm is not optimal)
+		// Rebalance (NOTE: this algorithm is not optimal)
 		int nextBucketIndex = 0;
 		for(int n = 0; n < subscriptionRefreshBuckets.count(); ++n)
 		{
@@ -711,7 +711,7 @@ public:
 			ri.connectionInfoBySeq.remove(c->retrySeq);
 
 			// FIXME: we keep the source entry even when there are no more
-			// connections, to avoid resetting the seq value. if there is
+			// connections, to avoid resetting the seq value. If there is
 			// a lot of proxy instance churn, retryInfoBySource could
 			// fill up with unused entries that will never be cleaned up.
 		}
@@ -767,7 +767,7 @@ public:
 
 		RetryInfo &ri = retryInfoBySource[source];
 
-		// invalid retry seq
+		// Invalid retry seq
 		if(retrySeq >= ri.nextSeq)
 			return;
 
@@ -833,7 +833,7 @@ public:
 
 	void removeReport(Report *report)
 	{
-		// subtract the current total from the combined report
+		// Subtract the current total from the combined report
 		combinedReport.connectionsMax -= report->connectionsMax;
 
 		reports.remove(report->routeId);
@@ -1031,10 +1031,10 @@ public:
 		{
 			Report *report = getOrCreateReport(routeId);
 
-			// subtract the current total from the combined report
+			// Subtract the current total from the combined report
 			combinedReport.connectionsMax -= report->connectionsMax;
 
-			// update the individual report
+			// Update the individual report
 			if(report->connectionsMaxStale)
 			{
 				report->connectionsMax = conns;
@@ -1045,7 +1045,7 @@ public:
 
 			report->lastUpdate = now;
 
-			// add the new total to the combined report
+			// Add the new total to the combined report
 			combinedReport.connectionsMax += report->connectionsMax;
 			combinedReport.lastUpdate = now;
 		}
@@ -1053,7 +1053,7 @@ public:
 
 	void updateConnectionsMinutes(ConnectionInfo *c, int64_t now)
 	{
-		// ignore lingering connections
+		// Ignore lingering connections
 		if(c->linger)
 			return;
 
@@ -1062,7 +1062,7 @@ public:
 		int mins = (now - c->lastReport) / 60000;
 		if(mins > 0)
 		{
-			// only advance as much as we've read
+			// Only advance as much as we've read
 			c->lastReport += mins * 60000;
 
 			report->addConnectionsMinutes(mins, now);
@@ -1096,14 +1096,14 @@ public:
 
 					if(c->linger)
 					{
-						// in linger mode, next refresh is set to the time we should
+						// In linger mode, next refresh is set to the time we should
 						// delete the connection rather than refresh
 
 						connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
 						c->lastRefresh = -1;
 
-						// note: we don't send a disconnect message when the
-						// linger expires. the assumption is that the handler
+						// Note: we don't send a disconnect message when the
+						// linger expires. The assumption is that the handler
 						// owns the connection now
 
 						removeConnection(c);
@@ -1139,7 +1139,7 @@ public:
 
 					if(s->linger)
 					{
-						// in linger mode, next refresh is set to the time we should
+						// In linger mode, next refresh is set to the time we should
 						// delete the subscription rather than refresh
 
 						subscriptionRefreshBuckets[s->refreshBucket].remove(s);
@@ -1178,11 +1178,11 @@ public:
 	{
 		QList<QByteArray> refreshedIds;
 
-		// process the current bucket
+		// Process the current bucket
 		const QSet<ConnectionInfo*> &bucket = connectionInfoRefreshBuckets[currentConnectionInfoRefreshBucket];
 		foreach(ConnectionInfo *c, bucket)
 		{
-			// don't bucket-process lingered connections
+			// Don't bucket-process lingered connections
 			if(c->linger)
 				continue;
 
@@ -1205,11 +1205,11 @@ public:
 
 	void refreshSubscriptions(int64_t now)
 	{
-		// process the current bucket
+		// Process the current bucket
 		const QSet<Subscription*> &bucket = subscriptionRefreshBuckets[currentSubscriptionRefreshBucket];
 		foreach(Subscription *s, bucket)
 		{
-			// don't bucket-process lingered subscriptions
+			// Don't bucket-process lingered subscriptions
 			if(s->linger)
 				continue;
 
@@ -1471,8 +1471,8 @@ private:
 		QList<StatsPacket> reportPackets;
 		QList<Report*> toDelete;
 
-		// note: here we iterate over all reports, which will be one per
-		// route ID. this could become a problem if there are thousands
+		// Note: here we iterate over all reports, which will be one per
+		// route ID. This could become a problem if there are thousands
 		// of route IDs (at which point we can consider bucketing)
 		QHashIterator<QByteArray, Report*> it(reports);
 		while(it.hasNext())
@@ -1486,7 +1486,7 @@ private:
 
 			if(report->isEmpty())
 			{
-				// if report is empty, we can throw it out after sending
+				// If report is empty, we can throw it out after sending
 				toDelete += report;
 			}
 
@@ -1510,7 +1510,7 @@ private:
 	{
 		int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-		// time must go forward
+		// Time must go forward
 		if(currentTime > startTime)
 		{
 			uint64_t currentTicks = (uint64_t)durationToTicksRoundDown(currentTime - startTime);
@@ -1681,7 +1681,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 
 	if(d->reportInterval > 0)
 	{
-		// check if this connection should replace a lingering external one
+		// Check if this connection should replace a lingering external one
 		// note: this iterates over all the known external sources, which at
 		// at the time of this writing is almost certainly just 1 (a single
 		// pushpin-proxy source).
@@ -1705,7 +1705,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 		}
 	}
 
-	// if we already had an entry, silently overwrite it. this can
+	// If we already had an entry, silently overwrite it. This can
 	// happen if we sent an accepted connection off to the handler,
 	// kept it lingering in our table, and then the handler passed
 	// it back to us for retrying
@@ -1734,12 +1734,12 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 
 	if(d->reportInterval > 0)
 	{
-		// only immediately count a minute if an offset wasn't set and we weren't replacing
+		// Only immediately count a minute if an offset wasn't set and we weren't replacing
 		if(reportOffset < 0 && !replacing)
 		{
 			Private::Report *report = d->getOrCreateReport(c->routeId);
 
-			// minutes are rounded up so count one immediately
+			// Minutes are rounded up so count one immediately
 			report->addConnectionsMinutes(1, now);
 			d->combinedReport.addConnectionsMinutes(1, now);
 		}
@@ -1778,7 +1778,7 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger, const QByt
 
 			ri.connectionInfoBySeq.insert((uint64_t)c->retrySeq, c);
 
-			// hack to ensure full linger time honored by refresh processing
+			// Hack to ensure full linger time honored by refresh processing
 			int64_t lingerStartTime = now + (d->connectionLinger - SHOULD_PROCESS_TIME(d->connectionTtl));
 
 			c->lastRefresh = lingerStartTime;
@@ -1817,7 +1817,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 	{
 		int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-		// add the subscription if we didn't have it
+		// Add the subscription if we didn't have it
 		s = new Private::Subscription;
 		s->timerType = Private::TimerBase::Type::Subscription;
 		s->mode = mode;
@@ -1838,7 +1838,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 		{
 			int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-			// if this was a lingering subscription, return it to normal
+			// If this was a lingering subscription, return it to normal
 			s->linger = false;
 
 			s->lastRefresh = now;
@@ -1850,7 +1850,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 		{
 			int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-			// process soon
+			// Process soon
 			s->lastRefresh = now - SHOULD_PROCESS_TIME(d->subscriptionTtl);
 			d->wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(d->subscriptionTtl), s);
 		}
@@ -1872,7 +1872,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 
 			s->linger = true;
 
-			// hack to ensure full linger time honored by refresh processing
+			// Hack to ensure full linger time honored by refresh processing
 			int64_t lingerStartTime = now + (d->subscriptionLinger - SHOULD_PROCESS_TIME(d->subscriptionTtl));
 
 			s->lastRefresh = lingerStartTime;
@@ -1958,17 +1958,17 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
 		if(packet.type == StatsPacket::Connected)
 		{
-			// is there a local connection with the same ID?
+			// Is there a local connection with the same ID?
 			Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
 			if(c)
 			{
-				// if there is a non-lingering local connection, ignore the packet
+				// If there is a non-lingering local connection, ignore the packet
 				if(!c->linger)
 				{
 					return false;
 				}
 
-				// otherwise, remove local connection and it will be replaced with external
+				// Otherwise, remove local connection and it will be replaced with external
 
 				replacing = true;
 				lastReport = c->lastReport;
@@ -1978,7 +1978,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 			}
 		}
 
-		// if the connection exists under a different from address, remove it.
+		// If the connection exists under a different from address, remove it.
 		// note: this iterates over all the known external sources, which at
 		// at the time of this writing is almost certainly just 1 (a single
 		// pushpin-proxy source).
@@ -2008,7 +2008,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
 		if(packet.type == StatsPacket::Connected)
 		{
-			// add/update
+			// Add/update
 			Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
 			if(!c)
 			{
@@ -2026,12 +2026,12 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
 				d->updateConnectionsMax(c->routeId, now);
 
-				// only count a minute if we weren't replacing
+				// Only count a minute if we weren't replacing
 				if(!replacing)
 				{
 					Private::Report *report = d->getOrCreateReport(c->routeId);
 
-					// minutes are rounded up so count one immediately
+					// Minutes are rounded up so count one immediately
 					report->addConnectionsMinutes(1, now);
 					d->combinedReport.addConnectionsMinutes(1, now);
 				}

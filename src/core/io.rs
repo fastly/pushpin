@@ -53,7 +53,7 @@ pub trait AsyncWrite: Unpin {
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
 
-    // for use with std Write
+    // For use with std Write
     fn is_writable(&self) -> bool;
 
     fn cancel(&mut self);
@@ -278,7 +278,7 @@ impl<W: AsyncWrite + ?Sized> Future for WriteFuture<'_, W> {
 
         let mut w: Pin<&mut W> = Pin::new(f.w);
 
-        // try to write all the data before producing a result
+        // Try to write all the data before producing a result
         while f.pos < f.buf.len() {
             match w.as_mut().poll_write(cx, &f.buf[f.pos..]) {
                 Poll::Ready(result) => match result {
@@ -351,7 +351,7 @@ impl<W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'_, W> {
 
         let mut w: Pin<&mut W> = Pin::new(f.w);
 
-        // try to write all the data before producing a result
+        // Try to write all the data before producing a result
         loop {
             let (start, offset) = get_start_offset(f.bufs, f.pos);
 

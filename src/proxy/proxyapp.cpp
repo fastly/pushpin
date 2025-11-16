@@ -55,7 +55,7 @@ static void trimlist(QStringList *list)
 		if((*list)[n].isEmpty())
 		{
 			list->removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 }
@@ -222,13 +222,13 @@ public:
 
 	void run()
 	{
-		// will unlock during exec
+		// Will unlock during exec
 		m.lock();
 
-		// enough timers for sessions and zroutes, plus an extra 100 for misc
+		// Enough timers for sessions and zroutes, plus an extra 100 for misc
 		int timersMax = (config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100;
 
-		// enough for zroutes and prometheus requests, plus an extra 100 for misc
+		// Enough for zroutes and prometheus requests, plus an extra 100 for misc
 		int socketNotifiersMax = (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) + (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
 
 		int registrationsMax = timersMax + socketNotifiersMax;
@@ -239,7 +239,7 @@ public:
 		worker->started.connect([&] {
 			log_debug("worker %d: started", config.id);
 
-			// unblock start()
+			// Unblock start()
 			w.wakeOne();
 			m.unlock();
 		});
@@ -257,7 +257,7 @@ public:
 
 			loop->exit(0);
 
-			// unblock start()
+			// Unblock start()
 			w.wakeOne();
 			m.unlock();
 		});
@@ -301,7 +301,7 @@ static int runLoop(const Engine::Configuration &config, const QStringList &route
 		ProcessQuit::instance()->quit.connect([&] {
 			log_info("stopping...");
 
-			// remove the handler, so if we get another signal then we crash out
+			// Remove the handler, so if we get another signal then we crash out
 			ProcessQuit::cleanup();
 
 			for(EngineThread *t : threads)
@@ -517,7 +517,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi)
 		return 1;
 	}
 
-	// sessionsMax should not exceed clientMaxconn
+	// SessionsMax should not exceed clientMaxconn
 	if(sessionsMax >= 0)
 		sessionsMax = qMin(sessionsMax, clientMaxconn);
 	else

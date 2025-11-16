@@ -70,29 +70,29 @@ use std::time::Duration;
 const RESP_SENDER_BOUND: usize = 1;
 const HANDLE_ACCEPT_BOUND: usize = 100;
 
-// we read and process each response message one at a time, wrapping it in an
-// rc, and sending it to connections via channels. on the other side of each
-// channel, the message is received and processed immediately. this means the
+// We read and process each response message one at a time, wrapping it in an
+// rc, and sending it to connections via channels. On the other side of each
+// channel, the message is received and processed immediately. This means the
 // max number of messages retained per connection is the channel bound per
 // connection
 pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = RESP_SENDER_BOUND;
 
-// the max number of messages retained outside of connections is one per
+// The max number of messages retained outside of connections is one per
 // handle we read from (req and stream), in preparation for sending to any
 // connections
 pub const MSG_RETAINED_PER_WORKER_MAX: usize = 2;
 
-// run x1
+// Run x1
 // accept_task x2
 // req_handle_task x1
 // stream_handle_task x1
 // keep_alives_task x1
 const WORKER_NON_CONNECTION_TASKS_MAX: usize = 10;
 
-// note: individual tasks are not (and must not be) capped to this number.
+// Note: individual tasks are not (and must not be) capped to this number.
 // this is because accept_task makes a registration for every connection
 // task, which means each instance of accept_task could end up making
-// thousands of registrations. however, such registrations are associated
+// thousands of registrations. However, such registrations are associated
 // with the spawning of connection_task, so we can still estimate
 // registrations relative to the number of tasks
 const REGISTRATIONS_PER_TASK_MAX: usize = 32;
@@ -213,19 +213,19 @@ enum Stream {
 
 impl Identify for AsyncTcpStream {
     fn set_id(&mut self, _id: &str) {
-        // do nothing
+        // Do nothing
     }
 }
 
 impl Identify for AsyncUnixStream {
     fn set_id(&mut self, _id: &str) {
-        // do nothing
+        // Do nothing
     }
 }
 
 impl Identify for AsyncTlsStream<'_> {
     fn set_id(&mut self, id: &str) {
-        // server generates ids known to always be accepted
+        // Server generates ids known to always be accepted
         self.inner().set_id(id).unwrap();
     }
 }
@@ -359,7 +359,7 @@ impl Connections {
         let c = &mut *self.inner.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // clear active keep alive
+        // Clear active keep alive
         if let Some(bkey) = ci.batch_key.take() {
             items.batch.remove(bkey);
         }
@@ -378,7 +378,7 @@ impl Connections {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // clear active keep alive
+        // Clear active keep alive
         if let Some(bkey) = ci.batch_key.take() {
             items.batch.remove(bkey);
         }
@@ -480,7 +480,7 @@ impl Connections {
         let ci = &mut items.nodes[ckey].value;
         let cshared = ci.shared.as_ref().unwrap().get();
 
-        // only batch connections with known handler addresses
+        // Only batch connections with known handler addresses
         let addr_ref = cshared.to_addr();
         let addr = match addr_ref.get() {
             Some(addr) => addr,
@@ -509,7 +509,7 @@ impl Connections {
                     let ci = &nodes[ckey].value;
                     let cshared = ci.shared.as_ref().unwrap().get();
 
-                    // addr could have been removed after adding to the batch
+                    // Addr could have been removed after adding to the batch
                     cshared.to_addr().get()?;
 
                     Some((ci.id.as_bytes(), cshared.out_seq()))
@@ -769,10 +769,10 @@ impl Worker {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
-        // large enough to fit anything
+        // Large enough to fit anything
         let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
 
-        // same size as working buffers
+        // Same size as working buffers
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let instance_id = Rc::new(instance_id);
@@ -837,7 +837,7 @@ impl Worker {
                 &reactor.local_registration_memory(),
             );
 
-            // bound is 1 per connection, so all connections can indicate done at once
+            // Bound is 1 per connection, so all connections can indicate done at once
             // max_senders is 1 per connection + 1 for the accept task
             let (s_from_conn, r_from_conn) = channel::local_channel(
                 req_conns.max(),
@@ -884,7 +884,7 @@ impl Worker {
                 &reactor.local_registration_memory(),
             );
 
-            // bound is 1 per connection, so all connections can indicate done at once
+            // Bound is 1 per connection, so all connections can indicate done at once
             // max_senders is 1 per connection + 1 for the accept task
             let (s_from_conn, r_from_conn) = channel::local_channel(
                 stream_conns.max(),
@@ -979,26 +979,26 @@ impl Worker {
         ready.send(()).unwrap();
         drop(ready);
 
-        // wait for stop
+        // Wait for stop
         let _ = stop.recv().await;
 
-        // stop keep alives
+        // Stop keep alives
         drop(keep_alives_stop);
         let _ = keep_alives_done.recv().await;
 
-        // stop connections
+        // Stop connections
         drop(req_accept_stop);
         drop(stream_accept_stop);
         let _ = req_accept_done.recv().await;
         let _ = stream_accept_done.recv().await;
 
-        // stop remaining tasks
+        // Stop remaining tasks
         drop(req_handle_stop);
         drop(stream_handle_stop);
         let _ = req_handle_done.recv().await;
         let stream_handle = stream_handle_done.recv().await.unwrap();
 
-        // send cancels
+        // Send cancels
 
         stream_conns.batch_clear();
 
@@ -1016,7 +1016,7 @@ impl Worker {
                 next_cancel_index += 1;
 
                 if stream_conns.is_item_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = stream_conns.batch_add(key);
                 }
             }
@@ -1104,7 +1104,7 @@ impl Worker {
                     // acceptor_recv
                     Select3::R3(result) => match result {
                         Ok(ret) => ret,
-                        Err(_) => continue, // ignore errors
+                        Err(_) => continue, // Ignore errors
                     },
                 };
 
@@ -1232,7 +1232,7 @@ impl Worker {
                         ))
                         .is_err()
                     {
-                        // this should never happen. we only accept a connection if
+                        // This should never happen. We only accept a connection if
                         // we know we can spawn
                         panic!("failed to spawn req_connection_task");
                     }
@@ -1255,7 +1255,7 @@ impl Worker {
                         ))
                         .is_err()
                     {
-                        // this should never happen. we only accept a connection if
+                        // This should never happen. We only accept a connection if
                         // we know we can spawn
                         panic!("failed to spawn stream_connection_task");
                     }
@@ -1324,7 +1324,7 @@ impl Worker {
                 // receiver_recv
                 Select6::R2(result) => match result {
                     Ok(msg) => handle_send.set(Some(req_handle.send(msg))),
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                 },
                 // handle_send
                 Select6::R3(result) => {
@@ -1337,14 +1337,14 @@ impl Worker {
                 // done_recv
                 Select6::R4(result) => match result {
                     Ok(msg) => done_send = Some(s_cdone.send(msg)),
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                 },
-                // done send
+                // done_send
                 Select6::R5(result) => {
                     done_send = None;
 
                     if let Err(mpsc::SendError(_)) = result {
-                        // this can happen if accept ends first
+                        // This can happen if accept ends first
                         break;
                     }
                 }
@@ -1379,7 +1379,7 @@ impl Worker {
                                 continue;
                             }
 
-                            // this should always succeed, since afterwards we yield
+                            // This should always succeed, since afterwards we yield
                             // to let the connection receive the message
                             match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                 Ok(()) => count += 1,
@@ -1387,7 +1387,7 @@ impl Worker {
                                     "server-worker {}: connection-{} cannot receive message",
                                     id, key
                                 ),
-                                Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
                             }
                         }
 
@@ -1472,7 +1472,7 @@ impl Worker {
                     // receiver_recv
                     Select8::R2(result) => match result {
                         Ok(msg) => handle_send_to_any.set(Some(stream_handle.send_to_any(msg))),
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
                     // handle_send_to_any
                     Select8::R3(result) => {
@@ -1487,7 +1487,7 @@ impl Worker {
                         Ok((addr, msg)) => {
                             handle_send_to_addr.set(Some(stream_handle.send_to_addr(addr, msg)))
                         }
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
                     // handle_send_to_addr
                     Select8::R5(result) => {
@@ -1500,14 +1500,14 @@ impl Worker {
                     // done_recv
                     Select8::R6(result) => match result {
                         Ok(msg) => done_send = Some(s_cdone.send(msg)),
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
-                    // done send
+                    // done_send
                     Select8::R7(result) => {
                         done_send = None;
 
                         if let Err(mpsc::SendError(_)) = result {
-                            // this can happen if accept ends first
+                            // This can happen if accept ends first
                             break;
                         }
                     }
@@ -1564,7 +1564,7 @@ impl Worker {
                                     continue;
                                 }
 
-                                // this should always succeed, since afterwards we yield
+                                // This should always succeed, since afterwards we yield
                                 // to let the connection receive the message
                                 match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                     Ok(()) => count += 1,
@@ -1572,7 +1572,7 @@ impl Worker {
                                         "server-worker {}: connection-{} cannot receive message",
                                         id, key
                                     ),
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
                                 }
                             }
 
@@ -1591,7 +1591,7 @@ impl Worker {
             }
         }
 
-        // give the handle back
+        // Give the handle back
         done.send(stream_handle).await.unwrap();
 
         debug!("server-worker {}: task stopped: stream_handle", id);
@@ -1825,7 +1825,7 @@ impl Worker {
         let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
-            // wait for next keep alive time
+            // Wait for next keep alive time
             match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
@@ -1841,7 +1841,7 @@ impl Worker {
                 next_keep_alive_index += 1;
 
                 if conns.is_item_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = conns.batch_add(key);
                 }
             }
@@ -1853,7 +1853,7 @@ impl Worker {
                 next_keep_alive_index = 0;
             }
 
-            // keep steady pace
+            // Keep steady pace
             next_keep_alive_time += KEEP_ALIVE_INTERVAL;
             next_keep_alive_timeout.set_deadline(next_keep_alive_time);
 
@@ -1863,7 +1863,7 @@ impl Worker {
                     Select2::R2(send) => send,
                 };
 
-                // there could be no message if items removed or message construction failed
+                // There could be no message if items removed or message construction failed
                 let (count, addr, msg) =
                     match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
                         Some(ret) => ret,
@@ -1883,7 +1883,7 @@ impl Worker {
             let now = reactor.now();
 
             if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
-                // got really behind somehow. just skip ahead
+                // Got really behind somehow. Just skip ahead
                 next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
                 next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
@@ -1906,7 +1906,7 @@ pub struct Server {
     addrs: Vec<SocketAddr>,
     workers: Vec<Worker>,
 
-    // underscore-prefixed because we never reference after construction
+    // Underscore-prefixed because we never reference after construction
     _req_listener: Listener,
     _stream_listener: Listener,
 }
@@ -1977,7 +1977,7 @@ impl Server {
                     user,
                     group,
                 } => {
-                    // ensure pipe file doesn't exist
+                    // Ensure pipe file doesn't exist
                     match fs::remove_file(path) {
                         Ok(()) => {}
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -2039,7 +2039,7 @@ impl Server {
         let mut stream_lsenders = Vec::new();
 
         for i in 0..worker_count {
-            // rendezvous channels
+            // Rendezvous channels
             let (s, req_r) = channel::channel(0);
             req_lsenders.push(s);
             let (s, stream_r) = channel::channel(0);
@@ -2318,7 +2318,7 @@ impl TestServer {
             })
             .unwrap();
 
-        // wait for handler thread to start
+        // Wait for handler thread to start
         started_r.recv().unwrap();
 
         Self {
@@ -2544,7 +2544,7 @@ impl TestServer {
         let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
         out_sock.connect("inproc://server-test-in").unwrap();
 
-        // ensure zsockman is subscribed
+        // Ensure zsockman is subscribed
         let msg = out_sock.recv_msg(0).unwrap();
         assert_eq!(&msg[..], b"\x01test ");
 
@@ -2753,8 +2753,8 @@ impl TestServer {
 
                 let seq = seq.unwrap();
 
-                // as a hack to make the test server stateless, respond to every message
-                // using the received sequence number. for messages we don't care about,
+                // As a hack to make the test server stateless, respond to every message
+                // using the received sequence number. For messages we don't care about,
                 // respond with keep-alive in order to keep the sequencing going
                 if ptype.is_empty() || ptype == "ping" || ptype == "pong" || ptype == "close" {
                     if ptype == "ping" {
@@ -2865,7 +2865,7 @@ pub mod tests {
     fn test_server() {
         let server = TestServer::new(1);
 
-        // req
+        // Req
 
         let mut client = std::net::TcpStream::connect(&server.req_addr()).unwrap();
         client
@@ -2880,7 +2880,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (http)
+        // Stream (http)
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
         client
@@ -2895,7 +2895,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (http) with responses via router
+        // Stream (http) with responses via router
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
         client
@@ -2910,7 +2910,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nResponse-Path: router\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (ws)
+        // Stream (ws)
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
 
@@ -2957,7 +2957,7 @@ pub mod tests {
 
         buf = buf.split_off(resp_end);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = &b"hello"[..];
@@ -2973,7 +2973,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv message
+        // Recv message
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3030,7 +3030,7 @@ pub mod tests {
 
         buf = buf.split_off(resp_end);
 
-        // send binary
+        // Send binary
 
         let mut data = vec![0; 1024];
         let body = &[1, 2, 3][..];
@@ -3046,7 +3046,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv binary
+        // Recv binary
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3055,7 +3055,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send ping
+        // Send ping
 
         let mut data = vec![0; 1024];
         let body = &b""[..];
@@ -3070,7 +3070,7 @@ pub mod tests {
         .unwrap();
         client.write(&data[..size]).unwrap();
 
-        // recv pong
+        // Recv pong
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3079,7 +3079,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send close
+        // Send close
 
         let mut data = vec![0; 1024];
         let body = &b"\x03\xf0gone"[..];
@@ -3095,14 +3095,14 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv close
+        // Recv close
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
         assert_eq!(opcode, websocket::OPCODE_CLOSE);
         assert_eq!(&content, &b"\x03\xf0gone"[..]);
 
-        // expect tcp close
+        // Expect tcp close
 
         let mut chunk = [0; 1024];
         let size = client.read(&mut chunk).unwrap();
@@ -3113,11 +3113,11 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit 4c1b0bb177314051405ef5be3cde023e9d1ad635
+        // Sizes in debug mode at commit 4c1b0bb177314051405ef5be3cde023e9d1ad635
         const REQ_TASK_SIZE_BASE: usize = 5824;
         const STREAM_TASK_SIZE_BASE: usize = 7760;
 
-        // cause tests to fail if sizes grow too much
+        // Cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;
         const REQ_TASK_SIZE_MAX: usize = REQ_TASK_SIZE_BASE + GROWTH_LIMIT;
         const STREAM_TASK_SIZE_MAX: usize = STREAM_TASK_SIZE_BASE + GROWTH_LIMIT;

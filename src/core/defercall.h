@@ -30,18 +30,18 @@
 #include <thread>
 #include <mutex>
 
-// queues calls to be run after returning to the event loop
+// Queues calls to be run after returning to the event loop
 class DeferCall
 {
 public:
 	DeferCall();
 	~DeferCall();
 
-	// queue handler to be called after returning to the event loop. if
-	// handler contains references, they must outlive DeferCall. the
+	// Queue handler to be called after returning to the event loop. If
+	// handler contains references, they must outlive DeferCall. The
 	// recommended usage is for each object needing to perform deferred calls
 	// to keep a DeferCall as a member variable, and only refer to the
-	// object's own data in the handler. that way, any references are
+	// object's own data in the handler. That way, any references are
 	// guaranteed to live long enough.
 	void defer(std::function<void ()> handler);
 
@@ -62,7 +62,7 @@ private:
 	class CallsList
 	{
 	public:
-		// all methods thread-safe
+		// All methods thread-safe
 		std::list<std::shared_ptr<Call>>::size_type size() const;
 		std::list<std::shared_ptr<Call>>::iterator append(const std::shared_ptr<Call> &c);
 		void erase(std::list<std::shared_ptr<Call>>::iterator position);

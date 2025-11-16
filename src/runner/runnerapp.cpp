@@ -57,7 +57,7 @@ static void trimlist(QStringList *list)
 		if((*list)[n].isEmpty())
 		{
 			list->removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 }
@@ -73,14 +73,14 @@ static bool ensureDir(const QString &path)
 
 static QPair<QHostAddress, int> parsePort(const QString &s)
 {
-	// if the string doesn't contain a colon character, assume it's a port
+	// If the string doesn't contain a colon character, assume it's a port
 	// number by itself
 	if(!s.contains(':'))
 		return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
 
-	// otherwise, assume it's an address:port combination
+	// Otherwise, assume it's an address:port combination
 
-	// parse with QUrl in order to support bracketed IPv6 notation
+	// Parse with QUrl in order to support bracketed IPv6 notation
 	QUrl url{QUrl::fromUserInput(s)};
 
 	return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
@@ -324,13 +324,13 @@ public:
 			// ./config
 			configFileList += QDir("config").absoluteFilePath("pushpin.conf");
 
-			// same dir as executable (NOTE: deprecated)
+			// Same dir as executable (NOTE: deprecated)
 			configFileList += QDir(".").absoluteFilePath("pushpin.conf");
 
 			// ./examples/config
 			configFileList += QDir("examples/config").absoluteFilePath("pushpin.conf");
 
-			// default
+			// Default
 			configFileList += QDir(Config::get().configDir).filePath("pushpin.conf");
 		}
 
@@ -387,12 +387,12 @@ public:
 		{
 			if(QFile::exists("src/bin/pushpin.rs"))
 			{
-				// running in tree
+				// Running in tree
 				libDir = QFileInfo("src/runner").absoluteFilePath();
 			}
 			else
 			{
-				// use compiled value
+				// Use compiled value
 				libDir = QDir(Config::get().libDir).absoluteFilePath("runner");
 			}
 		}
@@ -443,11 +443,11 @@ public:
 			}
 		}
 
-		// command line overrides config file
+		// Command line overrides config file
 		if(!args.logLevels.isEmpty())
 			logLevels = args.logLevels;
 
-		// if default log level not provided, use info level
+		// If default log level not provided, use info level
 		int defaultLevel = logLevels.value("", 2);
 
 		// NOTE: since we only finally set the log level here, earlier
@@ -506,7 +506,7 @@ public:
 
 		if(args.port.second > 0)
 		{
-			// if port specified then instantiate a single http server
+			// If port specified then instantiate a single http server
 			ports += ListenPort(args.port.first, args.port.second, false);
 		}
 		else
@@ -699,7 +699,7 @@ private:
 	{
 		if(line.startsWith('['))
 		{
-			// find third space and insert the service name
+			// Find third space and insert the service name
 			int at = 0;
 			for(int n = 0; n < 3 && at != -1; ++n)
 			{
@@ -795,7 +795,7 @@ private:
 		}
 		else
 		{
-			// shutdown if we receive an unexpected error from any service
+			// Shutdown if we receive an unexpected error from any service
 			stopping = true;
 			stopAll();
 		}
@@ -817,11 +817,11 @@ private:
 	{
 		if(!stopping)
 		{
-			// let a potential "^C" get overwritten
+			// Let a potential "^C" get overwritten
 			printf("\r");
 
 			stopping = true;
-			ProcessQuit::reset(); // allow user to quit again
+			ProcessQuit::reset(); // Allow user to quit again
 
 			log_info("stopping...");
 			stopAll();
@@ -832,7 +832,7 @@ private:
 
 			ProcessQuit::cleanup();
 
-			// if we were already stopping, then exit immediately
+			// If we were already stopping, then exit immediately
 			doQuit();
 		}
 	}

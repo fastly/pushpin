@@ -440,7 +440,7 @@ pub fn get_config_file(
         None => {
             // ./config
             config_files.push(work_dir.join("config").join("pushpin.conf"));
-            // same dir as executable (NOTE: deprecated)
+            // Same dir as executable (NOTE: deprecated)
             config_files.push(work_dir.join("pushpin.conf"));
             // ./examples/config
             config_files.push(
@@ -449,7 +449,7 @@ pub fn get_config_file(
                     .join("config")
                     .join("pushpin.conf"),
             );
-            // default
+            // Default
             config_files.push(default_config_file());
         }
     }

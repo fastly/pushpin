@@ -38,7 +38,7 @@ public:
 		int portOffset,
 		int logLevel);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;

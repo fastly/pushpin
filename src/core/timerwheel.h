@@ -42,16 +42,16 @@ public:
 	TimerWheel(int capacity);
 	~TimerWheel();
 
-	// disable copying
+	// Disable copying
 	TimerWheel(const TimerWheel &) = delete;
 	TimerWheel & operator=(const TimerWheel &) = delete;
 
-	// returns <0 if no capacity
+	// Returns <0 if no capacity
 	int add(uint64_t expires, size_t userData);
 
 	void remove(int key);
 
-	// returns <0 if no timers
+	// Returns <0 if no timers
 	int64_t timeout() const;
 
 	void update(uint64_t curtime);

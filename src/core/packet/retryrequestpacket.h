@@ -45,7 +45,7 @@ public:
 		bool jsonpExtendedResponse;
 		int unreportedTime;
 
-		// zhttp
+		// Zhttp
 		int inSeq;
 		int outSeq;
 		int outCredits;

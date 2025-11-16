@@ -89,7 +89,7 @@ static QByteArray parsePercentEncoding(const QByteArray &in)
 			unsigned char val = (hi << 4) + lo;
 			out += val;
 
-			n += 2; // adjust position
+			n += 2; // Adjust position
 		}
 		else
 			out += c;
@@ -256,11 +256,11 @@ public:
 
 			QByteArray cid = ridToString(rid);
 
-			// refresh before remove, to ensure transition
+			// Refresh before remove, to ensure transition
 			if(accepted)
 				stats->refreshConnection(cid);
 
-			// linger if accepted
+			// Linger if accepted
 			bool linger = accepted && stats->connectionSendEnabled();
 			stats->removeConnection(cid, linger);
 		}
@@ -292,13 +292,13 @@ public:
 		{
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
-			// look up the route
+			// Look up the route
 			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 				route = domainMap->entry(routeId);
 			else
 				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
-			// before we do anything else, see if this is a sockjs request
+			// Before we do anything else, see if this is a sockjs request
 			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 			{
 				isSockJs = true;
@@ -404,7 +404,7 @@ public:
 
 		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
-		// look up the route
+		// Look up the route
 		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 			route = domainMap->entry(routeId);
 		else
@@ -431,7 +431,7 @@ public:
 			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false, reportOffset);
 			stats->addActivity(route.statsRoute());
 
-			// note: we don't call addRequestsReceived here, because we're acting for an existing request
+			// Note: we don't call addRequestsReceived here, because we're acting for an existing request
 		}
 	}
 
@@ -444,7 +444,7 @@ public:
 
 			if(in.size() >= prefetchSize || zhttpRequest->isInputFinished())
 			{
-				// we've read enough body to start inspection
+				// We've read enough body to start inspection
 
 				zhttpReqConnections.readyReadConnection.disconnect();
 
@@ -486,9 +486,9 @@ public:
 
 			if(in.size() >= MAX_SHARED_REQUEST_BODY || zhttpRequest->isInputFinished())
 			{
-				// we've read as much as we can for now. if there is still
+				// We've read as much as we can for now. If there is still
 				// more to read, then the engine will notice this and
-				// disallow sharing before passing to proxysession. at that
+				// disallow sharing before passing to proxysession. At that
 				// point, proxysession will read the remainder of the data
 
 				zhttpReqConnections.readyReadConnection.disconnect();
@@ -559,7 +559,7 @@ public:
 		}
 	}
 
-	// returns null array on error
+	// Returns null array on error
 	QByteArray makeJsonpStart(int code, const QByteArray &reason, const HttpHeaders &headers)
 	{
 		QByteArray out = "/**/" + jsonpCallback + "(";
@@ -612,12 +612,12 @@ public:
 			return QByteArray(");\n");
 	}
 
-	// return true if jsonp applied
+	// Return true if jsonp applied
 	bool tryApplyJsonp(const DomainMap::JsonpConfig &config, bool *ok, QString *errorMessage)
 	{
 		*ok = true;
 
-		// must be a GET
+		// Must be a GET
 		if(requestData.method != "GET")
 			return false;
 
@@ -632,7 +632,7 @@ public:
 		QUrl uri = requestData.uri;
 		QUrlQuery query(uri);
 
-		// two ways to activate JSON-P:
+		// Two ways to activate JSON-P:
 		// 1) callback param present
 		// 2) default callback specified in configuration and body param present
 		if(!query.hasQueryItem(callbackParam) &&
@@ -703,7 +703,7 @@ public:
 
 				QByteArray key = vit.key().toUtf8();
 
-				// ignore some headers that we explicitly set later on
+				// Ignore some headers that we explicitly set later on
 				if(qstricmp(key.data(), "host") == 0)
 					continue;
 				if(qstricmp(key.data(), "accept") == 0)
@@ -754,7 +754,7 @@ public:
 
 		uri.setQuery(query);
 
-		// if we have no query items anymore, strip the '?'
+		// If we have no query items anymore, strip the '?'
 		if(query.isEmpty())
 		{
 			QByteArray tmp = uri.toEncoded();
@@ -779,7 +779,7 @@ public:
 
 		headers += HttpHeader("Accept", "*/*");
 
-		// carry over the rest of the headers
+		// Carry over the rest of the headers
 		foreach(const HttpHeader &h, requestData.headers)
 		{
 			if(qstricmp(h.first.data(), "host") == 0)
@@ -897,7 +897,7 @@ public:
 		{
 			state = ReceivingForAccept;
 
-			// successful inspect indicated we should not proxy. in that case,
+			// Successful inspect indicated we should not proxy. In that case,
 			// collect the body and accept
 			zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 			processIncomingRequest();
@@ -906,7 +906,7 @@ public:
 		{
 			if(!idata.sharingKey.isEmpty())
 			{
-				// a request can only be shared if we've read the entire
+				// A request can only be shared if we've read the entire
 				// request body, so let's try to read it now
 				state = Receiving;
 
@@ -935,7 +935,7 @@ public:
 			{
 				accepted = true;
 
-				// the request was paused, so deleting it will leave the peer session active
+				// The request was paused, so deleting it will leave the peer session active
 				zhttpReqConnections = ZhttpReqConnections();
 				delete zhttpRequest;
 				zhttpRequest = 0;
@@ -985,7 +985,7 @@ public:
 
 					if(!jsonpExtendedResponse)
 					{
-						// trim any trailing newline before we wrap in a function call
+						// Trim any trailing newline before we wrap in a function call
 						if(bodyRawBuf.endsWith("\r\n"))
 							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
 						else if(bodyRawBuf.endsWith("\n"))
@@ -1018,7 +1018,7 @@ public:
 					headers += HttpHeader("Content-Type", "application/javascript");
 					headers += HttpHeader("Content-Length", QByteArray::number(buf.size()));
 
-					// mirror headers in the wrapping response
+					// Mirror headers in the wrapping response
 					foreach(const HttpHeader &h, responseData.headers)
 					{
 						foreach(const QByteArray &eh, jsonpExtractableHeaders)
@@ -1093,7 +1093,7 @@ public:
 				{
 					if(responseBodyFinished)
 					{
-						// trim any trailing newline before we wrap in a function call
+						// Trim any trailing newline before we wrap in a function call
 						if(bodyRawBuf.endsWith("\r\n"))
 							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
 						else if(bodyRawBuf.endsWith("\n"))
@@ -1101,7 +1101,7 @@ public:
 					}
 					else
 					{
-						// response isn't finished. keep any trailing newline in the output buffer
+						// Response isn't finished. Keep any trailing newline in the output buffer
 						if(bodyRawBuf.endsWith("\r\n"))
 						{
 							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
@@ -1122,7 +1122,7 @@ public:
 
 					log_warning("requestsession: id=%s upstream response could not be JSON-P encoded", rid.second.data());
 
-					// if we error while streaming, all we can do is give up
+					// If we error while streaming, all we can do is give up
 					zhttpRequest->endBody();
 					q->errorResponding();
 					return;

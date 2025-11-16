@@ -45,7 +45,7 @@ public:
 	QByteArray sid() const;
 	DomainMap::Entry route() const;
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 

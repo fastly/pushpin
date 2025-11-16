@@ -20,7 +20,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 
-// adapted from std::task::Wake
+// Adapted from std::task::Wake
 pub trait RcWake {
     fn wake(self: Rc<Self>);
 
@@ -31,7 +31,7 @@ pub trait RcWake {
 
 pub fn into_std<W: RcWake>(waker: Rc<W>) -> Waker {
     // SAFETY: This is safe because raw_waker safely constructs
-    // a RawWaker from Rc<W>.
+    // A RawWaker from Rc<W>.
     unsafe { Waker::from_raw(raw_waker(waker)) }
 }
 
@@ -96,8 +96,8 @@ impl<W: RefWake> RefWakerData<W> {
     }
 }
 
-// a waker that borrows its inner data and panics on drop if there are any
-// active clones. this makes it possible to create wakers without heap
+// A waker that borrows its inner data and panics on drop if there are any
+// active clones. This makes it possible to create wakers without heap
 // allocations, as long as all clones are cleaned up before the RefWaker is
 // dropped
 pub struct RefWaker<'a, W: RefWake + 'a> {

@@ -31,7 +31,7 @@ public:
 	UnixListener();
 	~UnixListener();
 
-	// disable copying
+	// Disable copying
 	UnixListener(const UnixListener &) = delete;
 	UnixListener & operator=(const UnixListener &) = delete;
 

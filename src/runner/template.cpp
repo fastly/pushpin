@@ -21,9 +21,9 @@
  * $FANOUT_END_LICENSE$
  */
 
-// NOTE: this is a basic jinja-like template engine. its abilities are
+// NOTE: this is a basic jinja-like template engine. Its abilities are
 // minimal, because at the time of this writing our templates aren't very
-// complex. if someday we need more template functionality, we should
+// complex. If someday we need more template functionality, we should
 // consider throwing this code away and using a real template library.
 
 #include "template.h"
@@ -156,7 +156,7 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 						t.type = TemplateItem::If;
 						ct = ControlIf;
 					}
-					else // for
+					else // For
 					{
 						t.type = TemplateItem::For;
 						ct = ControlFor;
@@ -179,7 +179,7 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 					ControlType endType;
 					if(stype == "endif")
 						endType = ControlIf;
-					else // for
+					else // For
 						endType = ControlFor;
 
 					if(endType != ctype)
@@ -200,13 +200,13 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 				}
 				else
 				{
-					// unknown control type
+					// Unknown control type
 					*error = QString("unknown control directive \"%1\"").arg(stype);
 					return QList<TemplateItem>();
 				}
 			}
 
-			--n; // adjust position
+			--n; // Adjust position
 		}
 		else
 		{
@@ -238,7 +238,7 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 	return out;
 }
 
-// handles lookup by exact name or dot-notation for children
+// Handles lookup by exact name or dot-notation for children
 static QVariant getVar(const QString &s, const QVariantMap &context)
 {
 	int at = s.indexOf('.');
@@ -266,7 +266,7 @@ static QVariant getVar(const QString &s, const QVariantMap &context)
 
 static QString renderExpression(const QString &exp, const QVariantMap &context)
 {
-	// for now all we support is variable lookups. no fancy expressions
+	// For now all we support is variable lookups. No fancy expressions
 
 	QVariant val = getVar(exp, context);
 	if(!val.isValid())
@@ -277,7 +277,7 @@ static QString renderExpression(const QString &exp, const QVariantMap &context)
 
 static bool evalCondition(const QString &s, const QVariantMap &context)
 {
-	// for now all we support is variable test with optional negation
+	// For now all we support is variable test with optional negation
 
 	if(s.startsWith("not "))
 	{
@@ -299,7 +299,7 @@ static bool evalCondition(const QString &s, const QVariantMap &context)
 
 static QVariantList parseFor(const QString &s, QString *iterVarName, const QVariantMap &context, QString *error)
 {
-	// for now all we support is "varname in map"
+	// For now all we support is "varname in map"
 
 	int at = s.indexOf(" in ");
 	if(at == -1)

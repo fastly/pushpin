@@ -68,7 +68,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 	{
 		out.action = Refresh;
 	}
-	else if(action.isNull() || action == "send") // default
+	else if(action.isNull() || action == "send") // Default
 	{
 		out.action = Send;
 	}

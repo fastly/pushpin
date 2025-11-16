@@ -256,12 +256,12 @@ void ZrpcRequest::setError(ErrorCondition condition, const QVariant &result)
 
 void ZrpcRequest::onSuccess()
 {
-	// by default, do nothing
+	// By default, do nothing
 }
 
 void ZrpcRequest::onError()
 {
-	// by default, do nothing
+	// By default, do nothing
 }
 
 void ZrpcRequest::setupClient(ZrpcManager *manager)
