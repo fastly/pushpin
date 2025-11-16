@@ -38,7 +38,7 @@ public:
 		int logLevel,
 		const QStringList &routeLines);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;

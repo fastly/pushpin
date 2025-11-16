@@ -27,7 +27,7 @@ const WHEEL_MAX: usize = WHEEL_LEN - 1;
 const WHEEL_MASK: u64 = (WHEEL_LEN as u64) - 1;
 const TIMEOUT_MAX: u64 = (1 << (WHEEL_BITS * WHEEL_NUM)) - 1;
 
-// find last set
+// Find last set
 fn fls64(x: u64) -> u32 {
     64 - x.leading_zeros()
 }
@@ -35,7 +35,7 @@ fn fls64(x: u64) -> u32 {
 fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
     let mut result = [0; WHEEL_NUM];
 
-    // no time elapsed
+    // No time elapsed
     if newtime <= curtime {
         return result;
     }
@@ -43,11 +43,11 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
     let mut elapsed = newtime - curtime;
 
     for (wheel, item) in result.iter_mut().enumerate() {
-        // we only care about the highest bits
+        // We only care about the highest bits
         let trunc_bits = (wheel * WHEEL_BITS) as u64;
 
         let pending = if (elapsed >> trunc_bits) > (WHEEL_MAX as u64) {
-            // all slots need processing
+            // All slots need processing
             !0
         } else {
             let old_slot = (curtime >> trunc_bits) & WHEEL_MASK;
@@ -71,20 +71,20 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
         *item = pending;
 
         let finished_bit = if wheel > 0 {
-            // higher wheels have completed a full rotation when slot 63 is processed
+            // Higher wheels have completed a full rotation when slot 63 is processed
             1 << (WHEEL_LEN - 1)
         } else {
-            // lowest wheel has completed a full rotation when slot 0 is processed
+            // Lowest wheel has completed a full rotation when slot 0 is processed
             1
         };
 
-        // if the current wheel didn't finish a full rotation then we don't need to look
+        // If the current wheel didn't finish a full rotation then we don't need to look
         // at higher wheels
         if pending & finished_bit == 0 {
             break;
         }
 
-        // ensure the elapsed time includes the current slot of the next wheel
+        // Ensure the elapsed time includes the current slot of the next wheel
         elapsed = cmp::max(elapsed, (WHEEL_LEN << (wheel * WHEEL_BITS)) as u64);
     }
 
@@ -95,7 +95,7 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
 fn need_resched_simple(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
     let mut result = [0; WHEEL_NUM];
 
-    // no time elapsed
+    // No time elapsed
     if newtime <= curtime {
         return result;
     }
@@ -202,7 +202,7 @@ impl TimerWheel {
         let mut relmask = 0;
 
         for wheel in 0..WHEEL_NUM {
-            // we only care about the highest bits
+            // We only care about the highest bits
             let trunc_bits = (wheel * WHEEL_BITS) as u64;
 
             if self.pending[wheel] != 0 {
@@ -210,13 +210,13 @@ impl TimerWheel {
 
                 let pending = self.pending[wheel].rotate_right(slot as u32);
 
-                // for higher order wheels, timeouts are one step in the future
+                // For higher order wheels, timeouts are one step in the future
                 let offset = u64::from(wheel > 0);
 
-                // pending is guaranteed to be non-zero
+                // Pending is guaranteed to be non-zero
                 let t = ((pending.trailing_zeros() as u64) + offset) << trunc_bits;
 
-                // reduce by how much lower wheels have progressed
+                // Reduce by how much lower wheels have progressed
                 let t = t - (relmask & self.curtime);
 
                 timeout = Some(match timeout {
@@ -233,7 +233,7 @@ impl TimerWheel {
     }
 
     pub fn update(&mut self, curtime: u64) {
-        // time must go forward
+        // Time must go forward
         if curtime <= self.curtime {
             return;
         }
@@ -243,12 +243,12 @@ impl TimerWheel {
         let mut l = list::List::default();
 
         for (wheel, &pending) in need.iter().enumerate() {
-            // loop as long as we still have slots to process
+            // Loop as long as we still have slots to process
             while pending & self.pending[wheel] != 0 {
-                // get rightmost (earliest) slot that needs processing
+                // Get rightmost (earliest) slot that needs processing
                 let slot = (pending & self.pending[wheel]).trailing_zeros() as usize;
 
-                // move the timers out
+                // Move the timers out
                 l.concat(&mut self.nodes, &mut self.wheel[wheel][slot]);
                 self.pending[wheel] &= !(1 << slot);
             }
@@ -285,11 +285,11 @@ impl TimerWheel {
         let expires = n.value.expires;
 
         if expires > self.curtime {
-            // get relative timeout, capped
+            // Get relative timeout, capped
             let t = cmp::min(expires - self.curtime, TIMEOUT_MAX);
             assert!(t > 0);
 
-            // wheel is selected by relative time
+            // Wheel is selected by relative time
             // t =    0 = not valid
             // t =    1 = 0b0_000000_000001 -> fls  1, wheel 0
             // t =   63 = 0b0_000000_111111 -> fls  6, wheel 0
@@ -300,14 +300,14 @@ impl TimerWheel {
             let wheel = ((fls64(t) - 1) as usize) / WHEEL_BITS;
             assert!(wheel < WHEEL_NUM);
 
-            // we only care about the highest bits
+            // We only care about the highest bits
             let trunc_bits = (wheel * WHEEL_BITS) as u64;
 
-            // for higher order wheels, schedule 1 slot early. this way, fractional
+            // For higher order wheels, schedule 1 slot early. This way, fractional
             // time remaining can be rescheduled to a lower wheel
             let offset = u64::from(wheel > 0);
 
-            // slot is selected by absolute time
+            // Slot is selected by absolute time
             let slot = (((expires >> trunc_bits) - offset) & WHEEL_MASK) as usize;
 
             self.wheel[wheel][slot].push_back(&mut self.nodes, key);
@@ -402,7 +402,7 @@ mod ffi {
 mod tests {
     use super::*;
 
-    // convert string time of the form "x:x:x:x", where each part is a number between 0-63
+    // Convert string time of the form "x:x:x:x", where each part is a number between 0-63
     fn ts(s: &str) -> u64 {
         let mut result = 0;
 
@@ -416,7 +416,7 @@ mod tests {
         result
     }
 
-    // convert string range to bits
+    // Convert string range to bits
     fn r2b(s: &str) -> u64 {
         let mut it = s.split("-");
 
@@ -443,7 +443,7 @@ mod tests {
         result
     }
 
-    // convert wheel ranges of the form "x:x:x:x", where each part is a range
+    // Convert wheel ranges of the form "x:x:x:x", where each part is a range
     fn r2w(s: &str) -> [u64; WHEEL_NUM] {
         let mut result = [0; WHEEL_NUM];
 
@@ -471,22 +471,22 @@ mod tests {
 
         w.update(7);
 
-        // expired
+        // Expired
         let t1 = w.add(0b0_000000, 1).unwrap();
 
-        // wheel 0 slot 8 (1 tick away)
+        // Wheel 0 slot 8 (1 tick away)
         let t2 = w.add(0b0_001000, 1).unwrap();
 
-        // wheel 0 slot 63 (56 ticks away)
+        // Wheel 0 slot 63 (56 ticks away)
         let t3 = w.add(0b0_111111, 1).unwrap();
 
-        // wheel 0 slot 0 (57 ticks away)
+        // Wheel 0 slot 0 (57 ticks away)
         let t4 = w.add(0b1_000000, 1).unwrap();
 
-        // wheel 1 slot 0
+        // Wheel 1 slot 0
         let t5 = w.add(0b1_001000, 1).unwrap();
 
-        // wheel 3 slot 63
+        // Wheel 3 slot 63
         let t6 = w.add(0b1_000000_000000_000000_000000, 1).unwrap();
 
         assert_eq!(w.expired.head, Some(t1));
@@ -539,7 +539,7 @@ mod tests {
             let newtime = ts(t.newtime);
             let expected = r2w(t.expected);
 
-            // ensure the simple algorithm returns what we expect
+            // Ensure the simple algorithm returns what we expect
             assert_eq!(
                 need_resched_simple(curtime, newtime),
                 expected,
@@ -549,7 +549,7 @@ mod tests {
                 newtime
             );
 
-            // ensure the optimized algorithm returns matching results
+            // Ensure the optimized algorithm returns matching results
             assert_eq!(
                 need_resched(curtime, newtime),
                 expected,
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn test_rotate() {
-        // test full rotations through wheels 0 and 1, and one step of wheel 2
+        // Test full rotations through wheels 0 and 1, and one step of wheel 2
         let count = (64 * 64) + 1;
 
         let mut w = TimerWheel::new(count);

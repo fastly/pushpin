@@ -60,7 +60,7 @@ std::unique_ptr<UnixStream> UnixListener::accept()
 		if(errorCondition_ == EAGAIN)
 			sn_->clearReadiness(SocketNotifier::Read);
 
-		return std::unique_ptr<UnixStream>(); // null
+		return std::unique_ptr<UnixStream>(); // Null
 	}
 
 	UnixStream *s = new UnixStream(s_inner);

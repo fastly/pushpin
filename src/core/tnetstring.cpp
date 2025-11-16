@@ -75,7 +75,7 @@ QByteArray fromVariant(const QVariant &in)
 			if(canConvert(in, QMetaType::LongLong))
 				return fromInt(in.toLongLong());
 
-			// unsupported type
+			// Unsupported type
 			assert(0);
 			return QByteArray();
 	}
@@ -294,7 +294,7 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 			return QVariantHash();
 		}
 
-		at = ioffset + isize + 1; // position to value
+		at = ioffset + isize + 1; // Position to value
 
 		if(!check(in, at, &itype, &ioffset, &isize))
 		{
@@ -312,7 +312,7 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 		}
 
 		out[QString::fromUtf8(key)] = val;
-		at = ioffset + isize + 1; // position to next item
+		at = ioffset + isize + 1; // Position to next item
 	}
 
 	if(ok)
@@ -349,7 +349,7 @@ QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSi
 		}
 
 		out += val;
-		at = ioffset + isize + 1; // position to next item
+		at = ioffset + isize + 1; // Position to next item
 	}
 
 	if(ok)

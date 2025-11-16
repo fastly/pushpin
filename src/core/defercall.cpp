@@ -58,8 +58,8 @@ public:
 			EventLoop::instance()->deregister(customRegId_);
 	}
 
-	// requests the awake signal to be emitted from the object's event loop
-	// at the next opportunity. this is safe to call from another thread. if
+	// Requests the awake signal to be emitted from the object's event loop
+	// at the next opportunity. This is safe to call from another thread. If
 	// this is called multiple times before the signal is emitted, the signal
 	// will only be emitted once.
 	void wake()
@@ -156,7 +156,7 @@ private:
 	std::mutex callsMutex_;
 	std::list<std::weak_ptr<Call>> calls_;
 
-	// thread-safe
+	// Thread-safe
 	bool isCallsEmpty()
 	{
 		std::lock_guard<std::mutex> guard(callsMutex_);
@@ -164,28 +164,28 @@ private:
 		return calls_.empty();
 	}
 
-	// thread-safe
+	// Thread-safe
 	void process()
 	{
 		std::list<std::weak_ptr<Call>> ready;
 
-		// lock to take list
+		// Lock to take list
 		{
 			std::lock_guard<std::mutex> guard(callsMutex_);
 
-			// process all calls queued so far, but not any that may get queued
+			// Process all calls queued so far, but not any that may get queued
 			// during processing
 			ready.swap(calls_);
 		}
 
-		// process list while not locked
+		// Process list while not locked
 		for(auto c : ready)
 		{
 			if(auto p = c.lock())
 			{
 				auto source = p->source.lock();
 
-				// if call is valid then its source will be too
+				// If call is valid then its source will be too
 				assert(source);
 
 				source->erase(p->sourceElement);
@@ -199,7 +199,7 @@ private:
 	{
 		process();
 
-		// no need to re-arm the timer. if new calls were queued during
+		// No need to re-arm the timer. If new calls were queued during
 		// processing, add() will have taken care of that
 	}
 
@@ -222,7 +222,7 @@ std::list<std::shared_ptr<DeferCall::Call>>::iterator DeferCall::CallsList::appe
 
 	l.push_back(c);
 
-	// get an iterator to the element that was pushed
+	// Get an iterator to the element that was pushed
 	auto it = l.end();
 	--it;
 
@@ -250,7 +250,7 @@ DeferCall::DeferCall() :
 		EventLoop *loop = EventLoop::instance();
 		if(loop)
 		{
-			// we use the manager pointer to uniquely identify the handler
+			// We use the manager pointer to uniquely identify the handler
 			// registration even though the handler function doesn't do
 			// anything with it
 			loop->addCleanupHandler(eventloop_cleanup_handler, localManager.get());
@@ -278,7 +278,7 @@ void DeferCall::defer(std::function<void ()> handler)
 		manager = it->second.get();
 	}
 
-	// manager keeps a weak pointer, so we can invalidate pending calls by
+	// Manager keeps a weak pointer, so we can invalidate pending calls by
 	// simply deleting them
 	manager->add(c);
 }

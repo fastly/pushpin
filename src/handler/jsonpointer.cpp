@@ -39,7 +39,7 @@ QVariant *JsonPointer::root()
 
 JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, ConstFunc func, void *data) const
 {
-	// if there are more refs after current ref, step into current
+	// If there are more refs after current ref, step into current
 	if(refIndex + 1 < refs_.count())
 	{
 		const Ref &ref = refs_[refIndex];
@@ -75,7 +75,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 		}
 	}
 
-	// ensure ref is correct type
+	// Ensure ref is correct type
 	const Ref &ref = refs_[refIndex];
 	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
 		return ExecError;
@@ -88,7 +88,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 
 JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func func, void *data)
 {
-	// if there are more refs after current ref, step into current
+	// If there are more refs after current ref, step into current
 	if(refIndex + 1 < refs_.count())
 	{
 		const Ref &ref = refs_[refIndex];
@@ -130,7 +130,7 @@ JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func fun
 		}
 	}
 
-	// ensure ref is correct type
+	// Ensure ref is correct type
 	const Ref &ref = refs_[refIndex];
 	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
 		return ExecError;
@@ -239,7 +239,7 @@ static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	if(ref.type == JsonPointer::Ref::Self)
 	{
 		ret = false;
-		return false; // technically an error, since we can't remove the root
+		return false; // Technically an error, since we can't remove the root
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
@@ -301,7 +301,7 @@ static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	if(ref.type == JsonPointer::Ref::Self)
 	{
 		ret = *v;
-		return false; // technically an error, since we can't remove the root
+		return false; // Technically an error, since we can't remove the root
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
@@ -390,7 +390,7 @@ static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
 		QVariantList l = v->toList();
 		if(ref.index == -1)
 		{
-			// append
+			// Append
 			l += data.first;
 			*v = l;
 			data.second = true;
@@ -451,7 +451,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 	ptr.isNull_ = false;
 	ptr.root_ = data;
 
-	// root
+	// Root
 	if(pointerStr.length() == 1)
 		return ptr;
 
@@ -470,7 +470,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 		p.replace("~1", "/");
 		p.replace("~0", "~");
 
-		// validate and step into previous reference, if any
+		// Validate and step into previous reference, if any
 		if(!ptr.refs_.isEmpty())
 		{
 			const Ref &prevRef = ptr.refs_[ptr.refs_.count() - 1];

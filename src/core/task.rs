@@ -169,7 +169,7 @@ impl Future for WaitFuture<'_> {
 
         let readiness = f.w.registration.readiness().unwrap();
 
-        // mask with the interest
+        // Mask with the interest
         let readable = readiness.is_readable() && f.interest.is_readable();
         let writable = readiness.is_writable() && f.interest.is_writable();
         let readiness = if readable && writable {
@@ -219,7 +219,7 @@ pub fn yield_task() -> YieldFuture {
     YieldFuture { done: false }
 }
 
-// panics if called outside of a task
+// Panics if called outside of a task
 pub fn create_resume_waker() -> Waker {
     get_executor()
         .create_resume_waker_for_current_task()
@@ -269,11 +269,11 @@ impl Future for YieldToLocalEvents {
         if !f.started {
             f.started = true;
 
-            // we want to be polled again only after all previously queued
+            // We want to be polled again only after all previously queued
             // events have been processed and after any associated tasks have
-            // been polled. in order to acheive this, we configure the
+            // been polled. In order to acheive this, we configure the
             // current task to ignore wakes and set a special waker on our
-            // registration that resumes wakes. this way, if there are any
+            // registration that resumes wakes. This way, if there are any
             // previously queued events associated with the current task that
             // are earlier in the queue than the events we want to yield to,
             // processing them won't wake the current task
@@ -285,7 +285,7 @@ impl Future for YieldToLocalEvents {
                 .registration()
                 .set_waker(&f.resume_waker, mio::Interest::READABLE);
 
-            // this will wake us up after all local events before it have been processed
+            // This will wake us up after all local events before it have been processed
             f.set_readiness
                 .set_readiness(mio::Interest::READABLE)
                 .unwrap();
@@ -295,7 +295,7 @@ impl Future for YieldToLocalEvents {
     }
 }
 
-// the returned future ensures all local events have been processed,
+// The returned future ensures all local events have been processed,
 // and any associated tasks polled, before completing
 pub fn yield_to_local_events(resume_waker: &Waker) -> YieldToLocalEvents {
     YieldToLocalEvents::new(resume_waker)
@@ -445,7 +445,7 @@ mod tests {
                 .spawn(async move {
                     reactor.set_budget(Some(100));
 
-                    // create registration with current task waker, and queue event for it
+                    // Create registration with current task waker, and queue event for it
                     let (s2, r2) = channel::local_channel(
                         1,
                         1,
@@ -458,17 +458,17 @@ mod tests {
 
                     assert_eq!(state.get(), 0);
 
-                    // queue event for registration on the first task
+                    // Queue event for registration on the first task
                     s.try_send(1).unwrap();
 
                     let resume_waker = create_resume_waker();
 
-                    // at this point, the first task has yielded and is in
+                    // At this point, the first task has yielded and is in
                     // the low priority queue, and the events queue consists
                     // of 2 events, in order: a recv event for the current
-                    // task and a recv event for the first task. the
+                    // task and a recv event for the first task. The
                     // following call will then add a 3rd event: a recv
-                    // event for the current task. despite the first task
+                    // event for the current task. Despite the first task
                     // being in the low priority queue and despite the
                     // first event being for the current task, the first
                     // task will run before the following call returns

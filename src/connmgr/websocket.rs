@@ -169,7 +169,7 @@ pub fn read_header(buf: &[u8]) -> Result<FrameInfo, io::Error> {
     })
 }
 
-// return payload offset
+// Return payload offset
 pub fn write_header(
     fin: bool,
     rsv1: bool,
@@ -233,7 +233,7 @@ pub fn apply_mask_vectored(bufs: &mut [&mut [u8]], mask: [u8; 4], offset: usize)
 }
 
 fn parse_empty(s: &str, dest: &mut bool) -> Result<(), io::Error> {
-    // must not be set yet and value must be empty
+    // Must not be set yet and value must be empty
     if *dest || !s.is_empty() {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
@@ -243,9 +243,9 @@ fn parse_empty(s: &str, dest: &mut bool) -> Result<(), io::Error> {
     Ok(())
 }
 
-// set default to allow the param with no value
+// Set default to allow the param with no value
 fn parse_bits(s: &str, dest: &mut Option<u8>, default: Option<u8>) -> Result<(), io::Error> {
-    // must not be set yet
+    // Must not be set yet
     if dest.is_some() {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
@@ -257,13 +257,13 @@ fn parse_bits(s: &str, dest: &mut Option<u8>, default: Option<u8>) -> Result<(),
         }
     }
 
-    // must be a valid u8
+    // Must be a valid u8
     let x = match s.parse() {
         Ok(x) => x,
         Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidData)),
     };
 
-    // number must be between 8 and 15, inclusive
+    // Number must be between 8 and 15, inclusive
     if (8..=15).contains(&x) {
         *dest = Some(x);
         return Ok(());
@@ -294,7 +294,7 @@ impl PerMessageDeflateConfig {
                 "server_no_context_takeover" => parse_empty(v, &mut server_no_context_takeover)?,
                 "client_max_window_bits" => parse_bits(v, &mut client_max_window_bits, Some(15))?,
                 "server_max_window_bits" => parse_bits(v, &mut server_max_window_bits, None)?,
-                _ => return Err(io::Error::from(io::ErrorKind::InvalidData)), // undefined param
+                _ => return Err(io::Error::from(io::ErrorKind::InvalidData)), // Undefined param
             }
         }
 
@@ -314,13 +314,13 @@ impl PerMessageDeflateConfig {
         }
 
         Ok(Self {
-            // ack. makes no difference to us
+            // Ack. Makes no difference to us
             client_no_context_takeover: self.client_no_context_takeover,
-            // ack. we'll agree to whatever the client wants
+            // Ack. We'll agree to whatever the client wants
             server_no_context_takeover: self.server_no_context_takeover,
-            // ignore. we always support the maximum window size
+            // Ignore. We always support the maximum window size
             client_max_window_bits: DEFAULT_MAX_WINDOW_BITS,
-            // ignore. we require the client to support the maximum window size
+            // Ignore. We require the client to support the maximum window size
             server_max_window_bits: DEFAULT_MAX_WINDOW_BITS,
         })
     }
@@ -484,7 +484,7 @@ impl DeflateEncoder {
         end: bool,
         dest: &mut [u8],
     ) -> Result<(usize, usize, bool), io::Error> {
-        // once end=true has been processed, the caller must stop providing
+        // Once end=true has been processed, the caller must stop providing
         // data in src and must continue to set end until end is returned
         if self.end && (!src.is_empty() || !end) {
             return Err(io::Error::from(io::ErrorKind::Other));
@@ -492,7 +492,7 @@ impl DeflateEncoder {
 
         let next_buf = &mut self.next_buf;
 
-        // we want to flush exactly once per message. to ensure this, we
+        // We want to flush exactly once per message. To ensure this, we
         // flush only when there is no more input (to avoid a situation of
         // input not being accepted at the time of flush) and if we have not
         // flushed yet for the current message
@@ -507,7 +507,7 @@ impl DeflateEncoder {
         let (consumed, written, maybe_more) =
             if dest.len() > next_buf.len() && dest.len() >= next_buf.remaining_capacity() {
                 // if there's enough room in dest to hold all of next_buf plus at
-                // least one more byte, and there's at least as much room in dest
+                // Least one more byte, and there's at least as much room in dest
                 // as in next_buf, then encode directly into dest
 
                 // move next_buf into dest
@@ -515,7 +515,7 @@ impl DeflateEncoder {
                 dest[..offset].copy_from_slice(next_buf.as_ref());
                 next_buf.clear();
 
-                // encode into the remaining space
+                // Encode into the remaining space
                 let (result, maybe_more) = {
                     let dest = &mut dest[offset..];
                     assert!(!dest.is_empty());
@@ -547,7 +547,7 @@ impl DeflateEncoder {
             } else {
                 // if next_buf can't fit into dest with room to spare, or if
                 // there's more room in next_buf than in dest, then encode into a
-                // temporary buffer and move the bytes into place afterwards.
+                // Temporary buffer and move the bytes into place afterwards.
                 // note that the temporary buffer will be small
 
                 // dest.len() is either less than or equal to next_buf.len()
@@ -555,18 +555,18 @@ impl DeflateEncoder {
                 // this will not exceed next_buf's capacity
                 assert!(dest.len() <= ENC_NEXT_BUF_SIZE);
 
-                // stating the obvious
+                // Stating the obvious
                 assert!(next_buf.remaining_capacity() <= ENC_NEXT_BUF_SIZE);
 
                 let tmp_size = dest.len() + next_buf.remaining_capacity();
 
-                // based on above asserts
+                // Based on above asserts
                 assert!(tmp_size <= ENC_NEXT_BUF_SIZE * 2);
 
                 let mut tmp: ArrayVec<u8, { ENC_NEXT_BUF_SIZE * 2 }> = ArrayVec::new();
                 tmp.resize(tmp_size, 0);
 
-                // encode into tmp
+                // Encode into tmp
                 let (result, maybe_more) = {
                     let result = deflate::stream::deflate(&mut self.enc, src, tmp.as_mut(), flush);
 
@@ -587,7 +587,7 @@ impl DeflateEncoder {
                 let mut written = 0;
 
                 // if the encoded bytes don't fit in next_buf, then we can
-                // move some bytes to dest
+                // Move some bytes to dest
                 if tmp.len() > next_buf.remaining_capacity() {
                     let to_write = tmp.len() - next_buf.remaining_capacity();
 
@@ -598,7 +598,7 @@ impl DeflateEncoder {
 
                     written += size;
 
-                    // if dest still has room, move from tmp
+                    // If dest still has room, move from tmp
                     if written < to_write {
                         assert!(next_buf.is_empty());
 
@@ -697,7 +697,7 @@ impl Decoder for DeflateDecoder {
         let mut end_ack = false;
 
         if let Some(pos) = &mut self.suffix_pos {
-            // if the input is fully consumed when end is set, then the
+            // If the input is fully consumed when end is set, then the
             // caller must continue to set end until end is returned
             if !end {
                 return Err(io::Error::from(io::ErrorKind::Other));
@@ -721,8 +721,8 @@ impl Decoder for DeflateDecoder {
 
             *pos += result.bytes_consumed;
 
-            // we are done when the entire input is consumed and there is
-            // space left in the output buffer. if there is no space left in
+            // We are done when the entire input is consumed and there is
+            // space left in the output buffer. If there is no space left in
             // the output buffer then there might be more to write
             if *pos == suffix.len() && result.bytes_written < dest.len() {
                 self.suffix_pos = None;
@@ -744,7 +744,7 @@ pub fn deflate_codec_state_size() -> usize {
 }
 
 // call preprocess_fn on any bytes about to be decoded. this can be used
-// to apply mask processing as needed
+// To apply mask processing as needed
 fn decode_from_buffer<T, D, F>(
     src: &mut T,
     limit: usize,
@@ -773,7 +773,7 @@ where
     let buf = &mut buf[..(limit - read)];
 
     if !end_ack && read_maxed && !buf.is_empty() {
-        // this will not overlap with previously preprocessed bytes
+        // This will not overlap with previously preprocessed bytes
         preprocess_fn(buf, read);
 
         let (read, w, ea) = dec.decode(buf, end, &mut dest[written..])?;
@@ -800,14 +800,14 @@ where
     T: Buffer + ?Sized,
     D: Decoder,
 {
-    // if a mask needs to be applied, it needs to be applied to the
-    // received bytes before they are passed to the decoder. however,
+    // If a mask needs to be applied, it needs to be applied to the
+    // received bytes before they are passed to the decoder. However,
     // we don't know in advance how many bytes the decoder will
-    // accept. in order to preserve the integrity of the input
+    // accept. In order to preserve the integrity of the input
     // buffer, and to avoid copying, we apply the mask directly to
     // the input buffer and then revert it on any bytes that weren't
-    // accepted. in the best case, the decoder will accept all the
-    // bytes with nothing to revert. in the worst case, the decoder
+    // accepted. In the best case, the decoder will accept all the
+    // bytes with nothing to revert. In the worst case, the decoder
     // will accept nothing and all the bytes will be reverted
 
     let mut masked = 0;
@@ -823,7 +823,7 @@ where
     let read = orig_len - src.len();
 
     if let Some(mask) = mask {
-        // undo the mask on any unread bytes
+        // Undo the mask on any unread bytes
 
         assert!(masked >= read);
         masked -= read;
@@ -875,18 +875,18 @@ pub enum CompressionMode {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum State {
     // call: send_frame, recv_frame
-    // next: Connected, PeerClosed, Closing
+    // Next: Connected, PeerClosed, Closing
     Connected,
 
     // call: send_frame
-    // next: PeerClosed, Finished
+    // Next: PeerClosed, Finished
     PeerClosed,
 
     // call: recv_frame
-    // next: Closing, Finished
+    // Next: Closing, Finished
     Closing,
 
-    // session has completed
+    // Session has completed
     Finished,
 }
 
@@ -1025,10 +1025,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let mut src = src.limit(frame.payload_size - payload_sent);
         let src = src.as_slice();
 
-        // to avoid copying, we apply the mask directly to the input
+        // To avoid copying, we apply the mask directly to the input
         // buffer and then revert it on any bytes that weren't written.
         // in the best case, all bytes will be written with nothing to
-        // revert. in the worst case, nothing will be written and all
+        // revert. In the worst case, nothing will be written and all
         // the bytes will be reverted
         let size = with_mask(src, mask, payload_sent, |src| {
             let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
@@ -1155,7 +1155,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         });
     }
 
-    // returns (bytes read, done)
+    // Returns (bytes read, done)
     // note: when compression is used, bytes may be buffered in the encoder
     // and may not be flushed to the writer until the encoder's buffer is
     // full or the input ends
@@ -1177,24 +1177,24 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         }
 
         if let Some(end_len) = msg.end_len {
-            // once the caller has passed end=true, it must continue to pass
+            // Once the caller has passed end=true, it must continue to pass
             // end=true in all subsequent calls until this method returns
             // done
             assert!(end);
 
-            // once the caller has passed end=true, it must continue to
+            // Once the caller has passed end=true, it must continue to
             // provide the expected number of src bytes in all subsequent
             // calls until this method returns done
             assert_eq!(src_len, end_len);
         } else if end {
-            // when the caller passes end=true, note the number of src bytes
+            // When the caller passes end=true, note the number of src bytes
             // provided
             msg.end_len = Some(src_len);
         }
 
         let is_control = msg.opcode & 0x08 != 0;
 
-        // control frames (ping, pong, close) must have a small payload length
+        // Control frames (ping, pong, close) must have a small payload length
         // and must not be fragmented
         if is_control && (src_len > CONTROL_FRAME_PAYLOAD_MAX || !end) {
             return Err(Error::InvalidControlFrame);
@@ -1215,7 +1215,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 if !msg.enc_output_end {
                     if src_len > 0 {
                         for (i, buf) in src.iter().enumerate() {
-                            // only set end on the last buf
+                            // Only set end on the last buf
                             let end = end && (i == src.len() - 1);
 
                             let dest = &mut state.enc_buf;
@@ -1238,7 +1238,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                     }
                 }
 
-                // we should never get EOS if there are bytes left to send
+                // We should never get EOS if there are bytes left to send
                 assert!(!msg.enc_output_end || read == src_len);
 
                 if let Some(end_len) = &mut msg.end_len {
@@ -1247,7 +1247,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                 let mut sent_all = false;
 
-                // only attempt to write if we have no consumed byte count
+                // Only attempt to write if we have no consumed byte count
                 // to report, so that if the write returns an error
                 // (including WouldBlock) we can propagate the error without
                 // data loss
@@ -1256,7 +1256,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                     let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
                     let bufs = state.enc_buf.read_bufs_mut(&mut bufs_arr);
 
-                    // set on first frame
+                    // Set on first frame
                     let rsv1 = opcode != OPCODE_CONTINUATION;
 
                     let size =
@@ -1326,7 +1326,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                     return Some(Err(Error::UnexpectedOpcode));
                 }
 
-                // only the first frame should set this bit
+                // Only the first frame should set this bit
                 if fi.rsv1 {
                     return Some(Err(Error::CompressionError));
                 }
@@ -1389,14 +1389,14 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             msg.frame_payload_read += read;
 
             let frame_read_end = if fi.fin {
-                // finish final frame only when we hit EOS
+                // Finish final frame only when we hit EOS
                 (msg.frame_payload_read == fi.payload_size) && output_end
             } else {
                 msg.frame_payload_read == fi.payload_size
             };
 
             if !frame_read_end && written == 0 && rbuf.len() == 0 {
-                // if there's no progress to report and nothing left to read
+                // If there's no progress to report and nothing left to read
                 // then we need more input
                 return None;
             }
@@ -1405,7 +1405,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         } else {
             let buf = rbuf.read_buf();
 
-            // control frames must be available in their entirety
+            // Control frames must be available in their entirety
             if fi.opcode & 0x08 != 0 && buf.len() < fi.payload_size {
                 return None;
             }
@@ -1809,7 +1809,7 @@ mod tests {
                         &mut compressed[write_pos..(write_pos + 1)],
                     )
                     .unwrap();
-                // there must always be progress
+                // There must always be progress
                 assert!(read > 0 || written > 0 || end);
                 read_pos += read;
                 write_pos += written;
@@ -1838,7 +1838,7 @@ mod tests {
                         &mut uncompressed[write_pos..(write_pos + 1)],
                     )
                     .unwrap();
-                // there must always be progress
+                // There must always be progress
                 assert!(read > 0 || written > 0 || end);
                 read_pos += read;
                 write_pos += written;
@@ -2261,7 +2261,7 @@ mod tests {
         assert_eq!(size, 5);
         assert_eq!(done, false);
 
-        // flush the encoded data
+        // Flush the encoded data
         {
             let state = &mut *p.deflate_state.as_ref().unwrap().borrow_mut();
 
@@ -2274,13 +2274,13 @@ mod tests {
             state.enc_buf.write(&DEFLATE_SUFFIX).unwrap();
         }
 
-        // send flushed data as first frame
+        // Send flushed data as first frame
         let (size, done) = p.send_message_content(&mut writer, &mut [], false).unwrap();
         assert_eq!(size, 0);
         assert_eq!(done, false);
         assert_eq!(writer.data.is_empty(), false);
 
-        // send second frame
+        // Send second frame
         let (size, done) = p
             .send_message_content(&mut writer, &mut [&mut make_buf(b" world")], true)
             .unwrap();
@@ -2297,7 +2297,7 @@ mod tests {
         let mut input = Vec::new();
         let mut result: Vec<u8> = Vec::new();
 
-        // feed one byte at a time
+        // Feed one byte at a time
         loop {
             let mut rbuf = io::Cursor::new(input.as_mut());
             let mut dest = [0; 1024];

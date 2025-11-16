@@ -83,7 +83,7 @@ public:
 		int ssl; // -1=unspecified, 0=no, 1=yes
 
 		QByteArray id;
-		bool explicitId; // if the id was provided by the user
+		bool explicitId; // If the id was provided by the user
 		QByteArray sigIss;
 		Jwt::EncodingKey sigKey;
 		QByteArray prefix;
@@ -116,7 +116,7 @@ public:
 		{
 		}
 
-		// checks only the condition, not sig/targets
+		// Checks only the condition, not sig/targets
 		bool compare(const Rule &other) const
 		{
 			return (proto == other.proto && ssl == other.ssl && pathBeg == other.pathBeg);
@@ -139,11 +139,11 @@ public:
 
 		bool isMoreSpecificMatch(const Rule &other, Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const
 		{
-			// have to at least be a match
+			// Have to at least be a match
 			if(!isMatch(reqProto, reqSsl, reqPath))
 				return false;
 
-			// now let's see if we're a better match
+			// Now let's see if we're a better match
 
 			if(other.proto == -1 && proto != -1)
 				return true;
@@ -257,7 +257,7 @@ public:
 			Rule r;
 			if(!parseRouteLine(line, fileName, lineNum, fileDir, &r))
 			{
-				// parseRouteLine will have logged a message if needed
+				// ParseRouteLine will have logged a message if needed
 				continue;
 			}
 
@@ -304,7 +304,7 @@ public:
 			}
 		}
 
-		// atomically replace the map
+		// Atomically replace the map
 		m.lock();
 		allRules = all;
 		rulesByDomain = domainMap;
@@ -316,7 +316,7 @@ public:
 		deferCall.defer([=] { doChanged(); });
 	}
 
-	// mutex must be locked when calling this method
+	// Mutex must be locked when calling this method
 	bool addRouteLine(const QString &line)
 	{
 		Rule r;
@@ -350,7 +350,7 @@ public:
 
 	void fileChanged()
 	{
-		// inotify tends to give us extra events so let's hang around a
+		// Inotify tends to give us extra events so let's hang around a
 		// little bit before reloading
 		if(!t.isActive())
 		{
@@ -378,7 +378,7 @@ private:
 
 		if(sections.isEmpty())
 		{
-			// nothing. could happen if line is blank or commented out
+			// Nothing. Could happen if line is blank or commented out
 			return false;
 		}
 
@@ -394,11 +394,11 @@ private:
 		Rule r;
 
 		if(val.isEmpty())
-			r.domain = QString(); // null means unspecified
+			r.domain = QString(); // Null means unspecified
 		else if(val == "*")
-			r.domain = QString(""); // empty means wildcard
+			r.domain = QString(""); // Empty means wildcard
 		else
-			r.domain = val; // non-empty means exact match
+			r.domain = val; // Non-empty means exact match
 
 		r.jsonpConfig.mode = JsonpConfig::Extended;
 
@@ -544,7 +544,7 @@ private:
 				QByteArray name = s.mid(0, at).toUtf8();
 				QByteArray value = s.mid(at + 1).toUtf8();
 
-				// trim left side of value
+				// Trim left side of value
 				int n = 0;
 				while(n < value.length() && value[n] == ' ')
 				{
@@ -597,7 +597,7 @@ private:
 
 				if(val.startsWith("["))
 				{
-					// ipv6 address
+					// Ipv6 address
 					int at = val.indexOf("]:");
 					if(at >= 0)
 					{
@@ -607,7 +607,7 @@ private:
 				}
 				else
 				{
-					// domain or ipv4 address
+					// Domain or ipv4 address
 					int at = val.indexOf(':');
 					if(at >= 0)
 					{
@@ -754,7 +754,7 @@ private:
 			}
 			else
 			{
-				// mark the key as unusable
+				// Mark the key as unusable
 				idMap->insert(r.id, Rule());
 			}
 		}
@@ -827,7 +827,7 @@ public:
 
 	void run()
 	{
-		// will unlock during exec
+		// Will unlock during exec
 		m.lock();
 
 		int registrationsMax = WORKER_THREAD_TIMERS + WORKER_THREAD_SOCKETNOTIFIERS;
@@ -876,7 +876,7 @@ public:
 		thread->fileName = fileName;
 		thread->start();
 
-		// worker guaranteed to exist after starting
+		// Worker guaranteed to exist after starting
 		changedConnection = thread->worker->changed.connect(boost::bind(&Private::workerChanged, this));
 	}
 
@@ -974,7 +974,7 @@ DomainMap::Entry DomainMap::entry(const QString &id) const
 
 	const Worker::Rule *r = &d->thread->worker->rulesById[id];
 
-	// this can happen if there were duplicate route IDs
+	// This can happen if there were duplicate route IDs
 	if(r->id.isEmpty())
 		return Entry();
 

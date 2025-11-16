@@ -83,7 +83,7 @@ public:
 		serverFailed(false),
 		serverOutSeq(0)
 	{
-		// http sockets
+		// Http sockets
 
 		zhttpClientOutStreamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 		zhttpClientOutStreamValve = std::make_unique<ZmqValve>(zhttpClientOutStreamSock.get());
@@ -104,13 +104,13 @@ public:
 
 		zhttpServerOutSock = std::make_unique<ZmqSocket>(ZmqSocket::Pub);
 
-		// proxy sockets
+		// Proxy sockets
 
 		proxyAcceptSock = std::make_unique<ZmqSocket>(ZmqSocket::Dealer);
 		proxyAcceptValve = std::make_unique<ZmqValve>(proxyAcceptSock.get());
 		proxyAcceptValveConnection = proxyAcceptValve->readyRead.connect(boost::bind(&Wrapper::proxyAccept_readyRead, this, boost::placeholders::_1));
 
-		// publish sockets
+		// Publish sockets
 
 		publishPushSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 	}
@@ -235,7 +235,7 @@ public:
 
 		if(zreq.more)
 		{
-			// ack
+			// Ack
 			if(serverOutSeq == 0)
 			{
 				ZhttpResponsePacket zresp;
@@ -266,7 +266,7 @@ public:
 		QByteArray buf = zreq.from.asQByteArray() + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
 
-		// zero out so we can accept another request
+		// Zero out so we can accept another request
 		serverOutSeq = 0;
 	}
 

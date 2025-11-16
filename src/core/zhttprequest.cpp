@@ -43,19 +43,19 @@ class ZhttpRequest::Private
 public:
 	enum State
 	{
-		Stopped,                 // response finished, error, or not even started
+		Stopped,                 // Response finished, error, or not even started
 
-		ClientStarting,          // prepared to send the first packet
-		ClientRequestStartWait,  // sent the first packet of streamed input, waiting for ack
-		ClientRequesting,        // sending the rest of streamed input
-		ClientRequestFinishWait, // completed sending the request, waiting for ack
-		ClientReceiving,         // completed sending the request, waiting on response
+		ClientStarting,          // Prepared to send the first packet
+		ClientRequestStartWait,  // Sent the first packet of streamed input, waiting for ack
+		ClientRequesting,        // Sending the rest of streamed input
+		ClientRequestFinishWait, // Completed sending the request, waiting for ack
+		ClientReceiving,         // Completed sending the request, waiting on response
 
-		ServerStarting,          // prepared to process the first packet
-		ServerReceiving,         // receiving the rest of streamed input
-		ServerResponseWait,      // waiting for the response to start
-		ServerResponseStarting,  // about to send the first packet
-		ServerResponding         // sending the response
+		ServerStarting,          // Prepared to process the first packet
+		ServerReceiving,         // Receiving the rest of streamed input
+		ServerResponseWait,      // Waiting for the response to start
+		ServerResponseStarting,  // About to send the first packet
+		ServerResponding         // Sending the response
 	};
 
 	ZhttpRequest *q;
@@ -83,7 +83,7 @@ public:
 	int inSeq;
 	int outSeq;
 	int outCredits;
-	bool bodyFinished; // user has finished providing input
+	bool bodyFinished; // User has finished providing input
 	int pendingInCredits;
 	bool haveRequestBody;
 	bool haveResponseValues;
@@ -206,7 +206,7 @@ public:
 			return false;
 		}
 
-		inSeq = 1; // next expected seq
+		inSeq = 1; // Next expected seq
 
 		if(packet.credits != -1)
 			outCredits = packet.credits;
@@ -262,10 +262,10 @@ public:
 		refreshTimeout();
 		startKeepAlive();
 
-		// send a keep-alive right away to accept after handoff
+		// Send a keep-alive right away to accept after handoff
 		ZhttpResponsePacket p;
 		p.type = ZhttpResponsePacket::KeepAlive;
-		p.multi = true; // request multi support
+		p.multi = true; // Request multi support
 		writePacket(p);
 	}
 
@@ -332,7 +332,7 @@ public:
 		{
 			if(keepAliveTimer->isActive())
 			{
-				// need to flush the current keepalive, since the
+				// Need to flush the current keepalive, since the
 				// manager registration may extend the timeout
 				keepAlive_timeout();
 
@@ -402,7 +402,7 @@ public:
 			pendingInCredits += out.size();
 
 			if(state == ClientReceiving)
-				tryWrite(); // this should not emit signals in current state
+				tryWrite(); // This should not emit signals in current state
 
 			return out;
 		}
@@ -414,7 +414,7 @@ public:
 
 		if(state == ClientRequesting)
 		{
-			// if all we have to send is EOF, we don't need credits for that
+			// If all we have to send is EOF, we don't need credits for that
 			if(requestBodyBuf.isEmpty() && bodyFinished)
 			{
 				state = ClientReceiving;
@@ -427,7 +427,7 @@ public:
 			}
 			else if(!requestBodyBuf.isEmpty() && outCredits > 0)
 			{
-				// if we have data to send, and the credits to do so, then send data.
+				// If we have data to send, and the credits to do so, then send data.
 				// also send credits if we need to.
 
 				QByteArray buf = requestBodyBuf.take(outCredits);
@@ -458,7 +458,7 @@ public:
 		{
 			if(pendingInCredits > 0)
 			{
-				// if we have no data to send but we need to send credits, do at least that
+				// If we have no data to send but we need to send credits, do at least that
 				ZhttpRequestPacket p;
 				p.type = ZhttpRequestPacket::Credit;
 				p.credits = pendingInCredits;
@@ -546,7 +546,7 @@ public:
 			{
 				log_warning("zhttp server: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
-				// if this was not an error packet, send cancel
+				// If this was not an error packet, send cancel
 				if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
 				{
 					ZhttpResponsePacket p;
@@ -567,12 +567,12 @@ public:
 
 		if(!multi && packet.multi)
 		{
-			// switch on multi support
+			// Switch on multi support
 			multi = true;
 
 			if(!pausing)
 			{
-				// re-setup keep alive
+				// Re-setup keep alive
 				startKeepAlive();
 			}
 		}
@@ -614,7 +614,7 @@ public:
 		}
 		else if(packet.type == ZhttpRequestPacket::KeepAlive)
 		{
-			// nothing to do
+			// Nothing to do
 		}
 		else if(packet.type == ZhttpRequestPacket::HandoffProceed)
 		{
@@ -686,12 +686,12 @@ public:
 			return;
 		}
 
-		// if non-req mode, check sequencing
+		// If non-req mode, check sequencing
 		if(!doReq && seq != inSeq)
 		{
 			log_warning("zhttp client: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
-			// if this was not an error packet, send cancel
+			// If this was not an error packet, send cancel
 			if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
 			{
 				ZhttpRequestPacket p;
@@ -711,9 +711,9 @@ public:
 
 		if(!multi && packet.multi)
 		{
-			// switch on multi support
+			// Switch on multi support
 			multi = true;
-			startKeepAlive(); // re-setup keep alive
+			startKeepAlive(); // Re-setup keep alive
 		}
 
 		refreshTimeout();
@@ -774,7 +774,7 @@ public:
 			}
 			else
 			{
-				// always emit readyRead here even if body is empty, for EOF
+				// Always emit readyRead here even if body is empty, for EOF
 				state = Stopped;
 				cleanup();
 				q->readyRead();
@@ -791,7 +791,7 @@ public:
 		}
 		else if(packet.type == ZhttpResponsePacket::KeepAlive)
 		{
-			// nothing to do
+			// Nothing to do
 		}
 		else
 		{
@@ -904,14 +904,14 @@ public:
 
 	void tryRespondCancel(const ZhttpRequestPacket &packet)
 	{
-		// if this was not an error packet, send cancel
+		// If this was not an error packet, send cancel
 		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
 			writeCancel();
 	}
 
 	static ErrorCondition convertError(const QByteArray &cond)
 	{
-		// zhttp conditions:
+		// Zhttp conditions:
 		//  remote-connection-failed
 		//  connection-timeout
 		//  tls-error
@@ -932,7 +932,7 @@ public:
 			return ErrorConnectTimeout;
 		else if(cond == "disconnected")
 			return ErrorDisconnected;
-		else // lump the rest as generic
+		else // Lump the rest as generic
 			return ErrorGeneric;
 	}
 
@@ -954,7 +954,7 @@ public:
 					return;
 				}
 
-				// for req mode, wait until request is fully supplied then send in one packet
+				// For req mode, wait until request is fully supplied then send in one packet
 				if(bodyFinished)
 				{
 					ZhttpRequestPacket p;
@@ -987,7 +987,7 @@ public:
 			}
 			else
 			{
-				// NOTE: not quite sure why we do this. maybe to avoid a
+				// NOTE: not quite sure why we do this. Maybe to avoid a
 				// zhttp PUSH/SUB race?
 				if(!manager->canWriteImmediately())
 				{
@@ -1007,8 +1007,8 @@ public:
 
 				if(!sendBodyAfterAck)
 				{
-					// even though we don't have credits yet, we can act
-					// like we do on the first packet. we'll still cap
+					// Even though we don't have credits yet, we can act
+					// like we do on the first packet. We'll still cap
 					// our potential size though.
 					p.body = requestBodyBuf.take(IDEAL_CREDITS);
 				}
@@ -1073,7 +1073,7 @@ public:
 			{
 				state = ServerResponseWait;
 
-				// send ack
+				// Send ack
 				ZhttpResponsePacket p;
 				p.type = ZhttpResponsePacket::KeepAlive;
 				if(multi)
@@ -1084,7 +1084,7 @@ public:
 			{
 				state = ServerReceiving;
 
-				// send credits ack
+				// Send credits ack
 				ZhttpResponsePacket p;
 				p.type = ZhttpResponsePacket::Credit;
 				p.credits = IDEAL_CREDITS - responseBodyBuf.size();

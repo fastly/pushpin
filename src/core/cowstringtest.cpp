@@ -25,15 +25,15 @@
 
 static void constructors()
 {
-	// default
+	// Default
 	CowString a;
 	TEST_ASSERT(a.isEmpty());
 
-	// char*
+	// Char*
 	CowString b("hello");
 	TEST_ASSERT_EQ(b, "hello");
 
-	// copy
+	// Copy
 	CowString c(b);
 	TEST_ASSERT_EQ(c, "hello");
 
@@ -45,17 +45,17 @@ static void constructors()
 
 static void methods()
 {
-	// isEmpty
+	// IsEmpty
 	CowString empty;
 	TEST_ASSERT(empty.isEmpty());
 
-	// clear
+	// Clear
 	CowString a("hello");
 	TEST_ASSERT(!a.isEmpty());
 	a.clear();
 	TEST_ASSERT(a.isEmpty());
 
-	// toUtf8
+	// ToUtf8
 	CowString b("hello");
 	CowByteArray ba = b.toUtf8();
 	TEST_ASSERT_EQ(ba, "hello");
@@ -63,17 +63,17 @@ static void methods()
 
 static void operators()
 {
-	// operator=
+	// Operator=
 	CowString a;
 	a = CowString("hello");
 	TEST_ASSERT_EQ(a, "hello");
 
-	// operator==
+	// Operator==
 	TEST_ASSERT(CowString("hello") == CowString("hello"));
 	TEST_ASSERT(CowString("hello") == "hello");
 	TEST_ASSERT("hello" == CowString("hello"));
 
-	// operator!=
+	// Operator!=
 	TEST_ASSERT(CowString("hello") != CowString("world"));
 	TEST_ASSERT(CowString("hello") != "world");
 	TEST_ASSERT("hello" != CowString("world"));

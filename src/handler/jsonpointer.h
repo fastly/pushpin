@@ -35,7 +35,7 @@ public:
 	public:
 		enum Type
 		{
-			Self, // used for root
+			Self, // Used for root
 			Object,
 			Array
 		};
@@ -66,7 +66,7 @@ public:
 
 	typedef void (*ConstFunc)(const QVariant *v, const Ref &ref, void *data);
 
-	// return true if data was modified
+	// Return true if data was modified
 	typedef bool (*Func)(QVariant *v, const Ref &ref, void *data);
 
 	JsonPointer();

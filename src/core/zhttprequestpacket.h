@@ -98,7 +98,7 @@ public:
 	CowString clientCert;
 	CowString clientKey;
 	bool followRedirects;
-	QVariant passthrough; // if valid, may contain pushpin-specific passthrough info
+	QVariant passthrough; // If valid, may contain pushpin-specific passthrough info
 	bool multi;
 	bool quiet;
 

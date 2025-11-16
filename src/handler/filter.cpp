@@ -374,7 +374,7 @@ public:
 
 		req.reset(zhttpOut->createRequest());
 
-		// safe to not track, since req can't outlive this
+		// Safe to not track, since req can't outlive this
 		req->readyRead.connect(boost::bind(&HttpFilterInner::req_readyRead, this));
 		req->error.connect(boost::bind(&HttpFilterInner::req_error, this));
 
@@ -383,7 +383,7 @@ public:
 
 	void startRequest()
 	{
-		// set timeout since filters should be fast
+		// Set timeout since filters should be fast
 		req->setTimeout(REQUEST_TIMEOUT_SECS * 1000);
 
 		req->start("POST", uri, headers);
@@ -436,29 +436,29 @@ public:
 
 		if(req->responseHeaders().get("Action") == "drop")
 		{
-			// drop
+			// Drop
 			r.sendAction = Filter::Drop;
 		}
 		else
 		{
-			// accept
+			// Accept
 			r.sendAction = Filter::Send;
 
 			switch(mode)
 			{
 				case HttpFilter::Check:
-					// as-is
+					// As-is
 					r.content = origContent;
 					break;
 				case HttpFilter::Modify:
 					switch(req->responseCode())
 					{
 						case 204:
-							// as-is
+							// As-is
 							r.content = origContent;
 							break;
 						default:
-							// replace content
+							// Replace content
 							r.content = responseBody;
 							break;
 					}
@@ -551,20 +551,20 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 
 	passthroughData["route"] = context.route.toUtf8();
 
-	// if dest link points to the same service as the current request,
+	// If dest link points to the same service as the current request,
 	// then we can assume the network would send the request back to
-	// us, so we can handle it internally. if the link points to a
+	// us, so we can handle it internally. If the link points to a
 	// different service, then we can't make this assumption and need
-	// to make the request over the network. note that such a request
+	// to make the request over the network. Note that such a request
 	// could still end up looping back to us
 	if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
 	{
-		// tell the proxy that we prefer the request to be handled
+		// Tell the proxy that we prefer the request to be handled
 		// internally, using the same route
 		passthroughData["prefer-internal"] = true;
 	}
 
-	// needed in case internal routing is not used
+	// Needed in case internal routing is not used
 	if(context.trusted)
 		passthroughData["trusted"] = true;
 
@@ -617,7 +617,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 
 	if(!context.limiter->addAction(key, new RequestAction(inner)))
 	{
-		// the limiter shouldn't have an hwm, but let's handle the error
+		// The limiter shouldn't have an hwm, but let's handle the error
 		// here in case one is ever added
 
 		Result r;
@@ -773,7 +773,7 @@ void Filter::MessageFilterStack::nextFilter()
 
 	finishedConnection_ = filters_.front()->finished.connect(boost::bind(&MessageFilterStack::filterFinished, this, boost::placeholders::_1)),
 
-	// may call filterFinished immediately
+	// May call filterFinished immediately
 	filters_.front()->start(context_, content_);
 }
 
@@ -795,15 +795,15 @@ void Filter::MessageFilterStack::filterFinished(const Result &result)
 	switch(lastSendAction_)
 	{
 		case Send:
-			// remove the finished filter
+			// Remove the finished filter
 			filters_.erase(filters_.begin());
 			break;
 		case Drop:
-			// stop filtering. remove the finished filter and any remaining
+			// Stop filtering. Remove the finished filter and any remaining
 			filters_.clear();
 			break;
 	}
 
-	// will emit finished if there are no remaining filters
+	// Will emit finished if there are no remaining filters
 	nextFilter();
 }

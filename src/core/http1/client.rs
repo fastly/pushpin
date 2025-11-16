@@ -148,7 +148,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
 
-            // call not allowed if the end has already been indicated
+            // Call not allowed if the end has already been indicated
             if w.end {
                 return Err(Error::FurtherInputNotAllowed);
             }
@@ -223,7 +223,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
             match self.process().await {
                 Some(Ok(status)) => break status,
                 Some(Err(e)) => return SendStatus::Error((), e),
-                None => {} // received data. loop and check for early response
+                None => {} // Received data. Loop and check for early response
             }
         };
 
@@ -276,7 +276,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
             loop {
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
+                        // If there's no more space, suspend forever
                         std::future::pending::<()>().await;
                     }
 
@@ -319,7 +319,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                     let req_body = w.req_body.take().unwrap();
 
                     // req_body.send() expects the input to leave room for at
-                    // least two more buffers in case chunked encoding is
+                    // Least two more buffers in case chunked encoding is
                     // used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);
@@ -347,7 +347,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
+                        // If there's no more space, suspend forever
                         std::future::pending::<()>().await;
                     }
 
@@ -364,9 +364,9 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                 protocol::SendStatus::Error(req_body, protocol::Error::Io(e))
                     if e.kind() == io::ErrorKind::BrokenPipe =>
                 {
-                    // if we get an error when trying to send, it could be
+                    // If we get an error when trying to send, it could be
                     // due to the server closing the connection after sending
-                    // an early response. here we'll check if the server left
+                    // an early response. Here we'll check if the server left
                     // us any data to read
 
                     let w = &mut *inner.w.borrow_mut();
@@ -377,18 +377,18 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                         let r = &mut *r;
 
                         match recv_nonzero(&mut r.stream, r.buf).await {
-                            Ok(()) => None,                // received data
-                            Err(e) => Some(Err(e.into())), // error while receiving data
+                            Ok(()) => None,                // Received data
+                            Err(e) => Some(Err(e.into())), // Error while receiving data
                         }
                     } else {
-                        None // we already received data
+                        None // We already received data
                     }
                 }
                 ret => Some(Ok(ret)),
             },
             Select2::R2(ret) => match ret {
-                Ok(()) => None,         // received data
-                Err(e) => Some(Err(e)), // error while receiving data
+                Ok(()) => None,         // Received data
+                Err(e) => Some(Err(e)), // Error while receiving data
             },
         }
     }
@@ -461,13 +461,13 @@ impl<'a, R: AsyncRead> Response<'a, R> {
             }
         };
 
-        // at this point, resp has taken rbuf's inner buffer, such that
+        // At this point, resp has taken rbuf's inner buffer, such that
         // rbuf has no inner buffer
 
-        // put remaining readable bytes in wbuf
+        // Put remaining readable bytes in wbuf
         self.wbuf.write_all(resp.remaining_bytes())?;
 
-        // swap inner buffers, such that rbuf now contains the remaining
+        // Swap inner buffers, such that rbuf now contains the remaining
         // readable bytes, and wbuf is now the one with no inner buffer
         self.rbuf.swap_inner(self.wbuf);
 
@@ -500,7 +500,7 @@ pub struct ResponseBody<'a, R: AsyncRead> {
 }
 
 impl<R: AsyncRead> ResponseBody<'_, R> {
-    // on EOF and any subsequent calls, return success
+    // On EOF and any subsequent calls, return success
     #[allow(clippy::await_holding_refcell_ref)]
     pub async fn add_to_buffer(&self) -> Result<(), Error> {
         if let Some(inner) = &mut *self.inner.borrow_mut() {
@@ -569,11 +569,11 @@ impl<R: AsyncRead> ResponseBody<'_, R> {
                         inner.rbuf.read_commit(read);
 
                         if read > 0 && written == 0 {
-                            // input consumed but no output produced, retry
+                            // Input consumed but no output produced, retry
                             continue;
                         }
 
-                        // written is only zero here if read is also zero
+                        // Written is only zero here if read is also zero
                         assert!(written > 0 || read == 0);
 
                         return Ok(RecvStatus::Read((), written));

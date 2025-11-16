@@ -64,7 +64,7 @@ public:
 		QHash<QString, QString> subscriptionMeta;
 		QHash<QString, QString> publishMeta;
 
-		// for network access
+		// For network access
 		ZhttpManager *zhttpOut;
 		QUrl currentUri;
 		QString route;
@@ -88,12 +88,12 @@ public:
 		public:
 			SendAction sendAction;
 			QByteArray content;
-			QString errorMessage; // non-null on error
+			QString errorMessage; // Non-null on error
 		};
 
 		virtual ~MessageFilter();
 
-		// may emit finished immediately
+		// May emit finished immediately
 		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray()) = 0;
 
 		boost::signals2::signal<void(const Result&)> finished;
@@ -104,7 +104,7 @@ public:
 	public:
 		MessageFilterStack(const QStringList &filterNames);
 
-		// reimplemented
+		// Reimplemented
 		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray());
 
 	private:
@@ -128,7 +128,7 @@ public:
 
 	virtual SendAction sendAction() const;
 
-	// return null array on error
+	// Return null array on error
 	virtual QByteArray update(const QByteArray &data);
 	virtual QByteArray finalize();
 

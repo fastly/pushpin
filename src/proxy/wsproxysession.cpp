@@ -289,8 +289,8 @@ public:
 	Jwt::EncodingKey sigKey;
 	std::unique_ptr<WebSocket> inSock;
 	std::unique_ptr<WebSocket> outSock;
-	QList<bool> inPendingFrames; // true means we should ack a send event
-	int outReadInProgress; // frame type or -1
+	QList<bool> inPendingFrames; // True means we should ack a send event
+	int outReadInProgress; // Frame type or -1
 	QByteArray pathBeg;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
@@ -304,7 +304,7 @@ public:
 	std::unique_ptr<Timer> keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
-	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
+	QList<QueuedFrame> queuedInFrames; // Frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConnection;
@@ -457,12 +457,12 @@ public:
 
 		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, acceptPushpinRoute, cdnLoop, clientAddress, InspectData(), route.grip, false);
 
-		// don't proxy extensions, as we may not know how to handle them
+		// Don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
 
 		if(route.grip)
 		{
-			// send grip extension
+			// Send grip extension
 			requestData.headers += HttpHeader("Sec-WebSocket-Extensions", "grip");
 		}
 
@@ -517,7 +517,7 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
-			// for test route, auto-adjust path
+			// For test route, auto-adjust path
 			if(!pathBeg.isEmpty())
 			{
 				int pathRemove = pathBeg.length();
@@ -559,7 +559,7 @@ public:
 			}
 			else
 			{
-				// websockets don't work with zhttp req mode
+				// Websockets don't work with zhttp req mode
 				if(zhttpManager->clientUsesReq())
 				{
 					reject(false, 502, "Bad Gateway", "Error while proxying to origin.", "WebSockets cannot be used with zhttpreq target");
@@ -667,7 +667,7 @@ public:
 
 			if(f.type == WebSocket::Frame::Text || f.type == WebSocket::Frame::Binary || f.type == WebSocket::Frame::Continuation)
 			{
-				// we are skipping the rest of this message
+				// We are skipping the rest of this message
 				if(f.type == WebSocket::Frame::Continuation && outReadInProgress == -1)
 					continue;
 
@@ -678,11 +678,11 @@ public:
 				{
 					if(f.type == WebSocket::Frame::Text && f.data.startsWith("c:"))
 					{
-						// grip messages must only be one frame
+						// Grip messages must only be one frame
 						if(!f.more)
-							wsControl->sendGripMessage(f.data.mid(2)); // process
+							wsControl->sendGripMessage(f.data.mid(2)); // Process
 						else
-							outReadInProgress = -1; // ignore rest of message
+							outReadInProgress = -1; // Ignore rest of message
 					}
 					else if(f.type != WebSocket::Frame::Continuation)
 					{
@@ -719,7 +719,7 @@ public:
 			}
 			else
 			{
-				// always relay non-content frames
+				// Always relay non-content frames
 				writeInFrame(f);
 
 				adjustKeepAlive();
@@ -760,7 +760,7 @@ public:
 	{
 		LogUtil::RequestData rd;
 
-		// only log route id if explicitly set
+		// Only log route id if explicitly set
 		if(route.separateStats)
 			rd.routeId = route.id;
 
@@ -802,7 +802,7 @@ public:
 
 	void adjustKeepAlive()
 	{
-		// if idle mode, restart the timer. else leave alone
+		// If idle mode, restart the timer. Else leave alone
 		if(keepAliveTimer && keepAliveMode == WsControl::Idle)
 			setupKeepAlive();
 	}
@@ -897,7 +897,7 @@ public:
 
 		incCounter(Stats::ServerHeaderBytesReceived, ZhttpManager::estimateResponseHeaderBytes(101, outSock->responseReason(), headers));
 
-		// don't proxy extensions, as we may not know how to handle them
+		// Don't proxy extensions, as we may not know how to handle them
 		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions").asQByteArrayList();
 
 		HttpExtension grip = getExtension(wsExtensions, "grip");
@@ -917,7 +917,7 @@ public:
 				}
 				else
 				{
-					// tell upstream to do the grip stuff
+					// Tell upstream to do the grip stuff
 					headers += HttpHeader("Sec-WebSocket-Extensions", getExtensionRaw(wsExtensions, "grip"));
 				}
 			}
@@ -951,7 +951,7 @@ public:
 
 		logConnection(true, 101, 0);
 
-		// send any pending frames
+		// Send any pending frames
 		tryReadIn();
 	}
 
@@ -1045,11 +1045,11 @@ public:
 private:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
-		// this method accepts a full message, which must be typed
+		// This method accepts a full message, which must be typed
 		if(type == WebSocket::Frame::Continuation)
 			return;
 
-		// if we have no socket to write to, say the data was written anyway.
+		// If we have no socket to write to, say the data was written anyway.
 		// this is not quite correct but better than leaving the send event
 		// dangling
 		if(!inSock || inSock->state() != WebSocket::Connected)
@@ -1058,10 +1058,10 @@ private:
 			return;
 		}
 
-		// if queue == false, drop if we can't send right now
+		// If queue == false, drop if we can't send right now
 		if(!queue && (inSock->writeBytesAvailable() == 0 || outReadInProgress != -1))
 		{
-			// if drop is allowed, drop is success :)
+			// If drop is allowed, drop is success :)
 			wsControl->sendEventWritten();
 			return;
 		}
@@ -1092,7 +1092,7 @@ private:
 			{
 				keepAliveTimer = std::make_unique<Timer>();
 
-				// safe to not track, since timer doesn't outlive this
+				// Safe to not track, since timer doesn't outlive this
 				keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 
 				keepAliveTimer->setSingleShot(true);
@@ -1124,7 +1124,7 @@ private:
 
 	void wsControl_detachEventReceived()
 	{
-		// if already detached, do nothing
+		// If already detached, do nothing
 		if(detached)
 			return;
 

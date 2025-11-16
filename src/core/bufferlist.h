@@ -38,7 +38,7 @@ public:
 	void append(const QByteArray &buf);
 	QByteArray take(int size = -1);
 
-	QByteArray toByteArray(); // non-const because we rewrite the list
+	QByteArray toByteArray(); // Non-const because we rewrite the list
 
 	BufferList & operator+=(const QByteArray &buf)
 	{

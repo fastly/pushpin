@@ -103,10 +103,10 @@ private:
 	QSharedDataPointer<Private> d;
 };
 
-// returns token, null on error
+// Returns token, null on error
 QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key);
 
-// returns claim, null on error
+// Returns claim, null on error
 QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
 
 QByteArray encode(const QVariant &claim, const EncodingKey &key);

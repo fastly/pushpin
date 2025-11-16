@@ -84,7 +84,7 @@ impl Packet<'_> {
                 }
             }
 
-            // can't fail
+            // Can't fail
             let (frame, _) = tnetstring::parse_frame(mi.data).unwrap();
 
             if !first {
@@ -133,7 +133,7 @@ impl Packet<'_> {
                 _ => {}
             }
 
-            // can't fail
+            // Can't fail
             let (frame, _) = tnetstring::parse_frame(mi.data).unwrap();
 
             if mi.key == field {
@@ -141,7 +141,7 @@ impl Packet<'_> {
             }
         }
 
-        // only take content from data (ptype empty), close, or rejection packets
+        // Only take content from data (ptype empty), close, or rejection packets
         if ptype.is_empty()
             || ptype == b"close"
             || (ptype == b"error" && condition == Some(b"rejected"))
@@ -166,7 +166,7 @@ impl fmt::Display for Packet<'_> {
             return Err(fmt::Error);
         }
 
-        // formatted output is guaranteed to be utf8
+        // Formatted output is guaranteed to be utf8
         let meta = String::from_utf8(meta).unwrap();
 
         let meta = trim_for_display(&meta, LOG_METADATA_MAX);
@@ -180,7 +180,7 @@ impl fmt::Display for Packet<'_> {
             };
 
             if let Some(clen) = clen {
-                // formatted output is guaranteed to be utf8
+                // Formatted output is guaranteed to be utf8
                 let content = String::from_utf8(content).unwrap();
 
                 let content = trim_for_display(&content, LOG_CONTENT_MAX);
@@ -215,7 +215,7 @@ fn packet_to_string(data: &[u8]) -> String {
 
         p.to_string()
     } else {
-        // maybe it's addr-prefixed
+        // Maybe it's addr-prefixed
 
         let mut pos = None;
 
@@ -636,7 +636,7 @@ impl ReqHandles {
             }
 
             if p.valid.get() && do_send {
-                // blocking send. handle is expected to read as fast as possible
+                // Blocking send. Handle is expected to read as fast as possible
                 // without downstream backpressure
                 match p.pe.sender.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
@@ -810,7 +810,7 @@ impl StreamHandles {
             }
 
             if p.valid.get() && do_send {
-                // blocking send. handle is expected to read as fast as possible
+                // Blocking send. Handle is expected to read as fast as possible
                 // without downstream backpressure
                 match p
                     .pe
@@ -936,7 +936,7 @@ impl ServerReqHandles {
         }
     }
 
-    // waits until at least one handle is likely writable
+    // Waits until at least one handle is likely writable
     #[allow(clippy::await_holding_refcell_ref)]
     async fn check_send(&self) {
         let mut any_valid = false;
@@ -957,13 +957,13 @@ impl ServerReqHandles {
             return;
         }
 
-        // if there are no valid pipes then hang forever. caller can
+        // If there are no valid pipes then hang forever. Caller can
         // try again by dropping the future and making a new one
         if !any_valid {
             std::future::pending::<()>().await;
         }
 
-        // there are valid pipes but none are writable. we'll wait
+        // There are valid pipes but none are writable. We'll wait
 
         let mut scratch = self.check_send_scratch.borrow_mut();
         let (mut tasks, slice_scratch) = scratch.get();
@@ -992,7 +992,7 @@ impl ServerReqHandles {
         let mut skip = self.send_index.get();
         self.send_index.set((skip + 1) % self.nodes.len());
 
-        // select the nth ready node, else the latest ready node
+        // Select the nth ready node, else the latest ready node
         let mut selected = None;
         for (nkey, p) in self.list.iter(&self.nodes) {
             if p.valid.get() && p.pe.sender.is_writable() {
@@ -1146,7 +1146,7 @@ impl ServerStreamHandles {
         }
     }
 
-    // waits until at least one handle is likely writable
+    // Waits until at least one handle is likely writable
     #[allow(clippy::await_holding_refcell_ref)]
     async fn check_send_any(&self) {
         let mut any_valid = false;
@@ -1167,13 +1167,13 @@ impl ServerStreamHandles {
             return;
         }
 
-        // if there are no valid pipes then hang forever. caller can
+        // If there are no valid pipes then hang forever. Caller can
         // try again by dropping the future and making a new one
         if !any_valid {
             std::future::pending::<()>().await;
         }
 
-        // there are valid pipes but none are writable. we'll wait
+        // There are valid pipes but none are writable. We'll wait
 
         let mut scratch = self.check_send_any_scratch.borrow_mut();
         let (mut tasks, slice_scratch) = scratch.get();
@@ -1207,7 +1207,7 @@ impl ServerStreamHandles {
         let mut skip = self.send_index.get();
         self.send_index.set((skip + 1) % self.nodes.len());
 
-        // select the nth ready node, else the latest ready node
+        // Select the nth ready node, else the latest ready node
         let mut selected = None;
         for (nkey, p) in self.list.iter(&self.nodes) {
             if p.valid.get() && p.pe.sender_any.is_writable() {
@@ -1296,7 +1296,7 @@ impl ServerStreamHandles {
             let p = &n.value;
 
             if p.valid.get() && do_send {
-                // blocking send. handle is expected to read as fast as possible
+                // Blocking send. Handle is expected to read as fast as possible
                 // without downstream backpressure
                 match p.pe.sender_direct.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
@@ -1349,11 +1349,11 @@ pub struct ClientSocketManager {
 
 impl ClientSocketManager {
     // retained_max is the maximum number of received messages that the user
-    // will keep around at any moment. for example, if the user plans to
+    // Will keep around at any moment. For example, if the user plans to
     // set up 4 handles on the manager and read 1 message at a time from
-    // each of the handles (i.e. process and drop a message before reading
+    // each of the handles (i.e. Process and drop a message before reading
     // the next), then the value here should be 4, because there would be
-    // no more than 4 dequeued messages alive at any one time. this number
+    // no more than 4 dequeued messages alive at any one time. This number
     // is needed to help size the internal arena
     pub fn new(
         ctx: Arc<zmq::Context>,
@@ -1497,8 +1497,8 @@ impl ClientSocketManager {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
 
-        // the messages arena needs to fit the max number of potential incoming messages that
-        // still need to be processed. this is the entire channel queue for every handle, plus
+        // The messages arena needs to fit the max number of potential incoming messages that
+        // still need to be processed. This is the entire channel queue for every handle, plus
         // the most number of messages the user might retain, plus 1 extra for the next message
         // we are preparing to send to the handles
         let arena_size = (HANDLES_MAX * handle_bound) + retained_max + 1;
@@ -1560,9 +1560,9 @@ impl ClientSocketManager {
             .set_router_mandatory(true)
             .unwrap();
 
-        // a ROUTER socket may still be writable after returning EAGAIN, which
+        // A ROUTER socket may still be writable after returning EAGAIN, which
         // could mean that a different peer than the one we tried to write to
-        // is writable. there's no way to know when the desired peer will be
+        // is writable. There's no way to know when the desired peer will be
         // writable, so we'll keep trying again after a delay
         client_stream
             .out_stream
@@ -1752,7 +1752,7 @@ impl ClientSocketManager {
                     match result {
                         Ok(()) => {}
                         Err(zmq::Error::EHOSTUNREACH) => {
-                            // this can happen if a known peer goes away
+                            // This can happen if a known peer goes away
                             debug!("stream zmq send to host unreachable");
                         }
                         Err(e) => error!("stream zmq send to: {}", e),
@@ -1946,11 +1946,11 @@ pub struct ServerSocketManager {
 
 impl ServerSocketManager {
     // retained_max is the maximum number of received messages that the user
-    // will keep around at any moment. for example, if the user plans to
+    // Will keep around at any moment. For example, if the user plans to
     // set up 4 handles on the manager and read 1 message at a time from
-    // each of the handles (i.e. process and drop a message before reading
+    // each of the handles (i.e. Process and drop a message before reading
     // the next), then the value here should be 4, because there would be
-    // no more than 4 dequeued messages alive at any one time. this number
+    // no more than 4 dequeued messages alive at any one time. This number
     // is needed to help size the internal arena
     pub fn new(
         ctx: Arc<zmq::Context>,
@@ -2093,8 +2093,8 @@ impl ServerSocketManager {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
 
-        // the messages arena needs to fit the max number of potential incoming messages that
-        // still need to be processed. this is the entire channel queue for every handle, plus
+        // The messages arena needs to fit the max number of potential incoming messages that
+        // still need to be processed. This is the entire channel queue for every handle, plus
         // the most number of messages the user might retain, plus 1 extra for the next message
         // we are preparing to send to the handles, x2 since there are two sending channels
         // per stream handle
@@ -2102,7 +2102,7 @@ impl ServerSocketManager {
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
 
-        // sessions are created at the time of attempting to send to a handle, so we need enough
+        // Sessions are created at the time of attempting to send to a handle, so we need enough
         // sessions to max out the workers, and max out all the handle channels, and have one
         // left to use when attempting to send
         let sessions_max = stream_maxconn + (HANDLES_MAX * handle_bound) + 1;
@@ -2159,9 +2159,9 @@ impl ServerSocketManager {
             .set_router_mandatory(true)
             .unwrap();
 
-        // a ROUTER socket may still be writable after returning EAGAIN, which
+        // A ROUTER socket may still be writable after returning EAGAIN, which
         // could mean that a different peer than the one we tried to write to
-        // is writable. there's no way to know when the desired peer will be
+        // is writable. There's no way to know when the desired peer will be
         // writable, so we'll keep trying again after a delay
         stream_socks
             .in_stream
@@ -2389,7 +2389,7 @@ impl ServerSocketManager {
                     match result {
                         Ok(()) => {}
                         Err(zmq::Error::EHOSTUNREACH) => {
-                            // this can happen if a known peer goes away
+                            // This can happen if a known peer goes away
                             debug!("server stream zmq send to host unreachable");
                         }
                         Err(e) => error!("server stream zmq send: {}", e),
@@ -2902,7 +2902,7 @@ mod tests {
             )
             .unwrap();
 
-        // connect an out-stream receiver. the other sockets we'll leave alone
+        // Connect an out-stream receiver. The other sockets we'll leave alone
         let in_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
         in_stream_sock
             .set_identity("test-handler".as_bytes())
@@ -2924,7 +2924,7 @@ mod tests {
             )
             .unwrap();
 
-        // write four times, which will all succeed eventually. after this
+        // Write four times, which will all succeed eventually. After this
         // we'll have filled the handle, the manager's temporary variable,
         // and the HWMs of both the sending and receiving zmq sockets
         for i in 1..=4 {
@@ -2940,13 +2940,13 @@ mod tests {
             }
         }
 
-        // once we were able to write a fourth time, this means the manager
-        // has started processing the third message. let's wait a short bit
+        // Once we were able to write a fourth time, this means the manager
+        // has started processing the third message. Let's wait a short bit
         // for the manager to attempt to send the third message to the zmq
         // socket and fail with EAGAIN
         thread::sleep(Duration::from_millis(10));
 
-        // fifth write will fail. there's no room
+        // Fifth write will fail. There's no room
         let e = h
             .send_to_addr(
                 "test-handler".as_bytes(),
@@ -2960,13 +2960,13 @@ mod tests {
         };
         assert_eq!(str::from_utf8(&msg).unwrap(), "5");
 
-        // blocking read from the zmq socket so another message can flow
+        // Blocking read from the zmq socket so another message can flow
         let parts = in_stream_sock.recv_multipart(0).unwrap();
         assert_eq!(parts.len(), 3);
         assert!(parts[1].is_empty());
         assert_eq!(parts[2], b"1");
 
-        // fifth write will now succeed, eventually
+        // Fifth write will now succeed, eventually
         loop {
             match h.send_to_addr(
                 "test-handler".as_bytes(),
@@ -2978,7 +2978,7 @@ mod tests {
             }
         }
 
-        // read the rest of the messages
+        // Read the rest of the messages
         for i in 2..=5 {
             let parts = in_stream_sock.recv_multipart(0).unwrap();
             assert_eq!(parts.len(), 3);
@@ -3161,7 +3161,7 @@ mod tests {
         let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
         out_sock.connect("inproc://test-in").unwrap();
 
-        // ensure zsockman is subscribed
+        // Ensure zsockman is subscribed
         let msg = out_sock.recv_msg(0).unwrap();
         assert_eq!(&msg[..], b"\x01test ");
 
@@ -3217,7 +3217,7 @@ mod tests {
         };
         assert_eq!(rdata.body, b"world");
 
-        // send via router
+        // Send via router
         in_stream_sock
             .send_multipart(
                 [
@@ -3501,7 +3501,7 @@ mod tests {
         in_sock.connect("inproc://test-server-out").unwrap();
         in_sock.set_subscribe(b"test-handler ").unwrap();
 
-        // ensure we are subscribed
+        // Ensure we are subscribed
         thread::sleep(Duration::from_millis(100));
 
         let req = {
@@ -3553,7 +3553,7 @@ mod tests {
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0], b"test-handler world a");
 
-        // send via router
+        // Send via router
         h1.send(
             Some(b"test-handler"),
             zmq::Message::from("world a2".as_bytes()),

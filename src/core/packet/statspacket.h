@@ -53,40 +53,40 @@ public:
 	Type type;
 	QByteArray from;
 	QByteArray route;
-	int64_t retrySeq; // connections max
-	int count; // activity, message
-	QByteArray connectionId; // connected, disconnected
-	ConnectionType connectionType; // connected
-	QHostAddress peerAddress; // connected
-	bool ssl; // connected
-	int ttl; // connected, subscribed, connections max
-	QByteArray mode; // subscribed, unsubscribed
-	QByteArray channel; // message, subscribed, unsubscribed
-	QByteArray itemId; // message
-	QByteArray transport; // message
-	int blocks; // message
-	int subscribers; // subscribed
-	int connectionsMax; // report, connections max
-	int connectionsMinutes; // report
-	int messagesReceived; // report
-	int messagesSent; // report
-	int httpResponseMessagesSent; // report
-	int blocksReceived; // report
-	int blocksSent; // report
-	int duration; // report
-	int requestsReceived; // counts
-	int clientHeaderBytesReceived; // report
-	int clientHeaderBytesSent; // report
-	int clientContentBytesReceived; // report
-	int clientContentBytesSent; // report
-	int clientMessagesReceived; // report
-	int clientMessagesSent; // report
-	int serverHeaderBytesReceived; // report
-	int serverHeaderBytesSent; // report
-	int serverContentBytesReceived; // report
-	int serverContentBytesSent; // report
-	int serverMessagesReceived; // report
-	int serverMessagesSent; // report
+	int64_t retrySeq; // Connections max
+	int count; // Activity, message
+	QByteArray connectionId; // Connected, disconnected
+	ConnectionType connectionType; // Connected
+	QHostAddress peerAddress; // Connected
+	bool ssl; // Connected
+	int ttl; // Connected, subscribed, connections max
+	QByteArray mode; // Subscribed, unsubscribed
+	QByteArray channel; // Message, subscribed, unsubscribed
+	QByteArray itemId; // Message
+	QByteArray transport; // Message
+	int blocks; // Message
+	int subscribers; // Subscribed
+	int connectionsMax; // Report, connections max
+	int connectionsMinutes; // Report
+	int messagesReceived; // Report
+	int messagesSent; // Report
+	int httpResponseMessagesSent; // Report
+	int blocksReceived; // Report
+	int blocksSent; // Report
+	int duration; // Report
+	int requestsReceived; // Counts
+	int clientHeaderBytesReceived; // Report
+	int clientHeaderBytesSent; // Report
+	int clientContentBytesReceived; // Report
+	int clientContentBytesSent; // Report
+	int clientMessagesReceived; // Report
+	int clientMessagesSent; // Report
+	int serverHeaderBytesReceived; // Report
+	int serverHeaderBytesSent; // Report
+	int serverContentBytesReceived; // Report
+	int serverContentBytesSent; // Report
+	int serverMessagesReceived; // Report
+	int serverMessagesSent; // Report
 
 	StatsPacket() :
 		type((Type)-1),

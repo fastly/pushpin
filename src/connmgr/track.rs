@@ -41,8 +41,8 @@ struct TrackInner<'a, T> {
     active: &'a TrackFlag,
 }
 
-// wrap a value and a shared flag representing the value's liveness. on init,
-// the flag is set to true. on drop, the flag is set to false
+// Wrap a value and a shared flag representing the value's liveness. On init,
+// the flag is set to true. On drop, the flag is set to false
 pub struct Track<'a, T> {
     inner: Option<TrackInner<'a, T>>,
 }
@@ -92,8 +92,8 @@ pub enum RecvError {
     ValueActive,
 }
 
-// wrap an AsyncLocalReceiver and a shared flag representing the liveness of
-// one received value at a time. each received value is wrapped in Track and
+// Wrap an AsyncLocalReceiver and a shared flag representing the liveness of
+// one received value at a time. Each received value is wrapped in Track and
 // must be dropped before reading the next value
 pub struct TrackedAsyncLocalReceiver<'a, T> {
     inner: AsyncLocalReceiver<T>,
@@ -110,7 +110,7 @@ impl<'a, T> TrackedAsyncLocalReceiver<'a, T> {
         }
     }
 
-    // attempt to receive a value from the inner receiver. if a previously
+    // Attempt to receive a value from the inner receiver. If a previously
     // received value has not been dropped, this method returns an error
     pub async fn recv(&self) -> Result<Track<'a, T>, RecvError> {
         if self.value_active.get() {
@@ -160,7 +160,7 @@ where
     }
 }
 
-// wrap a future and a shared flag representing the liveness of some value.
+// Wrap a future and a shared flag representing the liveness of some value.
 // if the value is true after polling the inner future, return an error
 pub fn track_future<F>(fut: F, value_active: &TrackFlag) -> TrackFuture<'_, F>
 where
@@ -215,7 +215,7 @@ mod tests {
                 assert_eq!(*v, 2);
                 assert!(r.recv().await.is_err());
 
-                // no values left
+                // No values left
                 drop(v);
                 assert!(r.recv().await.is_err());
             })
@@ -232,15 +232,15 @@ mod tests {
             .spawn(async move {
                 let f = TrackFlag::default();
 
-                // awaiting while the flag is active is an error
+                // Awaiting while the flag is active is an error
                 let ret = track_future(
                     async {
                         let v = Track::new(1, &f);
 
-                        // this line will cause the error
+                        // This line will cause the error
                         yield_task().await;
 
-                        // this line never reached
+                        // This line never reached
                         drop(v);
 
                         Ok(())
@@ -250,13 +250,13 @@ mod tests {
                 .await;
                 assert_eq!(ret, Err(ValueActiveError));
 
-                // awaiting while the flag is not active is ok
+                // Awaiting while the flag is not active is ok
                 let ret: Result<_, ValueActiveError> = track_future(
                     async {
                         let v = Track::new(1, &f);
                         drop(v);
 
-                        // this is ok
+                        // This is ok
                         yield_task().await;
 
                         Ok(())

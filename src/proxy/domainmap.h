@@ -88,7 +88,7 @@ public:
 
 		bool operator==(const ZhttpRoute &other) const
 		{
-			// only compare spec
+			// Only compare spec
 			return (baseSpec == other.baseSpec);
 		}
 	};
@@ -107,14 +107,14 @@ public:
 		QString connectHost;
 		int connectPort;
 		ZhttpRoute zhttpRoute;
-		bool ssl; // use https
-		bool trusted; // bypass zurl access policies
-		bool trustConnectHost; // verify cert against target host
-		bool insecure; // ignore server certificate validity
-		QString host; // override input host
-		QStringList subscriptions; // implicit subscriptions
-		bool overHttp; // use websocket-over-http protocol
-		bool oneEvent; // send one event at a time with overHttp
+		bool ssl; // Use https
+		bool trusted; // Bypass zurl access policies
+		bool trustConnectHost; // Verify cert against target host
+		bool insecure; // Ignore server certificate validity
+		QString host; // Override input host
+		QStringList subscriptions; // Implicit subscriptions
+		bool overHttp; // Use websocket-over-http protocol
+		bool oneEvent; // Send one event at a time with overHttp
 		QString clientCert;
 		QString clientKey;
 
@@ -165,7 +165,7 @@ public:
 			if(separateStats)
 				return id;
 			else
-				return QByteArray(); // global stats
+				return QByteArray(); // Global stats
 		}
 
 		Entry() :

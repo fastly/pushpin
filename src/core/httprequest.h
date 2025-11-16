@@ -64,7 +64,7 @@ public:
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers) = 0;
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) = 0;
 
-	// may call this multiple times
+	// May call this multiple times
 	virtual void writeBody(const QByteArray &body) = 0;
 
 	virtual void endBody() = 0;
@@ -85,11 +85,11 @@ public:
 	virtual QByteArray responseReason() const = 0;
 	virtual HttpHeaders responseHeaders() const = 0;
 
-	virtual QByteArray readBody(int size = -1) = 0; // takes from the buffer
+	virtual QByteArray readBody(int size = -1) = 0; // Takes from the buffer
 
-	// indicates input data and/or input finished
+	// Indicates input data and/or input finished
 	Signal readyRead;
-	// indicates output data written and/or output finished
+	// Indicates output data written and/or output finished
 	SignalInt bytesWritten;
 	Signal writeBytesChanged;
 	Signal paused;

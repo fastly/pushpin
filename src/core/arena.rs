@@ -46,8 +46,8 @@ impl<T> DerefMut for EntryGuard<'_, T> {
     }
 }
 
-// this is essentially a sharable slab for use within a single thread.
-// operations are protected by a RefCell. when an element is retrieved for
+// This is essentially a sharable slab for use within a single thread.
+// operations are protected by a RefCell. When an element is retrieved for
 // reading or modification, it is wrapped in a EntryGuard which keeps the
 // entire slab borrowed until the caller is done working with the element
 pub struct Memory<T> {
@@ -56,7 +56,7 @@ pub struct Memory<T> {
 
 impl<T> Memory<T> {
     pub fn new(capacity: usize) -> Self {
-        // allocate the slab with fixed capacity
+        // Allocate the slab with fixed capacity
         let s = Slab::with_capacity(capacity);
 
         Self {
@@ -74,7 +74,7 @@ impl<T> Memory<T> {
     fn insert(&self, e: T) -> Result<usize, ()> {
         let mut entries = self.entries.borrow_mut();
 
-        // out of capacity. by preventing inserts beyond the capacity, we
+        // Out of capacity. By preventing inserts beyond the capacity, we
         // ensure the underlying memory won't get moved due to a realloc
         if entries.len() == entries.capacity() {
             return Err(());
@@ -88,7 +88,7 @@ impl<T> Memory<T> {
 
         let entry = entries.get_mut(key)?;
 
-        // slab element addresses are guaranteed to be stable once created,
+        // Slab element addresses are guaranteed to be stable once created,
         // and the only place we remove the element is in EntryGuard's
         // remove method which consumes itself, therefore it is safe to
         // assume the element will live at least as long as the EntryGuard
@@ -103,8 +103,8 @@ impl<T> Memory<T> {
         })
     }
 
-    // for tests, as a way to confirm the memory isn't moving. be careful
-    // with this. the very first element inserted will be at index 0, but
+    // For tests, as a way to confirm the memory isn't moving. Be careful
+    // with this. The very first element inserted will be at index 0, but
     // if the slab has been used and cleared, then the next element
     // inserted may not be at index 0 and calling this method afterward
     // will panic
@@ -142,8 +142,8 @@ impl<T> DerefMut for SyncEntryGuard<'_, T> {
     }
 }
 
-// this is essentially a thread-safe slab. operations are protected by a
-// mutex. when an element is retrieved for reading or modification, it is
+// This is essentially a thread-safe slab. Operations are protected by a
+// mutex. When an element is retrieved for reading or modification, it is
 // wrapped in a EntryGuard which keeps the entire slab locked until the
 // caller is done working with the element
 pub struct SyncMemory<T> {
@@ -152,7 +152,7 @@ pub struct SyncMemory<T> {
 
 impl<T> SyncMemory<T> {
     pub fn new(capacity: usize) -> Self {
-        // allocate the slab with fixed capacity
+        // Allocate the slab with fixed capacity
         let s = Slab::with_capacity(capacity);
 
         Self {
@@ -170,7 +170,7 @@ impl<T> SyncMemory<T> {
     fn insert(&self, e: T) -> Result<usize, ()> {
         let mut entries = self.entries.lock().unwrap();
 
-        // out of capacity. by preventing inserts beyond the capacity, we
+        // Out of capacity. By preventing inserts beyond the capacity, we
         // ensure the underlying memory won't get moved due to a realloc
         if entries.len() == entries.capacity() {
             return Err(());
@@ -184,7 +184,7 @@ impl<T> SyncMemory<T> {
 
         let entry = entries.get_mut(key)?;
 
-        // slab element addresses are guaranteed to be stable once created,
+        // Slab element addresses are guaranteed to be stable once created,
         // and the only place we remove the element is in SyncEntryGuard's
         // remove method which consumes itself, therefore it is safe to
         // assume the element will live at least as long as the SyncEntryGuard
@@ -199,8 +199,8 @@ impl<T> SyncMemory<T> {
         })
     }
 
-    // for tests, as a way to confirm the memory isn't moving. be careful
-    // with this. the very first element inserted will be at index 0, but
+    // For tests, as a way to confirm the memory isn't moving. Be careful
+    // with this. The very first element inserted will be at index 0, but
     // if the slab has been used and cleared, then the next element
     // inserted may not be at index 0 and calling this method afterward
     // will panic
@@ -219,7 +219,7 @@ pub struct ReusableValue<T> {
 }
 
 impl<T> ReusableValue<T> {
-    // vec element addresses are guaranteed to be stable once created,
+    // Vec element addresses are guaranteed to be stable once created,
     // and elements are only removed when the Reusable is dropped, and
     // the Arc'd Reusable is guaranteed to live as long as
     // ReusableValue, therefore it is safe to assume the element will
@@ -256,7 +256,7 @@ impl<T> DerefMut for ReusableValue<T> {
     }
 }
 
-// like Memory, but for preinitializing each value and reusing
+// Like Memory, but for preinitializing each value and reusing
 pub struct Reusable<T> {
     entries: Mutex<(Slab<()>, Vec<T>)>,
 }
@@ -272,7 +272,7 @@ impl<T> Reusable<T> {
             values.push(init_fn());
         }
 
-        // allocate the slab with fixed capacity
+        // Allocate the slab with fixed capacity
         let s = Slab::with_capacity(capacity);
 
         Self {
@@ -291,7 +291,7 @@ impl<T> Reusable<T> {
     pub fn reserve(self: &std::sync::Arc<Self>) -> Result<ReusableValue<T>, ()> {
         let mut entries = self.entries.lock().unwrap();
 
-        // out of capacity. the number of buffers is fixed
+        // Out of capacity. The number of buffers is fixed
         if entries.0.len() == entries.0.capacity() {
             return Err(());
         }
@@ -346,10 +346,10 @@ impl<T> Rc<T> {
     pub fn get<'a>(&'a self) -> &'a T {
         let e = self.memory.get(self.key).unwrap();
 
-        // get a reference to the inner value
+        // Get a reference to the inner value
         let value = &e.value;
 
-        // entry addresses are guaranteed to be stable once created, and the
+        // Entry addresses are guaranteed to be stable once created, and the
         // entry managed by this Rc won't be dropped until this Rc drops,
         // therefore it is safe to assume the entry managed by this Rc will
         // live at least as long as this Rc, and we can extend the lifetime
@@ -404,10 +404,10 @@ impl<T> Arc<T> {
     pub fn get<'a>(&'a self) -> &'a T {
         let e = self.memory.get(self.key).unwrap();
 
-        // get a reference to the inner value
+        // Get a reference to the inner value
         let value = &e.value;
 
-        // entry addresses are guaranteed to be stable once created, and the
+        // Entry addresses are guaranteed to be stable once created, and the
         // entry managed by this Arc won't be dropped until this Arc drops,
         // therefore it is safe to assume the entry managed by this Arc will
         // live at least as long as this Arc, and we can extend the lifetime
@@ -429,7 +429,7 @@ impl<T> Drop for Arc<T> {
     }
 }
 
-// adapted from https://github.com/rust-lang/rfcs/pull/2802
+// Adapted from https://github.com/rust-lang/rfcs/pull/2802
 pub fn recycle_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
     assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
     assert_eq!(core::mem::align_of::<T>(), core::mem::align_of::<U>());
@@ -490,7 +490,7 @@ impl ReusableVec {
 
         let vec: Vec<T> = Vec::with_capacity(capacity);
 
-        // safety: we must cast to Vec<U> before using, where U has the same
+        // Safety: we must cast to Vec<U> before using, where U has the same
         // size and alignment as T
         let vec: Vec<u8> = unsafe { mem::transmute(vec) };
 
@@ -501,17 +501,17 @@ impl ReusableVec {
         let size = mem::size_of::<U>();
         let align = mem::align_of::<U>();
 
-        // if these don't match, panic. it's up the user to ensure the type
+        // If these don't match, panic. It's up the user to ensure the type
         // is acceptable
         assert_eq!(self.size, size);
         assert_eq!(self.align, align);
 
         let vec: &mut Vec<u8> = &mut self.vec;
 
-        // safety: U has the expected size and alignment
+        // Safety: U has the expected size and alignment
         let vec: &mut Vec<U> = unsafe { mem::transmute(vec) };
 
-        // the vec starts empty, and is always cleared when the handle drops.
+        // The vec starts empty, and is always cleared when the handle drops.
         // get_as_new() borrows self mutably, so it's not possible to create
         // a handle when one already exists
         assert!(vec.is_empty());
@@ -535,7 +535,7 @@ mod tests {
         let mut buf2 = reusable.reserve().unwrap();
         assert_eq!(reusable.len(), 2);
 
-        // no room
+        // No room
         assert!(reusable.reserve().is_err());
 
         buf1[..5].copy_from_slice(b"hello");
@@ -568,7 +568,7 @@ mod tests {
         assert_eq!(memory.len(), 2);
         assert_eq!(memory.entry0_ptr(), p);
 
-        // no room
+        // No room
         assert!(Rc::new(789 as i32, &memory).is_err());
 
         assert_eq!(*e0a.get(), 123);
@@ -603,7 +603,7 @@ mod tests {
         assert_eq!(memory.len(), 2);
         assert_eq!(memory.entry0_ptr(), p);
 
-        // no room
+        // No room
         assert!(Arc::new(789 as i32, &memory).is_err());
 
         assert_eq!(*e0a.get(), 123);

@@ -48,7 +48,7 @@ public:
 		bool jsonpExtendedResponse;
 		int unreportedTime;
 
-		// zhttp
+		// Zhttp
 		int responseCode;
 		int inSeq;
 		int outSeq;
@@ -87,7 +87,7 @@ public:
 	QByteArray channelPrefix;
 	int logLevel;
 	QList<QByteArray> channels;
-	bool trusted; // whether a trusted target was used
+	bool trusted; // Whether a trusted target was used
 	bool useSession;
 	bool responseSent;
 	QVariantList connMaxPackets;

@@ -208,7 +208,7 @@ public:
 	{
 		foreach(SessionItem *si, sessionItems)
 		{
-			// emitting a signal here is gross, but this way the engine cleans up the request sessions
+			// Emitting a signal here is gross, but this way the engine cleans up the request sessions
 			q->requestSessionDestroyed(si->rs, false);
 			delete si->rs;
 			delete si;
@@ -232,11 +232,11 @@ public:
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
 
-		// a retried request already had its received bytes counted earlier
+		// A retried request already had its received bytes counted earlier
 		if(rs->isRetry())
 			si->countClientReceivedBytes = false;
 
-		// internal requests originate internally and should not have client bytes counted
+		// Internal requests originate internally and should not have client bytes counted
 		if(rs->request()->passthroughData().isValid())
 		{
 			si->countClientReceivedBytes = false;
@@ -343,11 +343,11 @@ public:
 		}
 		else if(state == Requesting)
 		{
-			// nothing to do, just wait around until a response comes
+			// Nothing to do, just wait around until a response comes
 		}
 		else if(state == Responding)
 		{
-			// get the session caught up with where we're at
+			// Get the session caught up with where we're at
 
 			si->state = SessionItem::Responding;
 			si->startedResponse = true;
@@ -391,7 +391,7 @@ public:
 
 		if(target.overHttp)
 		{
-			// don't forward WOH requests from client unless trusted
+			// Don't forward WOH requests from client unless trusted
 
 			QByteArray contentType = requestData.headers.get("Content-Type").asQByteArray();
 			int at = contentType.indexOf(';');
@@ -422,7 +422,7 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
-			// for test route, auto-adjust path
+			// For test route, auto-adjust path
 			if(!route.pathBeg.isEmpty())
 			{
 				int pathRemove = route.pathBeg.length();
@@ -494,7 +494,7 @@ public:
 
 		if(!inRequest || (inRequest->request()->isInputFinished() && inRequest->request()->bytesAvailable() == 0))
 		{
-			// no need to track the primary request anymore
+			// No need to track the primary request anymore
 			if(inRequest)
 			{
 				inReqReadyReadConnection.disconnect();
@@ -509,14 +509,14 @@ public:
 
 	void tryRequestRead()
 	{
-		// if the state changed before input finished, then
+		// If the state changed before input finished, then
 		// stop reading input
 		if(state != Requesting)
 			return;
 
 		int maxBytes = buffering ? MAX_STREAM_BUFFER : zhttpRequest->writeBytesAvailable();
 
-		// if we're not buffering, then sync to speed of server
+		// If we're not buffering, then sync to speed of server
 		if(maxBytes == 0)
 			return;
 
@@ -549,7 +549,7 @@ public:
 
 		if(!requestBodySent && inRequest->request()->isInputFinished() && inRequest->request()->bytesAvailable() == 0)
 		{
-			// no need to track the primary request anymore
+			// No need to track the primary request anymore
 			inReqReadyReadConnection.disconnect();
 			inReqErrorConnection.disconnect();
 			inRequest = 0;
@@ -591,12 +591,12 @@ public:
 				}
 				else
 				{
-					// if we already started responding, then only provide an
+					// If we already started responding, then only provide an
 					// error message in debug mode
 
 					if(si->rs->debugEnabled())
 					{
-						// if debug enabled, append the message at the end.
+						// If debug enabled, append the message at the end.
 						// this may ruin the content, but hey it's debug
 						// mode
 						QByteArray buf = "\n\nAccept service unavailable\n";
@@ -607,7 +607,7 @@ public:
 					}
 					else
 					{
-						// if debug not enabled, then the best we can do is
+						// If debug not enabled, then the best we can do is
 						// disconnect
 						si->state = SessionItem::Responded;
 						si->unclean = true;
@@ -622,7 +622,7 @@ public:
 	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
 		zhttpReqConnections = ZhttpReqConnections();
-		// kill the active target request, if any
+		// Kill the active target request, if any
 		zhttpRequest.reset();
 
 		assert(state != Responding);
@@ -655,12 +655,12 @@ public:
 				}
 				else // Responding
 				{
-					// if we already started responding, then only provide a
+					// If we already started responding, then only provide a
 					// rejection message in debug mode
 
 					if(si->rs->debugEnabled())
 					{
-						// if debug enabled, append the message at the end.
+						// If debug enabled, append the message at the end.
 						// this may ruin the content, but hey it's debug
 						// mode
 						QByteArray buf = "\n\n" + debugErrorMessage.toUtf8() + '\n';
@@ -671,7 +671,7 @@ public:
 					}
 					else
 					{
-						// if debug not enabled, then the best we can do is
+						// If debug not enabled, then the best we can do is
 						// disconnect
 						si->state = SessionItem::Responded;
 						si->unclean = true;
@@ -732,10 +732,10 @@ public:
 		}
 	}
 
-	// this method emits signals
+	// This method emits signals
 	void tryResponseRead()
 	{
-		// if we're not buffering, then don't read (instead, sync to slowest
+		// If we're not buffering, then don't read (instead, sync to slowest
 		// receiver before reading again)
 		if(!buffering && pendingWrites())
 			return;
@@ -781,7 +781,7 @@ public:
 
 				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())) && !usingBuildIdFilter)
 				{
-					// sending the initial response from the proxy means
+					// Sending the initial response from the proxy means
 					// we need to do some of the handler's job here
 
 					// NOTE: if we ever need to do more than what's
@@ -789,10 +789,10 @@ public:
 					// to perform these things while still letting
 					// the proxy send the response body
 
-					// no content length
+					// No content length
 					responseData.headers.removeAll("Content-Length");
 
-					// interpret grip-status
+					// Interpret grip-status
 					QByteArray statusHeader = responseData.headers.get("Grip-Status").asQByteArray();
 					if(!statusHeader.isEmpty())
 					{
@@ -814,7 +814,7 @@ public:
 						responseData.code = codeStr.toInt(&_ok);
 						if(!_ok || responseData.code < 0 || responseData.code > 999)
 						{
-							// this may output a misleading error message
+							// This may output a misleading error message
 							cannotAcceptAll();
 							return;
 						}
@@ -825,7 +825,7 @@ public:
 						responseData.reason = reason;
 					}
 
-					// strip any grip headers
+					// Strip any grip headers
 					for(int n = 0; n < responseData.headers.count(); ++n)
 					{
 						const HttpHeader &h = responseData.headers[n];
@@ -843,11 +843,11 @@ public:
 						if(prefixed)
 						{
 							responseData.headers.removeAt(n);
-							--n; // adjust position
+							--n; // Adjust position
 						}
 					}
 
-					// we'll let the proxy send normally, then accept afterwards
+					// We'll let the proxy send normally, then accept afterwards
 					acceptAfterResponding = true;
 				}
 				else
@@ -917,7 +917,7 @@ public:
 		checkIncomingResponseFinished();
 	}
 
-	// this method emits signals
+	// This method emits signals
 	void checkIncomingResponseFinished()
 	{
 		std::weak_ptr<Private> self = q->d;
@@ -935,7 +935,7 @@ public:
 			zhttpReqConnections = ZhttpReqConnections();			
 			zhttpRequest.reset();
 
-			// once the entire response has been received, cut off any new adds
+			// Once the entire response has been received, cut off any new adds
 			if(addAllowed)
 			{
 				addAllowed = false;
@@ -982,7 +982,7 @@ public:
 	{
 		state = Responding;
 
-		// don't relay these headers. their meaning is handled by
+		// Don't relay these headers. Their meaning is handled by
 		// zurl and they only apply to the outgoing hop.
 		responseData.headers.removeAll("Connection");
 		responseData.headers.removeAll("Keep-Alive");
@@ -1011,7 +1011,7 @@ public:
 
 		LogUtil::RequestData rd;
 
-		// only log route id if explicitly set
+		// Only log route id if explicitly set
 		if(route.separateStats)
 			rd.routeId = route.id;
 
@@ -1163,7 +1163,7 @@ public:
 				case ZhttpRequest::ErrorConnect:
 				case ZhttpRequest::ErrorConnectTimeout:
 				case ZhttpRequest::ErrorTls:
-					// it should not be possible to get one of these errors while accepting
+					// It should not be possible to get one of these errors while accepting
 					assert(state == Requesting);
 					tryAgain = true;
 					break;
@@ -1180,7 +1180,7 @@ public:
 		}
 		else if(state == Responding)
 		{
-			// if we're already responding, then we can't reply with an error
+			// If we're already responding, then we can't reply with an error
 			destroyAll();
 		}
 	}
@@ -1234,7 +1234,7 @@ public:
 		}
 		else if(wasInputRequest)
 		{
-			// this should never happen. for there to be more than
+			// This should never happen. For there to be more than
 			// one SessionItem, inRequest must be 0.
 			assert(0);
 
@@ -1334,10 +1334,10 @@ public:
 
 			if(!statsManager->connectionSendEnabled())
 			{
-				// flush max. the count will include the connections we just unregistered
+				// Flush max. The count will include the connections we just unregistered
 				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
-				// flush max again to get the count without the connections
+				// Flush max again to get the count without the connections
 				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
@@ -1356,11 +1356,11 @@ public:
 
 		assert(si->state != SessionItem::Errored);
 
-		// flag that we should stop attempting to respond
+		// Flag that we should stop attempting to respond
 		si->state = SessionItem::Errored;
 		si->bytesToWrite = -1;
 
-		// don't destroy the RequestSession here. a finished signal will arrive next.
+		// Don't destroy the RequestSession here. A finished signal will arrive next.
 	}
 
 	void rs_headerBytesSent(int count, RequestSession *rs)
@@ -1395,7 +1395,7 @@ public:
 				foreach(SessionItem *si, sessionItems)
 					logFinished(si, true);
 
-				// the requests were paused, so deleting them will leave the peer sessions active
+				// The requests were paused, so deleting them will leave the peer sessions active
 
 				QList<RequestSession*> toDestroy;
 				foreach(SessionItem *si, sessionItems)
@@ -1425,7 +1425,7 @@ public:
 			{
 				if(acceptAfterResponding)
 				{
-					// wake up receivers and append
+					// Wake up receivers and append
 					foreach(SessionItem *si, sessionItems)
 					{
 						si->state = SessionItem::Responded;
@@ -1442,7 +1442,7 @@ public:
 				{
 					if(rdata.response.code != -1)
 					{
-						// wake up receivers
+						// Wake up receivers
 						foreach(SessionItem *si, sessionItems)
 						{
 							si->state = SessionItem::WaitingForResponse;
@@ -1460,7 +1460,7 @@ public:
 		}
 		else
 		{
-			// wake up receivers and reject
+			// Wake up receivers and reject
 
 			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == QMetaType::QByteArray)
 			{

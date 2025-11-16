@@ -74,7 +74,7 @@
 // make sure this is not larger than Mongrel2's limits.handler_targets
 #define M2_HANDLER_TARGETS_MAX 128
 
-// this doesn't have to match the peer, but we'll set a reasonable number
+// This doesn't have to match the peer, but we'll set a reasonable number
 #define ZHTTP_IDS_MAX 128
 
 //#define CONTROL_PORT_DEBUG
@@ -86,7 +86,7 @@ static void trimlist(QStringList *list)
 		if((*list)[n].isEmpty())
 		{
 			list->removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 }
@@ -271,7 +271,7 @@ public:
 		}
 	};
 
-	// can be used for either m2 or zhttp
+	// Can be used for either m2 or zhttp
 	typedef QPair<QByteArray, QByteArray> Rid;
 
 	class Session;
@@ -306,13 +306,13 @@ public:
 		int identIndex;
 		QByteArray id;
 		int confirmedBytesWritten;
-		int packetsPending; // count of packets sent to m2 not yet ack'd
+		int packetsPending; // Count of packets sent to m2 not yet ack'd
 		Session *session;
 		bool isNew;
 		bool continuation;
 		LayerTracker bodyTracker;
 		LayerTracker packetTracker;
-		QList<M2PendingOutItem> pendingOutItems; // packets yet to send
+		QList<M2PendingOutItem> pendingOutItems; // Packets yet to send
 		bool flowControl;
 		bool waitForAllWritten;
 		bool outCreditsEnabled;
@@ -347,7 +347,7 @@ public:
 			}
 			else
 			{
-				// if we aren't using outCredits, then limit pending packets
+				// If we aren't using outCredits, then limit pending packets
 				// to hardcoded m2 value
 				if(packetsPending < M2_PENDING_MAX)
 					return true;
@@ -363,16 +363,16 @@ public:
 		Mode mode;
 		qint64 lastActive;
 		QByteArray errorCondition;
-		QByteArray acceptToken; // for websocket
-		bool downClosed; // for websocket
-		bool upClosed; // for websockets
+		QByteArray acceptToken; // For websocket
+		bool downClosed; // For websocket
+		bool upClosed; // For websockets
 		QString method;
 		bool responseHeadersOnly; // HEAD, 204, 304
 		qint64 lastRefresh;
 		int refreshBucket;
 		bool pendingCancel;
 
-		// m2 stuff
+		// M2 stuff
 		M2Connection *conn;
 		bool persistent;
 		bool allowChunked;
@@ -384,7 +384,7 @@ public:
 		QList<ZhttpRequestPacket> pendingInPackets;
 		bool inFinished;
 
-		// zhttp stuff
+		// Zhttp stuff
 		QByteArray id;
 		QByteArray zhttpAddress;
 		bool sentResponseHeader;
@@ -677,7 +677,7 @@ public:
 
 			ZmqSocket *sock = new ZmqSocket(ZmqSocket::Dealer);
 			sock->setShutdownWaitTime(0);
-			sock->setHwm(1); // queue up 1 outstanding request at most
+			sock->setHwm(1); // Queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
 			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this, sock));
 
@@ -842,7 +842,7 @@ public:
 	{
 		if(s->conn)
 		{
-			s->conn->session = 0; // unlink the M2Connection so that it may be reused
+			s->conn->session = 0; // Unlink the M2Connection so that it may be reused
 			if(s->conn->packetsPending > 0 || !s->conn->pendingOutItems.isEmpty())
 				s->conn->waitForAllWritten = true;
 			sessionsByM2Rid.remove(Rid(m2_send_idents[s->conn->identIndex], s->conn->id));
@@ -1027,7 +1027,7 @@ public:
 
 	void m2_queueHeaders(M2Connection *conn, const QByteArray &headerData)
 	{
-		// only try writing if this item would be next
+		// Only try writing if this item would be next
 		bool tryWrite = conn->pendingOutItems.isEmpty();
 
 		M2PendingOutItem item(M2PendingOutItem::Headers);
@@ -1040,11 +1040,11 @@ public:
 
 	void m2_queueResponse(M2Connection *conn, const QByteArray &data, bool chunked)
 	{
-		// skip if the result would send no bytes
+		// Skip if the result would send no bytes
 		if(data.isEmpty() && !chunked)
 			return;
 
-		// only try writing if this item would be next
+		// Only try writing if this item would be next
 		bool tryWrite = conn->pendingOutItems.isEmpty();
 
 		M2PendingOutItem *item = 0;
@@ -1053,7 +1053,7 @@ public:
 			M2PendingOutItem &last = conn->pendingOutItems.last();
 			bool lastIsZeroChunk = (last.chunked && last.data.isEmpty());
 
-			// see if we can merge with the previous item
+			// See if we can merge with the previous item
 			if(last.type == M2PendingOutItem::Response && last.chunked == chunked && !lastIsZeroChunk)
 				item = &last;
 		}
@@ -1072,7 +1072,7 @@ public:
 
 	void m2_queueFrame(M2Connection *conn, const QByteArray &data, int contentSize)
 	{
-		// only try writing if this item would be next
+		// Only try writing if this item would be next
 		bool tryWrite = conn->pendingOutItems.isEmpty();
 
 		M2PendingOutItem item(M2PendingOutItem::Frame);
@@ -1086,7 +1086,7 @@ public:
 
 	void m2_queueClose(M2Connection *conn)
 	{
-		// only try writing if this item would be next
+		// Only try writing if this item would be next
 		bool tryWrite = conn->pendingOutItems.isEmpty();
 
 		conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Close);
@@ -1095,7 +1095,7 @@ public:
 			m2_tryWriteQueued(conn);
 	}
 
-	// return true if connection was deleted as a result of writing queued items
+	// Return true if connection was deleted as a result of writing queued items
 	bool m2_tryWriteQueued(M2Connection *conn)
 	{
 		while(!conn->pendingOutItems.isEmpty() && conn->canWrite())
@@ -1117,23 +1117,23 @@ public:
 			}
 			else if(item->type == M2PendingOutItem::Response)
 			{
-				// only write what we're allowed to
+				// Only write what we're allowed to
 				int maxSize;
 				if(conn->outCreditsEnabled)
 				{
 					if(item->chunked)
-						maxSize = conn->outCredits - 16; // make room for chunked header
+						maxSize = conn->outCredits - 16; // Make room for chunked header
 					else
 						maxSize = conn->outCredits;
 				}
 				else
 				{
-					maxSize = 200000; // some reasonable max
+					maxSize = 200000; // Some reasonable max
 				}
 
 				if(maxSize <= 0)
 				{
-					// can't write at this time
+					// Can't write at this time
 					break;
 				}
 
@@ -1177,7 +1177,7 @@ public:
 			{
 				conn->pendingOutItems.removeFirst();
 
-				m2_writeClose(conn); // this will delete the connection
+				m2_writeClose(conn); // This will delete the connection
 				return true;
 			}
 		}
@@ -1203,13 +1203,13 @@ public:
 
 	void m2_writeErrorClose(const QByteArray &sender, const QByteArray &id)
 	{
-		// same as closing. in the future we may want to send something interesting first.
+		// Same as closing. In the future we may want to send something interesting first.
 		m2_writeClose(sender, id);
 	}
 
 	void m2_writeErrorClose(M2Connection *conn)
 	{
-		// same as closing. in the future we may want to send something interesting first.
+		// Same as closing. In the future we may want to send something interesting first.
 		m2_writeClose(conn);
 	}
 
@@ -1285,7 +1285,7 @@ public:
 
 		QVariant rows = vhash["rows"];
 
-		// once we get at least one successful response then we flag the port as working
+		// Once we get at least one successful response then we flag the port as working
 		if(!controlPorts[index].works)
 		{
 			controlPorts[index].works = true;
@@ -1315,13 +1315,13 @@ public:
 
 				handleConnectionBytesWritten(conn, written, true);
 
-				// if we had any pending writes to make, now's the time.
+				// If we had any pending writes to make, now's the time.
 				// note: this might delete the connection but that's fine
 				m2_tryWriteQueued(conn);
 			}
 		}
 
-		// any connections missing?
+		// Any connections missing?
 		QList<M2Connection*> gone;
 		QHashIterator<Rid, M2Connection*> it(m2ConnectionsByRid);
 		while(it.hasNext())
@@ -1330,7 +1330,7 @@ public:
 			M2Connection *conn = it.value();
 			if(conn->identIndex == index)
 			{
-				// only check for missing connections that aren't flagged
+				// Only check for missing connections that aren't flagged
 				if(!conn->isNew)
 				{
 					if(!ids.contains(conn->id))
@@ -1338,7 +1338,7 @@ public:
 				}
 				else
 				{
-					// clear the flag so the connection gets processed next time
+					// Clear the flag so the connection gets processed next time
 					conn->isNew = false;
 				}
 			}
@@ -1355,7 +1355,7 @@ public:
 		}
 	}
 
-	// return true if connection was deleted as a result of handling bytes written
+	// Return true if connection was deleted as a result of handling bytes written
 	void handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
 	{
 		int bodyWritten = conn->bodyTracker.finished(written);
@@ -1370,7 +1370,7 @@ public:
 		{
 			Session *s = conn->session;
 
-			// update lastActive
+			// Update lastActive
 			qint64 now = QDateTime::currentMSecsSinceEpoch();
 			sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
 			s->lastActive = now;
@@ -1389,7 +1389,7 @@ public:
 		if(s->inHandoff)
 			return;
 
-		// address could be empty here if we're handling write of non-sequenced response
+		// Address could be empty here if we're handling write of non-sequenced response
 		if(giveCredits && !s->zhttpAddress.isEmpty())
 		{
 			ZhttpRequestPacket zreq;
@@ -1402,13 +1402,13 @@ public:
 
 	void endSession(Session *s, const QByteArray &errorCondition = QByteArray())
 	{
-		// if we are in handoff or haven't received a worker ack, then queue the state
+		// If we are in handoff or haven't received a worker ack, then queue the state
 		if(s->inHandoff || s->zhttpAddress.isEmpty())
 		{
 			if(!errorCondition.isEmpty())
 				s->errorCondition = errorCondition;
 
-			// keep the session around
+			// Keep the session around
 			unlinkConnection(s);
 		}
 		else
@@ -1495,7 +1495,7 @@ public:
 		{
 			log_debug("%s: received message for unknown request id, canceling", logprefix);
 
-			// if this was not an error packet, send cancel
+			// If this was not an error packet, send cancel
 			if(!isErrorPacket(zresp) && !zresp.from.isEmpty())
 			{
 				ZhttpRequestPacket zreq;
@@ -1508,15 +1508,15 @@ public:
 			return;
 		}
 
-		// mode will always match here
+		// Mode will always match here
 		assert(s->mode == mode);
 
 		if(s->inSeq == 0)
 		{
-			// are we expecting a sequence of packets after the first?
+			// Are we expecting a sequence of packets after the first?
 			if((!isErrorPacket(zresp) && zresp.type != ZhttpResponsePacket::Data) || (zresp.type == ZhttpResponsePacket::Data && zresp.more))
 			{
-				// sequence must have from address
+				// Sequence must have from address
 				if(zresp.from.isEmpty())
 				{
 					log_warning("%s: received first response of sequence with no from address, canceling", logprefix);
@@ -1538,11 +1538,11 @@ public:
 			}
 			else
 			{
-				// if not sequenced, then there might be a from address
+				// If not sequenced, then there might be a from address
 				if(!zresp.from.isEmpty())
 					s->zhttpAddress = zresp.from.asQByteArray();
 
-				// if not sequenced, but seq is provided, then it must be 0
+				// If not sequenced, but seq is provided, then it must be 0
 				if(seq != -1 && seq != 0)
 				{
 					log_warning("%s: received response out of sequence (got=%d, expected=-1,0), canceling", logprefix, seq);
@@ -1571,12 +1571,12 @@ public:
 				return;
 			}
 
-			// if a new from address is provided, update our copy
+			// If a new from address is provided, update our copy
 			if(!zresp.from.isEmpty())
 				s->zhttpAddress = zresp.from.asQByteArray();
 		}
 
-		// only bump sequence if seq was provided
+		// Only bump sequence if seq was provided
 		if(seq != -1)
 			++(s->inSeq);
 
@@ -1584,7 +1584,7 @@ public:
 
 		if(s->lastRefresh < 0 && !s->zhttpAddress.isEmpty())
 		{
-			// once we have the peer's address, set up refresh
+			// Once we have the peer's address, set up refresh
 
 			s->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
@@ -1593,7 +1593,7 @@ public:
 			sessionRefreshBuckets[s->refreshBucket] += s;
 		}
 
-		// update lastActive
+		// Update lastActive
 		sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
 		s->lastActive = now;
 		sessionsByLastActive.insert(QPair<qint64, Session*>(s->lastActive, s), s);
@@ -1601,10 +1601,10 @@ public:
 		if(s->pendingCancel)
 			return;
 
-		// a session without a connection is just waiting to report error
+		// A session without a connection is just waiting to report error
 		if(!s->conn)
 		{
-			// if we were in handoff, it's okay to send right now since we'd
+			// If we were in handoff, it's okay to send right now since we'd
 			// be clearing the handoff state later on in this method anyway
 			if(!s->zhttpAddress.isEmpty())
 			{
@@ -1623,7 +1623,7 @@ public:
 			return;
 		}
 
-		// if peer supports multi feature then flag it on the session
+		// If peer supports multi feature then flag it on the session
 		bool multiWasTurnedOn = false;
 		if(!s->multi && zresp.multi)
 		{
@@ -1633,23 +1633,23 @@ public:
 
 		if(s->inHandoff)
 		{
-			// receiving any message means handoff is complete
+			// Receiving any message means handoff is complete
 			s->inHandoff = false;
 
-			// refresh would have already been set up once if we are here
+			// Refresh would have already been set up once if we are here
 			assert(s->lastRefresh >= 0);
 
 			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
 			s->refreshBucket = smallestSessionRefreshBucket();
 			sessionRefreshBuckets[s->refreshBucket] += s;
 
-			// in order to have been in a handoff state, we would have
+			// In order to have been in a handoff state, we would have
 			// had to receive a from address sometime earlier, so it
 			// should be safe to call zhttp_out_write with session.
 
 			if(multiWasTurnedOn)
 			{
-				// acknowledge the feature
+				// Acknowledge the feature
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::KeepAlive;
 				zreq.multi = true;
@@ -1663,8 +1663,8 @@ public:
 					ZhttpRequestPacket zreq;
 					zreq.type = ZhttpRequestPacket::Data;
 
-					// send credits too, if needed (though this probably can't happen,
-					// since http data flows only in one direction at a time. we
+					// Send credits too, if needed (though this probably can't happen,
+					// since http data flows only in one direction at a time. We
 					// can't have pending request body data while at the same
 					// time be acking received response body data).
 					if(s->pendingInCredits > 0)
@@ -1684,7 +1684,7 @@ public:
 				{
 					ZhttpRequestPacket zreq = s->pendingInPackets.takeFirst();
 
-					// send credits too, if needed
+					// Send credits too, if needed
 					if(zreq.type == ZhttpRequestPacket::Data && s->pendingInCredits > 0)
 					{
 						zreq.credits = s->pendingInCredits;
@@ -1695,7 +1695,7 @@ public:
 				}
 			}
 
-			// if we didn't send credits as part of a data packet, we'll do them now
+			// If we didn't send credits as part of a data packet, we'll do them now
 			if(s->pendingInCredits > 0)
 			{
 				ZhttpRequestPacket zreq;
@@ -1710,7 +1710,7 @@ public:
 		{
 			log_debug("zhttp: id=%s response data size=%d%s", s->id.data(), zresp.body.size(), zresp.more ? " M" : "");
 
-			// data packet may have credits
+			// Data packet may have credits
 			if(zresp.credits > 0)
 			{
 				QVariantHash args;
@@ -1722,12 +1722,12 @@ public:
 			{
 				bool firstDataPacket = !s->sentResponseHeader;
 
-				// respond with data if we have body data or this is the first packet
+				// Respond with data if we have body data or this is the first packet
 				if(!zresp.body.isEmpty() || firstDataPacket)
 				{
 					if(firstDataPacket)
 					{
-						// use flow control if the control port works and the response is more than one packet
+						// Use flow control if the control port works and the response is more than one packet
 						if((s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].works) && zresp.more)
 							s->conn->flowControl = true;
 						else
@@ -1743,7 +1743,7 @@ public:
 							}
 							else
 							{
-								// disable persistence
+								// Disable persistence
 								s->persistent = false;
 								s->respondKeepAlive = false;
 							}
@@ -1794,7 +1794,7 @@ public:
 
 							bool persistent = s->persistent;
 
-							// cancel and destroy session
+							// Cancel and destroy session
 							M2Connection *conn = s->conn;
 							if(!s->zhttpAddress.isEmpty())
 							{
@@ -1813,7 +1813,7 @@ public:
 
 					if(!zresp.more && s->chunked)
 					{
-						// send closing chunk
+						// Send closing chunk
 						m2_queueResponse(s->conn, QByteArray(), true);
 					}
 				}
@@ -1821,7 +1821,7 @@ public:
 				{
 					if(!zresp.more && s->chunked)
 					{
-						// send closing chunk
+						// Send closing chunk
 						m2_queueResponse(s->conn, QByteArray(), true);
 					}
 				}
@@ -1878,7 +1878,7 @@ public:
 					{
 						if(zresp.contentType == "binary")
 							opcode = 2;
-						else // text
+						else // Text
 							opcode = 1;
 					}
 
@@ -1938,7 +1938,7 @@ public:
 		}
 		else if(zresp.type == ZhttpResponsePacket::KeepAlive)
 		{
-			// nothing to do
+			// Nothing to do
 		}
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
@@ -1951,7 +1951,7 @@ public:
 			sessionRefreshBuckets[s->refreshBucket].remove(s);
 			sessionsByLastRefresh.remove(QPair<qint64, Session*>(s->lastRefresh, s));
 
-			// whoever picks up after handoff can turn this on
+			// Whoever picks up after handoff can turn this on
 			s->multi = false;
 
 			ZhttpRequestPacket zreq;
@@ -2005,11 +2005,11 @@ public:
 	{
 		QHash<int, QList<QByteArray> > connIdListBySender;
 
-		// process the current bucket
+		// Process the current bucket
 		const QSet<M2Connection*> &bucket = m2ConnectionRefreshBuckets[currentM2RefreshBucket];
 		foreach(M2Connection *conn, bucket)
 		{
-			// move to the end
+			// Move to the end
 			QPair<qint64, M2Connection*> k(conn->lastRefresh, conn);
 			m2ConnectionsByLastRefresh.remove(k);
 			conn->lastRefresh = now;
@@ -2021,7 +2021,7 @@ public:
 			QList<QByteArray> &connIdList = connIdListBySender[conn->identIndex];
 			connIdList += conn->id;
 
-			// if we're at max, send out now
+			// If we're at max, send out now
 			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
 			{
 				QVariantHash args;
@@ -2033,7 +2033,7 @@ public:
 			}
 		}
 
-		// process any others
+		// Process any others
 		qint64 threshold = now - M2_CONNECTION_MUST_PROCESS;
 		while(!m2ConnectionsByLastRefresh.isEmpty())
 		{
@@ -2043,7 +2043,7 @@ public:
 			if(conn->lastRefresh > threshold)
 				break;
 
-			// move to the end
+			// Move to the end
 			m2ConnectionsByLastRefresh.erase(it);
 			conn->lastRefresh = now;
 			m2ConnectionsByLastRefresh.insert(QPair<qint64, M2Connection*>(conn->lastRefresh, conn), conn);
@@ -2054,7 +2054,7 @@ public:
 			QList<QByteArray> &connIdList = connIdListBySender[conn->identIndex];
 			connIdList += conn->id;
 
-			// if we're at max, send out now
+			// If we're at max, send out now
 			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
 			{
 				QVariantHash args;
@@ -2066,7 +2066,7 @@ public:
 			}
 		}
 
-		// send last packet
+		// Send last packet
 		QHashIterator<int, QList<QByteArray> > cit(connIdListBySender);
 		while(cit.hasNext())
 		{
@@ -2089,15 +2089,15 @@ public:
 
 	void refreshSessions(qint64 now)
 	{
-		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // index corresponds to mode
+		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // Index corresponds to mode
 
-		// process the current bucket
+		// Process the current bucket
 		const QSet<Session*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
 		foreach(Session *s, bucket)
 		{
 			assert(!s->inHandoff && !s->zhttpAddress.isEmpty());
 
-			// move to the end
+			// Move to the end
 			QPair<qint64, Session*> k(s->lastRefresh, s);
 			sessionsByLastRefresh.remove(k);
 			s->lastRefresh = now;
@@ -2111,7 +2111,7 @@ public:
 				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
 				sessionList += s;
 
-				// if we're at max, send out now
+				// If we're at max, send out now
 				if(sessionList.count() >= ZHTTP_IDS_MAX)
 				{
 					ZhttpRequestPacket zreq;
@@ -2127,7 +2127,7 @@ public:
 			}
 			else
 			{
-				// session doesn't support sending with multiple ids
+				// Session doesn't support sending with multiple ids
 				ZhttpRequestPacket zreq;
 				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
@@ -2136,7 +2136,7 @@ public:
 			}
 		}
 
-		// process any others
+		// Process any others
 		qint64 threshold = now - ZHTTP_MUST_PROCESS;
 		while(!sessionsByLastRefresh.isEmpty())
 		{
@@ -2148,7 +2148,7 @@ public:
 
 			assert(!s->inHandoff && !s->zhttpAddress.isEmpty());
 
-			// move to the end
+			// Move to the end
 			sessionsByLastRefresh.erase(it);
 			s->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
@@ -2161,7 +2161,7 @@ public:
 				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
 				sessionList += s;
 
-				// if we're at max, send out now
+				// If we're at max, send out now
 				if(sessionList.count() >= ZHTTP_IDS_MAX)
 				{
 					ZhttpRequestPacket zreq;
@@ -2177,7 +2177,7 @@ public:
 			}
 			else
 			{
-				// session doesn't support sending with multiple ids
+				// Session doesn't support sending with multiple ids
 				ZhttpRequestPacket zreq;
 				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
@@ -2186,7 +2186,7 @@ public:
 			}
 		}
 
-		// send last packets
+		// Send last packets
 		for(int n = 0; n < 2; ++n)
 		{
 			Mode mode = (Mode)n;
@@ -2240,7 +2240,7 @@ public:
 		else
 			zhttpCancelMeter = 0;
 
-		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // index corresponds to mode
+		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // Index corresponds to mode
 
 		while(!sessionsToCancel.isEmpty() && sent < ZHTTP_CANCEL_PER_REFRESH)
 		{
@@ -2256,7 +2256,7 @@ public:
 				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
 				sessionList += s;
 
-				// if we're at max, send out now
+				// If we're at max, send out now
 				if(sessionList.count() >= ZHTTP_IDS_MAX)
 				{
 					ZhttpRequestPacket zreq;
@@ -2278,7 +2278,7 @@ public:
 			}
 			else
 			{
-				// session doesn't support sending with multiple ids
+				// Session doesn't support sending with multiple ids
 				ZhttpRequestPacket zreq;
 				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
@@ -2291,7 +2291,7 @@ public:
 			++sent;
 		}
 
-		// send last packets
+		// Send last packets
 		for(int n = 0; n < 2; ++n)
 		{
 			Mode mode = (Mode)n;
@@ -2423,11 +2423,11 @@ public:
 						statusTimer->start();
 				}
 
-				// if we were in the middle of requesting control info when this
+				// If we were in the middle of requesting control info when this
 				// http request arrived, then there's a chance the control
 				// response won't account for this request (for example if the
 				// control response was generated and was in the middle of being
-				// delivered when this http request arrived). we'll flag the
+				// delivered when this http request arrived). We'll flag the
 				// connection as "new" in this case, so in the control response
 				// handler we know to skip over it until the next control
 				// request.
@@ -2445,19 +2445,19 @@ public:
 		}
 		else
 		{
-			// if packet contained credits, handle them now
+			// If packet contained credits, handle them now
 			if(conn->outCreditsEnabled && mreq.downloadCredits > 0)
 			{
 				conn->outCredits += mreq.downloadCredits;
 				handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
 
-				// if we had any pending writes to make, now's the time
+				// If we had any pending writes to make, now's the time
 				bool connDeleted = m2_tryWriteQueued(conn);
 				if(connDeleted)
 					return;
 			}
 
-			// if the packet only held credits, then there's nothing else to do
+			// If the packet only held credits, then there's nothing else to do
 			if(mreq.type == M2RequestPacket::Credits)
 				return;
 		}
@@ -2730,7 +2730,7 @@ public:
 
 					if(s->downClosed && s->upClosed)
 					{
-						destroySession(s); // we aren't in handoff so this is safe
+						destroySession(s); // We aren't in handoff so this is safe
 						m2_queueClose(conn);
 					}
 				}
@@ -2836,10 +2836,10 @@ private slots:
 			if(c.state == ControlPort::Disabled)
 				continue;
 
-			// if idle or expired, make request
+			// If idle or expired, make request
 			if(c.state == ControlPort::Idle || (c.state == ControlPort::ExpectingResponse && c.reqStartTime + CONTROL_REQUEST_EXPIRE <= now))
 			{
-				// query m2 for connection info (to track bytes written)
+				// Query m2 for connection info (to track bytes written)
 				QVariantHash cmdArgs;
 				cmdArgs["what"] = QByteArray("net");
 				c.state = ControlPort::ExpectingResponse;
@@ -2869,7 +2869,7 @@ private slots:
 	{
 		log_info("stopping...");
 
-		// remove the handler, so if we get another signal then we crash out
+		// Remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
 		log_info("stopped");

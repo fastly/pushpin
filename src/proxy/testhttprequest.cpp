@@ -151,7 +151,7 @@ TestHttpRequest::~TestHttpRequest()
 
 QHostAddress TestHttpRequest::peerAddress() const
 {
-	// this class is client only
+	// This class is client only
 	return QHostAddress();
 }
 
@@ -208,7 +208,7 @@ void TestHttpRequest::beginResponse(int code, const QByteArray &reason, const Ht
 	Q_UNUSED(reason);
 	Q_UNUSED(headers);
 
-	// this class is client only
+	// This class is client only
 	assert(0);
 }
 
@@ -273,7 +273,7 @@ bool TestHttpRequest::isOutputFinished() const
 
 bool TestHttpRequest::isErrored() const
 {
-	// this class can't fail
+	// This class can't fail
 	return false;
 }
 
