@@ -21,7 +21,7 @@ use std::ffi::{c_char, CString};
 use std::path::PathBuf;
 use std::slice;
 
-// Struct to hold the command line arguments
+/// Struct to hold the command line arguments
 #[derive(Parser, Debug)]
 #[command(
     name= "pushpin-proxy",

@@ -23,6 +23,7 @@
 #ifndef XFFRULE_H
 #define XFFRULE_H
 
+/// Configuration for X-Forwarded-For header manipulation
 class XffRule
 {
 public:

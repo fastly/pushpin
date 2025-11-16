@@ -31,6 +31,7 @@
 #include "inspectdata.h"
 #include "zhttprequest.h"
 
+/// Data container for HTTP accept request/response info passed to handler
 class AcceptData
 {
 public:

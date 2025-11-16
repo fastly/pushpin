@@ -30,6 +30,7 @@
 class AcceptData;
 class ZrpcManager;
 
+/// Manages handoff of Accept-type HTTP request to the handler
 class AcceptRequest : public ZrpcRequest
 {
 public:

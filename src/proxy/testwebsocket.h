@@ -28,6 +28,7 @@
 
 class ZhttpManager;
 
+/// WebSocket instance for testing that simulates WebSocket behavior
 class TestWebSocket : public WebSocket
 {
 public:
