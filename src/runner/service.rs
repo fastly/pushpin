@@ -28,9 +28,9 @@ use url::Url;
 
 /// Service errors that can be sent between threads.
 pub enum ServiceError {
-    /// Received termination signal (SIGINT/SIGTERM).
+    // Received termination signal (SIGINT/SIGTERM).
     TermSignal(String),
-    /// Service thread encountered an error.
+    // Service thread encountered an error.
     ThreadError(String),
 }
 
@@ -383,7 +383,6 @@ impl RunnerService for PushpinProxyService {
     }
 }
 
-///
 pub struct PushpinHandlerService {
     args: Vec<String>,
     pub service: Service,
