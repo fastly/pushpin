@@ -68,6 +68,18 @@ async fn test_mtls_configuration() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/config/routes");
     std::fs::copy(&generated_routes, &pushpin_routes).expect("Failed to copy routes file");
 
+    // Verify the routes file contains backendinfo reference
+    let routes_content =
+        std::fs::read_to_string(&generated_routes).expect("Failed to read generated routes file");
+    assert!(
+        routes_content.contains("backendinfo="),
+        "Routes file should contain backendinfo path"
+    );
+    assert!(
+        routes_content.contains("mtls-backend"),
+        "Routes file should reference the mTLS backend"
+    );
+
     // Start pushpin
     let pushpin_guard = spawn_pushpin();
     cleanup.set_pushpin(pushpin_guard);
@@ -163,7 +175,7 @@ impl Drop for TestCleanup {
             let _ = pushpin.wait();
         }
 
-        // Abort async tasks
+        // Abort async server task
         if let Some(handle) = self.server_handle.take() {
             handle.abort();
         }
@@ -194,7 +206,7 @@ fn spawn_loader(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect(&format!("Failed to spawn loader at {:?}", loader_path));
+        .unwrap_or_else(|e| panic!("Failed to spawn loader at {:?}: {}", loader_path, e));
 
     set_stdout_stderr("loader", &mut child);
 
@@ -207,7 +219,7 @@ fn spawn_pushpin() -> std::process::Child {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect(&format!("Failed to spawn pushpin"));
+        .expect("Failed to spawn pushpin");
 
     set_stdout_stderr("pushpin", &mut child);
 
@@ -264,42 +276,53 @@ async fn wait_for_manifest_and_backends(
     expected_backends: Vec<String>,
     timeout_dur: Duration,
 ) -> Result<(), String> {
+    type RequestSnapshot = (String, String, Vec<(String, String)>);
     let start = tokio::time::Instant::now();
 
     loop {
-        let guard = logs.lock().unwrap();
+        let (found_service, found_backends, should_timeout, snapshot) = {
+            let guard = logs.lock().unwrap();
 
-        let found_service = guard.iter().any(|r| {
-            r.path == "/v1/config/service"
-                && r.headers
-                    .iter()
-                    .any(|(k, v)| k.to_lowercase() == "fetchly-consumer" && !v.is_empty())
-                && r.headers.iter().any(|(k, v)| {
-                    k.to_lowercase() == "accept" && v.to_lowercase().contains("application/json")
-                })
-        });
+            let found_service = guard.iter().any(|r| {
+                r.path == "/v1/config/service"
+                    && r.headers
+                        .iter()
+                        .any(|(k, v)| k.to_lowercase() == "fetchly-consumer" && !v.is_empty())
+                    && r.headers.iter().any(|(k, v)| {
+                        k.to_lowercase() == "accept"
+                            && v.to_lowercase().contains("application/json")
+                    })
+            });
 
-        let mut found_backends = true;
-        for expected in expected_backends.iter() {
-            if !guard.iter().any(|r| r.path == *expected) {
-                found_backends = false;
-                break;
+            let mut found_backends = true;
+            for expected in expected_backends.iter() {
+                if !guard.iter().any(|r| r.path == *expected) {
+                    found_backends = false;
+                    break;
+                }
             }
-        }
+
+            let should_timeout = tokio::time::Instant::now().duration_since(start) > timeout_dur;
+
+            let snapshot: Vec<RequestSnapshot> = if should_timeout {
+                guard
+                    .iter()
+                    .map(|r| (r.method.clone(), r.path.clone(), r.headers.clone()))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            (found_service, found_backends, should_timeout, snapshot)
+        };
 
         if found_service && found_backends {
             return Ok(());
         }
 
-        if tokio::time::Instant::now().duration_since(start) > timeout_dur {
-            let snapshot: Vec<(String, String, Vec<(String, String)>)> = guard
-                .iter()
-                .map(|r| (r.method.clone(), r.path.clone(), r.headers.clone()))
-                .collect();
+        if should_timeout {
             return Err(format!("timeout; logs snapshot: {:?}", snapshot));
         }
-
-        drop(guard);
         sleep(Duration::from_millis(50)).await;
     }
 }
@@ -309,7 +332,10 @@ async fn wait_for_pushpin(timeout: Duration) -> Result<(), String> {
 
     loop {
         // Try to connect to Pushpin's port
-        if let Ok(_) = tokio::net::TcpStream::connect("127.0.0.1:7999").await {
+        if tokio::net::TcpStream::connect("127.0.0.1:7999")
+            .await
+            .is_ok()
+        {
             println!("[test] Pushpin is ready!");
             return Ok(());
         }
@@ -412,8 +438,7 @@ fn get_service_response() -> Response<Full<Bytes>> {
 }
 
 fn get_backend_response(service_id: &str, version: &str) -> Response<Full<Bytes>> {
-    // For now, return mTLS-enabled backend for testing
-    let body = serde_json::to_vec(&get_mock_backends_with_mtls(&service_id, &version)).unwrap();
+    let body = serde_json::to_vec(&get_mock_backends_with_mtls(service_id, version)).unwrap();
     Response::builder()
         .status(200)
         .header("Content-Type", "application/json")
@@ -435,18 +460,6 @@ fn get_mock_services() -> Value {
                 }
             }
         }
-    })
-}
-
-fn _get_mock_backends(_service_id: &str, _version: &str) -> Value {
-    json!({
-        "backends": [
-            {
-                "name": "backend1",
-                "address": "127.0.0.1",
-                "port": 8080
-            }
-        ]
     })
 }
 
