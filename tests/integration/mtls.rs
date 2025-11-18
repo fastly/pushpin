@@ -1,15 +1,16 @@
+use crate::common::{RequestRecord, TEST_CERT, TEST_KEY};
+
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::Response;
 use hyperlocal::UnixListenerExt;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslVerifyMode};
 use serde_json::json;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::net::{TcpListener, UnixListener};
+use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
@@ -22,34 +23,6 @@ use tokio::time::sleep;
 #[tokio::test(flavor = "multi_thread")]
 async fn test_mtls_configuration() {
     let mut cleanup = TestCleanup::new();
-
-    // Write test certificates to temp directory for the mTLS backend
-    let cert_path = std::env::temp_dir().join("test_server_cert.pem");
-    let key_path = std::env::temp_dir().join("test_server_key.pem");
-    let ca_path = std::env::temp_dir().join("test_ca_cert.pem");
-
-    std::fs::write(&cert_path, TEST_CERT).expect("Failed to write test cert");
-    std::fs::write(&key_path, TEST_KEY).expect("Failed to write test key");
-    std::fs::write(&ca_path, TEST_CERT).expect("Failed to write test CA cert");
-
-    cleanup.add_file(cert_path);
-    cleanup.add_file(key_path);
-    cleanup.add_file(ca_path);
-
-    // Start mTLS backend server
-    let backend_logs = Arc::new(Mutex::new(Vec::new()));
-    let (backend_ready_tx, backend_ready_rx) = oneshot::channel();
-    let backend_handle = start_mtls_backend(
-        "127.0.0.1:8443".to_string(),
-        backend_logs.clone(),
-        backend_ready_tx,
-    )
-    .await;
-    cleanup.set_backend_handle(backend_handle);
-
-    let _ = tokio::time::timeout(Duration::from_secs(5), backend_ready_rx)
-        .await
-        .expect("mTLS backend did not become ready");
 
     // Set up and start the mock Fetchly server
     let socket_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -143,19 +116,11 @@ async fn test_mtls_configuration() {
     // Cleanup happens automatically with Drop trait
 }
 
-#[derive(Clone, Debug)]
-struct RequestRecord {
-    method: String,
-    path: String,
-    headers: Vec<(String, String)>,
-}
-
 /// Cleanup guard that ensures all test resources are cleaned up
 struct TestCleanup {
     loader: Option<std::process::Child>,
     pushpin: Option<std::process::Child>,
     server_handle: Option<tokio::task::JoinHandle<()>>,
-    backend_handle: Option<tokio::task::JoinHandle<()>>,
     files_to_remove: Vec<std::path::PathBuf>,
 }
 
@@ -165,7 +130,6 @@ impl TestCleanup {
             loader: None,
             pushpin: None,
             server_handle: None,
-            backend_handle: None,
             files_to_remove: Vec::new(),
         }
     }
@@ -180,10 +144,6 @@ impl TestCleanup {
 
     fn set_server_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
         self.server_handle = Some(handle);
-    }
-
-    fn set_backend_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
-        self.backend_handle = Some(handle);
     }
 
     fn add_file(&mut self, path: std::path::PathBuf) {
@@ -205,9 +165,6 @@ impl Drop for TestCleanup {
 
         // Abort async tasks
         if let Some(handle) = self.server_handle.take() {
-            handle.abort();
-        }
-        if let Some(handle) = self.backend_handle.take() {
             handle.abort();
         }
 
@@ -365,26 +322,6 @@ async fn wait_for_pushpin(timeout: Duration) -> Result<(), String> {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-#[ignore] // Run with: cargo test test_mtls_e2e_docker -- --ignored --nocapture
-async fn test_mtls_e2e_docker() {
-    // Full end-to-end test with origind running in Docker
-    // This test requires Docker to be running and will:
-    // 1. Start origind in a Docker container
-    // 2. Configure Pushpin to use the containerized origind
-    // 3. Make a request through Pushpin that uses mTLS to connect to the backend
-    // 4. Verify the mTLS connection succeeds
-
-    // TODO: Implement Docker-based E2E test
-    // Steps:
-    // - Start origind container with docker run
-    // - Configure pushpin.conf with origind_path pointing to container
-    // - Run full test flow including actual connection to mTLS backend
-    // - Clean up Docker container
-
-    unimplemented!("Docker E2E test to be implemented");
-}
-
 async fn start_mock_fetchly_server(
     socket_path: std::path::PathBuf,
     logs: Arc<Mutex<Vec<RequestRecord>>>,
@@ -532,191 +469,8 @@ fn get_mock_backends_with_mtls(_service_id: &str, _version: &str) -> Value {
     })
 }
 
-// Test certificate for mTLS testing (used for CA, server, and client)
-const TEST_CERT: &str = r#"-----BEGIN CERTIFICATE-----
-MIICpDCCAYwCCQDkzIPOmEje1DANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls
-b2NhbGhvc3QwHhcNMjMwNjA4MjIxMjE3WhcNMjMwNjA5MjIxMjE3WjAUMRIwEAYD
-VQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC7
-Lj9eFGJ0hsbtn1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x
-5NZC89rghUScZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtl
-lRMQ0/Jg6WkUglYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSb
-bke2ahVrnJ2lC63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsff
-BFJ1iVfnzkxR/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4W
-ijPttBqrybO5T+jDV/PNAgMBAAEwDQYJKoZIhvcNAQELBQADggEBADQmWrdkwdtR
-Fu+9GBjXsmjPNvN72Da4UtLf8Y+LgA/XYKGCFaGxpFm+61DOpbjpUR3B8MRQzn45
-x4/ZcNmRrYj7yiBlj/Y/bQKfBLaTG2JCJ2ffdBgZMPG3U9wLQKsUbOsdznkSYG18
-CGTM3btznIlW7pkDsw3CRkKoYWNRd0STzifa2ASCEgRAFemYIj/YysVw6nWTtIHY
-5Ez+TDwOpUkuk2haE6UvaxR0+q3r+10907HqZejyLmSY+FQk1ylAfJtJcJvpbrB+
-kQa8kPmOm+hnLGDXFI0qfBHfuiKDX7yi39aFgWI/Mbz5wKHr0IIoJmncayYacnGX
-coUhiF2hpf0=
------END CERTIFICATE-----"#;
-
-const TEST_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7Lj9eFGJ0hsbt
-n1ebNaakK/f3tktLbYhT7eZ547T1OYfPs9stk7ZMaNPXv/CPbz4x5NZC89rghUSc
-ZYFGAfQE5Rxrso8vUzUSAzRebSm5LG3BYsHyKf7lZkD3cK1kBPtllRMQ0/Jg6WkU
-glYWV8/2Cm8SoJpdllBbbl0bOu1S8QMswb4IrZ1UE130tbP5SnSbbke2ahVrnJ2l
-C63sD64rBedYWm5FSHlJ2ciRPe1tr+owqSVrHrjZjrTHovyMVsffBFJ1iVfnzkxR
-/tyGFlHHngkRdwtO81Orc9yAIe8v1U3y6F+Tk2LIwW4PYh/xqj4WijPttBqrybO5
-T+jDV/PNAgMBAAECggEAB1lIeZwZRXPpKXkhCmHv2fAz+xC4Igz51jm327854orQ
-rzHjgAWVmahf8M+DVU5Lxc+zLcu/IyN4Tx+ZFLOM7ghEtmG7R2Nf6QYhLzff9Hov
-EPGcpbJKZJ1AHbbZx9x+Nj3FEtsPYAip7Hk1ggkOjB1awQN3LAdzvjM2CpSkrqXg
-c4GQ4hK3tkyIZxPiC6pr6246+UjakzFGXT5zzQajbkFHrM8s4Wn42tbdd6N14jgv
-5mdR6bAzusG8P3IRlO4zQ/NQTCXI6kz4SdTlZERaxt35pThXRkcifMPcGRTageax
-l1ZxBIRjTSp60tPR6fcH8std8hEcRExcOeCmOld4gQKBgQDwWz5vQCUyvza6l/O3
-G6huXmQcpFea5PpWtII55bp3DTen6SrB3cGGtKZZqfN7IXFODUIUIvQEf4bI8r0y
-Vu6Sypnq+CIbRN5aul7X+do5gEpFEZW+BdbBN+mCBaf16xaxS9GWZj1wCWSjyE4s
-PE7jEbLgVPwd+8FmK3XemaF7bQKBgQDHXQC7XjZ0OxfeAOVLz1vShBBlbDtJEonY
-cuSveZqEiLEaUFuU3XFuExbyfCRjNNsz6JROXvCO2KQ6HbI/tkZCmJYoQ8mhhAF+
-5QN9hGZgMPcvPEZW4AEih5qVrwO3IQGF3YJnYLvyyroEjQ7nSwCf/HPCF5Gl/K41
-QPRlM5e94QKBgFyhPYGQfgV9rbDhqLpTvWizle934o8+WcAalumLQH5rKJzcfm7y
-cIfijQ2XMs+sRsdm0qWCBvrIzwAYlJOW7yDBVeo5MKPDudHLa4verZxldboCmev+
-whH641IJrf5XWIqBhsdopZrM8+0u3/mqUFiwVHiiJ/vCL3mZnDZqjNJNAoGAFge2
-7v2IMuvcxVGABRKS6P5i+XIuUvLTfLGlh6Z+ZqrcNzYuCJM315wQaxdAxh2vI1tO
-GCLxnjdeXnWtntC7jtxhq21iOJDnwWf5LMOWtIZ0qimU9ECon3IwqN3AIVpqWqqR
-oG7WFgxE5f/YZ8Kn/QXenNIR7C+x6HyXBR/gYsECgYEAg6PSkpYdOxaTZzaxIxS3
-HUUy7H1+wzV/ZCKIMZEfH23kUiHMZXjp3xI1FTlGcbMFpOkmjwi+MFHEMcvmwzmc
-owdohdh7ngo60nkgMwz5TyWBWDdT+Otogi7F37qAt/fjd4xmNjsyTY4b2OwuP1/S
-X7Rmwy1AQ2WKrwOSy4d3xDs=
------END PRIVATE KEY-----"#;
-
 fn parse_backend_path(path: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = path.split('/').collect();
     assert!(parts.len() >= 8);
     Some((parts[4].to_string(), parts[6].to_string()))
-}
-
-async fn start_mtls_backend(
-    addr: String,
-    request_logs: Arc<Mutex<Vec<RequestRecord>>>,
-    ready_tx: oneshot::Sender<()>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        // Set up SSL acceptor with server certificate and require client certificates
-        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-
-        acceptor
-            .set_private_key_file(
-                std::env::temp_dir()
-                    .join("test_server_key.pem")
-                    .to_str()
-                    .unwrap(),
-                SslFiletype::PEM,
-            )
-            .unwrap();
-        acceptor
-            .set_certificate_chain_file(
-                std::env::temp_dir()
-                    .join("test_server_cert.pem")
-                    .to_str()
-                    .unwrap(),
-            )
-            .unwrap();
-        acceptor.check_private_key().unwrap();
-
-        acceptor.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
-        acceptor
-            .set_ca_file(
-                std::env::temp_dir()
-                    .join("test_ca_cert.pem")
-                    .to_str()
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let acceptor = acceptor.build();
-
-        let listener = TcpListener::bind(&addr)
-            .await
-            .expect("Failed to bind mTLS server");
-        println!("[mTLS backend] Listening on {}", addr);
-
-        // Signal that we're ready
-        let _ = ready_tx.send(());
-
-        // Listen for incoming connections
-        loop {
-            match listener.accept().await {
-                Ok((stream, peer_addr)) => {
-                    println!("[mTLS backend] Accepted connection from {}", peer_addr);
-                    let acceptor = acceptor.clone();
-                    let request_logs = request_logs.clone();
-
-                    tokio::spawn(async move {
-                        // Perform TLS handshake
-                        let ssl = openssl::ssl::Ssl::new(acceptor.context()).unwrap();
-                        let mut tls_stream = match tokio_openssl::SslStream::new(ssl, stream) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                eprintln!("[mTLS backend] Failed to create SSL stream: {}", e);
-                                return;
-                            }
-                        };
-
-                        if let Err(e) = std::pin::Pin::new(&mut tls_stream).accept().await {
-                            eprintln!("[mTLS backend] TLS handshake failed: {}", e);
-                            return;
-                        }
-
-                        // Log client certificate info
-                        if let Some(cert) = tls_stream.ssl().peer_certificate() {
-                            println!(
-                                "[mTLS backend] Client certificate received: {:?}",
-                                cert.subject_name()
-                            );
-                        } else {
-                            println!("[mTLS backend] No client certificate");
-                        }
-
-                        // Simple HTTP handling - just read request and send back 200 OK
-                        let mut buf = vec![0u8; 4096];
-                        match tokio::io::AsyncReadExt::read(&mut tls_stream, &mut buf).await {
-                            Ok(n) if n > 0 => {
-                                let request_str = String::from_utf8_lossy(&buf[..n]);
-                                println!("[mTLS backend] Received request:\n{}", request_str);
-
-                                // Parse basic HTTP request info
-                                let lines: Vec<&str> = request_str.lines().collect();
-                                if let Some(request_line) = lines.first() {
-                                    let parts: Vec<&str> =
-                                        request_line.split_whitespace().collect();
-                                    if parts.len() >= 2 {
-                                        let mut headers = Vec::new();
-                                        for line in lines.iter().skip(1) {
-                                            if line.is_empty() {
-                                                break;
-                                            }
-                                            if let Some((key, value)) = line.split_once(':') {
-                                                headers.push((
-                                                    key.trim().to_string(),
-                                                    value.trim().to_string(),
-                                                ));
-                                            }
-                                        }
-
-                                        let mut guard = request_logs.lock().unwrap();
-                                        guard.push(RequestRecord {
-                                            method: parts[0].to_string(),
-                                            path: parts[1].to_string(),
-                                            headers,
-                                        });
-                                    }
-                                }
-
-                                // Send simple HTTP response
-                                let response =
-                                    b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nmTLS works!";
-                                let _ =
-                                    tokio::io::AsyncWriteExt::write_all(&mut tls_stream, response)
-                                        .await;
-                            }
-                            Ok(_) => println!("[mTLS backend] Empty request"),
-                            Err(e) => eprintln!("[mTLS backend] Failed to read request: {}", e),
-                        }
-                    });
-                }
-                Err(e) => eprintln!("[mTLS backend] Accept error: {}", e),
-            }
-        }
-    })
 }
