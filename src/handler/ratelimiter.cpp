@@ -140,23 +140,23 @@ private:
 			{
 				if(timer->isActive())
 				{
-					// after the first pass, switch to batch interval
+					// After the first pass, switch to batch interval
 					if(!firstPass)
 						timer->setInterval(batchInterval);
 				}
 				else
 				{
-					// process first batch
+					// Process first batch
 					firstPass = true;
 
 					if(batchWaitEnabled)
 					{
-						// if wait enabled, collect for awhile before processing
+						// If wait enabled, collect for awhile before processing
 						timer->start(batchInterval);
 					}
 					else
 					{
-						// if wait not enabled, process immediately
+						// If wait not enabled, process immediately
 						timer->start(0);
 					}
 				}
@@ -165,7 +165,7 @@ private:
 			{
 				if(lastBatchEmpty)
 				{
-					// if we processed nothing on this pass, stop timer
+					// If we processed nothing on this pass, stop timer
 					lastBatchEmpty = false;
 					timer->stop();
 				}
@@ -177,12 +177,12 @@ private:
 			{
 				if(timer->isActive())
 				{
-					// ensure we're on fastest interval
+					// Ensure we're on fastest interval
 					timer->setInterval(0);
 				}
 				else
 				{
-					// process first batch right away
+					// Process first batch right away
 					firstPass = true;
 					timer->start(0);
 				}
@@ -194,7 +194,7 @@ private:
 		}
 	}
 
-	// return false if self destroyed
+	// Return false if self destroyed
 	bool processBatch()
 	{
 		if(buckets.isEmpty())

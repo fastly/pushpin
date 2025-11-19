@@ -82,7 +82,7 @@ std::unique_ptr<TcpStream> TcpListener::accept()
 		if(errorCondition_ == EAGAIN)
 			sn_->clearReadiness(SocketNotifier::Read);
 
-		return std::unique_ptr<TcpStream>(); // null
+		return std::unique_ptr<TcpStream>(); // Null
 	}
 
 	TcpStream *s = new TcpStream(s_inner);

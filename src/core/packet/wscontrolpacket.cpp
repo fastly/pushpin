@@ -43,8 +43,8 @@ public:
 
 		Type type;
 		QString cid;
-		QString channelPrefix; // here only
-		QByteArray message; // grip only
+		QString channelPrefix; // Here only
+		QByteArray message; // Grip only
 	};
 
 	QString channelPrefix;

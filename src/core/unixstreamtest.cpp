@@ -32,7 +32,7 @@ using namespace std::chrono_literals;
 
 static void runAccept(std::function<void ()> loop_wait)
 {
-	// remove existing pipe file
+	// Remove existing pipe file
 	QDir outDir(qgetenv("OUT_DIR"));
 	QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 	QString path = workDir.filePath("test-cpp-unixstream");
@@ -41,7 +41,7 @@ static void runAccept(std::function<void ()> loop_wait)
 	UnixListener l;
 	TEST_ASSERT(l.bind(path));
 
-	// start by assuming operations are possible
+	// Start by assuming operations are possible
 	bool streamsReady = true;
 
 	l.streamsReady.connect([&] {
@@ -56,7 +56,7 @@ static void runAccept(std::function<void ()> loop_wait)
 	UnixStream client;
 	TEST_ASSERT(client.connect(path));
 
-	// start by assuming operations are possible
+	// Start by assuming operations are possible
 	bool clientWriteReady = true;
 
 	client.writeReady.connect([&] {
@@ -81,7 +81,7 @@ static void runAccept(std::function<void ()> loop_wait)
 
 static void runIo(std::function<void ()> loop_wait)
 {
-	// remove existing pipe file
+	// Remove existing pipe file
 	QDir outDir(qgetenv("OUT_DIR"));
 	QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 	QString path = workDir.filePath("test-cpp-unixstream");
@@ -90,7 +90,7 @@ static void runIo(std::function<void ()> loop_wait)
 	UnixListener l;
 	TEST_ASSERT(l.bind(path));
 
-	// start by assuming operations are possible
+	// Start by assuming operations are possible
 	bool streamsReady = true;
 
 	l.streamsReady.connect([&] {
@@ -100,7 +100,7 @@ static void runIo(std::function<void ()> loop_wait)
 	UnixStream client;
 	TEST_ASSERT(client.connect(path));
 
-	// start by assuming operations are possible
+	// Start by assuming operations are possible
 	bool clientReadReady = true;
 	bool clientWriteReady = true;
 
@@ -127,7 +127,7 @@ static void runIo(std::function<void ()> loop_wait)
 		}
 	}
 
-	// start by assuming operations are possible
+	// Start by assuming operations are possible
 	bool readReady = true;
 	bool writeReady = true;
 
@@ -180,7 +180,7 @@ static void runIo(std::function<void ()> loop_wait)
 	QByteArray written;
 	received.clear();
 
-	// write until we fill the system buffer
+	// Write until we fill the system buffer
 	while(true)
 	{
 		QByteArray chunk(100000, 'a');
@@ -196,7 +196,7 @@ static void runIo(std::function<void ()> loop_wait)
 		written += chunk.mid(0, ret);
 	}
 
-	// wait for some bytes on the client side
+	// Wait for some bytes on the client side
 	while(received.isEmpty())
 	{
 		QByteArray buf = client.read(100000);
@@ -215,7 +215,7 @@ static void runIo(std::function<void ()> loop_wait)
 		received += buf;
 	}
 
-	// now read as much as possible on the client side. this helps the
+	// Now read as much as possible on the client side. This helps the
 	// server side gain writability sooner
 	while(true)
 	{
@@ -231,11 +231,11 @@ static void runIo(std::function<void ()> loop_wait)
 		received += buf;
 	}
 
-	// wait for writability
+	// Wait for writability
 	while(!writeReady)
 		loop_wait();
 
-	// write more
+	// Write more
 	{
 		QByteArray chunk(100000, 'a');
 		int ret = s->write(chunk);
@@ -244,10 +244,10 @@ static void runIo(std::function<void ()> loop_wait)
 		written += chunk.mid(0, ret);
 	}
 
-	// close the server side
+	// Close the server side
 	s.reset();
 
-	// read until closed on the client side
+	// Read until closed on the client side
 	while(true)
 	{
 		QByteArray buf = client.read(100000);

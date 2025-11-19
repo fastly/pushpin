@@ -40,7 +40,7 @@ void LayerTracker::addPlain(int plain)
 
 void LayerTracker::specifyEncoded(int encoded, int plain)
 {
-	// can't specify more bytes than we have
+	// Can't specify more bytes than we have
 	assert(plain <= plain_);
 
 	plain_ -= plain;
@@ -58,7 +58,7 @@ int LayerTracker::finished(int encoded)
 	{
 		Item &i = *it;
 
-		// not enough?
+		// Not enough?
 		if(encoded < i.encoded)
 		{
 			i.encoded -= encoded;

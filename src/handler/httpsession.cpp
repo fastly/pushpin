@@ -66,7 +66,7 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 		QVariant vbody;
 		if(doc.isObject())
 			vbody = doc.object().toVariantMap();
-		else // isArray
+		else // IsArray
 			vbody = doc.array().toVariantList();
 
 		QString errorMessage;
@@ -166,7 +166,7 @@ public:
 	std::unique_ptr<Timer> retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
-	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
+	std::unique_ptr<ZhttpRequest> outReq; // For fetching links
 	RateLimiter *updateLimiter;
 	std::shared_ptr<RateLimiter> filterLimiter;
 	PublishLastIds *publishLastIds;
@@ -250,7 +250,7 @@ public:
 		if(!instruct.nextLink.isEmpty())
 			nextUri = currentUri.resolved(instruct.nextLink);
 
-		// only work with a gone link provided at initialization time. this
+		// Only work with a gone link provided at initialization time. This
 		// way each request can have a unique gone link, and still share
 		// instructions from next link fetches
 		if(!instruct.goneLink.isEmpty())
@@ -266,7 +266,7 @@ public:
 	{
 		assert(state == NotStarted);
 
-		// set up implicit channels
+		// Set up implicit channels
 		std::weak_ptr<Private> self = q->d;
 		foreach(const QString &name, adata.implicitChannels)
 		{
@@ -279,7 +279,7 @@ public:
 
 				subscribeCallback.call({q, name});
 
-				assert(!self.expired()); // deleting here would leak subscriptions/connections
+				assert(!self.expired()); // Deleting here would leak subscriptions/connections
 			}
 		}
 
@@ -291,10 +291,10 @@ public:
 			LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
 		}
 
-		// need to send initial content?
+		// Need to send initial content?
 		if((instruct.holdMode == Instruct::NoHold || instruct.holdMode == Instruct::StreamHold) && !adata.responseSent)
 		{
-			// send initial response
+			// Send initial response
 			HttpHeaders headers = instruct.response.headers;
 			headers.removeAll("Content-Length");
 			if(adata.autoCrossOrigin)
@@ -306,7 +306,7 @@ public:
 
 			if(!instruct.response.body.isEmpty())
 			{
-				// apply ResponseContent filters of all channels
+				// Apply ResponseContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
@@ -344,13 +344,13 @@ public:
 	{
 		if(state == Proxying || state == SendingQueue)
 		{
-			// if we are already in the process of updating, flag to update
-			//   again after current one finishes
+			// If we are already in the process of updating, flag to update
+			// again after current one finishes
 
 			if(needUpdate)
 			{
-				// if needUpdate was already flagged, then raise
-				//   priority if needed
+				// If needUpdate was already flagged, then raise
+				// priority if needed
 				if(priority == HighPriority)
 					needUpdatePriority = priority;
 			}
@@ -366,13 +366,13 @@ public:
 		{
 			if(priority == HighPriority)
 			{
-				// switching to high priority
+				// Switching to high priority
 				cancelAction();
 				state = Holding;
 			}
 			else
 			{
-				// already waiting, do nothing
+				// Already waiting, do nothing
 				return;
 			}
 		}
@@ -384,11 +384,11 @@ public:
 
 		if(instruct.holdMode != Instruct::ResponseHold && nextUri.isEmpty())
 		{
-			// can't update without valid link
+			// Can't update without valid link
 			return;
 		}
 
-		// turn off update timer during update
+		// Turn off update timer during update
 		updateManager->unregisterSession(q);
 
 		if(priority == HighPriority)
@@ -516,7 +516,7 @@ private:
 
 	void adjustKeepAlive()
 	{
-		// if idle mode, restart the timer. else leave alone
+		// If idle mode, restart the timer. Else leave alone
 		if(timer && instruct.keepAliveMode == Instruct::Idle)
 			setupKeepAlive();
 	}
@@ -563,7 +563,7 @@ private:
 		{
 			state = Pausing;
 
-			// stop activity while pausing
+			// Stop activity while pausing
 			timer->stop();
 
 			pausedConnection = req->paused.connect(boost::bind(&Private::req_paused, this));
@@ -583,7 +583,7 @@ private:
 
 		if(instruct.holdMode == Instruct::StreamHold)
 		{
-			// if prev ids used but not next link, error out
+			// If prev ids used but not next link, error out
 			if(nextUri.isEmpty())
 			{
 				foreach(const Instruct::Channel &c, instruct.channels)
@@ -636,7 +636,7 @@ private:
 			}
 			else
 			{
-				// update channel properties
+				// Update channel properties
 				channels[name].prevId = c.prevId;
 				channels[name].filters = c.filters;
 			}
@@ -648,21 +648,21 @@ private:
 		{
 			unsubscribeCallback.call({q, channel});
 
-			assert(!self.expired()); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // Deleting here would leak subscriptions/connections
 		}
 
 		foreach(const QString &channel, channelsAdded)
 		{
 			subscribeCallback.call({q, channel});
 
-			assert(!self.expired()); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // Deleting here would leak subscriptions/connections
 		}
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
 			state = Holding;
 
-			// set timeout
+			// Set timeout
 			if(instruct.timeout >= 0)
 			{
 				timer->setSingleShot(true);
@@ -671,9 +671,9 @@ private:
 		}
 		else // StreamHold
 		{
-			// if conflict on first hold, immediately recover. we don't
-			//   do this on subsequent holds because there may be queued
-			//   messages available to resolve the conflict
+			// If conflict on first hold, immediately recover. We don't
+			// do this on subsequent holds because there may be queued
+			// messages available to resolve the conflict
 			if(first)
 			{
 				bool conflict = false;
@@ -691,15 +691,15 @@ private:
 							publishLastIds->remove(name);
 							conflict = true;
 
-							// NOTE: don't exit loop here. we want to clear
-							//   the last ids of all conflicting channels
+							// NOTE: don't exit loop here. We want to clear
+							// the last ids of all conflicting channels
 						}
 					}
 				}
 
 				if(conflict)
 				{
-					// update expects us to be in Holding state
+					// Update expects us to be in Holding state
 					state = Holding;
 
 					update(LowPriority);
@@ -707,7 +707,7 @@ private:
 				}
 			}
 
-			// drop any non-matching queued items
+			// Drop any non-matching queued items
 			while(!publishQueue.isEmpty())
 			{
 				const QueuedItem &qi = publishQueue.first();
@@ -715,7 +715,7 @@ private:
 
 				if(!channels.contains(item.channel))
 				{
-					// we don't care about this channel anymore
+					// We don't care about this channel anymore
 					publishQueue.removeFirst();
 					continue;
 				}
@@ -724,7 +724,7 @@ private:
 
 				if(!channel.prevId.isNull() && channel.prevId != item.prevId)
 				{
-					// item doesn't follow the hold
+					// Item doesn't follow the hold
 					publishQueue.removeFirst();
 					continue;
 				}
@@ -732,7 +732,7 @@ private:
 				break;
 			}
 
-			// if there are items to send, this will send them. if there are
+			// If there are items to send, this will send them. If there are
 			// no items to send, this will end up changing state to Holding
 			sendQueue();
 		}
@@ -782,7 +782,7 @@ private:
 
 			if(f.haveContentFilters)
 			{
-				// ensure content filters match
+				// Ensure content filters match
 				QStringList contentFilters;
 				foreach(const QString &f, channels[item.channel].filters)
 				{
@@ -832,32 +832,32 @@ private:
 			fc.trusted = adata.trusted;
 			fc.limiter = filterLimiter;
 
-			// may call messageFiltersFinished immediately. if it does, queue
-			// processing will continue. else, the loop will end and queue
+			// May call messageFiltersFinished immediately. If it does, queue
+			// processing will continue. Else, the loop will end and queue
 			// processing will resume after the filters finish
 			messageFilters->start(fc, body);
 		}
 
 		if(!messageFilters)
 		{
-			// the state changed, the queue is empty, or the client buffer is full
+			// The state changed, the queue is empty, or the client buffer is full
 
 			if(state != SendingQueue || publishQueue.isEmpty())
 			{
-				// if the state changed or the queue is empty then we're done
+				// If the state changed or the queue is empty then we're done
 				sendQueueDone();
 			}
 			else
 			{
-				// client buffer can only be full in stream mode
+				// Client buffer can only be full in stream mode
 				assert(instruct.holdMode == Instruct::StreamHold);
 
 				// NOTE: we can end up here multiple times in a single pass
 				// of the queue if the client buffer becomes full multiple
-				// times. so, whatever happens here should be idempotent and
+				// times. So, whatever happens here should be idempotent and
 				// cheap.
 
-				// turn off timers until we're able to send again
+				// Turn off timers until we're able to send again
 				timer->stop();
 				updateManager->unregisterSession(q);
 			}
@@ -869,7 +869,7 @@ private:
 	void sendQueueDone()
 	{
 		// if the state changed during queue processing (e.g. to Closing),
-		// then we want to leave the state alone and do nothing else
+		// Then we want to leave the state alone and do nothing else
 		if(state != SendingQueue)
 			return;
 
@@ -879,7 +879,7 @@ private:
 		{
 			activeChannels.clear();
 
-			// start keep alive timer, if it wasn't started already
+			// Start keep alive timer, if it wasn't started already
 			if(!timer->isActive())
 				setupKeepAlive();
 
@@ -900,7 +900,7 @@ private:
 		HttpHeaders headers = _headers;
 		QByteArray body = _body;
 
-		headers.removeAll("Content-Length"); // this will be reset if needed
+		headers.removeAll("Content-Length"); // This will be reset if needed
 
 		if(adata.autoCrossOrigin)
 		{
@@ -912,11 +912,11 @@ private:
 					result["code"] = code;
 					result["reason"] = QString::fromUtf8(reason);
 
-					// need to compact headers into a map
+					// Need to compact headers into a map
 					QVariantMap vheaders;
 					foreach(const HttpHeader &h, headers)
 					{
-						// don't add the same header name twice. we'll collect all values for a single header
+						// Don't add the same header name twice. We'll collect all values for a single header
 						bool found = false;
 						QMapIterator<QString, QVariant> it(vheaders);
 						while(it.hasNext())
@@ -981,14 +981,14 @@ private:
 
 	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
 	{
-		// inherit headers from the timeout response
+		// Inherit headers from the timeout response
 		HttpHeaders headers = instruct.response.headers;
 		foreach(const HttpHeader &h, _headers)
 			headers.removeAll(h.first);
 		foreach(const HttpHeader &h, _headers)
 			headers += h;
 
-		// if Grip-Expose-Headers was provided in the push, apply now
+		// If Grip-Expose-Headers was provided in the push, apply now
 		if(!exposeHeaders.isEmpty())
 		{
 			for(int n = 0; n < headers.count(); ++n)
@@ -1008,7 +1008,7 @@ private:
 				if(found)
 				{
 					headers.removeAt(n);
-					--n; // adjust position
+					--n; // Adjust position
 				}
 			}
 		}
@@ -1033,12 +1033,12 @@ private:
 
 			unsubscribeCallback.call({q, channel});
 
-			assert(!self.expired()); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // Deleting here would leak subscriptions/connections
 		}
 
 		if(retry)
 		{
-			// refresh before remove, to ensure transition
+			// Refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
 
 			connectionStatsActive = false;
@@ -1079,8 +1079,8 @@ private:
 				rp.inspectInfo.userData = adata.inspectInfo.userData;
 			}
 
-			// if prev-id set on channels, set as inspect lastids so the proxy
-			//   will pass as Grip-Last in the next request
+			// If prev-id set on channels, set as inspect lastids so the proxy
+			// will pass as Grip-Last in the next request
 			QHashIterator<QString, Instruct::Channel> it(channels);
 			while(it.hasNext())
 			{
@@ -1151,24 +1151,24 @@ private:
 
 		passthroughData["route"] = adata.route.toUtf8();
 
-		// if next link points to the same service as the current request,
-		//   then we can assume the network would send the request back to
-		//   us, so we can handle it internally. if the link points to a
-		//   different service, then we can't make this assumption and need
-		//   to make the request over the network. note that such a request
-		//   could still end up looping back to us
+		// If next link points to the same service as the current request,
+		// then we can assume the network would send the request back to
+		// us, so we can handle it internally. If the link points to a
+		// different service, then we can't make this assumption and need
+		// to make the request over the network. Note that such a request
+		// could still end up looping back to us
 		if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
 		{
-			// tell the proxy that we prefer the request to be handled
-			//   internally, using the same route
+			// Tell the proxy that we prefer the request to be handled
+			// internally, using the same route
 			passthroughData["prefer-internal"] = true;
 		}
 
-		// needed in case internal routing is not used
+		// Needed in case internal routing is not used
 		if(adata.trusted)
 			passthroughData["trusted"] = true;
 
-		// share requests to the same URI
+		// Share requests to the same URI
 		passthroughData["auto-share"] = autoShare;
 
 		outReq->setPassthroughData(passthroughData);
@@ -1215,8 +1215,8 @@ private:
 			{
 				if(outReq->bytesAvailable() > 0)
 				{
-					// stop keep alive timer only if we have to send data. if the
-					//   response body is empty, then the timer is left alone
+					// Stop keep alive timer only if we have to send data. If the
+					// response body is empty, then the timer is left alone
 					timer->stop();
 
 					int avail = req->writeBytesAvailable();
@@ -1305,7 +1305,7 @@ private:
 			}
 			else if(state == SendingGone)
 			{
-				// response should be empty
+				// Response should be empty
 				if(outReq->bytesAvailable() > 0)
 				{
 					outReq_error();
@@ -1324,7 +1324,7 @@ private:
 			}
 			else
 			{
-				// unexpected state
+				// Unexpected state
 				assert(0);
 			}
 		}
@@ -1349,7 +1349,7 @@ private:
 	{
 		LogUtil::RequestData rd;
 
-		// only log route id if explicitly set
+		// Only log route id if explicitly set
 		if(!adata.statsRoute.isEmpty())
 			rd.routeId = adata.route;
 
@@ -1369,7 +1369,7 @@ private:
 	{
 		LogUtil::RequestData rd;
 
-		// only log route id if explicitly set
+		// Only log route id if explicitly set
 		if(!adata.statsRoute.isEmpty())
 			rd.routeId = adata.route;
 
@@ -1415,7 +1415,7 @@ private:
 			processItem(qi.item, result.sendAction, result.content, qi.exposeHeaders);
 		}
 
-		// if filters finished asynchronously then we need to resume processing
+		// If filters finished asynchronously then we need to resume processing
 		if(!inProcessPublishQueue)
 			processPublishQueue();
 	}
@@ -1435,7 +1435,7 @@ private:
 				return;
 
 			// NOTE: http-response mode doesn't support a close
-			//   action since it's better to send a real response
+			// action since it's better to send a real response
 
 			if(f.action == PublishFormat::Send)
 			{
@@ -1455,7 +1455,7 @@ private:
 			{
 				writeBody(content);
 
-				// restart keep alive timer
+				// Restart keep alive timer
 				adjustKeepAlive();
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
@@ -1465,14 +1465,14 @@ private:
 					{
 						activeChannels.clear();
 
-						// all channels had activity. reset the timeout
+						// All channels had activity. Reset the timeout
 						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri, true);
 					}
 				}
 			}
 			else if(f.action == PublishFormat::Hint)
 			{
-				// clear queue since any items will be redundant
+				// Clear queue since any items will be redundant
 				publishQueue.clear();
 
 				update(HighPriority);
@@ -1534,7 +1534,7 @@ private:
 		}
 		else if(state == SendingQueue)
 		{
-			// in this state, the writeBytesChanged signal is only
+			// In this state, the writeBytesChanged signal is only
 			// interesting if it indicates write bytes are available
 
 			if(req->writeBytesAvailable() > 0)
@@ -1549,7 +1549,7 @@ private:
 
 	void req_paused()
 	{
-		doFinish(true); // finish for retry
+		doFinish(true); // Finish for retry
 	}
 
 	void outReq_readyRead()
@@ -1573,7 +1573,7 @@ private:
 					return;
 				}
 
-				// subsequent response must be non-hold or stream hold
+				// Subsequent response must be non-hold or stream hold
 				if(i.holdMode != Instruct::NoHold && i.holdMode != Instruct::StreamHold)
 				{
 					errorMessage = "Next link returned non-stream hold.";
@@ -1581,13 +1581,13 @@ private:
 					return;
 				}
 
-				// accept the instruct as soon as it's available, so we can
-				// use its filters. if response processing ends up failing
+				// Accept the instruct as soon as it's available, so we can
+				// use its filters. If response processing ends up failing
 				// later on, the session will error out and the instruct
 				// won't be used for anything else
 				instruct = i;
 
-				// apply ResponseContent filters of all channels
+				// Apply ResponseContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
@@ -1618,7 +1618,7 @@ private:
 		{
 			log_debug("httpsession: failed to retrieve next link");
 
-			// can't retry if we started sending data
+			// Can't retry if we started sending data
 
 			if(sentOutReqData <= 0 && retries < RETRY_MAX)
 			{
@@ -1647,7 +1647,7 @@ private:
 		}
 		else
 		{
-			// unexpected state
+			// Unexpected state
 			assert(0);
 		}
 	}
@@ -1656,7 +1656,7 @@ private:
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
-			// send timeout response
+			// Send timeout response
 			respond(instruct.response.code, instruct.response.reason, instruct.response.headers, instruct.response.body);
 		}
 		else if(instruct.holdMode == Instruct::StreamHold)

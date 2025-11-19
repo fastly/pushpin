@@ -63,9 +63,9 @@ public:
 			Connect,
 			Accept,
 			Reject,
-			Send, // data from client
-			Receive, // data to client
-			ReceiveClose // close to client
+			Send, // Data from client
+			Receive, // Data to client
+			ReceiveClose // Close to client
 		};
 
 		ZhttpRequest *req;
@@ -225,13 +225,13 @@ public:
 			RequestItem *ri = requests.value(req);
 			assert(ri);
 
-			// detach req from RequestItem
+			// Detach req from RequestItem
 			reqConnectionMap.erase(ri->req);
 			requests.remove(ri->req);
 			ri->req = 0;
 			delete ri;
 
-			// discard=true to let manager take over
+			// Discard=true to let manager take over
 			manager->respondError(req, 410, "Gone", "Session terminated", true);
 
 			req = 0;
@@ -265,7 +265,7 @@ public:
 			QByteArray jsonpCallback = initialJsonpCallback;
 			initialJsonpCallback.clear();
 
-			// don't need these things
+			// Don't need these things
 			initialLastPart.clear();
 			initialBody.clear();
 
@@ -353,7 +353,7 @@ public:
 		}
 		else if(lastPart == "xhr_send" || lastPart == "jsonp_send")
 		{
-			// only allow one outstanding send request at a time
+			// Only allow one outstanding send request at a time
 			if(findFirstSendRequest())
 			{
 				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
@@ -367,12 +367,12 @@ public:
 			{
 				if(lastPart == "xhr_send")
 				{
-					// assume json
+					// Assume json
 					param = body;
 				}
 				else // jsonp_send
 				{
-					// assume form encoded
+					// Assume form encoded
 					foreach(const QByteArray &kv, body.split('&'))
 					{
 						int at = kv.indexOf('=');
@@ -459,7 +459,7 @@ public:
 			RequestItem *ri = requests.value(req);
 			assert(ri && !ri->responded);
 
-			// note: reason/headers don't have meaning with sockjs http
+			// Note: reason/headers don't have meaning with sockjs http
 
 			ri->type = RequestItem::Accept;
 			ri->responded = true;
@@ -617,7 +617,7 @@ public:
 		int bytes = 0;
 		while(!outFrames.isEmpty())
 		{
-			// find end
+			// Find end
 			int end = 0;
 			for(; end < outFrames.count(); ++end)
 			{
@@ -744,7 +744,7 @@ public:
 
 					Frame f = sock->readFrame();
 
-					// allow a larger temporary read size due to wrapping
+					// Allow a larger temporary read size due to wrapping
 					if(f.data.size() > BUFFER_SIZE * 2)
 					{
 						error = true;
@@ -759,7 +759,7 @@ public:
 				for(int n = 0; n <= end; ++n)
 					size += inWrappedFrames[n].data.size();
 
-				// allow a larger temporary read size due to wrapping
+				// Allow a larger temporary read size due to wrapping
 				if(size > BUFFER_SIZE * 2)
 				{
 					error = true;
@@ -815,7 +815,7 @@ public:
 					break;
 
 				// note: inBytes may exceed BUFFER_SIZE at this point, but
-				//   it shouldn't be by more than double
+				// It shouldn't be by more than double
 
 				inFrames += frames;
 				inBytes += bytes;
@@ -828,7 +828,7 @@ public:
 				cleanup();
 				q->error();
 
-				// stop signals
+				// Stop signals
 				return false;
 			}
 
@@ -967,7 +967,7 @@ public:
 		{
 			assert(_req == req);
 
-			// disconnect while long-polling means close, not error
+			// Disconnect while long-polling means close, not error
 			bool close = false;
 			if(ri->type == RequestItem::Receive && !ri->responded)
 				close = (_req->errorCondition() == ZhttpRequest::ErrorDisconnected);
@@ -1092,7 +1092,7 @@ public:
 			}
 			else
 			{
-				// timeout while unconnected
+				// Timeout while unconnected
 				state = Idle;
 				cleanup();
 				q->error();
@@ -1135,7 +1135,7 @@ void SockJsSession::setConnectHost(const QString &host)
 {
 	Q_UNUSED(host);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1143,7 +1143,7 @@ void SockJsSession::setConnectPort(int port)
 {
 	Q_UNUSED(port);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1151,7 +1151,7 @@ void SockJsSession::setIgnorePolicies(bool on)
 {
 	Q_UNUSED(on);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1159,7 +1159,7 @@ void SockJsSession::setTrustConnectHost(bool on)
 {
 	Q_UNUSED(on);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1167,7 +1167,7 @@ void SockJsSession::setIgnoreTlsErrors(bool on)
 {
 	Q_UNUSED(on);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1176,7 +1176,7 @@ void SockJsSession::setClientCert(const QString &cert, const QString &key)
 	Q_UNUSED(cert);
 	Q_UNUSED(key);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1185,7 +1185,7 @@ void SockJsSession::start(const QUrl &uri, const HttpHeaders &headers)
 	Q_UNUSED(uri);
 	Q_UNUSED(headers);
 
-	// this class is server only
+	// This class is server only
 	assert(0);
 }
 
@@ -1216,28 +1216,28 @@ HttpHeaders SockJsSession::requestHeaders() const
 
 int SockJsSession::responseCode() const
 {
-	// this class is server only
+	// This class is server only
 	assert(0);
 	return -1;
 }
 
 QByteArray SockJsSession::responseReason() const
 {
-	// this class is server only
+	// This class is server only
 	assert(0);
 	return QByteArray();
 }
 
 HttpHeaders SockJsSession::responseHeaders() const
 {
-	// this class is server only
+	// This class is server only
 	assert(0);
 	return HttpHeaders();
 }
 
 QByteArray SockJsSession::responseBody() const
 {
-	// this class is server only
+	// This class is server only
 	assert(0);
 	return QByteArray();
 }
@@ -1311,7 +1311,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const
 	d->requestData.uri = asUri;
 	d->requestData.headers = req->requestHeaders();
 
-	// we're not forwarding the request content so ignore this
+	// We're not forwarding the request content so ignore this
 	d->requestData.headers.removeAll("Content-Length");
 
 	d->peerAddress = req->peerAddress();

@@ -66,14 +66,14 @@ impl WakerInterest {
                 if (interest.is_readable() && interest.is_writable())
                     || current_interest == interest
                 {
-                    // all interest or interest unchanged. stay using a
+                    // All interest or interest unchanged. Stay using a
                     // single waker
 
                     let waker = if current_waker.will_wake(waker) {
-                        // keep the current waker
+                        // Keep the current waker
                         current_waker
                     } else {
-                        // switch to the new waker
+                        // Switch to the new waker
                         waker.clone()
                     };
 
@@ -81,8 +81,8 @@ impl WakerInterest {
                 } else {
                     assert!(interest.is_readable() != interest.is_writable());
 
-                    // one interest was specified when we had at least the
-                    // opposite interest. switch to separate
+                    // One interest was specified when we had at least the
+                    // opposite interest. Switch to separate
 
                     match (interest.is_readable(), interest.is_writable()) {
                         (true, false) => Self::Separate(waker.clone(), current_waker),
@@ -94,7 +94,7 @@ impl WakerInterest {
             Self::Separate(read_waker, write_waker) => {
                 match (interest.is_readable(), interest.is_writable()) {
                     (true, true) => {
-                        // if multiple interests on one waker, switch to single
+                        // If multiple interests on one waker, switch to single
 
                         let waker = if read_waker.will_wake(waker) {
                             read_waker
@@ -108,10 +108,10 @@ impl WakerInterest {
                     }
                     (true, false) => {
                         let read_waker = if read_waker.will_wake(waker) {
-                            // keep the current waker
+                            // Keep the current waker
                             read_waker
                         } else {
-                            // switch to the new waker
+                            // Switch to the new waker
                             waker.clone()
                         };
 
@@ -119,16 +119,16 @@ impl WakerInterest {
                     }
                     (false, true) => {
                         let write_waker = if write_waker.will_wake(waker) {
-                            // keep the current waker
+                            // Keep the current waker
                             write_waker
                         } else {
-                            // switch to the new waker
+                            // Switch to the new waker
                             waker.clone()
                         };
 
                         Self::Separate(read_waker, write_waker)
                     }
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -140,15 +140,15 @@ impl WakerInterest {
                 if (interest.is_readable() && interest.is_writable())
                     || interest == other.interest()
                 {
-                    // there is already a single waker of both interests or
+                    // There is already a single waker of both interests or
                     // of one interest that is the same interest as the
-                    // other. leave alone
+                    // other. Leave alone
                     Self::Single(waker, interest)
                 } else {
                     assert!(interest.is_readable() != interest.is_writable());
 
-                    // there is a single waker of one interest, and the other
-                    // has at least the opposite interest. switch to separate
+                    // There is a single waker of one interest, and the other
+                    // has at least the opposite interest. Switch to separate
 
                     match (interest.is_readable(), interest.is_writable()) {
                         (true, false) => {
@@ -172,7 +172,7 @@ impl WakerInterest {
                 }
             }
             separate => {
-                // there are already separate wakers for both interests.
+                // There are already separate wakers for both interests.
                 // leave alone
                 separate
             }
@@ -184,10 +184,10 @@ impl WakerInterest {
             Self::Single(waker, cur) => cur.remove(interest).map(|i| Self::Single(waker, i)),
             Self::Separate(read_waker, write_waker) => {
                 match (interest.is_readable(), interest.is_writable()) {
-                    (true, true) => None, // clear all
+                    (true, true) => None, // Clear all
                     (true, false) => Some(Self::Single(write_waker, mio::Interest::WRITABLE)),
                     (false, true) => Some(Self::Single(read_waker, mio::Interest::READABLE)),
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -224,7 +224,7 @@ impl WakerInterest {
 
                         Some(Self::Single(read_waker, mio::Interest::READABLE))
                     }
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -684,8 +684,8 @@ impl Reactor {
         })
     }
 
-    // we advance time after polling. this way, Reactor::now() is accurate
-    // during task processing. we assume the actual time doesn't change much
+    // We advance time after polling. This way, Reactor::now() is accurate
+    // during task processing. We assume the actual time doesn't change much
     // between task processing and the next poll
     pub fn poll(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
         self.poll_for_events(self.next_timeout(timeout))?;
@@ -695,7 +695,7 @@ impl Reactor {
         Ok(())
     }
 
-    // return the timeout that would have been used for a blocking poll
+    // Return the timeout that would have been used for a blocking poll
     pub fn poll_nonblocking(&self, current_time: Instant) -> Result<Option<Duration>, io::Error> {
         let timeout = self.next_timeout(None);
 
@@ -898,7 +898,7 @@ impl<S: mio::event::Source> IoEvented<S> {
         &self.inner.as_ref().unwrap().io
     }
 
-    // return registration and io object, without deregistering it
+    // Return registration and io object, without deregistering it
     pub fn into_parts(mut self) -> (Registration, S) {
         let inner = self.inner.take().unwrap();
 
@@ -1005,7 +1005,7 @@ impl TimerEvented {
 
     pub fn set_expires(&self, expires: Instant) -> Result<(), io::Error> {
         if self.expires.get() == expires {
-            // no change
+            // No change
             return Ok(());
         }
 

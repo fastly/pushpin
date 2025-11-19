@@ -114,7 +114,7 @@ public:
 	{
 		if(!pendingRequests.isEmpty())
 		{
-			// find next expiring request
+			// Find next expiring request
 			int64_t lowestTime = -1;
 			QHashIterator<int, int64_t> it(pendingRequests);
 			while(it.hasNext())
@@ -215,7 +215,7 @@ public:
 
 		if(item.type != WsControlPacket::Item::Ack && !item.requestId.isEmpty())
 		{
-			// ack non-sends immediately
+			// Ack non-sends immediately
 			if(item.type != WsControlPacket::Item::Send)
 			{
 				WsControlPacket::Item i;
@@ -237,12 +237,12 @@ public:
 			else
 				type = WebSocket::Frame::Text;
 
-			// for sends, don't ack until written
+			// For sends, don't ack until written
 
 			if(!item.requestId.isEmpty())
 				pendingSendEventWrites += item.requestId;
 			else
-				pendingSendEventWrites += QByteArray(); // placeholder
+				pendingSendEventWrites += QByteArray(); // Placeholder
 
 			q->sendEventReceived(type, item.message, item.queue);
 		}
@@ -253,7 +253,7 @@ public:
 				WsControl::KeepAliveMode mode;
 				if(item.keepAliveMode == "interval")
 					mode = WsControl::Interval;
-				else // idle
+				else // Idle
 					mode = WsControl::Idle;
 				q->keepAliveSetupEventReceived(mode, item.timeout);
 			}
@@ -303,7 +303,7 @@ public:
 
 	void requestTimer_timeout()
 	{
-		// on error, destroy any other pending requests
+		// On error, destroy any other pending requests
 		pendingRequests.clear();
 		setupRequestTimer();
 

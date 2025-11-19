@@ -37,9 +37,9 @@ static void setupChild()
 	signal(SIGINT, SIG_IGN);
 
 	// subprocesses hopefully respect SIG_IGN, but are not required
-	//   to. in case subprocess might reinstate a SIGINT handler,
-	//   detach from process group to ensure ctrl-c in a shell
-	//   doesn't cause SIGINT to be sent directly to subprocesses
+	// To. In case subprocess might reinstate a SIGINT handler,
+	// detach from process group to ensure ctrl-c in a shell
+	// doesn't cause SIGINT to be sent directly to subprocesses
 	setpgid(0, 0);
 }
 
@@ -57,7 +57,7 @@ public:
 	}
 
 #if QT_VERSION < 0x060000
-	// reimplemented
+	// Reimplemented
 	virtual void setupChildProcess()
 	{
 		setupChild();
@@ -280,8 +280,8 @@ private slots:
 		}
 		else
 		{
-			// other errors are followed by finished(), so we don't
-			//   need to handle them here
+			// Other errors are followed by finished(), so we don't
+			// need to handle them here
 		}
 	}
 
@@ -329,7 +329,7 @@ bool Service::isStarted() const
 
 bool Service::preStart()
 {
-	// by default do nothing
+	// By default do nothing
 	return true;
 }
 
@@ -347,7 +347,7 @@ void Service::start()
 
 void Service::postStart()
 {
-	// by default do nothing
+	// By default do nothing
 }
 
 void Service::stop()
@@ -357,7 +357,7 @@ void Service::stop()
 
 void Service::postStop()
 {
-	// by default do nothing
+	// By default do nothing
 }
 
 QString Service::formatLogLine(const QString &line) const {

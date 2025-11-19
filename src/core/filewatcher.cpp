@@ -47,7 +47,7 @@ bool FileWatcher::start(const QString &filePath)
 	sn_->clearReadiness(SocketNotifier::Read);
 	sn_->setReadEnabled(true);
 
-	// in case the socket was activated before registering the notifier
+	// In case the socket was activated before registering the notifier
 	if(ffi::file_watcher_file_changed(inner_))
 		deferCall_.defer([=] { fileChanged(); });
 

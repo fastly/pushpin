@@ -34,7 +34,7 @@ impl Timeout {
     }
 
     pub fn set_deadline(&self, deadline: Instant) {
-        // in case a previous timeout had completed, set the registration
+        // In case a previous timeout had completed, set the registration
         // readiness to false to ensure we get notified again
         self.evented.registration().set_ready(false);
 
@@ -59,12 +59,12 @@ impl Future for ElapsedFuture<'_> {
         let now = evented.registration().reactor().now();
         let expired = now >= evented.expires();
 
-        // if the registration is ready, the reactor guarantees enough time
+        // If the registration is ready, the reactor guarantees enough time
         // has passed
         assert!(!evented.registration().is_ready() || expired);
 
-        // even if the registration is not ready, we can still return ready
-        // if the timeout has elapsed. notably, this enables a timeout of
+        // Even if the registration is not ready, we can still return ready
+        // if the timeout has elapsed. Notably, this enables a timeout of
         // zero to poll as ready immediately
         if expired {
             return Poll::Ready(());

@@ -155,12 +155,12 @@ impl Batch {
         let mut ids = self.group_ids.get_as_new();
 
         while ids.is_empty() {
-            // find the next addr with items
+            // Find the next addr with items
             while self.addr_index < addrs.len() && addrs[self.addr_index].keys.is_empty() {
                 self.addr_index += 1;
             }
 
-            // if all are empty, we're done
+            // If all are empty, we're done
             if self.addr_index == addrs.len() {
                 assert!(self.nodes.is_empty());
                 return None;
@@ -171,7 +171,7 @@ impl Batch {
             self.last_group_ckeys.clear();
             ids.clear();
 
-            // get ids/seqs
+            // Get ids/seqs
             while ids.len() < zhttppacket::IDS_MAX {
                 let nkey = match keys.pop_front(&mut self.nodes) {
                     Some(nkey) => nkey,

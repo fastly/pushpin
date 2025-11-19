@@ -34,11 +34,11 @@ class SetReadiness
 public:
 	~SetReadiness();
 
-	// disable copying
+	// Disable copying
 	SetReadiness(const SetReadiness &) = delete;
 	SetReadiness & operator=(const SetReadiness &) = delete;
 
-	// pass a non-zero set of Interest flags
+	// Pass a non-zero set of Interest flags
 	int setReadiness(uint8_t readiness);
 
 private:

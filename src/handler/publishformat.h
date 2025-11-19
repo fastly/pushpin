@@ -55,16 +55,16 @@ public:
 	};
 
 	Type type;
-	Action action; // response/stream/ws
-	int code; // response/ws
-	QByteArray reason; // response/ws
-	HttpHeaders headers; // response
-	QByteArray body; // response/stream/ws
-	bool haveBodyPatch; // response
-	QVariantList bodyPatch; // response
-	MessageType messageType; // ws
+	Action action; // Response/stream/ws
+	int code; // Response/ws
+	QByteArray reason; // Response/ws
+	HttpHeaders headers; // Response
+	QByteArray body; // Response/stream/ws
+	bool haveBodyPatch; // Response
+	QVariantList bodyPatch; // Response
+	MessageType messageType; // Ws
 	bool haveContentFilters;
-	QStringList contentFilters; // response/stream/ws
+	QStringList contentFilters; // Response/stream/ws
 
 	PublishFormat() :
 		type((Type)-1),

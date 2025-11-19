@@ -21,7 +21,7 @@
 
 #include "httpheaders.h"
 
-// return position, end of string if not found, -1 on error
+// Return position, end of string if not found, -1 on error
 static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
 {
 	bool inQuote = false;
@@ -36,7 +36,7 @@ static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
 			{
 				++n;
 
-				// no character after the escape
+				// No character after the escape
 				if(n >= in.size())
 				{
 					return -1;
@@ -58,7 +58,7 @@ static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
 		}
 	}
 
-	// unterminated quote
+	// Unterminated quote
 	if(inQuote)
 	{
 		return -1;
@@ -67,7 +67,7 @@ static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
 	return in.size();
 }
 
-// search for one of many chars
+// Search for one of many chars
 static int findNext(const CowByteArray &in, const char *charList, int offset = 0)
 {
 	int len = qstrlen(charList);
@@ -224,7 +224,7 @@ CowByteArrayList HttpHeaders::takeAll(const CowByteArray &key, bool split)
 				out += h.second;
 
 			removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 
@@ -238,7 +238,7 @@ void HttpHeaders::removeAll(const CowByteArray &key)
 		if(qstricmp(at(n).first.data(), key.data()) == 0)
 		{
 			removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 }

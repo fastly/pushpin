@@ -171,7 +171,7 @@ static QString getString(const QVariant &in, const QString &parentName, const QS
 	return str;
 }
 
-// return true if item modified
+// Return true if item modified
 static bool convertToJsonStyleInPlace(QVariant *in)
 {
 	// Hash -> Map
@@ -320,7 +320,7 @@ QVariant patch(const QVariant &data, const QVariantList &ops, QString *errorMess
 
 		JsonPointer ptr;
 
-		// for all ops except move, we can resolve the path now
+		// For all ops except move, we can resolve the path now
 		if(type != "move")
 		{
 			ptr = JsonPointer::resolve(&out, path, errorMessage);

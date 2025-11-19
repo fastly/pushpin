@@ -33,7 +33,7 @@ class Handler
 public:
 	virtual ~Handler() {}
 
-	// returns null array on error
+	// Returns null array on error
 	virtual QByteArray handle(char type, const QByteArray &arg, QString *error) const = 0;
 };
 

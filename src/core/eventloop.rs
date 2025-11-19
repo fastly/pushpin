@@ -164,8 +164,8 @@ impl<C: Callback> Registrations<C> {
     }
 
     fn dispatch_activated(&self) {
-        // call the callback of each activated registration, ensuring we
-        // release borrows before each call. this way, callbacks can access
+        // Call the callback of each activated registration, ensuring we
+        // release borrows before each call. This way, callbacks can access
         // the eventloop, for example to add or remove registrations
         loop {
             let (nkey, mut callback, readiness) = {
@@ -186,7 +186,7 @@ impl<C: Callback> Registrations<C> {
                 let readiness = reg.evented.registration().readiness();
 
                 let nkey = if let Evented::Timer(_) = &reg.evented {
-                    // remove timer registrations after activation
+                    // Remove timer registrations after activation
                     data.nodes.remove(nkey);
 
                     None
@@ -207,14 +207,14 @@ impl<C: Callback> Registrations<C> {
             if let Some(nkey) = nkey {
                 let data = &mut *self.data.borrow_mut();
 
-                // if the registration still exists, restore its callback
+                // If the registration still exists, restore its callback
                 if let Some(n) = &mut data.nodes.get_mut(nkey) {
                     let reg = &mut n.value;
 
-                    // only set the callback field on the registration if
+                    // Only set the callback field on the registration if
                     // it's the same registration we took the callback from
                     // and not a new registration that happened to reuse the
-                    // same slot. if the callback field is none, then it's
+                    // same slot. If the callback field is none, then it's
                     // the same registration.
                     if reg.callback.is_none() {
                         reg.callback = Some(callback);
@@ -229,11 +229,11 @@ impl<C: Callback> Registrations<C> {
 
         if let Some(current_waker) = &data.waker {
             if !waker.will_wake(current_waker) {
-                // replace
+                // Replace
                 data.waker = Some(waker.clone());
             }
         } else {
-            // set
+            // Set
             data.waker = Some(waker.clone());
         }
     }
@@ -262,12 +262,12 @@ pub struct EventLoop<C> {
 }
 
 impl<C: Callback> EventLoop<C> {
-    // will create a reactor if one does not exist in the current thread. if
+    // Will create a reactor if one does not exist in the current thread. If
     // one already exists, registrations_max should be <= the max configured
     // in the reactor.
     pub fn new(registrations_max: usize) -> Self {
         let reactor = if let Some(reactor) = reactor::Reactor::current() {
-            // use existing reactor if available
+            // Use existing reactor if available
             reactor
         } else {
             reactor::Reactor::new(registrations_max)
@@ -407,7 +407,7 @@ impl<C: Callback> EventLoop<C> {
     }
 
     fn poll_and_dispatch(&self, timeout: Option<Duration>) -> Option<i32> {
-        // if exit code set, do a non-blocking poll
+        // If exit code set, do a non-blocking poll
         let timeout = if self.exit_code.get().is_some() {
             Some(Duration::from_millis(0))
         } else {
@@ -745,7 +745,7 @@ mod tests {
         let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
 
         {
-            // non-blocking connect attempt to trigger listener
+            // Non-blocking connect attempt to trigger listener
             let _stream = mio::net::TcpStream::connect(addr);
 
             while count.get() < 1 {
@@ -755,7 +755,7 @@ mod tests {
         }
 
         {
-            // non-blocking connect attempt to trigger listener
+            // Non-blocking connect attempt to trigger listener
             let _stream = mio::net::TcpStream::connect(addr);
 
             while count.get() < 2 {
@@ -785,14 +785,14 @@ mod tests {
 
         let id = l.register_timer(Duration::from_millis(0), cb).unwrap();
 
-        // no space
+        // No space
         assert!(l
             .register_timer(Duration::from_millis(0), Box::new(NoopCallback))
             .is_err());
 
         assert_eq!(l.exec(), 0);
 
-        // activated timers automatically deregister
+        // Activated timers automatically deregister
         l.deregister(id).unwrap_err();
 
         let id = l
@@ -849,7 +849,7 @@ mod tests {
                 let e = listener.accept().unwrap_err();
                 assert_eq!(e.kind(), io::ErrorKind::WouldBlock);
 
-                // this is allowed
+                // This is allowed
                 l.deregister(id.get().unwrap()).unwrap();
 
                 l.exit(0);
@@ -860,7 +860,7 @@ mod tests {
             l.register_fd(fd, mio::Interest::READABLE, cb).unwrap(),
         ));
 
-        // non-blocking connect attempt to trigger listener
+        // Non-blocking connect attempt to trigger listener
         let _stream = mio::net::TcpStream::connect(addr);
 
         assert_eq!(l.exec(), 0);
@@ -895,7 +895,7 @@ mod tests {
 
                 let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
 
-                // non-blocking connect attempt to trigger listener
+                // Non-blocking connect attempt to trigger listener
                 let _stream = mio::net::TcpStream::connect(addr);
 
                 assert_eq!(l.exec_async().await, 0);
@@ -961,7 +961,7 @@ mod tests {
 
                 let id = l.register_fd(fd, mio::Interest::READABLE, cb).unwrap();
 
-                // non-blocking connect attempt to trigger listener
+                // Non-blocking connect attempt to trigger listener
                 let stream = mio::net::TcpStream::connect(addr).unwrap();
 
                 state.listener = Some(listener);

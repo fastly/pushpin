@@ -132,11 +132,11 @@ static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
     LOGGER.get_or_init(|| {
-        // SAFETY: we accept that this call is unsound. on some platforms it
+        // SAFETY: we accept that this call is unsound. On some platforms it
         // is the only way to know the time zone, with a chance of UB if
-        // another thread modifies environment vars during the call. the risk
+        // another thread modifies environment vars during the call. The risk
         // is low, as this call will happen very early in the program, and
-        // only once. we would rather accept this low risk and know the time
+        // only once. We would rather accept this low risk and know the time
         // zone than not know the time zone
         let local_offset = unsafe { get_offset() };
 
@@ -151,7 +151,7 @@ pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
 pub fn get_simple_logger() -> &'static SimpleLogger {
     ensure_init_simple_logger(None, false);
 
-    // logger is guaranteed to have been initialized
+    // Logger is guaranteed to have been initialized
     LOGGER.get().expect("logger should be initialized")
 }
 

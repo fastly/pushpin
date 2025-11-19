@@ -110,7 +110,7 @@ public:
 			QPair<QString, QString> idKey(item.channel, item.id);
 			if(idCacheById.contains(idKey))
 			{
-				// we've seen this ID recently, drop the message
+				// We've seen this ID recently, drop the message
 				return;
 			}
 

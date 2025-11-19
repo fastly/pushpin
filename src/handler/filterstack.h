@@ -31,12 +31,12 @@ class FilterStack : public Filter
 public:
 	FilterStack(const Filter::Context &context, const QStringList &filters);
 
-	// takes ownership of filters in list
+	// Takes ownership of filters in list
 	FilterStack(const Filter::Context &context, const QList<Filter*> &filters);
 
 	~FilterStack();
 
-	// reimplemented
+	// Reimplemented
 	virtual SendAction sendAction() const;
 	virtual QByteArray update(const QByteArray &data);
 	virtual QByteArray finalize();

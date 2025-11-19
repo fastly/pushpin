@@ -42,7 +42,7 @@ static void proxyargstest()
 		const_cast<char*>("proxy-log.txt"),     // log_file
 		3,                                      // log_level
 		const_cast<char*>("ipc:prefix"),        // ipc_prefix
-		const_cast<char**>(routes),             // routes
+		const_cast<char**>(routes),             // Routes
 		2                                       // routes_count
 	};
 
@@ -69,7 +69,7 @@ static void proxyargstest()
 		const_cast<char*>(""),                  // log_file
 		2,                                      // log_level
 		const_cast<char*>(""),                  // ipc_prefix
-		const_cast<char**>(routesEmpty),        // routes array
+		const_cast<char**>(routesEmpty),        // Routes array
 		0                                       // routes_count
 	};
 

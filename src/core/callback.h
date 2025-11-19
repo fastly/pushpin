@@ -50,7 +50,7 @@ public:
 
     void remove(void *data)
     {
-        // mark for removal, but don't actually remove
+        // Mark for removal, but don't actually remove
         for(int n = 0; n < targets_.count(); ++n)
         {
             Target &t = targets_[n];
@@ -61,7 +61,7 @@ public:
             }
         }
 
-        // only actually remove if not in the middle of a call
+        // Only actually remove if not in the middle of a call
         if(activeCalls_ == 0)
         {
             removeMarked();
@@ -76,7 +76,7 @@ public:
         {
             const Target &t = targets_[n];
 
-            // skip if marked for removal
+            // Skip if marked for removal
             if(!t.second)
             {
                 continue;
@@ -129,7 +129,7 @@ private:
             if(!targets_[n].second)
             {
                 targets_.removeAt(n);
-                --n; // adjust position
+                --n; // Adjust position
             }
         }
     }

@@ -102,7 +102,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 
 	if(typeId(data) == QMetaType::QVariantHash)
 	{
-		// extract content. meta is the remaining data
+		// Extract content. Meta is the remaining data
 		QVariantHash hdata = data.toHash();
 		content = hdata.value(contentField).toByteArray();
 		hdata.remove(contentField);
@@ -110,8 +110,8 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 	}
 	else
 	{
-		// if data isn't a hash, then we can't extract content, so
-		//   the meta part will be the entire data
+		// If data isn't a hash, then we can't extract content, so
+		// the meta part will be the entire data
 		meta = data;
 	}
 

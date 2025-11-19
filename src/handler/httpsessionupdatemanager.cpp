@@ -68,7 +68,7 @@ public:
 	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout)
 	{
 		QUrl tmp = uri;
-		tmp.setQuery(QString()); // remove the query part
+		tmp.setQuery(QString()); // Remove the query part
 		QPair<int, QUrl> key(timeout, tmp);
 
 		Bucket *bucket = buckets.value(key);
@@ -78,13 +78,13 @@ public:
 			{
 				if(resetTimeout)
 				{
-					// flag for later processing
+					// Flag for later processing
 					bucket->deferredSessions += hs;
 				}
 			}
 			else
 			{
-				// move the session to this bucket
+				// Move the session to this bucket
 				unregisterSession(hs);
 				bucket->sessions += hs;
 				bucketsBySession[hs] = bucket;
@@ -92,7 +92,7 @@ public:
 		}
 		else
 		{
-			// bucket doesn't exist. make it and put this session in it
+			// Bucket doesn't exist. Make it and put this session in it
 
 			unregisterSession(hs);
 

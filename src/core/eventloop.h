@@ -30,7 +30,7 @@ public:
 	EventLoop(int capacity);
 	~EventLoop();
 
-	// disable copying
+	// Disable copying
 	EventLoop(const EventLoop &) = delete;
 	EventLoop & operator=(const EventLoop &) = delete;
 
