@@ -174,7 +174,7 @@ fn validate_ws_request(
     ws_version: Option<&[u8]>,
     ws_key: Option<&[u8]>,
 ) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
-    // a websocket request must not have a body.
+    // A websocket request must not have a body.
     // some clients send "Content-Length: 0", which we'll allow.
     // chunked encoding will be rejected.
     if req.method == "GET"
@@ -311,7 +311,7 @@ fn make_zhttp_request(
     Ok(zmq::Message::from(&packet_buf[..size]))
 }
 
-// return the capacity increase
+// Return the capacity increase
 fn resize_write_buffer_if_full(
     buf: &mut VecRingBuffer,
     block_size: usize,
@@ -320,7 +320,7 @@ fn resize_write_buffer_if_full(
 ) -> usize {
     assert!(blocks_max >= 2);
 
-    // all but one block can be used for writing
+    // All but one block can be used for writing
     let allowed = blocks_max - 1;
 
     if buf.remaining_capacity() == 0
@@ -366,7 +366,7 @@ enum Error {
 }
 
 impl Error {
-    // returns true if the error represents a logic error (a bug in the code)
+    // Returns true if the error represents a logic error (a bug in the code)
     // that could warrant a panic or high severity log level
     fn is_logical(&self) -> bool {
         matches!(self, Error::ValueActive)
@@ -510,7 +510,7 @@ impl MessageTracker {
         self.last_partial = false;
     }
 
-    // type, avail, done
+    // Type, avail, done
     fn current(&self) -> Option<(u8, usize, bool)> {
         #[allow(clippy::comparison_chain)]
         if self.items.len() > 1 {
@@ -652,7 +652,7 @@ pub fn make_zhttp_response(
     let payload = &scratch[..size];
 
     let (addr, v) = if use_router {
-        // for router, use message as-is and return addr separately
+        // For router, use message as-is and return addr separately
 
         let v = Vec::from(payload);
 
@@ -660,7 +660,7 @@ pub fn make_zhttp_response(
 
         (Some(addr), v)
     } else {
-        // for pub, embed addr in message
+        // For pub, embed addr in message
 
         let mut v = vec![0; addr.len() + 1 + payload.len()];
 
@@ -672,7 +672,7 @@ pub fn make_zhttp_response(
         (None, v)
     };
 
-    // this takes over the vec's memory without copying
+    // This takes over the vec's memory without copying
     let msg = zmq::Message::from(v);
 
     Ok((addr, msg))
@@ -917,9 +917,9 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         self.sender_stream.cancel();
     }
 
-    // this method is non-blocking, in order to increment the sequence number
+    // This method is non-blocking, in order to increment the sequence number
     // and send the message in one shot, without concurrent activity
-    // interfering with the sequencing. to send asynchronously, first await
+    // interfering with the sequencing. To send asynchronously, first await
     // on check_send and then call this method
     fn try_send_msg(&self, zreq: zhttppacket::Request) -> Result<(), Error> {
         let msg = {
@@ -990,9 +990,9 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
         self.sender.cancel();
     }
 
-    // this method is non-blocking, in order to increment the sequence number
+    // This method is non-blocking, in order to increment the sequence number
     // and send the message in one shot, without concurrent activity
-    // interfering with the sequencing. to send asynchronously, first await
+    // interfering with the sequencing. To send asynchronously, first await
     // on check_send and then call this method
     fn try_send_msg(&self, zresp: zhttppacket::Response) -> Result<(), Error> {
         let (addr, msg) = {
@@ -1078,7 +1078,7 @@ where
                 let zresp = r.get().get();
 
                 if zresp.ids[id_index].id != self.id.as_bytes() {
-                    // skip messages addressed to old ids
+                    // Skip messages addressed to old ids
                     continue;
                 }
 
@@ -1129,8 +1129,8 @@ where
                         self.first_data = false;
 
                         if self.websocket && credits == 0 {
-                            // workaround for pushpin-proxy, which doesn't
-                            //   send credits on websocket accept
+                            // Workaround for pushpin-proxy, which doesn't
+                            // send credits on websocket accept
                             credits = self.send_buf_size as u32;
                             debug!(
                                 "server-conn {}: no credits in websocket accept, assuming {}",
@@ -1225,7 +1225,7 @@ where
                 let zreq = r.get().get();
 
                 if zreq.ids[id_index].id != self.id {
-                    // skip messages addressed to old ids
+                    // Skip messages addressed to old ids
                     continue;
                 }
 
@@ -1320,7 +1320,7 @@ where
         Select2::R2(ret) => {
             ret?;
 
-            // unexpected message in current state
+            // Unexpected message in current state
             Err(Error::BadMessage)
         }
     }
@@ -1335,7 +1335,7 @@ where
 {
     match select_2(fut, pin!(receiver.recv())).await {
         Select2::R1(v) => v,
-        Select2::R2(_) => Err(Error::BadMessage), // unexpected message in current state
+        Select2::R2(_) => Err(Error::BadMessage), // Unexpected message in current state
     }
 }
 
@@ -1422,11 +1422,11 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     resp_body.prepare(&body, true)?;
 
     loop {
-        // send the buffer
+        // Send the buffer
         let send = pin!(async {
             match resp_body.send().await {
                 SendStatus::Complete(finished) => Ok(Some(finished)),
-                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                SendStatus::EarlyResponse(_) => unreachable!(), // For requests only
                 SendStatus::Partial((), _) => Ok(None),
                 SendStatus::Error((), e) => Err(e),
             }
@@ -1441,7 +1441,7 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     Ok(())
 }
 
-// read request body and prepare outgoing zmq message
+// Read request body and prepare outgoing zmq message
 #[allow(clippy::too_many_arguments)]
 async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     id: &str,
@@ -1453,7 +1453,7 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     packet_buf: &RefCell<Vec<u8>>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<zmq::Message, Error> {
-    // receive request body
+    // Receive request body
 
     loop {
         match req_body.try_recv(body_buf.write_buf())? {
@@ -1475,7 +1475,7 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
         }
     }
 
-    // determine how to respond
+    // Determine how to respond
 
     let mut websocket = false;
 
@@ -1487,17 +1487,17 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     }
 
     if websocket {
-        // websocket requests are not supported in req mode
+        // Websocket requests are not supported in req mode
 
-        // toss the request body
+        // Toss the request body
         body_buf.clear();
 
         return Err(Error::ReqModeWebSocket);
     }
 
-    // regular http requests we can handle
+    // Regular http requests we can handle
 
-    // prepare zmq message
+    // Prepare zmq message
 
     let ids = [zhttppacket::Id {
         id: id.as_bytes(),
@@ -1519,13 +1519,13 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
         &mut packet_buf.borrow_mut(),
     )?;
 
-    // body consumed
+    // Body consumed
     body_buf.clear();
 
     Ok(msg)
 }
 
-// read full request and prepare outgoing zmq message.
+// Read full request and prepare outgoing zmq message.
 // return Ok(None) if client disconnects before providing a complete request header
 async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     id: &str,
@@ -1538,11 +1538,11 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
 ) -> Result<Option<zmq::Message>, Error> {
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
-    // receive request header
+    // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
     // be consumed by discard_header(). be careful with early returns from
-    // this function and do not use the ?-operator
+    // This function and do not use the ?-operator
     let (req_header, mut req_body) = {
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
@@ -1554,7 +1554,7 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
 
     let req_ref = req_header.get();
 
-    // log request
+    // Log request
 
     {
         let host = get_host(req_ref.headers);
@@ -1591,7 +1591,7 @@ struct ReqRespond<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
     prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
 }
 
-// consumes resp if successful
+// Consumes resp if successful
 #[allow(clippy::too_many_arguments)]
 async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
     id: &str,
@@ -1618,12 +1618,12 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
         }
     };
 
-    // send message
+    // Send message
 
     // ABR: discard_while
     discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
 
-    // receive message
+    // Receive message
 
     let zresp = loop {
         // ABR: direct read
@@ -1632,7 +1632,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
         let zresp_ref = zresp.get().get();
 
         if zresp_ref.ids[id_index].id != id.as_bytes() {
-            // skip messages addressed to old ids
+            // Skip messages addressed to old ids
             continue;
         }
 
@@ -1642,7 +1642,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
             debug!("server-conn {}: handle packet: (data)", id);
         }
 
-        // skip non-data messages
+        // Skip non-data messages
 
         match &zresp_ref.ptype {
             zhttppacket::ResponsePacket::Data(_) => break zresp,
@@ -1658,14 +1658,14 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
 
         let rdata = match &zresp.ptype {
             zhttppacket::ResponsePacket::Data(rdata) => rdata,
-            _ => unreachable!(), // we confirmed the type above
+            _ => unreachable!(), // We confirmed the type above
         };
 
         if body_buf.write_all(rdata.body).is_err() {
             return Err(Error::BufferExceeded);
         }
 
-        // send response header
+        // Send response header
 
         let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
         let mut headers_len = 0;
@@ -1710,7 +1710,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
     }))
 }
 
-// return true if persistent
+// Return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     id: &str,
@@ -1747,9 +1747,9 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         .await
         {
             Ok(Some(ret)) => ret,
-            Ok(None) => return Ok(false), // no request
+            Ok(None) => return Ok(false), // No request
             Err(e) => {
-                // on error, resp is not consumed, so we can use it
+                // On error, resp is not consumed, so we can use it
                 send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
 
                 return Err(e);
@@ -1766,18 +1766,18 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     let resp_body = header_sent.start_body(r.prepare_body);
 
-    // send response body
+    // Send response body
 
     let finished = loop {
-        // fill the buffer as much as possible
+        // Fill the buffer as much as possible
         let size = resp_body.prepare(Buffer::read_buf(body_buf), true)?;
         body_buf.read_commit(size);
 
-        // send the buffer
+        // Send the buffer
         let send = pin!(async {
             match resp_body.send().await {
                 SendStatus::Complete(finished) => Ok(Some(finished)),
-                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                SendStatus::EarlyResponse(_) => unreachable!(), // For requests only
                 SendStatus::Partial((), _) => Ok(None),
                 SendStatus::Error((), e) => Err(e),
             }
@@ -1819,7 +1819,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     loop {
         stream.set_id(cid);
 
-        // this was originally logged when starting the non-async state
+        // This was originally logged when starting the non-async state
         // machine, so we'll keep doing that
         debug!("server-conn {}: assigning id", cid);
 
@@ -1850,7 +1850,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
             break;
         }
 
-        // note: buf1 is not cleared as there may be data to read
+        // Note: buf1 is not cleared as there may be data to read
 
         buf2.clear();
         body_buf.clear();
@@ -1916,7 +1916,7 @@ async fn accept_handoff<R>(
 where
     R: Fn(),
 {
-    // discarding here is fine. the sender should cease sending
+    // Discarding here is fine. The sender should cease sending
     // messages until we've replied with proceed
     discard_while(
         zsess_in.receiver,
@@ -1935,7 +1935,7 @@ where
     // unset to_addr so we don't send keep-alives
     zsess_in.shared.set_to_addr(None);
 
-    // pause until we get a msg
+    // Pause until we get a msg
     zsess_in.peek_msg().await?;
 
     Ok(())
@@ -1948,7 +1948,7 @@ async fn server_accept_handoff<R>(
 where
     R: Fn(),
 {
-    // discarding here is fine. the sender should cease sending
+    // Discarding here is fine. The sender should cease sending
     // messages until we've replied with proceed
     server_discard_while(
         zsess_in.receiver,
@@ -1967,13 +1967,13 @@ where
     // unset to_addr so we don't send keep-alives
     zsess_in.shared.set_to_addr(None);
 
-    // pause until we get a msg
+    // Pause until we get a msg
     zsess_in.peek_msg().await?;
 
     Ok(())
 }
 
-// this function will either return immediately or await messages
+// This function will either return immediately or await messages
 async fn handle_other<R>(
     zresp: Track<'_, arena::Rc<zhttppacket::OwnedResponse>>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R>,
@@ -1994,11 +1994,11 @@ where
         }
         zhttppacket::ResponsePacket::Error(_) => Err(Error::Handler),
         zhttppacket::ResponsePacket::Cancel => Err(Error::HandlerCancel),
-        _ => Err(Error::BadMessage), // unexpected type
+        _ => Err(Error::BadMessage), // Unexpected type
     }
 }
 
-// this function will either return immediately or await messages
+// This function will either return immediately or await messages
 async fn server_handle_other<R>(
     zreq: Track<'_, arena::Rc<zhttppacket::OwnedRequest>>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R>,
@@ -2019,7 +2019,7 @@ where
         }
         zhttppacket::RequestPacket::Error(_) => Err(Error::Handler),
         zhttppacket::RequestPacket::Cancel => Err(Error::HandlerCancel),
-        _ => Err(Error::BadMessage), // unexpected type
+        _ => Err(Error::BadMessage), // Unexpected type
     }
 }
 
@@ -2255,7 +2255,7 @@ where
 
                 match ret {
                     SendStatus::Complete(finished) => break finished,
-                    SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                    SendStatus::EarlyResponse(_) => unreachable!(), // For requests only
                     SendStatus::Partial((), size) => {
                         out_credits += size as u32;
 
@@ -2297,7 +2297,7 @@ where
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
 
-                        // if handoff requested, flush what we can before accepting
+                        // If handoff requested, flush what we can before accepting
                         // so that the data is not delayed while we wait
 
                         if send.is_none() && resp_body.can_send() {
@@ -2315,7 +2315,7 @@ where
 
                             match ret {
                                 SendStatus::Complete(resp) => break 'main resp,
-                                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                                SendStatus::EarlyResponse(_) => unreachable!(), // For requests only
                                 SendStatus::Partial((), size) => {
                                     out_credits += size as u32;
 
@@ -2369,7 +2369,7 @@ where
     R: AsyncRead,
     W: AsyncWrite,
 {
-    // send initial body, including overflow, before offering credits
+    // Send initial body, including overflow, before offering credits
 
     let mut send = pin!(None);
 
@@ -2496,7 +2496,7 @@ where
                     zhttppacket::RequestPacket::HandoffStart => {
                         drop(zreq);
 
-                        // if handoff requested, flush what we can before accepting
+                        // If handoff requested, flush what we can before accepting
                         // so that the data is not delayed while we wait
 
                         if send.is_none() && req_body.can_send() {
@@ -2657,7 +2657,7 @@ where
                 let zreq = match opcode {
                     websocket::OPCODE_TEXT | websocket::OPCODE_BINARY => {
                         if body.is_empty() && !end {
-                            // don't bother sending empty message
+                            // Don't bother sending empty message
                             continue;
                         }
 
@@ -2774,7 +2774,7 @@ where
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
-                            // close content isn't limited by credits. if we
+                            // Close content isn't limited by credits. If we
                             // don't have space for it, just error out
                             handler.accept_body(&arr)?;
                             handler.accept_body(reason.as_bytes())?;
@@ -2837,7 +2837,7 @@ where
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
 
-                        // if handoff requested, flush what we can before accepting
+                        // If handoff requested, flush what we can before accepting
                         // so that the data is not delayed while we wait
                         loop {
                             if send_content.is_none() {
@@ -3003,7 +3003,7 @@ where
                 let zresp = match opcode {
                     websocket::OPCODE_TEXT | websocket::OPCODE_BINARY => {
                         if body.is_empty() && !end {
-                            // don't bother sending empty message
+                            // Don't bother sending empty message
                             continue;
                         }
 
@@ -3120,7 +3120,7 @@ where
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
-                            // close content isn't limited by credits. if we
+                            // Close content isn't limited by credits. If we
                             // don't have space for it, just error out
                             handler.accept_body(&arr)?;
                             handler.accept_body(reason.as_bytes())?;
@@ -3183,7 +3183,7 @@ where
                     zhttppacket::RequestPacket::HandoffStart => {
                         drop(zreq);
 
-                        // if handoff requested, flush what we can before accepting
+                        // If handoff requested, flush what we can before accepting
                         // so that the data is not delayed while we wait
                         loop {
                             if send_content.is_none() {
@@ -3282,15 +3282,15 @@ fn server_stream_process_req_header(
 
                 match name {
                     "permessage-deflate" => {
-                        // the client can present multiple offers. take
-                        // the first that works. if none work, it's not
-                        // an error. we'll just not use compression
+                        // The client can present multiple offers. Take
+                        // the first that works. If none work, it's not
+                        // an error. We'll just not use compression
                         if allow_compression && ws_deflate_config.is_none() {
                             if let Ok(config) =
                                 websocket::PerMessageDeflateConfig::from_params(params)
                             {
                                 if let Ok(resp_config) = config.create_response() {
-                                    // set the encoded buffer to be 25% the size of the
+                                    // Set the encoded buffer to be 25% the size of the
                                     // recv buffer
                                     let enc_buf_size = recv_buf_size / 4;
 
@@ -3308,7 +3308,7 @@ fn server_stream_process_req_header(
         }
     }
 
-    // log request
+    // Log request
 
     let host = get_host(req.headers);
 
@@ -3382,7 +3382,7 @@ fn server_stream_process_req_header(
     Ok((msg, ws_req_data))
 }
 
-// read request header and prepare outgoing zmq message.
+// Read request header and prepare outgoing zmq message.
 // return Ok(None) if client disconnects before providing a complete request header
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
@@ -3407,11 +3407,11 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
 > {
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
-    // receive request header
+    // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
     // be consumed by discard_header(). be careful with early returns from
-    // this function and do not use the ?-operator
+    // This function and do not use the ?-operator
     let (req_header, req_body) = {
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
@@ -3464,7 +3464,7 @@ enum StreamRespond<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
     WebSocketRejected(StreamRespondWebSocketRejected<'buf, 'st, R, W>),
 }
 
-// consumes resp if successful
+// Consumes resp if successful
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     id: &'zs str,
@@ -3494,7 +3494,7 @@ where
 {
     let req_header = req.recv_header(resp.as_mut().unwrap());
 
-    // receive request header
+    // Receive request header
 
     let result = server_stream_read_header(
         id,
@@ -3517,7 +3517,7 @@ where
 
     refresh_stream_timeout();
 
-    // send request message
+    // Send request message
 
     // ABR: discard_while
     discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
@@ -3531,12 +3531,12 @@ where
         refresh_session_timeout,
     );
 
-    // receive any message, in order to get a handler address
+    // Receive any message, in order to get a handler address
     // ABR: direct read
     zsess_in.peek_msg().await?;
 
     if body_size != http1::BodySize::NoBody {
-        // receive request body and send to handler
+        // Receive request body and send to handler
 
         // ABR: function contains read
         stream_recv_body(
@@ -3549,7 +3549,7 @@ where
         .await?;
     }
 
-    // receive response message
+    // Receive response message
 
     let zresp = loop {
         let mut resp_take = resp.take().unwrap();
@@ -3580,13 +3580,13 @@ where
         }
     };
 
-    // determine how to respond
+    // Determine how to respond
 
     let rdata = match &zresp.get().get().ptype {
         zhttppacket::ResponsePacket::Data(rdata) => rdata,
         zhttppacket::ResponsePacket::Error(edata) => {
             if ws_req_data.is_some() && edata.condition == "rejected" {
-                // send websocket rejection
+                // Send websocket rejection
 
                 let rdata = edata.rejected_info.as_ref().unwrap();
 
@@ -3599,7 +3599,7 @@ where
                     let mut headers_len = 0;
 
                     for h in rdata.headers.iter() {
-                        // don't send these headers
+                        // Don't send these headers
                         if h.name.eq_ignore_ascii_case("Upgrade")
                             || h.name.eq_ignore_ascii_case("Connection")
                             || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
@@ -3639,7 +3639,7 @@ where
                     }
                 };
 
-                // first call can't fail
+                // First call can't fail
                 let (size, overflowed) = prepare_body
                     .prepare(rdata.body, true)
                     .expect("infallible prepare call failed");
@@ -3648,7 +3648,7 @@ where
                     debug!("server-conn {}: overflowing {} bytes", id, overflowed);
                 }
 
-                // we confirmed above that the data will fit in the buffer
+                // We confirmed above that the data will fit in the buffer
                 assert!(size == rdata.body.len());
 
                 return Ok(Some(StreamRespond::WebSocketRejected(
@@ -3664,14 +3664,14 @@ where
                     .unwrap_err());
             }
         }
-        _ => unreachable!(), // we confirmed the type above
+        _ => unreachable!(), // We confirmed the type above
     };
 
     if rdata.body.len() > recv_buf_size {
         return Err(Error::BufferExceeded);
     }
 
-    // send response header
+    // Send response header
 
     let (header, mut prepare_body) = {
         let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
@@ -3681,7 +3681,7 @@ where
 
         for h in rdata.headers.iter() {
             if ws_req_data.is_some() {
-                // don't send these headers
+                // Don't send these headers
                 if h.name.eq_ignore_ascii_case("Upgrade")
                     || h.name.eq_ignore_ascii_case("Connection")
                     || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
@@ -3771,7 +3771,7 @@ where
         }
     };
 
-    // first call can't fail
+    // First call can't fail
     let (size, overflowed) = prepare_body
         .prepare(rdata.body, !rdata.more)
         .expect("infallible prepare call failed");
@@ -3780,7 +3780,7 @@ where
         debug!("server-conn {}: overflowing {} bytes", id, overflowed);
     }
 
-    // we confirmed above that the data will fit in the buffer
+    // We confirmed above that the data will fit in the buffer
     assert!(size == rdata.body.len());
 
     let ws_config = if let Some(ws_req_data) = ws_req_data {
@@ -3797,7 +3797,7 @@ where
     })))
 }
 
-// return true if persistent
+// Return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_handler<S, R1, R2>(
     id: &str,
@@ -3827,8 +3827,8 @@ where
 {
     let stream = RefCell::new(stream);
 
-    let send_buf_size = buf1.capacity(); // for sending to handler
-    let recv_buf_size = buf2.capacity(); // for receiving from handler
+    let send_buf_size = buf1.capacity(); // For sending to handler
+    let recv_buf_size = buf2.capacity(); // For receiving from handler
 
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);
 
@@ -3861,9 +3861,9 @@ where
         .await
         {
             Ok(Some(ret)) => ret,
-            Ok(None) => return Ok(false), // no request
+            Ok(None) => return Ok(false), // No request
             Err(e) => {
-                // on error, resp is not consumed, so we can use it
+                // On error, resp is not consumed, so we can use it
                 send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
 
                 return Err(e);
@@ -3884,11 +3884,11 @@ where
             let resp_body = header_sent.start_body(r.prepare_body);
 
             loop {
-                // send the buffer
+                // Send the buffer
                 let send = async {
                     match resp_body.send().await {
                         SendStatus::Complete(finished) => Ok(Some(finished)),
-                        SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                        SendStatus::EarlyResponse(_) => unreachable!(), // For requests only
                         SendStatus::Partial((), _) => Ok(None),
                         SendStatus::Error((), e) => Err(e),
                     }
@@ -3944,11 +3944,11 @@ where
     refresh_stream_timeout();
 
     if let Some(deflate_config) = ws_config {
-        // reduce size of future
+        // Reduce size of future
         #[allow(clippy::drop_non_drop)]
         drop(resp_body);
 
-        // handle as websocket connection
+        // Handle as websocket connection
 
         // ABR: function contains read
         stream_websocket(
@@ -3969,7 +3969,7 @@ where
 
         Ok(false)
     } else {
-        // send response body
+        // Send response body
 
         // ABR: function contains read
         let finished = stream_send_body(
@@ -4017,7 +4017,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     loop {
         stream.set_id(cid);
 
-        // this was originally logged when starting the non-async state
+        // This was originally logged when starting the non-async state
         // machine, so we'll keep doing that
         debug!("server-conn {}: assigning id", cid);
 
@@ -4115,7 +4115,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                         };
 
                         if let Some((addr, msg)) = msg {
-                            // best effort
+                            // Best effort
                             let _ = zsender_stream.try_send((addr, msg));
 
                             shared.inc_out_seq();
@@ -4131,7 +4131,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
             break;
         }
 
-        // note: buf1 is not cleared as there may be data to read
+        // Note: buf1 is not cleared as there may be data to read
 
         buf2.clear();
         buf2.resize(buffer_size);
@@ -4317,7 +4317,7 @@ impl ConnectionPool {
     fn take(&self, addr: std::net::SocketAddr, tls: bool, host: &str) -> Option<Stream> {
         let key = ConnectionPoolKey::new(addr, tls, host.to_string());
 
-        // take the first connection that returns WouldBlock when attempting a read.
+        // Take the first connection that returns WouldBlock when attempting a read.
         // anything else is considered an error and the connection is discarded
         while let Some(mut stream) = self.inner.lock().unwrap().take(&key) {
             match stream.read(&mut [0]) {
@@ -4490,7 +4490,7 @@ async fn client_connect<'a>(
     Ok((peer_addr, use_tls, stream))
 }
 
-// return Some if fully valid redirect response, else return None.
+// Return Some if fully valid redirect response, else return None.
 fn check_redirect(
     method: &str,
     base_url: &url::Url,
@@ -4507,17 +4507,17 @@ fn check_redirect(
             }
         }
 
-        // must have location header
+        // Must have location header
         if let Some(s) = location {
-            // must be UTF-8
+            // Must be UTF-8
             if let Ok(s) = str::from_utf8(s) {
-                // must be valid URL
+                // Must be valid URL
                 if let Ok(url) = base_url.join(s) {
-                    // must have an acceptable scheme
+                    // Must have an acceptable scheme
                     if schemes.contains(&url.scheme()) {
                         let use_get = resp.code >= 301 && resp.code <= 303 && method == "POST";
 
-                        // all is well!
+                        // All is well!
                         return Some((url, use_get));
                     }
                 }
@@ -4530,7 +4530,7 @@ fn check_redirect(
 
 enum ClientHandlerDone<T> {
     Complete(T, bool),
-    Redirect(bool, url::Url, bool), // rare alloc
+    Redirect(bool, url::Url, bool), // Rare alloc
 }
 
 impl<T> ClientHandlerDone<T> {
@@ -4584,7 +4584,7 @@ where
                 return Err(Error::BadRequest);
             }
 
-            // host comes from the uri
+            // Host comes from the uri
             if h.name.eq_ignore_ascii_case("Host") {
                 continue;
             }
@@ -4609,18 +4609,18 @@ where
     };
 
     let resp = {
-        // send request header
+        // Send request header
 
         let req_body = req_header.send().await?;
 
-        // send request body
+        // Send request body
 
         loop {
-            // fill the buffer as much as possible
+            // Fill the buffer as much as possible
             let size = req_body.prepare(Buffer::read_buf(body_buf), true)?;
             body_buf.read_commit(size);
 
-            // send the buffer
+            // Send the buffer
             match req_body.send().await {
                 SendStatus::Complete(resp) => break resp,
                 SendStatus::EarlyResponse(resp) => {
@@ -4635,7 +4635,7 @@ where
 
     assert_eq!(body_buf.len(), 0);
 
-    // receive response header
+    // Receive response header
 
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
@@ -4649,7 +4649,7 @@ where
             log_id, resp_ref.code, resp_ref.reason
         );
 
-        // receive response body
+        // Receive response body
 
         let finished = {
             loop {
@@ -4745,12 +4745,12 @@ async fn client_req_connect(
         Err(_) => return Err(Error::BadRequest),
     };
 
-    // must be an http url
+    // Must be an http url
     if !["http", "https"].contains(&initial_url.scheme()) {
         return Err(Error::BadRequest);
     }
 
-    // must have a method
+    // Must have a method
     if rdata.method.is_empty() {
         return Err(Error::BadRequest);
     }
@@ -4994,7 +4994,7 @@ pub async fn client_req_connection(
     }
 }
 
-// return true if persistent
+// Return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn client_stream_handler<S, R1, R2>(
     log_id: &str,
@@ -5023,8 +5023,8 @@ where
 {
     let stream = RefCell::new(stream);
 
-    let send_buf_size = buf1.capacity(); // for sending to handler
-    let recv_buf_size = buf2.capacity(); // for receiving from handler
+    let send_buf_size = buf1.capacity(); // For sending to handler
+    let recv_buf_size = buf2.capacity(); // For receiving from handler
 
     let req = client::Request::new(io_split(&stream), buf1, buf2);
 
@@ -5098,13 +5098,13 @@ where
         };
 
         for h in rdata.headers.iter() {
-            // host comes from the uri
+            // Host comes from the uri
             if h.name.eq_ignore_ascii_case("Host") {
                 continue;
             }
 
             if websocket {
-                // don't send these headers
+                // Don't send these headers
                 if h.name.eq_ignore_ascii_case("Connection")
                     || h.name.eq_ignore_ascii_case("Upgrade")
                     || h.name.eq_ignore_ascii_case("Sec-WebSocket-Version")
@@ -5181,7 +5181,7 @@ where
         (req_header, ws_key, overflow)
     };
 
-    // send request header
+    // Send request header
 
     let req_body = {
         let mut send_header = pin!(req_header.send());
@@ -5204,7 +5204,7 @@ where
 
     refresh_stream_timeout();
 
-    // send request body
+    // Send request body
 
     // ABR: function contains read
     let resp = server_stream_send_body(
@@ -5219,7 +5219,7 @@ where
     )
     .await?;
 
-    // receive response header
+    // Receive response header
 
     let (resp_body, ws_config) = {
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
@@ -5272,7 +5272,7 @@ where
                 };
 
                 if let Some((url, use_get)) = check_redirect(method, url, &resp_ref, &schemes) {
-                    // eat response body
+                    // Eat response body
                     let finished = loop {
                         let ret = {
                             let mut buf = [0; 4_096];
@@ -5282,7 +5282,7 @@ where
                         match ret {
                             RecvStatus::Complete(finished, _) => break finished,
                             RecvStatus::Read((), size) => {
-                                // buf is non-empty so this can never be zero
+                                // Buf is non-empty so this can never be zero
                                 assert!(size > 0);
                             }
                             RecvStatus::NeedBytes(()) => {
@@ -5343,7 +5343,7 @@ where
 
                             match name {
                                 "permessage-deflate" => {
-                                    // we must have offered, and server must
+                                    // We must have offered, and server must
                                     // provide one response at most
                                     if !allow_compression || ws_deflate_config.is_some() {
                                         return Err(Error::InvalidWebSocketResponse);
@@ -5353,7 +5353,7 @@ where
                                         websocket::PerMessageDeflateConfig::from_params(params)
                                     {
                                         if config.check_response().is_ok() {
-                                            // set the encoded buffer to be 25% the size of the
+                                            // Set the encoded buffer to be 25% the size of the
                                             // recv buffer
                                             let enc_buf_size = recv_buf_size / 4;
 
@@ -5382,14 +5382,14 @@ where
                         return Err(Error::InvalidWebSocketResponse);
                     }
                 } else {
-                    // websocket request rejected
+                    // Websocket request rejected
 
-                    // we need to allocate to collect the response body,
+                    // We need to allocate to collect the response body,
                     // since buf1 holds bytes read from the socket, and
                     // resp is using buf2's inner buffer
                     let mut body_buf = ContiguousBuffer::new(send_buf_size);
 
-                    // receive response body
+                    // Receive response body
 
                     let finished = loop {
                         match resp_body.try_recv(body_buf.write_buf())? {
@@ -5454,10 +5454,10 @@ where
             }
 
             let credits = if ws_key.is_some() {
-                // for websockets, provide credits when sending response to handler
+                // For websockets, provide credits when sending response to handler
                 recv_buf_size as u32
             } else {
-                // for http, it is not necessary to provide credits when responding
+                // For http, it is not necessary to provide credits when responding
                 0
             };
 
@@ -5491,7 +5491,7 @@ where
     *response_received = true;
 
     if let Some(deflate_config) = ws_config {
-        // handle as websocket connection
+        // Handle as websocket connection
 
         // ABR: function contains read
         server_stream_websocket(
@@ -5512,7 +5512,7 @@ where
 
         Ok(ClientHandlerDone::Complete((), false))
     } else {
-        // receive response body
+        // Receive response body
 
         // ABR: function contains read
         let finished = server_stream_recv_body(
@@ -5562,7 +5562,7 @@ where
 {
     let zreq = zreq.get().get();
 
-    // assign address so we can send replies
+    // Assign address so we can send replies
     let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq.from) {
         Ok(v) => v,
         Err(_) => return Err(Error::BadRequest),
@@ -5580,12 +5580,12 @@ where
         Err(_) => return Err(Error::BadRequest),
     };
 
-    // must be an http or websocket url
+    // Must be an http or websocket url
     if !["http", "https", "ws", "wss"].contains(&initial_url.scheme()) {
         return Err(Error::BadRequest);
     }
 
-    // http requests must have a method
+    // Http requests must have a method
     if ["http", "https"].contains(&initial_url.scheme()) && rdata.method.is_empty() {
         return Err(Error::BadRequest);
     }
@@ -5602,7 +5602,7 @@ where
 
     let zsess_out = ZhttpServerStreamSessionOut::new(instance_id, id, packet_buf, zsender, shared);
 
-    // ack request
+    // Ack request
 
     // ABR: discard_while
     server_discard_while(
@@ -5625,7 +5625,7 @@ where
         refresh_session_timeout,
     );
 
-    // allow receiving subsequent messages
+    // Allow receiving subsequent messages
     enable_routing();
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
@@ -5932,7 +5932,7 @@ where
                 };
 
                 if let Some((addr, msg)) = resp {
-                    // best effort
+                    // Best effort
                     let _ = zsender.try_send((addr, msg));
 
                     shared.inc_out_seq();
@@ -6286,7 +6286,7 @@ pub mod testutil {
 
     impl Identify for AsyncFakeSock {
         fn set_id(&mut self, _id: &str) {
-            // do nothing
+            // Do nothing
         }
     }
 
@@ -6421,7 +6421,7 @@ pub mod testutil {
 
             assert_eq!(check_poll(executor.step()), None);
 
-            // read message
+            // Read message
             let _ = r_from_conn.try_recv().unwrap();
 
             let msg = concat!(
@@ -6573,7 +6573,7 @@ pub mod testutil {
 
             assert_eq!(check_poll(executor.step()), None);
 
-            // read message
+            // Read message
             let _ = r_from_conn.try_recv().unwrap();
 
             let msg = concat!(
@@ -6748,7 +6748,7 @@ pub mod testutil {
 
             assert_eq!(check_poll(executor.step()), None);
 
-            // read message
+            // Read message
             let _ = r_from_conn.try_recv().unwrap();
 
             let msg = concat!(
@@ -6918,7 +6918,7 @@ pub mod testutil {
 
             assert_eq!(check_poll(executor.step()), None);
 
-            // read message
+            // Read message
             let _ = r_from_conn.try_recv().unwrap();
 
             let msg = concat!(
@@ -6939,7 +6939,7 @@ pub mod testutil {
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
-            // connection reusable
+            // Connection reusable
             assert_eq!(check_poll(executor.step()), None);
 
             let data = sock.borrow_mut().take_writable();
@@ -7103,10 +7103,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7121,23 +7121,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7219,10 +7219,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7239,23 +7239,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7369,10 +7369,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7389,23 +7389,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7456,10 +7456,10 @@ mod tests {
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7533,10 +7533,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7551,23 +7551,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7714,10 +7714,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7727,23 +7727,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7781,7 +7781,7 @@ mod tests {
 
         sock.borrow_mut().allow_write(1024);
 
-        // connection reusable
+        // Connection reusable
         assert_eq!(check_poll(executor.step()), None);
 
         let data = sock.borrow_mut().take_writable();
@@ -7836,10 +7836,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -7855,23 +7855,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -7902,10 +7902,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_stream_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         assert_eq!(addr.as_ref(), "handler".as_bytes());
@@ -7943,7 +7943,7 @@ mod tests {
 
         sock.borrow_mut().allow_write(1024);
 
-        // connection reusable
+        // Connection reusable
         assert_eq!(check_poll(executor.step()), None);
 
         let data = sock.borrow_mut().take_writable();
@@ -7998,10 +7998,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -8011,23 +8011,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -8080,7 +8080,7 @@ mod tests {
 
         sock.borrow_mut().allow_write(1024);
 
-        // connection reusable
+        // Connection reusable
         assert_eq!(check_poll(executor.step()), None);
 
         let data = sock.borrow_mut().take_writable();
@@ -8140,10 +8140,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -8158,23 +8158,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -8275,7 +8275,7 @@ mod tests {
 
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert!(r_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -8322,7 +8322,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
 
-        // no more messages yet
+        // No more messages yet
         assert!(r_stream_from_conn.try_recv().is_err());
 
         sock.borrow_mut().clear_write_allowed();
@@ -8358,10 +8358,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (_, msg) = r_stream_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert!(r_stream_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -8413,10 +8413,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the connection's outbound message queue
+        // Fill the connection's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
@@ -8426,23 +8426,23 @@ mod tests {
 
         sock.borrow_mut().add_readable(req_data);
 
-        // connection won't be able to send a message yet
+        // Connection won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now connection will be able to send a message
+        // Now connection will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -8484,7 +8484,7 @@ mod tests {
 
         let data = sock.borrow_mut().take_writable();
 
-        // data received so far
+        // Data received so far
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",
             "Content-Type: text/plain\r\n",
@@ -8497,7 +8497,7 @@ mod tests {
 
         sock.borrow_mut().close();
 
-        // closed, task should error out
+        // Closed, task should error out
         let e = check_poll_err(executor.step()).unwrap();
         assert!(matches!(e,
             Error::CoreHttp(CoreHttpError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof
@@ -8555,10 +8555,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -8610,7 +8610,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = b"hello";
@@ -8630,10 +8630,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_stream_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         assert_eq!(addr.as_ref(), "handler".as_bytes());
@@ -8647,7 +8647,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // recv message
+        // Recv message
 
         let msg = concat!(
             "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",
@@ -8727,10 +8727,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -8784,7 +8784,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = {
@@ -8814,10 +8814,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_stream_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         assert_eq!(addr.as_ref(), "handler".as_bytes());
@@ -8831,7 +8831,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // recv message
+        // Recv message
 
         let msg = concat!(
             "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",
@@ -8920,10 +8920,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9008,10 +9008,10 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (_, msg) = r_stream_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert!(r_stream_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -9117,15 +9117,15 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -9143,14 +9143,14 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let resp_data = concat!(
@@ -9164,13 +9164,13 @@ mod tests {
 
         sock.borrow_mut().add_readable(resp_data);
 
-        // now handler will be able to send a message and finish
+        // Now handler will be able to send a message and finish
         assert_eq!(check_poll(executor.step()), Some(()));
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9225,15 +9225,15 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no messages yet
+        // No messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
         assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
         drop(s_from_conn);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -9251,14 +9251,14 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let msg = r_from_conn.try_recv().unwrap();
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let resp_data = concat!(
@@ -9272,13 +9272,13 @@ mod tests {
 
         sock.borrow_mut().add_readable(resp_data);
 
-        // now handler will be able to send a message and finish
+        // Now handler will be able to send a message and finish
         assert_eq!(check_poll(executor.step()), Some(()));
 
-        // read real message
+        // Read real message
         let msg = r_from_conn.try_recv().unwrap();
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9434,7 +9434,7 @@ mod tests {
 
         let mut executor = StepExecutor::new(&reactor, fut);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(
             s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
             true
@@ -9445,25 +9445,25 @@ mod tests {
         );
         drop(s_from_conn);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now handler will be able to send a message
+        // Now handler will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9475,7 +9475,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -9495,11 +9495,11 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9534,7 +9534,7 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no more messages yet
+        // No more messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let resp_data = concat!(
@@ -9550,11 +9550,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9570,11 +9570,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), Some(()));
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9644,7 +9644,7 @@ mod tests {
 
         let mut executor = StepExecutor::new(&reactor, fut);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(
             s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
             true
@@ -9655,27 +9655,27 @@ mod tests {
         );
         drop(s_from_conn);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now handler will be able to send a message
+        // Now handler will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
         let expected_addr = b"handler".as_slice();
 
-        // read real message
+        // Read real message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert_eq!(addr.as_deref(), Some(expected_addr));
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9687,7 +9687,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -9707,11 +9707,11 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert_eq!(addr.as_deref(), Some(expected_addr));
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9746,7 +9746,7 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // no more messages yet
+        // No more messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let resp_data = concat!(
@@ -9762,11 +9762,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert_eq!(addr.as_deref(), Some(expected_addr));
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9782,11 +9782,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), Some(()));
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert_eq!(addr.as_deref(), Some(expected_addr));
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -9856,11 +9856,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert!(r_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -9872,7 +9872,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // no data yet
+        // No data yet
         assert!(sock.borrow_mut().take_writable().is_empty());
 
         sock.borrow_mut().allow_write(1024);
@@ -9894,11 +9894,11 @@ mod tests {
 
         sock.borrow_mut().clear_write_allowed();
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert!(r_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -9941,11 +9941,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert!(r_from_conn.try_recv().is_err());
 
         let buf = &msg[..];
@@ -10012,7 +10012,7 @@ mod tests {
 
         let mut executor = StepExecutor::new(&reactor, fut);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(
             s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
             true
@@ -10023,25 +10023,25 @@ mod tests {
         );
         drop(s_from_conn);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now handler will be able to send a message
+        // Now handler will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -10053,7 +10053,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -10062,7 +10062,7 @@ mod tests {
 
         let buf = sock.borrow_mut().take_writable();
 
-        // use httparse to fish out Sec-WebSocket-Key
+        // Use httparse to fish out Sec-WebSocket-Key
         let ws_key = {
             let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -10100,7 +10100,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // no more messages yet
+        // No more messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
@@ -10120,11 +10120,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -10142,7 +10142,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = b"hello";
@@ -10162,7 +10162,7 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
@@ -10175,7 +10175,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // recv message
+        // Recv message
 
         let msg = concat!(
             "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",
@@ -10261,7 +10261,7 @@ mod tests {
 
         let mut executor = StepExecutor::new(&reactor, fut);
 
-        // fill the handler's outbound message queue
+        // Fill the handler's outbound message queue
         assert_eq!(
             s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
             true
@@ -10272,25 +10272,25 @@ mod tests {
         );
         drop(s_from_conn);
 
-        // handler won't be able to send a message yet
+        // Handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
-        // read bogus message
+        // Read bogus message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        // now handler will be able to send a message
+        // Now handler will be able to send a message
         assert_eq!(check_poll(executor.step()), None);
 
-        // read real message
+        // Read real message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -10302,7 +10302,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // no data yet
+        // No data yet
         assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
 
         sock.borrow_mut().allow_write(1024);
@@ -10311,7 +10311,7 @@ mod tests {
 
         let buf = sock.borrow_mut().take_writable();
 
-        // use httparse to fish out Sec-WebSocket-Key
+        // Use httparse to fish out Sec-WebSocket-Key
         let ws_key = {
             let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -10350,7 +10350,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
-        // no more messages yet
+        // No more messages yet
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
@@ -10371,11 +10371,11 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
-        // no other messages
+        // No other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
 
         let buf = &msg[..];
@@ -10394,7 +10394,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = {
@@ -10424,7 +10424,7 @@ mod tests {
 
         assert_eq!(check_poll(executor.step()), None);
 
-        // read message
+        // Read message
         let (addr, msg) = r_from_conn.try_recv().unwrap();
         assert!(addr.is_none());
 
@@ -10437,7 +10437,7 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        // recv message
+        // Recv message
 
         let msg = concat!(
             "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",

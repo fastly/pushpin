@@ -23,7 +23,7 @@ static thread_local EventLoop *g_instance = nullptr;
 EventLoop::EventLoop(int capacity) :
 	taskManaged_(false)
 {
-	// only one per thread allowed
+	// Only one per thread allowed
 	assert(!g_instance);
 
 	inner_ = ffi::event_loop_create(capacity);
@@ -35,8 +35,8 @@ EventLoop::EventLoop(ffi::EventLoopRaw *inner) :
 	inner_(inner),
 	taskManaged_(true)
 {
-	// instance is task-managed, meaning the task owns the inner handle and
-	// will manage where g_instance points. the instance should not destroy
+	// Instance is task-managed, meaning the task owns the inner handle and
+	// will manage where g_instance points. The instance should not destroy
 	// the inner handle nor modify g_instance.
 }
 
@@ -144,11 +144,11 @@ void EventLoop::setup_cb(void *ctx, const ffi::EventLoopRaw *l)
 {
 	std::function<void ()> *setup = (std::function<void ()> *)ctx;
 
-	// only one per thread allowed
+	// Only one per thread allowed
 	assert(!g_instance);
 
-	// the task provides a const pointer but the EventLoop class needs a
-	// non-const pointer. however, we promise not to call any non-const
+	// The task provides a const pointer but the EventLoop class needs a
+	// non-const pointer. However, we promise not to call any non-const
 	// methods with it.
 	ffi::EventLoopRaw *inner = (ffi::EventLoopRaw *)l;
 

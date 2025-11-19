@@ -26,7 +26,7 @@
 #include "eventloop.h"
 
 // loop_advance should process enough events to cause the calls to run,
-// without sleeping, in order to prove the calls are run immediately
+// Without sleeping, in order to prove the calls are run immediately
 static std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
 {
 	DeferCall deferCall;
@@ -45,7 +45,7 @@ static std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
 	return {deferCall.pendingCount(), count};
 }
 
-// spawns a thread, triggers the deferCall from it, then waits for thread to
+// Spawns a thread, triggers the deferCall from it, then waits for thread to
 // finish
 static void callNonLocal(DeferCall *deferCall, std::function<void ()> handler)
 {
@@ -56,7 +56,7 @@ static void callNonLocal(DeferCall *deferCall, std::function<void ()> handler)
 }
 
 // loop_advance should process enough events to cause the calls to run,
-// without sleeping, in order to prove the calls are run immediately
+// Without sleeping, in order to prove the calls are run immediately
 static std::tuple<int, int> runNonLocal(std::function<void ()> loop_advance)
 {
 	DeferCall deferCall;
@@ -76,10 +76,10 @@ static void deferCall()
 	EventLoop loop(2);
 
 	auto [pendingCount, count] = runDeferCall([&] {
-		// run the first call and queue the second
+		// Run the first call and queue the second
 		loop.step();
 
-		// run the second
+		// Run the second
 		loop.step();
 	});
 
@@ -92,7 +92,7 @@ static void nonLocal()
 	EventLoop loop(2);
 
 	auto [pendingCount, count] = runNonLocal([&] {
-		// run the first call
+		// Run the first call
 		loop.step();
 	});
 
@@ -132,7 +132,7 @@ static void managerCleanup()
 		});
 	});
 
-	// cleanup should process deferred calls queued so far as well as
+	// Cleanup should process deferred calls queued so far as well as
 	// those queued during processing
 	DeferCall::cleanup();
 	TEST_ASSERT_EQ(count, 2);

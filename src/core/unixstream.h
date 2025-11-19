@@ -32,18 +32,18 @@ public:
 	UnixStream();
 	~UnixStream();
 
-	// disable copying
+	// Disable copying
 	UnixStream(const UnixStream &) = delete;
 	UnixStream & operator=(const UnixStream &) = delete;
 
-	// returns true if connection starting, false on error
+	// Returns true if connection starting, false on error
 	bool connect(const QString &path);
 
-	// returns true if connected, false on error. if errorCondition() returns
+	// Returns true if connected, false on error. If errorCondition() returns
 	// ENOTCONN, then it is not fatal and the socket is still connecting
 	bool checkConnected();
 
-	// reimplemented
+	// Reimplemented
 	virtual QByteArray read(int size = -1);
 	virtual int write(const QByteArray &buf);
 	virtual int errorCondition() const { return errorCondition_; }

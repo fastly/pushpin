@@ -109,7 +109,7 @@ public:
 	{
 		Item *i = requestsByReq.value(req);
 		if(i)
-			return; // already watching
+			return; // Already watching
 
 		reqConnectionMap[req] = {
 			req->finished.connect(boost::bind(&Private::req_finished, this, req)),
@@ -121,7 +121,7 @@ public:
 		i->owned = false;
 		requestsByReq.insert(req, i);
 
-		// start the clock if we haven't yet
+		// Start the clock if we haven't yet
 		if(!timer->isActive())
 			restartCountdown();
 	}
@@ -131,14 +131,14 @@ public:
 		Item *i = requestsByReq.value(req);
 		if(i)
 		{
-			// take over ownership
+			// Take over ownership
 			i->owned = true;
 		}
 		else
 		{
-			// if we aren't watching (or were watching, but no
-			//   longer watching), then just delete what we were
-			//   given
+			// If we aren't watching (or were watching, but no
+			// longer watching), then just delete what we were
+			// given
 			reqConnectionMap.erase(req);
 			delete req;
 		}
@@ -148,7 +148,7 @@ public:
 	{
 		avail = true;
 
-		// success means we restart (or stop) the clock
+		// Success means we restart (or stop) the clock
 		if(!requestsByReq.isEmpty())
 			restartCountdown();
 		else
@@ -159,11 +159,11 @@ public:
 	{
 		if(!requestsByReq.isEmpty())
 		{
-			// let the clock keep running
+			// Let the clock keep running
 		}
 		else
 		{
-			// stop clock and immediately indicate unavailability
+			// Stop clock and immediately indicate unavailability
 			timer->stop();
 			avail = false;
 		}
@@ -193,7 +193,7 @@ public:
 			}
 			else
 			{
-				// any other error is fine, it means the inspector is responding
+				// Any other error is fine, it means the inspector is responding
 				handleSuccess();
 			}
 		}

@@ -62,9 +62,9 @@ impl<T> Sender<T> {
                 return Err(mpsc::TrySendError::Full(t));
             }
 
-            // cts will only be true if a read was performed while the queue
+            // Cts will only be true if a read was performed while the queue
             // was empty, and this function is the only place where the queue
-            // is written to. this means the try_send call below will only
+            // is written to. This means the try_send call below will only
             // fail if the receiver disconnected
         }
 
@@ -166,7 +166,7 @@ pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
     let (read_reg, read_sr) = event::Registration::new();
     let (write_reg, write_sr) = event::Registration::new();
 
-    // rendezvous channel
+    // Rendezvous channel
     if bound == 0 {
         let (s, r) = mpsc::sync_channel::<T>(1);
 
@@ -204,7 +204,7 @@ pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
             cts: None,
         };
 
-        // channel is immediately writable
+        // Channel is immediately writable
         receiver
             .write_set_readiness
             .set_readiness(mio::Interest::WRITABLE)
@@ -258,7 +258,7 @@ impl<T> LocalChannel<T> {
 
         if senders.nodes.is_empty() {
             if let Some(read_sr) = &*self.read_set_readiness.borrow() {
-                // notify for disconnect
+                // Notify for disconnect
                 read_sr.set_readiness(mio::Interest::READABLE).unwrap();
             }
         }
@@ -267,7 +267,7 @@ impl<T> LocalChannel<T> {
     fn set_sender_waiting(&self, key: usize) {
         let senders = &mut *self.senders.borrow_mut();
 
-        // add if not already present
+        // Add if not already present
         if senders.nodes[key].prev.is_none() && senders.waiting.head != Some(key) {
             senders.waiting.push_back(&mut senders.nodes, key);
         }
@@ -276,7 +276,7 @@ impl<T> LocalChannel<T> {
     fn notify_one_sender(&self) {
         let senders = &mut *self.senders.borrow_mut();
 
-        // notify next waiting sender, if any
+        // Notify next waiting sender, if any
         if let Some(key) = senders.waiting.pop_front(&mut senders.nodes) {
             let sender = &mut senders.nodes[key].value;
 
@@ -309,7 +309,7 @@ impl<T> LocalSender<T> {
     }
 
     // if this returns true, then the next call to try_send() by any sender
-    // is guaranteed to not return TrySendError::Full.
+    // Is guaranteed to not return TrySendError::Full.
     // if this returns false, the sender is added to the wait list
     pub fn check_send(&self) -> bool {
         let queue = self.channel.queue.borrow();
@@ -324,7 +324,7 @@ impl<T> LocalSender<T> {
     }
 
     pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
-        // we are acting, so clear the notified flag
+        // We are acting, so clear the notified flag
         self.channel.clear_sender_notified(self.key);
 
         let read_sr = &*self.channel.read_set_readiness.borrow();
@@ -332,7 +332,7 @@ impl<T> LocalSender<T> {
         let read_sr = match read_sr {
             Some(sr) => sr,
             None => {
-                // receiver is disconnected
+                // Receiver is disconnected
                 return Err(mpsc::TrySendError::Disconnected(t));
             }
         };
@@ -353,7 +353,7 @@ impl<T> LocalSender<T> {
     }
 
     pub fn cancel(&self) {
-        // if we were notified but never acted on it, notify the next waiting sender, if any
+        // If we were notified but never acted on it, notify the next waiting sender, if any
         if self.channel.sender_is_notified(self.key) {
             self.channel.clear_sender_notified(self.key);
 
@@ -379,7 +379,7 @@ impl<T> LocalSender<T> {
         })
     }
 
-    // returns error if a receiver already exists
+    // Returns error if a receiver already exists
     #[allow(clippy::result_unit_err)]
     pub fn make_receiver(
         &self,
@@ -458,10 +458,10 @@ pub fn local_channel<T>(
     let (read_reg, read_sr) = event::LocalRegistration::new(memory);
     let (write_reg, write_sr) = event::LocalRegistration::new(memory);
 
-    // no support for rendezvous channels
+    // No support for rendezvous channels
     assert!(bound > 0);
 
-    // need to support at least one sender
+    // Need to support at least one sender
     assert!(max_senders > 0);
 
     let channel = Rc::new(LocalChannel {
@@ -589,7 +589,7 @@ impl<T> AsyncLocalSender<T> {
     }
 
     pub fn into_inner(self) -> LocalSender<T> {
-        // normally, the poll registration would be deregistered when the
+        // Normally, the poll registration would be deregistered when the
         // sender drops, but here we are keeping the sender alive, so we need
         // to explicitly deregister
         self.evented
@@ -608,11 +608,11 @@ impl<T> AsyncLocalSender<T> {
     }
 
     // after polling/awaiting the returned future, you must call try_send()
-    // or cancel(), or drop the sender, in order to ensure proper
-    // coordination when there are multiple senders. prefer using
+    // Or cancel(), or drop the sender, in order to ensure proper
+    // coordination when there are multiple senders. Prefer using
     // wait_sendable() which guards against misuse.
     // it's okay to run multiple instances of this future within the same
-    // task. see the comment on the CheckSendFuture struct.
+    // task. See the comment on the CheckSendFuture struct.
     pub fn check_send(&self) -> CheckSendFuture<'_, T> {
         CheckSendFuture { s: self }
     }
@@ -625,14 +625,14 @@ impl<T> AsyncLocalSender<T> {
         self.inner.cancel();
     }
 
-    // waits for sendability in order to perform a non-blocking send
-    // afterward. basically a less error-prone version check_send() +
-    // try_send(). the returned future calls cancel() if dropped before
-    // completion. the output of the future is a SendOnce, which offers a
+    // Waits for sendability in order to perform a non-blocking send
+    // afterward. Basically a less error-prone version check_send() +
+    // try_send(). The returned future calls cancel() if dropped before
+    // completion. The output of the future is a SendOnce, which offers a
     // method for sending one value. SendOnce calls cancel() if dropped
     // without sending anything.
     // it's okay to run multiple instances of this future within the same
-    // task. see the comment on the WaitSendableFuture struct.
+    // task. See the comment on the WaitSendableFuture struct.
     pub fn wait_sendable(&self) -> WaitSendableFuture<'_, T> {
         WaitSendableFuture {
             evented: &self.evented,
@@ -661,7 +661,7 @@ impl<T> AsyncLocalReceiver<T> {
     }
 
     pub fn into_inner(self) -> LocalReceiver<T> {
-        // normally, the poll registration would be deregistered when the
+        // Normally, the poll registration would be deregistered when the
         // receiver drops, but here we are keeping the receiver alive, so we
         // need to explicitly deregister
         self.evented
@@ -678,7 +678,7 @@ impl<T> AsyncLocalReceiver<T> {
 }
 
 // allows one send attempt by calling try_send() which consumes self.
-// if struct is dropped instead, the send interest is canceled.
+// If struct is dropped instead, the send interest is canceled.
 pub struct SendOnce<'a, T> {
     sender: Option<&'a LocalSender<T>>,
 }
@@ -712,7 +712,7 @@ impl<T> Future for WaitWritableFuture<'_, T> {
             .set_waker(cx.waker(), mio::Interest::WRITABLE);
 
         // if can_send() returns false, then we know we can't write. this
-        // check prevents spurious wakups of a rendezvous channel from
+        // Check prevents spurious wakups of a rendezvous channel from
         // indicating writability when the channel is not actually writable
         if !f.s.inner.can_send() {
             f.s.evented.registration().set_ready(false);
@@ -761,7 +761,7 @@ where
         let t = f.t.take().unwrap();
 
         // try_send will update the registration readiness, so we don't need
-        // to do that here
+        // To do that here
         match f.s.try_send(t) {
             Ok(()) => Poll::Ready(Ok(())),
             Err(mpsc::TrySendError::Full(t)) => {
@@ -869,20 +869,20 @@ impl<T> Drop for LocalSendFuture<'_, T> {
     }
 }
 
-// it's okay to maintain multiple instances of this future at the same time
-// within the same task. calling poll() won't negatively affect other
-// instances. the drop() method clears the waker on the shared registration,
-// which may look problematic. however, whenever any instance is (re-)polled,
+// It's okay to maintain multiple instances of this future at the same time
+// within the same task. Calling poll() won't negatively affect other
+// instances. The drop() method clears the waker on the shared registration,
+// which may look problematic. However, whenever any instance is (re-)polled,
 // the waker will be reinstated.
 //
-// notably, these scenarios work:
+// Notably, these scenarios work:
 //
 // * creating two instances and awaiting them sequentially
-// * creating two instances and selecting on them in a loop. both will
-//   eventually complete
+// * creating two instances and selecting on them in a loop. Both will
+// eventually complete
 // * creating one instance, polling it to pending, then creating a second
-//   instance and polling it to completion, then polling on the first
-//   instance again
+// instance and polling it to completion, then polling on the first
+// instance again
 pub struct CheckSendFuture<'a, T> {
     s: &'a AsyncLocalSender<T>,
 }
@@ -916,7 +916,7 @@ impl<T> Drop for CheckSendFuture<'_, T> {
     }
 }
 
-// it's okay to maintain multiple instances of this future at the same time
+// It's okay to maintain multiple instances of this future at the same time
 // within the same task, because the logic is same as CheckSendFuture
 pub struct WaitSendableFuture<'a, T> {
     evented: &'a CustomEvented,
@@ -1496,7 +1496,7 @@ mod tests {
 
         assert_eq!(executor.have_tasks(), true);
 
-        // attempting to receive on a rendezvous channel will make the
+        // Attempting to receive on a rendezvous channel will make the
         // sender writable
         assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
 
@@ -1535,7 +1535,7 @@ mod tests {
 
     #[test]
     fn async_check_send_sequential() {
-        // create two instances and await them sequentially
+        // Create two instances and await them sequentially
 
         let reactor = Reactor::new(2);
         let executor = Executor::new(2);
@@ -1551,11 +1551,11 @@ mod tests {
                 .spawn(async move {
                     let s = AsyncLocalSender::new(s);
 
-                    // fill the queue
+                    // Fill the queue
                     s.send(1).await.unwrap();
                     state.set(1);
 
-                    // create two instances and await them sequentially
+                    // Create two instances and await them sequentially
 
                     let fut1 = s.check_send();
                     let fut2 = s.check_send();
@@ -1593,7 +1593,7 @@ mod tests {
 
     #[test]
     fn async_check_send_alternating() {
-        // create one instance, poll it to pending, then create a second
+        // Create one instance, poll it to pending, then create a second
         // instance and poll it to completion, then poll the first again
 
         let reactor = Reactor::new(2);
@@ -1610,23 +1610,23 @@ mod tests {
                 .spawn(async move {
                     let s = AsyncLocalSender::new(s);
 
-                    // fill the queue
+                    // Fill the queue
                     s.send(1).await.unwrap();
 
-                    // create one instance
+                    // Create one instance
                     let mut fut1 = s.check_send();
 
-                    // poll it to pending
+                    // Poll it to pending
                     assert_eq!(poll_async(&mut fut1).await, Poll::Pending);
                     state.set(1);
 
-                    // create a second instance and poll it to completion
+                    // Create a second instance and poll it to completion
                     s.check_send().await;
 
                     s.send(2).await.unwrap();
                     state.set(2);
 
-                    // poll the first again
+                    // Poll the first again
                     fut1.await;
 
                     state.set(3);
@@ -1655,7 +1655,7 @@ mod tests {
 
     #[test]
     fn async_wait_sendable_sequential() {
-        // create two instances and await them sequentially
+        // Create two instances and await them sequentially
 
         let reactor = Reactor::new(2);
         let executor = Executor::new(2);
@@ -1671,11 +1671,11 @@ mod tests {
                 .spawn(async move {
                     let s = AsyncLocalSender::new(s);
 
-                    // fill the queue
+                    // Fill the queue
                     s.send(1).await.unwrap();
                     state.set(1);
 
-                    // create two instances and await them sequentially
+                    // Create two instances and await them sequentially
 
                     let fut1 = s.wait_sendable();
                     let fut2 = s.wait_sendable();
@@ -1710,7 +1710,7 @@ mod tests {
 
     #[test]
     fn async_wait_sendable_alternating() {
-        // create one instance, poll it to pending, then create a second
+        // Create one instance, poll it to pending, then create a second
         // instance and poll it to completion, then poll the first again
 
         let reactor = Reactor::new(2);
@@ -1727,21 +1727,21 @@ mod tests {
                 .spawn(async move {
                     let s = AsyncLocalSender::new(s);
 
-                    // fill the queue
+                    // Fill the queue
                     s.send(1).await.unwrap();
 
-                    // create one instance
+                    // Create one instance
                     let mut fut1 = s.wait_sendable();
 
-                    // poll it to pending
+                    // Poll it to pending
                     assert!(poll_async(&mut fut1).await.is_pending());
                     state.set(1);
 
-                    // create a second instance and poll it to completion
+                    // Create a second instance and poll it to completion
                     s.wait_sendable().await.try_send(2).unwrap();
                     state.set(2);
 
-                    // poll the first again
+                    // Poll the first again
                     fut1.await;
 
                     state.set(3);

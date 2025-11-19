@@ -116,7 +116,7 @@ macro_rules! import_cpptest {
         )]
         #[cfg_attr(target_os = "macos", link(name = "c++"))]
         #[cfg_attr(not(target_os = "macos"), link(name = "stdc++"))]
-        #[allow(improper_ctypes)] // we only use pointers to non-FFI-safe types, which is safe
+        #[allow(improper_ctypes)] // We only use pointers to non-FFI-safe types, which is safe
         extern "C" {
             $($tt)*
         }

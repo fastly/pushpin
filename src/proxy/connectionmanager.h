@@ -37,10 +37,10 @@ public:
 	ConnectionManager();
 	~ConnectionManager();
 
-	// returns cid
+	// Returns cid
 	QByteArray addConnection(WebSocket *sock);
 
-	// returns cid or empty
+	// Returns cid or empty
 	QByteArray getConnection(WebSocket *sock) const;
 
 	void removeConnection(WebSocket *sock);

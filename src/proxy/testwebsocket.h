@@ -35,7 +35,7 @@ public:
 	TestWebSocket();
 	~TestWebSocket();
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 

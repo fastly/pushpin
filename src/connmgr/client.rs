@@ -57,25 +57,25 @@ use std::time::Duration;
 
 const REQ_SENDER_BOUND: usize = 1;
 
-// we read and process each request message one at a time, wrapping it in an
-// rc, and sending it to connections via channels. on the other side of each
+// We read and process each request message one at a time, wrapping it in an
+// rc, and sending it to connections via channels. On the other side of each
 // channel, the message is received and processed immediately, except for the
-// first message. this means the max number of messages retained per
+// first message. This means the max number of messages retained per
 // connection is the channel bound per connection plus one
 pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = REQ_SENDER_BOUND + 1;
 
-// the max number of messages retained outside of connections is one per
+// The max number of messages retained outside of connections is one per
 // handle we read from (req and stream), in preparation for sending to any
 // connections
 pub const MSG_RETAINED_PER_WORKER_MAX: usize = 2;
 
-// run x1
+// Run x1
 // req_handle_task x1
 // stream_handle_task x1
 // keep_alives_task x1
 const WORKER_NON_CONNECTION_TASKS_MAX: usize = 10;
 
-// this is meant to be an average max of registrations per task, in order
+// This is meant to be an average max of registrations per task, in order
 // to determine the total number of registrations sufficient for all tasks,
 // however it is not enforced per task
 const REGISTRATIONS_PER_TASK_MAX: usize = 32;
@@ -244,7 +244,7 @@ impl Connections {
         let c = &mut *self.inner.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // clear active keep alive
+        // Clear active keep alive
         if let Some(bkey) = ci.batch_key.take() {
             items.batch.remove(bkey);
         }
@@ -267,7 +267,7 @@ impl Connections {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // unset current id, if any
+        // Unset current id, if any
         if let Some(cur_id) = &ci.id {
             items.nodes_by_id.remove(cur_id);
             ci.id = None;
@@ -277,7 +277,7 @@ impl Connections {
             ci.id = Some(id.clone());
             items.nodes_by_id.insert(id, nkey);
         } else {
-            // clear active keep alive
+            // Clear active keep alive
             if let Some(bkey) = ci.batch_key.take() {
                 items.batch.remove(bkey);
             }
@@ -339,7 +339,7 @@ impl Connections {
             Some(n) => {
                 let ci = &n.value;
 
-                // is stream mode with an id
+                // Is stream mode with an id
                 ci.shared.is_some() && ci.id.is_some()
             }
             None => false,
@@ -375,7 +375,7 @@ impl Connections {
         let ci = &mut items.nodes[ckey].value;
         let cshared = ci.shared.as_ref().unwrap().get();
 
-        // only batch connections with known handler addresses
+        // Only batch connections with known handler addresses
         let addr_ref = cshared.to_addr();
         let addr = match addr_ref.get() {
             Some(addr) => addr,
@@ -404,10 +404,10 @@ impl Connections {
                     let ci = &nodes[ckey].value;
                     let cshared = ci.shared.as_ref().unwrap().get();
 
-                    // addr could have been removed after adding to the batch
+                    // Addr could have been removed after adding to the batch
                     cshared.to_addr().get()?;
 
-                    // item is guaranteed to have an id. only items with an
+                    // Item is guaranteed to have an id. Only items with an
                     // id are added to a batch, and if an item's id is
                     // removed then the item is removed from the batch
                     let id = ci.id.as_ref().unwrap();
@@ -626,10 +626,10 @@ impl Worker {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
-        // large enough to fit anything
+        // Large enough to fit anything
         let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
 
-        // same size as working buffers
+        // Same size as working buffers
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let instance_id = Rc::new(instance_id);
@@ -744,20 +744,20 @@ impl Worker {
         ready.send(()).unwrap();
         drop(ready);
 
-        // wait for stop
+        // Wait for stop
         let _ = stop.recv().await;
 
-        // stop keep alives
+        // Stop keep alives
         drop(keep_alives_stop);
         let _ = keep_alives_done.recv().await;
 
-        // stop remaining tasks
+        // Stop remaining tasks
         drop(req_handle_stop);
         drop(stream_handle_stop);
         let _ = req_handle_done.recv().await;
         let stream_handle = stream_handle_done.recv().await.unwrap();
 
-        // send cancels
+        // Send cancels
 
         stream_conns.batch_clear();
 
@@ -775,7 +775,7 @@ impl Worker {
                 next_cancel_index += 1;
 
                 if stream_conns.can_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = stream_conns.batch_add(key);
                 }
             }
@@ -830,7 +830,7 @@ impl Worker {
 
         let zreq_receiver = AsyncLocalReceiver::new(zreq_receiver);
 
-        // bound is 1 per connection, so all connections can indicate done at once
+        // Bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
         let (s_cdone, r_cdone) = channel::local_channel::<ConnectionDone>(
             conns.max(),
@@ -886,7 +886,7 @@ impl Worker {
                     Ok(done) => {
                         let ret = conns.remove(done.ckey);
 
-                        // req mode doesn't have a sender
+                        // Req mode doesn't have a sender
                         assert!(ret.is_none());
                     }
                     Err(e) => panic!("r_cdone channel error: {}", e),
@@ -989,7 +989,7 @@ impl Worker {
                             ))
                             .is_err()
                         {
-                            // this should never happen. we only read a message
+                            // This should never happen. We only read a message
                             // if we know we can spawn
                             panic!("failed to spawn req_connection_task");
                         }
@@ -1043,7 +1043,7 @@ impl Worker {
         let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let stream_req_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
 
-        // bound is 1 per connection, so all connections can indicate done at once
+        // Bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
         let (s_cdone, r_cdone) = channel::local_channel::<ConnectionDone>(
             conns.max(),
@@ -1227,7 +1227,7 @@ impl Worker {
                                 ))
                                 .is_err()
                             {
-                                // this should never happen. we only read a message
+                                // This should never happen. We only read a message
                                 // if we know we can spawn
                                 panic!("failed to spawn stream_connection_task");
                             }
@@ -1296,7 +1296,7 @@ impl Worker {
                                     None => continue,
                                 };
 
-                                // this should always succeed, since afterwards we yield
+                                // This should always succeed, since afterwards we yield
                                 // to let the connection receive the message
                                 match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
                                     Ok(()) => count += 1,
@@ -1304,7 +1304,7 @@ impl Worker {
                                         "client-worker {}: connection-{} cannot receive message",
                                         id, key
                                     ),
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
                                 }
                             }
 
@@ -1329,7 +1329,7 @@ impl Worker {
 
         while r_cdone.recv().await.is_ok() {}
 
-        // give the handle back
+        // Give the handle back
         done.send(stream_handle).await.unwrap();
 
         debug!("client-worker {}: task stopped: stream_handle", id);
@@ -1358,7 +1358,7 @@ impl Worker {
         );
 
         let log_id = if let Some(cid) = &cid {
-            // zhttp ids are pretty much always valid strings, but we'll
+            // Zhttp ids are pretty much always valid strings, but we'll
             // do a lossy conversion just in case
             let cid_str = String::from_utf8_lossy(cid);
 
@@ -1421,7 +1421,7 @@ impl Worker {
         );
 
         let log_id = {
-            // zhttp ids are pretty much always valid strings, but we'll
+            // Zhttp ids are pretty much always valid strings, but we'll
             // do a lossy conversion just in case
             let cid_str = String::from_utf8_lossy(&cid);
 
@@ -1491,7 +1491,7 @@ impl Worker {
         let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
-            // wait for next keep alive time
+            // Wait for next keep alive time
             match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
@@ -1507,7 +1507,7 @@ impl Worker {
                 next_keep_alive_index += 1;
 
                 if conns.can_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = conns.batch_add(key);
                 }
             }
@@ -1519,7 +1519,7 @@ impl Worker {
                 next_keep_alive_index = 0;
             }
 
-            // keep steady pace
+            // Keep steady pace
             next_keep_alive_time += KEEP_ALIVE_INTERVAL;
             next_keep_alive_timeout.set_deadline(next_keep_alive_time);
 
@@ -1529,7 +1529,7 @@ impl Worker {
                     Select2::R2(send) => send,
                 };
 
-                // there could be no message if items removed or message construction failed
+                // There could be no message if items removed or message construction failed
                 let (count, addr, msg) =
                     match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
                         Some(ret) => ret,
@@ -1549,7 +1549,7 @@ impl Worker {
             let now = reactor.now();
 
             if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
-                // got really behind somehow. just skip ahead
+                // Got really behind somehow. Just skip ahead
                 next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
                 next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
@@ -1603,7 +1603,7 @@ impl Client {
         let pool_max = if event::can_move_mio_sockets_between_threads() {
             (req_maxconn + stream_maxconn) / 10
         } else {
-            // disable persistent connections
+            // Disable persistent connections
             0
         };
 
@@ -1898,7 +1898,7 @@ impl TestClient {
             })
             .unwrap();
 
-        // wait for handler thread to start
+        // Wait for handler thread to start
         assert_eq!(status_r.recv().unwrap(), StatusMessage::Started);
 
         Self {
@@ -2183,7 +2183,7 @@ impl TestClient {
         in_sock.set_subscribe(b"handler ").unwrap();
         in_sock.connect("inproc://client-test-in").unwrap();
 
-        // ensure zsockman is subscribed
+        // Ensure zsockman is subscribed
         thread::sleep(Duration::from_millis(100));
 
         status.send(StatusMessage::Started).unwrap();
@@ -2393,15 +2393,15 @@ impl TestClient {
 
                 let out_seq = seq + 1;
 
-                // as a hack to make the test server stateless, respond to every message
-                // using the received sequence number. for messages we don't care about,
+                // As a hack to make the test server stateless, respond to every message
+                // using the received sequence number. For messages we don't care about,
                 // respond with keep-alive in order to keep the sequencing going
                 if ptype.is_empty() || ptype == "ping" || ptype == "pong" || ptype == "close" {
                     if ptype.is_empty() && content_type.is_empty() {
-                        // assume http/ws accept, or http body
+                        // Assume http/ws accept, or http body
 
                         if !reason.is_empty() {
-                            // http/ws accept
+                            // Http/ws accept
 
                             let code = code.unwrap();
                             assert!(code == 200 || code == 101);
@@ -2438,7 +2438,7 @@ impl TestClient {
                                 .unwrap();
                             out_stream_events = out_stream_sock.get_events().unwrap();
                         } else {
-                            // http body
+                            // Http body
 
                             assert_eq!(str::from_utf8(body).unwrap(), "hello\n");
                             assert!(!more);
@@ -2446,13 +2446,13 @@ impl TestClient {
                             status.send(StatusMessage::StreamFinished).unwrap();
                         }
                     } else {
-                        // assume ws message
+                        // Assume ws message
 
                         if ptype == "ping" {
                             ptype = "pong";
                         }
 
-                        // echo
+                        // Echo
                         let msg = Self::respond_msg(
                             id.as_bytes(),
                             out_seq,
@@ -2594,7 +2594,7 @@ pub mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
 
-        // req
+        // Req
 
         client.do_req(addr);
         let (mut stream, _) = listener.accept().unwrap();
@@ -2631,7 +2631,7 @@ pub mod tests {
 
         client.wait_req();
 
-        // stream (http)
+        // Stream (http)
 
         client.do_stream_http(addr);
         let (mut stream, _) = listener.accept().unwrap();
@@ -2668,7 +2668,7 @@ pub mod tests {
 
         client.wait_stream();
 
-        // stream (http) with responses via router
+        // Stream (http) with responses via router
 
         client.do_stream_http_router_resp(addr);
         let (mut stream, _) = listener.accept().unwrap();
@@ -2705,7 +2705,7 @@ pub mod tests {
 
         client.wait_stream();
 
-        // stream (ws)
+        // Stream (ws)
 
         client.do_stream_ws(addr);
         let (mut stream, _) = listener.accept().unwrap();
@@ -2728,7 +2728,7 @@ pub mod tests {
 
         let req_buf = &buf[..req_end];
 
-        // use httparse to fish out Sec-WebSocket-Key
+        // Use httparse to fish out Sec-WebSocket-Key
         let ws_key = {
             let mut headers = [httparse::EMPTY_HEADER; 32];
 
@@ -2782,7 +2782,7 @@ pub mod tests {
 
         stream.write(resp_data.as_bytes()).unwrap();
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = &b"hello"[..];
@@ -2798,7 +2798,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         stream.write(&data[..(size + body.len())]).unwrap();
 
-        // recv message
+        // Recv message
 
         let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -2847,7 +2847,7 @@ pub mod tests {
             )
             .unwrap();
 
-        // expect clean close
+        // Expect clean close
 
         let mut chunk = [0; 1024];
         let size = stream.read(&mut chunk).unwrap();
@@ -2899,7 +2899,7 @@ pub mod tests {
             )
             .unwrap();
 
-        // expect clean close
+        // Expect clean close
 
         let mut chunk = [0; 1024];
         let size = stream.read(&mut chunk).unwrap();
@@ -2940,7 +2940,7 @@ pub mod tests {
 
         let req_buf = &buf[..req_end];
 
-        // use httparse to fish out Sec-WebSocket-Key
+        // Use httparse to fish out Sec-WebSocket-Key
         let ws_key = {
             let mut headers = [httparse::EMPTY_HEADER; 32];
 
@@ -2994,7 +2994,7 @@ pub mod tests {
 
         stream.write(resp_data.as_bytes()).unwrap();
 
-        // send close
+        // Send close
 
         let mut data = vec![0; 1024];
         let body = &b"\x03\xe8"[..];
@@ -3010,14 +3010,14 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         stream.write(&data[..(size + body.len())]).unwrap();
 
-        // recv close
+        // Recv close
 
         let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
         assert_eq!(fin, true);
         assert_eq!(opcode, websocket::OPCODE_CLOSE);
         assert_eq!(&content, &b"\x03\xe8"[..]);
 
-        // expect clean close
+        // Expect clean close
 
         let mut chunk = [0; 1024];
         let size = stream.read(&mut chunk).unwrap();
@@ -3056,7 +3056,7 @@ pub mod tests {
 
         let req_buf = &buf[..req_end];
 
-        // use httparse to fish out Sec-WebSocket-Key
+        // Use httparse to fish out Sec-WebSocket-Key
         let ws_key = {
             let mut headers = [httparse::EMPTY_HEADER; 32];
 
@@ -3110,7 +3110,7 @@ pub mod tests {
 
         stream.write(resp_data.as_bytes()).unwrap();
 
-        // send binary
+        // Send binary
 
         let mut data = vec![0; 1024];
         let body = &[1, 2, 3][..];
@@ -3126,7 +3126,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         stream.write(&data[..(size + body.len())]).unwrap();
 
-        // recv binary
+        // Recv binary
 
         let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3135,7 +3135,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send ping
+        // Send ping
 
         let mut data = vec![0; 1024];
         let body = &b""[..];
@@ -3150,7 +3150,7 @@ pub mod tests {
         .unwrap();
         stream.write(&data[..size]).unwrap();
 
-        // recv pong
+        // Recv pong
 
         let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3159,7 +3159,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send close
+        // Send close
 
         let mut data = vec![0; 1024];
         let body = &b"\x03\xf0gone"[..];
@@ -3175,14 +3175,14 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         stream.write(&data[..(size + body.len())]).unwrap();
 
-        // recv close
+        // Recv close
 
         let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
         assert_eq!(fin, true);
         assert_eq!(opcode, websocket::OPCODE_CLOSE);
         assert_eq!(&content, &b"\x03\xf0gone"[..]);
 
-        // expect tcp close
+        // Expect tcp close
 
         let mut chunk = [0; 1024];
         let size = stream.read(&mut chunk).unwrap();
@@ -3197,11 +3197,11 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit 6b636f8842149e351dd3c29a5d133737e2a8fdef
+        // Sizes in debug mode at commit 6b636f8842149e351dd3c29a5d133737e2a8fdef
         const REQ_TASK_SIZE_BASE: usize = 6888;
         const STREAM_TASK_SIZE_BASE: usize = 13224;
 
-        // cause tests to fail if sizes grow too much
+        // Cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;
         const REQ_TASK_SIZE_MAX: usize = REQ_TASK_SIZE_BASE + GROWTH_LIMIT;
         const STREAM_TASK_SIZE_MAX: usize = STREAM_TASK_SIZE_BASE + GROWTH_LIMIT;

@@ -29,8 +29,8 @@ const EVENTS_MAX: usize = 1024;
 const LOCAL_BUDGET: u32 = 10;
 
 pub fn can_move_mio_sockets_between_threads() -> bool {
-    // on unix platforms, mio always uses epoll or kqueue, which support
-    // this. mio makes no guarantee about supporting this on non-unix
+    // On unix platforms, mio always uses epoll or kqueue, which support
+    // this. Mio makes no guarantee about supporting this on non-unix
     // platforms
     cfg!(unix)
 }
@@ -123,7 +123,7 @@ impl LocalSources {
         if !((item.interests.is_readable() && readiness.is_readable())
             || (item.interests.is_writable() && readiness.is_writable()))
         {
-            // not of interest
+            // Not of interest
             return Ok(());
         }
 
@@ -214,7 +214,7 @@ impl SyncSources {
         if !((item.interests.is_readable() && readiness.is_readable())
             || (item.interests.is_writable() && readiness.is_writable()))
         {
-            // not of interest
+            // Not of interest
             return Ok(());
         }
 
@@ -616,7 +616,7 @@ impl Poller {
         if self.custom_sources.has_local_events() && self.local_budget > 0 {
             self.local_budget -= 1;
             self.custom_sources.set_next_local_only(true);
-            self.events.clear(); // don't reread previous mio events
+            self.events.clear(); // Don't reread previous mio events
 
             return Ok(());
         }
@@ -706,7 +706,7 @@ pub mod ffi {
         } else if interest & WRITABLE != 0 {
             mio::Interest::WRITABLE
         } else {
-            // must specify at least one of READABLE or WRITABLE
+            // Must specify at least one of READABLE or WRITABLE
             return Err(InterestError);
         };
 

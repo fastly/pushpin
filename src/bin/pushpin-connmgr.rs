@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::process;
 use std::time::Duration;
 
-// safety values
+// Safety values
 const WORKERS_MAX: usize = 1024;
 const CONNS_MAX: usize = 10_000_000;
 
@@ -114,7 +114,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     for v in args.listen.iter() {
         let mut parts = v.split(',');
 
-        // there's always a first part
+        // There's always a first part
         let part1 = parts.next().unwrap();
 
         let mut stream = true;
@@ -575,8 +575,8 @@ fn main() {
 
     let deny_out_internal = *matches.get_one("deny-out-internal").unwrap();
 
-    // if no zmq server specs are set (needed by client mode), specify
-    // default listen configuration in order to enable server mode. this
+    // If no zmq server specs are set (needed by client mode), specify
+    // default listen configuration in order to enable server mode. This
     // means if zmq server specs are set, then server mode won't be enabled
     // by default
     if listen.is_empty() && zserver_req_specs.is_empty() && zserver_stream_specs.is_empty() {

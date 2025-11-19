@@ -111,7 +111,7 @@ impl CliArgs {
         for item in &self.route {
             let item = item.as_bytes();
 
-            // ensure no trailing nul byte
+            // Ensure no trailing nul byte
             let end = item.iter().position(|b| *b == 0).unwrap_or(item.len());
             let item = &item[..end];
 

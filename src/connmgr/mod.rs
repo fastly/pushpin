@@ -140,7 +140,7 @@ impl App {
 
         let zmq_context = Arc::new(zmq::Context::new());
 
-        // set hwm to 5% of maxconn
+        // Set hwm to 5% of maxconn
         let other_hwm = cmp::max((config.req_maxconn + config.stream_maxconn) / 20, 1);
 
         let handle_bound = cmp::max(other_hwm / config.workers, 1);
@@ -313,7 +313,7 @@ impl App {
                 handle_bound,
             )?;
 
-            // stream specs must only be applied after client is initialized
+            // Stream specs must only be applied after client is initialized
             if !config.zserver_stream.is_empty() {
                 let mut in_specs = Vec::new();
                 let mut in_stream_specs = Vec::new();
@@ -376,11 +376,11 @@ impl App {
 
         let term_now = Arc::new(AtomicBool::new(false));
 
-        // ensure two term signals in a row causes the app to immediately exit
+        // Ensure two term signals in a row causes the app to immediately exit
         for signal_type in TERM_SIGNALS {
             signal_hook::flag::register_conditional_shutdown(
                 *signal_type,
-                1, // exit code
+                1, // Exit code
                 Arc::clone(&term_now),
             )
             .unwrap();
@@ -388,7 +388,7 @@ impl App {
             signal_hook::flag::register(*signal_type, Arc::clone(&term_now)).unwrap();
         }
 
-        // wait for termination
+        // Wait for termination
         let signal_type = signals.into_iter().next().unwrap();
         assert!(TERM_SIGNALS.contains(&signal_type));
     }

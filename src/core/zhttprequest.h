@@ -39,7 +39,7 @@ class ZhttpManager;
 class ZhttpRequest : public HttpRequest
 {
 public:
-	// pair of sender + request id
+	// Pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
 	class ServerState
@@ -72,17 +72,17 @@ public:
 
 	Rid rid() const;
 	QVariant passthroughData() const;
-	void setIsTls(bool on); // updates scheme
-	void setSendBodyAfterAcknowledgement(bool on); // only works in push/sub mode
+	void setIsTls(bool on); // Updates scheme
+	void setSendBodyAfterAcknowledgement(bool on); // Only works in push/sub mode
 	void setPassthroughData(const QVariant &data);
 	void setQuiet(bool on);
 
-	// for server requests only
+	// For server requests only
 	void pause();
 	void resume();
 	ServerState serverState() const;
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 

@@ -68,7 +68,7 @@ public:
 	void setAcceptPushpinRoute(bool enabled);
 	void setCdnLoop(const QByteArray &value);
 
-	// takes ownership
+	// Takes ownership
 	void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);
 
 	// NOTE: for performance reasons we use callbacks instead of signals/slots

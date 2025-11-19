@@ -49,7 +49,7 @@ public:
 	void sendNeedKeepAlive();
 	void sendSubscribe(const QByteArray &channel);
 
-	// tell session that a received sendEvent has been written
+	// Tell session that a received sendEvent has been written
 	void sendEventWritten();
 
 	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;

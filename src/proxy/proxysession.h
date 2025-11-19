@@ -62,10 +62,10 @@ public:
 
 	void setInspectData(const InspectData &idata);
 
-	// takes ownership
+	// Takes ownership
 	void add(RequestSession *rs);
 
-	Signal addNotAllowed; // no more sharing, for whatever reason
+	Signal addNotAllowed; // No more sharing, for whatever reason
 	Signal finished;
 	boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
 

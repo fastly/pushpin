@@ -60,11 +60,11 @@ public:
 	void setMaxEventsPerRequest(int max);
 	void refresh();
 
-	// disconnection management is thread local
+	// Disconnection management is thread local
 	static void setMaxManagedDisconnects(int max);
 	static void clearDisconnectManager();
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 
@@ -102,14 +102,14 @@ public:
 	Signal aboutToSendRequest;
 	Signal disconnected;
 
-	// creates events from `frames`. the returned events are guaranteed to
+	// Creates events from `frames`. The returned events are guaranteed to
 	// represent 0 or more full messages from `frames`, where the first
-	// represented frame is a non-continuation frame. this matches the
+	// represented frame is a non-continuation frame. This matches the
 	// expectations of `removeContentFromFrames()`, in order to enable
 	// removing the frames afterwards.
 	static QList<Event> framesToEvents(const QList<Frame> &frames, int eventsMax, int contentMax, bool *ok, int *framesRepresented, int *contentRepresented);
 
-	// remove `count` content bytes from the beginning of `frames`, removing
+	// Remove `count` content bytes from the beginning of `frames`, removing
 	// frames (including 0-sized frames) when their content is entirely removed.
 	// when a frame is removed from a multipart message, the original type is
 	// carried over into the next frame, which means the first frame can't be a

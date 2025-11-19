@@ -34,7 +34,7 @@
 #include "filter.h"
 #include "clientsession.h"
 
-// each session can have a bunch of timers:
+// Each session can have a bunch of timers:
 // 3 misc timers
 // filter timers
 #define TIMERS_PER_WSSESSION (3 + TIMERS_PER_MESSAGEFILTERSTACK)

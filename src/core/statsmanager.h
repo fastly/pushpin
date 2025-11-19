@@ -68,13 +68,13 @@ public:
 	bool setPrometheusPort(const QString &port);
 	void setPrometheusPrefix(const QString &prefix);
 
-	// routeId may be empty for non-identified route
+	// RouteId may be empty for non-identified route
 
 	void addActivity(const QByteArray &routeId, uint32_t count = 1);
 	void addMessage(const QString &channel, const QString &itemId, const QString &transport, uint32_t count = 1, int blocks = -1);
 
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset = -1);
-	int removeConnection(const QByteArray &id, bool linger, const QByteArray &source = QByteArray()); // return unreported time
+	int removeConnection(const QByteArray &id, bool linger, const QByteArray &source = QByteArray()); // Return unreported time
 
 	// Manager automatically refreshes, but it may be useful to force a
 	// send before removing with linger

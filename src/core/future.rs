@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn sized_future() {
-        // a future that should be at least 100 bytes
+        // A future that should be at least 100 bytes
         let fut = Box::pin(async {
             let mut arr = [0u8; 100];
             pending::<()>().await;

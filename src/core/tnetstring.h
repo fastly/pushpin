@@ -61,7 +61,7 @@ QVariant toVariant(const CowByteArray &in, int offset = 0, bool *ok = 0);
 
 QString byteArrayToEscapedString(const QByteArray &in);
 
-// pass >= 0 for pretty print, -1 for compact
+// Pass >= 0 for pretty print, -1 for compact
 QString variantToString(const QVariant &in, int indent = 0);
 
 }

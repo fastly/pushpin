@@ -68,7 +68,7 @@ public:
 	int responseBodySize() const;
 	bool debugEnabled() const;
 	bool autoCrossOrigin() const;
-	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
+	QByteArray jsonpCallback() const; // Non-empty if JSON-P is used
 	bool jsonpExtendedResponse() const;
 	bool haveCompleteRequestBody() const;
 	DomainMap::Entry route() const;
@@ -85,7 +85,7 @@ public:
 	void setDefaultUpstreamKey(const Jwt::DecodingKey &key);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 
-	// takes ownership
+	// Takes ownership
 	void start(ZhttpRequest *req);
 	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime, int retrySeq);
 
@@ -100,7 +100,7 @@ public:
 	void respondError(int code, const QString &reason, const QString &errorString);
 	void respondCannotAccept();
 
-	int unregisterConnection(); // return unreported time
+	int unregisterConnection(); // Return unreported time
 
 	Signal inspectError;
 	boost::signals2::signal<void(const InspectData&)> inspected;
@@ -109,10 +109,10 @@ public:
 	Signal paused;
 	SignalInt headerBytesSent;
 	SignalInt bodyBytesSent;
-	// this signal means some error was encountered while responding and
-	//   that you should not attempt to call further response-related
-	//   methods. the object remains in an active state though, and so you
-	//   should still wait for finished()
+	// This signal means some error was encountered while responding and
+	// that you should not attempt to call further response-related
+	// methods. The object remains in an active state though, and so you
+	// should still wait for finished()
 	Signal errorResponding;
 	Signal finished;
 

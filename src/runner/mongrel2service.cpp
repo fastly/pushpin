@@ -49,7 +49,7 @@ Mongrel2Service::Mongrel2Service(
 
 	setName(QString("m2 %1:%2").arg(ssl ? "https" : "http", QString::number(port)));
 
-	// delete stale pid file, if any
+	// Delete stale pid file, if any
 	QString pidFile = QDir(runDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".pid");
 	QFile::remove(pidFile);
 
@@ -158,7 +158,7 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	int dataOffset;
 	int dataSize;
 	bool isTnetString = TnetString::check(qPrintable(line), 0, &type, &dataOffset, &dataSize);
-	// if line is a valid tnet string, it most probably is an access log entry
+	// If line is a valid tnet string, it most probably is an access log entry
 	if(isTnetString)
 	{
 		return filterLogLine(LOG_LEVEL_INFO, line);

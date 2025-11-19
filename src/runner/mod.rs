@@ -126,7 +126,7 @@ impl ArgsData {
         let parts = match levels {
             Some(x) => x.split(','),
             None => {
-                // default log level imposed
+                // Default log level imposed
                 return Ok(HashMap::from([(String::new(), 2)]));
             }
         };

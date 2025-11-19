@@ -22,10 +22,10 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-// some reasonable number
+// Some reasonable number
 pub const HEADERS_MAX: usize = 64;
 
-// return the capacity increase
+// Return the capacity increase
 pub fn resize_write_buffer_if_full<F>(
     buf: &mut VecRingBuffer,
     block_size: usize,
@@ -37,7 +37,7 @@ where
 {
     assert!(blocks_max >= 2);
 
-    // all but one block can be used for writing
+    // All but one block can be used for writing
     let allowed = blocks_max - 1;
 
     if buf.remaining_capacity() == 0

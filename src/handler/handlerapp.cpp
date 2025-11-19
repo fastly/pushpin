@@ -56,7 +56,7 @@ static void trimlist(QStringList *list)
 		if((*list)[n].isEmpty())
 		{
 			list->removeAt(n);
-			--n; // adjust position
+			--n; // Adjust position
 		}
 	}
 }
@@ -87,22 +87,22 @@ static QString firstSpec(const QString &s, int peerCount)
 
 static int runLoop(const HandlerEngine::Configuration &config)
 {
-	// includes worst-case subscriptions and update registrations
+	// Includes worst-case subscriptions and update registrations
 	int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
 		(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
 		TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
-	// enough timers for sessions, plus an extra 100 for misc
+	// Enough timers for sessions, plus an extra 100 for misc
 	int timersMax = (config.connectionsMax * timersPerSession) + 100;
 
-	// enough for control requests and prometheus requests, plus an
-	// extra 100 for misc. client sessions don't use socket notifiers
+	// Enough for control requests and prometheus requests, plus an
+	// extra 100 for misc. Client sessions don't use socket notifiers
 	int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) + 100;
 
 	int registrationsMax = timersMax + socketNotifiersMax;
 
 	Reactor reactor(registrationsMax);
-	Executor executor(1); // for the one event loop task
+	Executor executor(1); // For the one event loop task
 
 	EventLoop *loop = nullptr;
 	std::unique_ptr<DeferCall> deferCall;
@@ -120,7 +120,7 @@ static int runLoop(const HandlerEngine::Configuration &config)
 			ProcessQuit::instance()->quit.connect([&] {
 				log_info("stopping...");
 
-				// remove the handler, so if we get another signal then we crash out
+				// Remove the handler, so if we get another signal then we crash out
 				ProcessQuit::cleanup();
 
 				engine.reset();

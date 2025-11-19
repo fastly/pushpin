@@ -294,7 +294,7 @@ private:
 			{
 				log_debug("wscontrol: received item for unknown connection id, canceling");
 
-				// if this was not an error item, send cancel
+				// If this was not an error item, send cancel
 				if(i.type != WsControlPacket::Item::Cancel)
 				{
 					WsControlPacket::Item out;
@@ -319,11 +319,11 @@ private:
 
 		QHash<QByteArray, WsControlPacket> packets;
 
-		// process the current bucket
+		// Process the current bucket
 		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
 		foreach(KeepAliveRegistration *r, bucket)
 		{
-			// move to the end
+			// Move to the end
 			QPair<int64_t, KeepAliveRegistration*> k(r->lastRefresh, r);
 			sessionsByLastRefresh.remove(k);
 			r->lastRefresh = now;
@@ -348,7 +348,7 @@ private:
 			i.ttl = SESSION_EXPIRE / 1000;
 			packet.items += i;
 
-			// if we're at max, send out now
+			// If we're at max, send out now
 			if(packet.items.count() >= PACKET_ITEMS_MAX)
 			{
 				writeStream(packet, peer);
@@ -356,7 +356,7 @@ private:
 			}
 		}
 
-		// process any others
+		// Process any others
 		int64_t threshold = now - SESSION_MUST_PROCESS;
 		while(!sessionsByLastRefresh.isEmpty())
 		{
@@ -366,7 +366,7 @@ private:
 			if(r->lastRefresh > threshold)
 				break;
 
-			// move to the end
+			// Move to the end
 			sessionsByLastRefresh.erase(it);
 			r->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
@@ -390,7 +390,7 @@ private:
 			i.ttl = SESSION_EXPIRE / 1000;
 			packet.items += i;
 
-			// if we're at max, send out now
+			// If we're at max, send out now
 			if(packet.items.count() >= PACKET_ITEMS_MAX)
 			{
 				writeStream(packet, peer);
@@ -398,7 +398,7 @@ private:
 			}
 		}
 
-		// send the rest
+		// Send the rest
 		QHashIterator<QByteArray, WsControlPacket> it(packets);
 		while(it.hasNext())
 		{

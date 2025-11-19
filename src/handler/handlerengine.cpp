@@ -75,7 +75,7 @@
 #include "filterstack.h"
 
 #define DEFAULT_HWM 101000
-#define SUB_SNDHWM 0 // infinite
+#define SUB_SNDHWM 0 // Infinite
 #define RETRY_WAIT_TIME 0
 #define WSCONTROL_WAIT_TIME 0
 #define STATE_RPC_TIMEOUT 1000
@@ -226,11 +226,11 @@ public:
 
 			if(getSession && stateClient)
 			{
-				// determine session info
+				// Determine session info
 
 				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8()));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -259,13 +259,13 @@ private:
 
 		if(autoShare && requestData.method == "GET")
 		{
-			// auto share matches requests based on URI path (not query) and
-			//   Grip-Last headers. the reason the query part is not
-			//   considered is because it may vary per client and Grip-Last
-			//   supersedes whatever is in the query
+			// Auto share matches requests based on URI path (not query) and
+			// Grip-Last headers. The reason the query part is not
+			// considered is because it may vary per client and Grip-Last
+			// supersedes whatever is in the query
 
 			QUrl uri = requestData.uri;
-			uri.setQuery(QString()); // remove the query part
+			uri.setQuery(QString()); // Remove the query part
 
 			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last").asQByteArrayList();
 			std::sort(gripLastHeaders.begin(), gripLastHeaders.end());
@@ -354,7 +354,7 @@ private:
 			{
 				auto d = std::unique_ptr<Deferred>(SessionRequest::getLastIds(stateClient, sid));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -363,7 +363,7 @@ private:
 		}
 		else
 		{
-			// log error but keep going
+			// Log error but keep going
 			log_error("failed to detect session: condition=%d", result.value.toInt());
 		}
 
@@ -384,7 +384,7 @@ private:
 
 			if(errorCondition != "item-not-found")
 			{
-				// log error but keep going
+				// Log error but keep going
 				log_error("failed to detect session: condition=%d", result.value.toInt());
 			}
 		}
@@ -470,13 +470,13 @@ public:
 
 	// NOTE: to ensure sequential processing of conn-max packets, this
 	// method must process any such packets contained within the accept
-	// request before returning. the conn-max packets must not be processed
+	// request before returning. The conn-max packets must not be processed
 	// asynchronously
 	void start()
 	{
 		QVariantHash args = req->args();
 
-		// process conn-max packets before doing anything else
+		// Process conn-max packets before doing anything else
 		if(args.contains("conn-max"))
 		{
 			if(typeId(args["conn-max"]) != QMetaType::QVariantList)
@@ -579,7 +579,7 @@ public:
 			trusted = args["trusted"].toBool();
 		}
 
-		// parse requests
+		// Parse requests
 
 		if(!args.contains("requests") || typeId(args["requests"]) != QMetaType::QVariantList)
 		{
@@ -599,7 +599,7 @@ public:
 			requestStates.insert(rs.rid, rs);
 		}
 
-		// parse request-data
+		// Parse request-data
 
 		requestData = parseRequestData(args, "request-data");
 		if(requestData.method.isEmpty())
@@ -608,7 +608,7 @@ public:
 			return;
 		}
 
-		// parse orig-request-data
+		// Parse orig-request-data
 
 		origRequestData = parseRequestData(args, "orig-request-data");
 		if(origRequestData.method.isEmpty())
@@ -617,7 +617,7 @@ public:
 			return;
 		}
 
-		// parse response
+		// Parse response
 
 		if(!args.contains("response") || typeId(args["response"]) != QMetaType::QVariantHash)
 		{
@@ -794,8 +794,8 @@ public:
 			lastIds.insert(params[0].first.asQByteArray(), params.get("last-id").asQByteArray());
 		}
 
-		// we need to "atomically" process conn-max packets and add
-		// connections to the stats manager. we do this by processing the
+		// We need to "atomically" process conn-max packets and add
+		// connections to the stats manager. We do this by processing the
 		// conn-max packets above and adding to the stats manager below,
 		// without returning to the event loop in between
 		foreach(const RequestState &rs, requestStates)
@@ -814,7 +814,7 @@ public:
 			{
 				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesSet(stateClient, rules));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -832,7 +832,7 @@ public:
 
 	QList<std::shared_ptr<HttpSession>> takeSessions()
 	{
-		// swap instead of std::move since sessions is a member and should have a known state
+		// Swap instead of std::move since sessions is a member and should have a known state
 		QList<std::shared_ptr<HttpSession>> out;
 		out.swap(sessions);
 		return out;
@@ -897,7 +897,7 @@ private:
 		{
 			auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient, sid, lastIds));
 
-			// safe to not track, since d can't outlive this
+			// Safe to not track, since d can't outlive this
 			d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, d.get(), boost::placeholders::_1));
 
 			deferreds[d.get()] = std::move(d);
@@ -919,8 +919,8 @@ private:
 			return;
 		}
 
-		// don't relay these headers. their meaning is handled by
-		//   zurl and they only apply to the outgoing hop.
+		// Don't relay these headers. Their meaning is handled by
+		// zurl and they only apply to the outgoing hop.
 		instruct.response.headers.removeAll("Connection");
 		instruct.response.headers.removeAll("Keep-Alive");
 		instruct.response.headers.removeAll("Content-Encoding");
@@ -932,7 +932,7 @@ private:
 
 			if(!responseSent)
 			{
-				// apply ResponseContent filters of all channels
+				// Apply ResponseContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
@@ -1005,8 +1005,8 @@ private:
 						cs->publishLastIds.remove(name);
 						conflict = true;
 
-						// NOTE: don't exit loop here. we want to clear
-						//   the last ids of all conflicting channels
+						// NOTE: don't exit loop here. We want to clear
+						// the last ids of all conflicting channels
 					}
 				}
 			}
@@ -1054,8 +1054,8 @@ private:
 					rp.inspectInfo.userData = inspectInfo.userData;
 				}
 
-				// if prev-id set on channels, set as inspect lastids so the proxy
-				//   will pass as Grip-Last in the next request
+				// If prev-id set on channels, set as inspect lastids so the proxy
+				// will pass as Grip-Last in the next request
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					if(!c.prevId.isNull())
@@ -1105,7 +1105,7 @@ private:
 			ss.routerResp = rs.routerResp;
 			ss.userData = rs.userData;
 
-			// take over responsibility for request
+			// Take over responsibility for request
 			ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
 			QSet<QString> implicitChannelsSet;
@@ -1139,8 +1139,8 @@ private:
 			sessions += std::make_shared<HttpSession>(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax);
 		}
 
-		// engine should directly connect to this and register the holds
-		//   immediately, to avoid a race with the lastId check
+		// Engine should directly connect to this and register the holds
+		// immediately, to avoid a race with the lastId check
 		sessionsReady();
 
 		setFinished(true);
@@ -1351,7 +1351,7 @@ public:
 
 			if(!inspectServer->setServerSpecs(config.inspectSpecs))
 			{
-				// zrpcmanager logs error
+				// Zrpcmanager logs error
 				return false;
 			}
 
@@ -1367,7 +1367,7 @@ public:
 
 			if(!acceptServer->setServerSpecs(config.acceptSpecs))
 			{
-				// zrpcmanager logs error
+				// Zrpcmanager logs error
 				return false;
 			}
 
@@ -1383,7 +1383,7 @@ public:
 
 			if(!stateClient->setClientSpecs(QStringList() << config.stateSpec))
 			{
-				// zrpcmanager logs error
+				// Zrpcmanager logs error
 				return false;
 			}
 
@@ -1399,7 +1399,7 @@ public:
 
 			if(!controlServer->setServerSpecs(QStringList() << config.commandSpec))
 			{
-				// zrpcmanager logs error
+				// Zrpcmanager logs error
 				return false;
 			}
 
@@ -1439,7 +1439,7 @@ public:
 
 			if(config.pushInSubConnect)
 			{
-				// some sane TCP keep-alive settings
+				// Some sane TCP keep-alive settings
 				// idle=30, cnt=6, intvl=5
 				inSubSock->setTcpKeepAliveEnabled(true);
 				inSubSock->setTcpKeepAliveParameters(30, 6, 5);
@@ -1540,7 +1540,7 @@ public:
 
 			if(!stats->setSpec(config.statsSpec))
 			{
-				// statsmanager logs error
+				// Statsmanager logs error
 				return false;
 			}
 
@@ -1589,7 +1589,7 @@ public:
 
 			if(!proxyControlClient->setClientSpecs(QStringList() << config.proxyCommandSpec))
 			{
-				// zrpcmanager logs error
+				// Zrpcmanager logs error
 				return false;
 			}
 
@@ -1621,15 +1621,15 @@ public:
 
 	void reload()
 	{
-		// nothing to do
+		// Nothing to do
 	}
 
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
-		// only sequence if someone is listening, because we
-		//   clear lastId on unsubscribe and don't want it to
-		//   be set again until after a subscription returns
+		// Only sequence if someone is listening, because we
+		// clear lastId on unsubscribe and don't want it to
+		// be set again until after a subscription returns
 
 		bool seq = (!item.noSeq && cs.subs.contains(item.channel));
 
@@ -1822,7 +1822,7 @@ private:
 		{
 			sessionsByChannel->remove(channel);
 
-			// linger the unsub in case client long-polls again
+			// Linger the unsub in case client long-polls again
 			bool linger = (mode == Instruct::ResponseHold);
 
 			stats->removeSubscription(modeStr, channel, linger);
@@ -1895,7 +1895,7 @@ private:
 
 		InspectWorker *w = new InspectWorker(req, stateClient.get(), config.shareAll);
 
-		// safe to not track, since w can't outlive this
+		// Safe to not track, since w can't outlive this
 		w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, w, boost::placeholders::_1));
 
 		inspectWorkers += w;
@@ -1919,7 +1919,7 @@ private:
 
 			AcceptWorker *w = new AcceptWorker(req, stateClient.get(), &cs, zhttpIn.get(), zhttpOut.get(), stats.get(), updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax);
 
-			// safe to not track, since w can't outlive this
+			// Safe to not track, since w can't outlive this
 			w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, w, boost::placeholders::_1));
 			w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
@@ -1971,7 +1971,7 @@ private:
 		{
 			auto d = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats.get());
 
-			// safe to not track, since d can't outlive this
+			// Safe to not track, since d can't outlive this
 			d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
 
 			deferreds[d.get()] = std::move(d);
@@ -1998,7 +1998,7 @@ private:
 		{
 			auto d = std::make_unique<RefreshWorker>(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
 
-			// safe to not track, since d can't outlive this
+			// Safe to not track, since d can't outlive this
 			d->finished.connect(boost::bind(&Private::deferred_finished, this, d.get(), boost::placeholders::_1));
 
 			deferreds[d.get()] = std::move(d);
@@ -2083,12 +2083,12 @@ private:
 			QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
 			{
-				// note: we used to assert that the session was currently a
-				//   stream hold and subscribed to the target channel,
-				//   however with the new grip-link stuff it is possible for
-				//   the session to temporarily switch to NoHold, and for
-				//   channels to become unsubscribed. so we'll do a
-				//   conditional statement instead
+				// Note: we used to assert that the session was currently a
+				// stream hold and subscribed to the target channel,
+				// however with the new grip-link stuff it is possible for
+				// the session to temporarily switch to NoHold, and for
+				// channels to become unsubscribed. So we'll do a
+				// conditional statement instead
 				if(!hs->channels().contains(item.channel))
 					continue;
 
@@ -2116,7 +2116,7 @@ private:
 			}
 		}
 
-		// always add for non-identified route
+		// Always add for non-identified route
 		stats->addMessageReceived(QByteArray(), largestBlocks);
 
 		if(!responseSessions.isEmpty())
@@ -2129,21 +2129,21 @@ private:
 
 			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers").asQByteArrayList();
 
-			// remove grip headers from the push
+			// Remove grip headers from the push
 			for(int n = 0; n < f.headers.count(); ++n)
 			{
-				// strip out grip headers
+				// Strip out grip headers
 				if(qstrnicmp(f.headers[n].first.data(), "Grip-", 5) == 0)
 				{
 					f.headers.removeAt(n);
-					--n; // adjust position
+					--n; // Adjust position
 				}
 			}
 
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
-			// FIXME: if bodyPatch is used then body is empty. we should
-			//   really be calculating blocks after applying patch
+			// FIXME: if bodyPatch is used then body is empty. We should
+			// really be calculating blocks after applying patch
 
 			int blocks;
 			if(item.size >= 0)
@@ -2248,7 +2248,7 @@ private:
 
 		if(!item.id.isNull() && !sids.isEmpty() && stateClient)
 		{
-			// update sessions' last-id
+			// Update sessions' last-id
 			QHash<QString, LastIds> sidLastIds;
 			foreach(const QString &sid, sids)
 			{
@@ -2259,7 +2259,7 @@ private:
 
 			auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), sidLastIds));
 
-			// safe to not track, since d can't outlive this
+			// Safe to not track, since d can't outlive this
 			d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
 
 			deferreds[d.get()] = std::move(d);
@@ -2297,7 +2297,7 @@ private:
 		inspectWorkers.remove(w);
 		delete w;
 
-		// try to read again
+		// Try to read again
 		inspectServer_requestReady();
 	}
 
@@ -2308,7 +2308,7 @@ private:
 		acceptWorkers.remove(w);
 		delete w;
 
-		// try to read again
+		// Try to read again
 		acceptServer_requestReady();
 	}
 
@@ -2352,7 +2352,7 @@ private:
 	{
 		if(stateClient)
 		{
-			// find sids of the connections
+			// Find sids of the connections
 			QHash<QString, LastIds> sidLastIds;
 			foreach(const QByteArray &id, ids)
 			{
@@ -2369,7 +2369,7 @@ private:
 			{
 				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), sidLastIds));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -2380,7 +2380,7 @@ private:
 	void stats_unsubscribed(const QString &mode, const QString &channel)
 	{
 		// NOTE: this callback may be invoked while looping over certain structures,
-		//   so be careful what you touch
+		// so be careful what you touch
 
 		Q_UNUSED(mode);
 
@@ -2553,7 +2553,7 @@ private:
 		{
 			if(item.type != WsControlPacket::Item::Ack && !item.requestId.isEmpty())
 			{
-				// ack receipt
+				// Ack receipt
 				WsControlPacket::Item i;
 				i.cid = item.cid;
 				i.type = WsControlPacket::Item::Ack;
@@ -2597,12 +2597,12 @@ private:
 				continue;
 			}
 
-			// any other type must be for a known cid
+			// Any other type must be for a known cid
 			WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid)).get();
 			if(!s)
 			{
-				// send cancel, causing the proxy to close the connection. client
-				//   will need to retry to repair
+				// Send cancel, causing the proxy to close the connection. Client
+				// will need to retry to repair
 				WsControlPacket::Item i;
 				i.cid = item.cid;
 				i.type = WsControlPacket::Item::Cancel;
@@ -2631,7 +2631,7 @@ private:
 
 				if(doc.isObject())
 					data = doc.object().toVariantMap();
-				else // isArray
+				else // IsArray
 					data = doc.array().toVariantList();
 
 				QString errorMessage;
@@ -2730,7 +2730,7 @@ private:
 							case WsControlMessage::Binary: contentType = "binary"; break;
 							case WsControlMessage::Ping:   contentType = "ping"; break;
 							case WsControlMessage::Pong:   contentType = "pong"; break;
-							default: continue; // unrecognized type, ignore
+							default: continue; // Unrecognized type, ignore
 						}
 
 						s->keepAliveType = contentType;
@@ -2760,7 +2760,7 @@ private:
 						case WsControlMessage::Binary: contentType = "binary"; break;
 						case WsControlMessage::Ping:   contentType = "ping"; break;
 						case WsControlMessage::Pong:   contentType = "pong"; break;
-						default: continue; // unrecognized type, ignore
+						default: continue; // Unrecognized type, ignore
 					}
 
 					int timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_SENDDELAYED_TIMEOUT);
@@ -2825,7 +2825,7 @@ private:
 			{
 				auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient.get(), sid, LastIds()));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -2835,7 +2835,7 @@ private:
 			{
 				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient.get(), updateSids));
 
-				// safe to not track, since d can't outlive this
+				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, d.get(), boost::placeholders::_1));
 
 				deferreds[d.get()] = std::move(d);
@@ -2888,7 +2888,7 @@ private:
 		{
 			if(p.count > 0)
 			{
-				// merge with our own stats
+				// Merge with our own stats
 				stats->addActivity(p.route, p.count);
 			}
 		}
@@ -2896,7 +2896,7 @@ private:
 		{
 			if(p.requestsReceived > 0)
 			{
-				// merge with our own stats
+				// Merge with our own stats
 				stats->addRequestsReceived(p.requestsReceived);
 			}
 		}
@@ -2904,12 +2904,12 @@ private:
 		{
 			if(stats->connectionSendEnabled())
 			{
-				// track proxy connections for reporting
+				// Track proxy connections for reporting
 				bool localReplaced = stats->processExternalPacket(p, false);
 
 				if(!localReplaced)
 				{
-					// forward the packet. this will stamp the from field and keep the rest
+					// Forward the packet. This will stamp the from field and keep the rest
 					stats->sendPacket(p);
 				}
 			}
@@ -2918,7 +2918,7 @@ private:
 		{
 			bool mergeConnectionReport = !stats->connectionSendEnabled();
 
-			// merge into local report and don't forward
+			// Merge into local report and don't forward
 			stats->processExternalPacket(p, mergeConnectionReport);
 		}
 	}
@@ -3022,7 +3022,7 @@ private:
 					QString body = QJsonDocument(QJsonObject::fromVariantMap(obj)).toJson(QJsonDocument::Compact);
 					httpControlRespond(req, 200, "OK", body + "\n", responseContentType, HttpHeaders(), items.count());
 				}
-				else // text/plain
+				else // Text/plain
 				{
 					httpControlRespond(req, 200, "OK", message + "\n", responseContentType, HttpHeaders(), items.count());
 				}
@@ -3049,7 +3049,7 @@ private:
 					QString body = QJsonDocument(QJsonObject::fromVariantMap(obj)).toJson(QJsonDocument::Compact);
 					httpControlRespond(req, 200, "OK", body + "\n", responseContentType, HttpHeaders());
 				}
-				else // text/plain
+				else // Text/plain
 				{
 					httpControlRespond(req, 200, "OK", message + "\n", responseContentType, HttpHeaders());
 				}
