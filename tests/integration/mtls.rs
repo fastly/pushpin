@@ -1,4 +1,4 @@
-use crate::common::{RequestRecord, TEST_CERT, TEST_KEY};
+use crate::common::{wait_for_manifest_and_backends, RequestRecord, TEST_CERT, TEST_KEY};
 
 use http_body_util::Full;
 use hyper::body::Bytes;
@@ -52,15 +52,9 @@ async fn test_mtls_configuration() {
 
     // Verify expected requests are made
     let expected = expected_backends_from_manifest();
-    match wait_for_manifest_and_backends(logs.clone(), expected.clone(), Duration::from_secs(10))
+    wait_for_manifest_and_backends(logs.clone(), expected, Duration::from_secs(10))
         .await
-    {
-        Ok(()) => {}
-        Err(e) => {
-            eprintln!("Integration test failed: {}", e);
-            panic!("Integration test timed out waiting for requests");
-        }
-    }
+        .expect("Integration test timed out waiting for requests");
 
     // Copy the generated routes file to where pushpin expects it
     let generated_routes = loader_cwd.join("routes");
@@ -68,7 +62,7 @@ async fn test_mtls_configuration() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/config/routes");
     std::fs::copy(&generated_routes, &pushpin_routes).expect("Failed to copy routes file");
 
-    // Verify the routes file contains backendinfo reference
+    // Verify the routes file
     let routes_content =
         std::fs::read_to_string(&generated_routes).expect("Failed to read generated routes file");
     assert!(
@@ -80,24 +74,6 @@ async fn test_mtls_configuration() {
         "Routes file should reference the mTLS backend"
     );
 
-    // Start pushpin
-    let pushpin_guard = spawn_pushpin();
-    cleanup.set_pushpin(pushpin_guard);
-
-    // Wait for pushpin to be ready
-    println!("[test] Waiting for pushpin to be ready...");
-    match wait_for_pushpin(Duration::from_secs(10)).await {
-        Ok(()) => {}
-        Err(e) => {
-            eprintln!("Failed to start pushpin: {}", e);
-            panic!("Pushpin did not become ready");
-        }
-    }
-
-    // Give pushpin a moment to load routes
-    sleep(Duration::from_secs(3)).await;
-
-    // Verify the backend info file was created with correct mTLS configuration
     let backend_info_path =
         loader_cwd.join("backends/mock-service-123:mtls-backend-e76b.backendinfo");
     assert!(
@@ -123,6 +99,39 @@ async fn test_mtls_configuration() {
         backend_info.get("port").and_then(|v| v.as_u64()),
         Some(8443),
         "Backend should be configured for port 8443"
+    );
+
+    // Start Pushpin to verify it can load the generated configuration
+    let pushpin_guard = spawn_pushpin();
+    cleanup.set_pushpin(pushpin_guard);
+
+    println!("[test] Waiting for pushpin to be ready...");
+    wait_for_pushpin(Duration::from_secs(10))
+        .await
+        .expect("Pushpin did not become ready - configuration may be invalid");
+    println!("[test] Pushpin successfully loaded configuration");
+
+    // Give pushpin a moment to fully load routes
+    sleep(Duration::from_secs(2)).await;
+
+    // Verify Pushpin is actually running and responsive by making a request
+    // We expect 502 Bad Gateway since the backend isn't running
+    let client = reqwest::Client::new();
+    let response = client
+        .get("http://127.0.0.1:7999/health-check")
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .expect("Pushpin should be responsive");
+
+    println!(
+        "[test] Pushpin responded with status: {} (502 expected - backend not running)",
+        response.status()
+    );
+    assert_eq!(
+        response.status(),
+        502,
+        "Should get 502 Bad Gateway since backend isn't running"
     );
 
     // Cleanup happens automatically with Drop trait
@@ -165,7 +174,6 @@ impl TestCleanup {
 
 impl Drop for TestCleanup {
     fn drop(&mut self) {
-        // Kill processes
         if let Some(mut loader) = self.loader.take() {
             let _ = loader.kill();
             let _ = loader.wait();
@@ -175,19 +183,17 @@ impl Drop for TestCleanup {
             let _ = pushpin.wait();
         }
 
-        // Abort async server task
         if let Some(handle) = self.server_handle.take() {
             handle.abort();
         }
 
-        // Remove files
         for path in &self.files_to_remove {
             let _ = std::fs::remove_file(path);
         }
     }
 }
 
-// Remove any packaging cache so the loader will fetch backends.
+// Removes any packaging cache so the loader will fetch backends.
 fn remove_packaging_cache(packaging_dir: &std::path::Path) {
     let cache_dir = packaging_dir.join("cache");
     if cache_dir.exists() {
@@ -271,62 +277,6 @@ fn expected_backends_from_manifest() -> Vec<String> {
     expected_backends
 }
 
-async fn wait_for_manifest_and_backends(
-    logs: Arc<Mutex<Vec<RequestRecord>>>,
-    expected_backends: Vec<String>,
-    timeout_dur: Duration,
-) -> Result<(), String> {
-    type RequestSnapshot = (String, String, Vec<(String, String)>);
-    let start = tokio::time::Instant::now();
-
-    loop {
-        let (found_service, found_backends, should_timeout, snapshot) = {
-            let guard = logs.lock().unwrap();
-
-            let found_service = guard.iter().any(|r| {
-                r.path == "/v1/config/service"
-                    && r.headers
-                        .iter()
-                        .any(|(k, v)| k.to_lowercase() == "fetchly-consumer" && !v.is_empty())
-                    && r.headers.iter().any(|(k, v)| {
-                        k.to_lowercase() == "accept"
-                            && v.to_lowercase().contains("application/json")
-                    })
-            });
-
-            let mut found_backends = true;
-            for expected in expected_backends.iter() {
-                if !guard.iter().any(|r| r.path == *expected) {
-                    found_backends = false;
-                    break;
-                }
-            }
-
-            let should_timeout = tokio::time::Instant::now().duration_since(start) > timeout_dur;
-
-            let snapshot: Vec<RequestSnapshot> = if should_timeout {
-                guard
-                    .iter()
-                    .map(|r| (r.method.clone(), r.path.clone(), r.headers.clone()))
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-            (found_service, found_backends, should_timeout, snapshot)
-        };
-
-        if found_service && found_backends {
-            return Ok(());
-        }
-
-        if should_timeout {
-            return Err(format!("timeout; logs snapshot: {:?}", snapshot));
-        }
-        sleep(Duration::from_millis(50)).await;
-    }
-}
-
 async fn wait_for_pushpin(timeout: Duration) -> Result<(), String> {
     let start = tokio::time::Instant::now();
 
@@ -388,6 +338,7 @@ async fn start_mock_fetchly_server(
                                     .unwrap();
                             }
 
+                            // Write the request into log
                             let mut guard = logs.lock().unwrap();
                             guard.push(RequestRecord {
                                 method: request.method().to_string(),
@@ -407,16 +358,7 @@ async fn start_mock_fetchly_server(
                             Ok::<_, hyper::Error>(response)
                         };
 
-                        match tokio::spawn(handler).await {
-                            Ok(resp) => resp,
-                            Err(_) => {
-                                let response = Response::builder()
-                                    .status(500)
-                                    .body(Full::from(Bytes::from_static(b"ServerError")))
-                                    .unwrap();
-                                Ok::<_, hyper::Error>(response)
-                            }
-                        }
+                        handler.await
                     }
                 }
             })
@@ -437,8 +379,8 @@ fn get_service_response() -> Response<Full<Bytes>> {
         .unwrap()
 }
 
-fn get_backend_response(service_id: &str, version: &str) -> Response<Full<Bytes>> {
-    let body = serde_json::to_vec(&get_mock_backends_with_mtls(service_id, version)).unwrap();
+fn get_backend_response(_service_id: &str, _version: &str) -> Response<Full<Bytes>> {
+    let body = serde_json::to_vec(&get_mock_backends_with_mtls()).unwrap();
     Response::builder()
         .status(200)
         .header("Content-Type", "application/json")
@@ -463,7 +405,7 @@ fn get_mock_services() -> Value {
     })
 }
 
-fn get_mock_backends_with_mtls(_service_id: &str, _version: &str) -> Value {
+fn get_mock_backends_with_mtls() -> Value {
     json!({
         "backends": [
             {
