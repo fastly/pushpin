@@ -221,7 +221,8 @@ public:
 
 		sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
 		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
-
+		
+		// Set up the Inspect endpoint in pushpin-handler
 		if(!config.inspectSpec.isEmpty())
 		{
 			inspect = std::make_unique<ZrpcManager>();
@@ -229,7 +230,7 @@ public:
 			inspect->setIpcFileMode(config.ipcFileMode);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 
@@ -237,7 +238,8 @@ public:
 
 			inspectChecker = std::make_unique<ZrpcChecker>();
 		}
-
+		
+		// Set up the Accept endpoint in pushpin-handler
 		if(!config.acceptSpec.isEmpty())
 		{
 			accept = std::make_unique<ZrpcManager>();
@@ -246,11 +248,11 @@ public:
 			accept->setIpcFileMode(config.ipcFileMode);
 			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 
-			// there's no acceptTimeout config option so we'll reuse inspectTimeout
+			// There's no acceptTimeout config option so we'll reuse inspectTimeout
 			accept->setTimeout(config.inspectTimeout);
 		}
 
@@ -295,6 +297,7 @@ public:
 			}
 		}
 
+		// Set up StatsManager
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
 			stats = std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
@@ -313,7 +316,7 @@ public:
 			{
 				if(!stats->setSpec(config.statsSpec))
 				{
-					// statsmanager logs error
+					// StatsManager logs error
 					return false;
 				}
 			}
@@ -339,12 +342,12 @@ public:
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 		}
 
-		// init zroutes
+		// Init zroutes
 		routesChanged();
 
 		return true;
@@ -360,7 +363,7 @@ public:
 			zhttpRoutes = zhttpRoutes.mid(0, ZROUTES_MAX);
 		}
 
-		// connect to new zhttp targets, disconnect from old
+		// Connect to new zhttp targets, disconnect from old
 		zroutes->setup(zhttpRoutes);
 	}
 
@@ -368,7 +371,7 @@ public:
 	{
 		DomainMap::Entry route = rs->route();
 
-		// we'll always have a route
+		// We'll always have a route
 		assert(!route.isNull());
 
 		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
@@ -422,7 +425,7 @@ public:
 		else
 			log_debug("reusing proxysession");
 
-		// proxysession will take it from here
+		// ProxySession will take it from here
 		// TODO: use callbacks for performance
 		reqSessionConnectionMap.erase(rs);
 

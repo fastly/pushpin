@@ -25,6 +25,7 @@
 
 #include "httprequest.h"
 
+/// HTTP request instance for testing that simulates HTTP behavior
 class TestHttpRequest : public HttpRequest
 {
 public:

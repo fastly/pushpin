@@ -29,6 +29,8 @@
 class WebSocket;
 class WsProxySession;
 
+/// Manages mapping between WebSocket connections and their connection IDs
+/// and tracks which proxy session owns each connection
 class ConnectionManager
 {
 public:

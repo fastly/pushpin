@@ -30,6 +30,10 @@
 
 class QHostAddress;
 
+/// Collects and reports statistics via ZeroMQ (internal) and Prometheus (external) on:
+/// - Connections
+/// - Subscriptions
+/// - Messages sent/received
 class StatsManager
 {
 public:
@@ -72,8 +76,8 @@ public:
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset = -1);
 	int removeConnection(const QByteArray &id, bool linger, const QByteArray &source = QByteArray()); // Return unreported time
 
-	// manager automatically refreshes, but it may be useful to force a
-	//   send before removing with linger
+	// Manager automatically refreshes, but it may be useful to force a
+	// send before removing with linger
 	void refreshConnection(const QByteArray &id);
 
 	void addSubscription(const QString &mode, const QString &channel, uint32_t subscriberCount);
@@ -81,12 +85,12 @@ public:
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);
 
-	// for reporting and combined
+	// For reporting and combined
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
 	void incCounter(const QByteArray &routeId, Stats::Counter c, uint32_t count = 1);
 
-	// for combined only
+	// For combined only
 	void addRequestsReceived(uint32_t count);
 
 	bool checkConnection(const QByteArray &id) const;
@@ -96,7 +100,7 @@ public:
 	// forwarded on
 	bool processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport);
 
-	// directly send, for proxy->handler passthrough
+	// Directly send, for proxy->handler pass-through
 	void sendPacket(const StatsPacket &packet);
 
 	void flushReport(const QByteArray &routeId);

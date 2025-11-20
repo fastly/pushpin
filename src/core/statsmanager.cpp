@@ -38,7 +38,7 @@
 #include "zutil.h"
 #include "timer.h"
 
-// make this somewhat big since PUB is lossy
+// Make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
 
 #define ACTIVITY_TIMEOUT 100
@@ -59,7 +59,6 @@ static int64_t durationToTicksRoundUp(int64_t msec)
 {
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
-
 class StatsManager::Private
 {
 public:
