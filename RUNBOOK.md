@@ -34,8 +34,8 @@ To view logs on a given cache node, login to the cache node and:
 journalctl -fu pushpin
 journalctl -fu pushpin-proxy
 journalctl -fu pushpin-handler
-journalctl -fu pushpin-condure-in
-journalctl -fu pushpin-condure-out
+journalctl -fu pushpin-connmgr-in
+journalctl -fu pushpin-connmgr-out
 
 # View logs from a given point in time
 journalctl -u pushpin --since '2022-04-03 14:00'
@@ -60,7 +60,7 @@ Pushpin does not directly coordinate with other Pushpin instances (pub/sub messa
 
 Steps to follow:
 
-1. If Pushpin is being reported as down (see #pushpin-alerts), investigate a node by checking the status and the logs of the 5 main services (pushpin, pushpin-proxy, pushpin-handler, pushpin-condure-in, pushpin-condure-out). Note any issues you are seeing (services not running, warnings, errors) and then restart the pushpin service (`sudo service pushpin restart`). This will in-turn restart the other services. Wait a few moments for the monitoring system to report Pushpin as up again.
+1. If Pushpin is being reported as down (see #fanout-alerts), investigate a node by checking the status and the logs of the 5 main services (pushpin, pushpin-proxy, pushpin-handler, pushpin-connmgr-in, pushpin-connmgr-out). Note any issues you are seeing (services not running, warnings, errors) and then restart the pushpin service (`sudo service pushpin restart`). This will in-turn restart the other services. Wait a few moments for the monitoring system to report Pushpin as up again.
 
 2. If restarting Pushpin did not cause it to come back up, and it is down on many nodes (tens of nodes, or a large percentage of a single POP), try to determine if there is an external reason for the failure such as a separate incident involving other components. If there is no other easy explanation, and a new version of Pushpin was deployed in the past 48 hours, consider rolling back to the previous version.
 
