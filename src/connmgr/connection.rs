@@ -4122,7 +4122,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                         let shared = shared.get();
 
                         let msg = if let Some(addr) = shared.to_addr().get() {
-                            let id = cid.as_ref();
+                            let id: &str = cid.as_ref();
 
                             let mut zreq = zhttppacket::Request::new_cancel(b"", &[]);
 
