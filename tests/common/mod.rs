@@ -141,7 +141,7 @@ pub fn remove_packaging_cache(packaging_dir: &std::path::Path) {
     }
 }
 
-/// Spawn pushpin-loader with the given configuration
+/// Spawn pushpin-loader
 #[allow(dead_code)]
 pub fn spawn_loader(
     loader_path: &std::path::Path,
@@ -406,7 +406,7 @@ pub fn create_api_key_file(test_dir: &std::path::Path) -> std::io::Result<std::p
 /// Set up and start the loader with mock Fetchly server
 /// Returns (loader_guard, logs) for test verification
 #[allow(dead_code)]
-pub async fn setup_loader_with_mock_server(
+pub async fn start_loader(
     test_dir: &std::path::Path,
     cleanup: &mut TestCleanup,
 ) -> std::io::Result<(std::path::PathBuf, Arc<Mutex<Vec<RequestRecord>>>)> {
@@ -414,10 +414,10 @@ pub async fn setup_loader_with_mock_server(
 
     let loader_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fastly-build/packaging/pushpin-loader");
-    let loader_cwd = loader_path
-        .parent()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Loader path has no parent"))?;
-    
+    let loader_cwd = loader_path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "Loader path has no parent")
+    })?;
+
     remove_packaging_cache(loader_cwd);
     cleanup.set_loader_dir(loader_cwd.to_path_buf());
 
@@ -426,12 +426,18 @@ pub async fn setup_loader_with_mock_server(
     let logs = Arc::new(Mutex::new(Vec::new()));
 
     let (ready_tx, ready_rx) = oneshot::channel();
-    let server_handle = start_mock_fetchly_server(socket_path.clone(), logs.clone(), ready_tx).await;
+    let server_handle =
+        start_mock_fetchly_server(socket_path.clone(), logs.clone(), ready_tx).await;
     cleanup.add_task(server_handle);
 
     let _ = tokio::time::timeout(Duration::from_secs(5), ready_rx)
         .await
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "Fetchly server did not become ready"))?;
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Fetchly server did not become ready",
+            )
+        })?;
 
     let loader_guard = spawn_loader(&loader_path, loader_cwd, &key_path);
     cleanup.add_process(loader_guard);
@@ -447,9 +453,9 @@ pub async fn setup_loader_with_mock_server(
 
 /// Spawn pushpin with the given config
 #[allow(dead_code)]
-pub fn spawn_pushpin_process(config_path: &std::path::Path) -> std::process::Child {
+pub fn spawn_pushpin(config_path: &std::path::Path) -> std::process::Child {
     use std::os::unix::process::CommandExt;
-    
+
     let pushpin_bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pushpin");
 
     let mut child = std::process::Command::new(&pushpin_bin)

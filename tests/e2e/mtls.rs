@@ -9,8 +9,8 @@
 ///
 /// Run with: cargo test test_mtls_e2e -- --ignored --nocapture
 use crate::common::{
-    create_test_config, create_test_dir, setup_loader_with_mock_server, spawn_pushpin_process,
-    wait_for_pushpin_ready, TestCleanup, TEST_CERT, TEST_KEY,
+    create_test_config, create_test_dir, spawn_pushpin, start_loader, wait_for_pushpin_ready,
+    TestCleanup, TEST_CERT, TEST_KEY,
 };
 
 use openssl::ssl::{SslAcceptor, SslConnector, SslFiletype, SslMethod, SslVerifyMode};
@@ -31,9 +31,9 @@ async fn test_mtls_e2e() {
     cleanup.set_test_dir(test_dir.clone());
 
     // Set up loader with mock Fetchly server
-    let (generated_routes, _logs) = setup_loader_with_mock_server(&test_dir, &mut cleanup)
+    let (generated_routes, _logs) = start_loader(&test_dir, &mut cleanup)
         .await
-        .expect("Failed to setup loader");
+        .expect("Failed to start loader");
     println!("[e2e] Loader and mock Fetchly server set up");
 
     // Create test config with extra route for mock origind
@@ -81,7 +81,7 @@ async fn test_mtls_e2e() {
     println!("[e2e] mTLS backend server started on 127.0.0.1:8443");
 
     // Start Pushpin with test config
-    let pushpin_guard = spawn_pushpin_process(&test_config);
+    let pushpin_guard = spawn_pushpin(&test_config);
     cleanup.add_process(pushpin_guard);
     println!("[e2e] Pushpin started");
 

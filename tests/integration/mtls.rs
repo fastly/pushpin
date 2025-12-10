@@ -1,6 +1,6 @@
 use crate::common::{
-    create_test_config, create_test_dir, setup_loader_with_mock_server, spawn_pushpin_process,
-    wait_for_pushpin_ready, TestCleanup,
+    create_test_config, create_test_dir, spawn_pushpin, start_loader, wait_for_pushpin_ready,
+    TestCleanup,
 };
 
 use std::time::Duration;
@@ -18,10 +18,10 @@ async fn test_mtls_configuration() {
     let mut cleanup = TestCleanup::new();
     cleanup.set_test_dir(test_dir.clone());
 
-    // Set up loader with mock Fetchly server
-    let (generated_routes, _logs) = setup_loader_with_mock_server(&test_dir, &mut cleanup)
+    // Start loader with mock Fetchly server
+    let (generated_routes, _logs) = start_loader(&test_dir, &mut cleanup)
         .await
-        .expect("Failed to setup loader");
+        .expect("Failed to start loader");
 
     // Verify the routes file
     let routes_content =
@@ -70,7 +70,7 @@ async fn test_mtls_configuration() {
         .expect("Failed to create test config");
 
     // Start Pushpin with test config
-    let pushpin_guard = spawn_pushpin_process(&test_config);
+    let pushpin_guard = spawn_pushpin(&test_config);
     cleanup.add_process(pushpin_guard);
 
     println!("[test] Waiting for pushpin to be ready...");
