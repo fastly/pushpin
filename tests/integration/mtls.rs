@@ -45,7 +45,16 @@ async fn test_mtls_configuration() {
         .await
         .expect("Server did not become ready");
 
-    // Start pushpin-loader
+    // Set up and start pushpin-loader
+    let key_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fastly-build/packaging/key");
+    let _ = std::fs::remove_file(&key_path);
+    let mut key_file = File::create(&key_path).expect("Failed to create test key file");
+    key_file
+        .write_all(b"TestAPIKey1234567890\n")
+        .expect("Failed to write test key file");
+    cleanup.add_file(key_path.clone());
+
     let loader_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fastly-build/packaging/pushpin-loader");
     let loader_cwd = loader_path.parent().expect("Loader path has no parent");
