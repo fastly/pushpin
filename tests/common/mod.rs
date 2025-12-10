@@ -1,5 +1,14 @@
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::Response;
+use hyperlocal::UnixListenerExt;
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::net::UnixListener;
+use tokio::sync::oneshot;
 use tokio::time::sleep;
 
 /// Environment variable name used to tell pushpin-loader to connect to a mock Fetchly server
@@ -92,6 +101,7 @@ bdtCUz8wwRfEUoO/3QUxu+AjVwqQRh6sai7HT9PvEKzcxar6puNBdAgSbdOMml7B
 FLHzY9d3EuR064DlJrVBEs3yrcRmiwnohzHTNGvbkR6rkiiZBfOxaWxLuWWR4i4=
 -----END CERTIFICATE-----"#;
 
+/// Test key for mTLS testing (used for CA, server, and client)
 #[allow(dead_code)]
 pub const TEST_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDr96HqQ2XeU81a
@@ -122,17 +132,7 @@ BER82elqOZ+/OFWD3uNVFmFGpFPEHBMEMA8T356c8etjreWgMVO1ZlHyeGtpdzD8
 D+5Yx6F3xobZlkCo9JRPeIbMMg==
 -----END PRIVATE KEY-----"#;
 
-use http_body_util::Full;
-use hyper::body::Bytes;
-use hyper::Response;
-use hyperlocal::UnixListenerExt;
-use serde_json::{json, Value};
-use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
-use tokio::net::UnixListener;
-use tokio::sync::oneshot;
-
-/// Remove packaging cache so the loader will fetch backends
+/// Remove packaging cache dir so the loader will fetch backends
 #[allow(dead_code)]
 pub fn remove_packaging_cache(packaging_dir: &std::path::Path) {
     let cache_dir = packaging_dir.join("cache");
@@ -146,11 +146,13 @@ pub fn remove_packaging_cache(packaging_dir: &std::path::Path) {
 pub fn spawn_loader(
     loader_path: &std::path::Path,
     loader_cwd: &std::path::Path,
-    socket_path: &std::path::Path,
+    key_path: &std::path::Path,
 ) -> std::process::Child {
     let mut child = Command::new(loader_path)
         .current_dir(loader_cwd)
-        .env(LOADER_TEST_ENV, socket_path.to_str().unwrap())
+        .arg("--key")
+        .arg(key_path)
+        .env(LOADER_TEST_ENV, "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -350,4 +352,247 @@ pub fn expected_backends_from_manifest() -> Vec<String> {
         }
     }
     expected_backends
+}
+
+#[allow(dead_code)]
+pub fn create_test_dir() -> std::io::Result<std::path::PathBuf> {
+    let test_dir = std::env::temp_dir().join(format!("pushpin-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir)?;
+    Ok(test_dir)
+}
+
+/// Create pushpin config with correct routes file path
+#[allow(dead_code)]
+pub fn create_test_config(
+    test_dir: &std::path::Path,
+    routes_file: &std::path::Path,
+    extra_routes: Option<&str>,
+) -> std::io::Result<std::path::PathBuf> {
+    let config_path = test_dir.join("pushpin.conf");
+
+    // Read the base config
+    let base_config_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/config/pushpin.conf");
+    let mut config_content = std::fs::read_to_string(&base_config_path)?;
+
+    // Replace routesfile= with absolute path to loader's routes
+    let routes_file_str = routes_file.to_str().unwrap();
+    config_content = config_content.replace(
+        "routesfile=routes",
+        &format!("routesfile={}", routes_file_str),
+    );
+
+    std::fs::write(&config_path, config_content)?;
+
+    // If extra routes are provided, append them to the routes file
+    if let Some(extra) = extra_routes {
+        let mut routes_content = std::fs::read_to_string(routes_file)?;
+        routes_content.push_str(extra);
+        std::fs::write(routes_file, routes_content)?;
+    }
+
+    Ok(config_path)
+}
+
+/// Create API key file for testing
+#[allow(dead_code)]
+pub fn create_api_key_file(test_dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let key_path = test_dir.join("key");
+    let mut key_file = std::fs::File::create(&key_path)?;
+    std::io::Write::write_all(&mut key_file, b"TestAPIKey1234567890\n")?;
+    Ok(key_path)
+}
+
+/// Set up and start the loader with mock Fetchly server
+/// Returns (loader_guard, logs) for test verification
+#[allow(dead_code)]
+pub async fn setup_loader_with_mock_server(
+    test_dir: &std::path::Path,
+    cleanup: &mut TestCleanup,
+) -> std::io::Result<(std::path::PathBuf, Arc<Mutex<Vec<RequestRecord>>>)> {
+    let key_path = create_api_key_file(test_dir)?;
+
+    let loader_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fastly-build/packaging/pushpin-loader");
+    let loader_cwd = loader_path
+        .parent()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Loader path has no parent"))?;
+    
+    remove_packaging_cache(loader_cwd);
+    cleanup.set_loader_dir(loader_cwd.to_path_buf());
+
+    // Set up mock Fetchly server in loader_cwd
+    let socket_path = loader_cwd.join("mock_server.sock");
+    let logs = Arc::new(Mutex::new(Vec::new()));
+
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let server_handle = start_mock_fetchly_server(socket_path.clone(), logs.clone(), ready_tx).await;
+    cleanup.add_task(server_handle);
+
+    let _ = tokio::time::timeout(Duration::from_secs(5), ready_rx)
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "Fetchly server did not become ready"))?;
+
+    let loader_guard = spawn_loader(&loader_path, loader_cwd, &key_path);
+    cleanup.add_process(loader_guard);
+
+    // Wait for loader to fetch backends
+    let expected = expected_backends_from_manifest();
+    wait_for_manifest_and_backends(logs.clone(), expected, Duration::from_secs(10))
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))?;
+
+    Ok((loader_cwd.join("routes"), logs))
+}
+
+/// Spawn pushpin with the given config
+#[allow(dead_code)]
+pub fn spawn_pushpin_process(config_path: &std::path::Path) -> std::process::Child {
+    use std::os::unix::process::CommandExt;
+    
+    let pushpin_bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pushpin");
+
+    let mut child = std::process::Command::new(&pushpin_bin)
+        .arg("--config")
+        .arg(config_path)
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn pushpin");
+
+    set_stdout_stderr("pushpin", &mut child);
+    child
+}
+
+/// Wait for pushpin to be ready by polling the port
+#[allow(dead_code)]
+pub async fn wait_for_pushpin_ready(timeout: Duration) -> Result<(), String> {
+    let start = tokio::time::Instant::now();
+    loop {
+        if let Ok(Ok(_)) = tokio::time::timeout(
+            Duration::from_millis(100),
+            tokio::net::TcpStream::connect("127.0.0.1:7999"),
+        )
+        .await
+        {
+            return Ok(());
+        }
+
+        if tokio::time::Instant::now().duration_since(start) > timeout {
+            return Err("Pushpin did not become ready in time".to_string());
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Handles killing processes and cleaning up test artifacts
+pub struct TestCleanup {
+    processes: Vec<std::process::Child>,
+    task_handles: Vec<tokio::task::JoinHandle<()>>,
+    loader_dir: Option<std::path::PathBuf>,
+    test_dir: Option<std::path::PathBuf>,
+}
+
+impl TestCleanup {
+    pub fn new() -> Self {
+        Self {
+            processes: Vec::new(),
+            task_handles: Vec::new(),
+            loader_dir: None,
+            test_dir: None,
+        }
+    }
+
+    pub fn set_test_dir(&mut self, path: std::path::PathBuf) {
+        self.test_dir = Some(path);
+    }
+
+    pub fn set_loader_dir(&mut self, path: std::path::PathBuf) {
+        self.loader_dir = Some(path);
+    }
+
+    pub fn add_process(&mut self, child: std::process::Child) {
+        self.processes.push(child);
+    }
+
+    pub fn add_task(&mut self, handle: tokio::task::JoinHandle<()>) {
+        self.task_handles.push(handle);
+    }
+
+    fn cleanup_loader_artifacts(packaging_dir: &std::path::Path) {
+        let routes_file = packaging_dir.join("routes");
+        if routes_file.exists() {
+            let _ = std::fs::remove_file(&routes_file);
+        }
+
+        let backends_dir = packaging_dir.join("backends");
+        if backends_dir.exists() {
+            let _ = std::fs::remove_dir_all(&backends_dir);
+        }
+
+        let cache_dir = packaging_dir.join("cache");
+        if cache_dir.exists() {
+            let _ = std::fs::remove_dir_all(&cache_dir);
+        }
+
+        let socket_file = packaging_dir.join("mock_server.sock");
+        if socket_file.exists() {
+            let _ = std::fs::remove_file(&socket_file);
+        }
+    }
+}
+
+impl Drop for TestCleanup {
+    fn drop(&mut self) {
+        // Kill all processes and their children
+        for mut process in self.processes.drain(..) {
+            let pid = process.id();
+
+            #[cfg(unix)]
+            {
+                use nix::sys::signal::{killpg, Signal};
+                use nix::unistd::Pid;
+
+                // Send SIGTERM to process group for graceful shutdown
+                let _ = killpg(Pid::from_raw(pid as i32), Signal::SIGTERM);
+                std::thread::sleep(std::time::Duration::from_millis(300));
+
+                // Force kill if still running
+                let _ = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+
+            #[cfg(windows)]
+            {
+                use std::process::Command as StdCommand;
+
+                // Use taskkill to kill process tree
+                let _ = StdCommand::new("taskkill")
+                    .args(&["/F", "/T", "/PID", &pid.to_string()])
+                    .output();
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+
+            let _ = process.wait();
+        }
+
+        // Abort all tasks
+        for handle in self.task_handles.drain(..) {
+            handle.abort();
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Clean up loader artifacts
+        if let Some(ref loader_dir) = self.loader_dir {
+            Self::cleanup_loader_artifacts(loader_dir);
+        }
+
+        // Clean up test directory
+        if let Some(ref test_dir) = self.test_dir {
+            let _ = std::fs::remove_dir_all(test_dir);
+        }
+    }
 }

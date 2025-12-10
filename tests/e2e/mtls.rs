@@ -9,13 +9,12 @@
 ///
 /// Run with: cargo test test_mtls_e2e -- --ignored --nocapture
 use crate::common::{
-    expected_backends_from_manifest, remove_packaging_cache, set_stdout_stderr, spawn_loader,
-    start_mock_fetchly_server, wait_for_manifest_and_backends, TEST_CERT, TEST_KEY,
+    create_test_config, create_test_dir, setup_loader_with_mock_server, spawn_pushpin_process,
+    wait_for_pushpin_ready, TestCleanup, TEST_CERT, TEST_KEY,
 };
 
 use openssl::ssl::{SslAcceptor, SslConnector, SslFiletype, SslMethod, SslVerifyMode};
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -27,75 +26,40 @@ use tokio::time::sleep;
 async fn test_mtls_e2e() {
     println!("[e2e] Starting mTLS end-to-end test");
 
+    let test_dir = create_test_dir().expect("Failed to create test directory");
     let mut cleanup = TestCleanup::new();
+    cleanup.set_test_dir(test_dir.clone());
 
-    // Set up mock Fetchly server
-    let socket_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fastly-build/packaging/mock_server.sock");
-    let _ = std::fs::remove_file(&socket_path);
-    cleanup.add_file(socket_path.clone());
-
-    let logs = Arc::new(Mutex::new(Vec::new()));
-    let (ready_tx, ready_rx) = oneshot::channel();
-    let server_handle =
-        start_mock_fetchly_server(socket_path.clone(), logs.clone(), ready_tx).await;
-    cleanup.set_server_handle(server_handle);
-
-    let _ = tokio::time::timeout(Duration::from_secs(5), ready_rx)
+    // Set up loader with mock Fetchly server
+    let (generated_routes, _logs) = setup_loader_with_mock_server(&test_dir, &mut cleanup)
         .await
-        .expect("Fetchly server did not become ready");
-    println!("[e2e] Mock Fetchly server started");
+        .expect("Failed to setup loader");
+    println!("[e2e] Loader and mock Fetchly server set up");
 
-    // Start pushpin-loader
-    let loader_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fastly-build/packaging/pushpin-loader");
-    let loader_cwd = loader_path.parent().expect("Loader path has no parent");
-    remove_packaging_cache(loader_cwd);
+    // Create test config with extra route for mock origind
+    let test_config = create_test_config(&test_dir, &generated_routes, Some("* 127.0.0.1:50051\n"))
+        .expect("Failed to create test config");
+    println!("[e2e] Test config created with routes to mock origind");
 
-    let loader_guard = spawn_loader(&loader_path, loader_cwd, &socket_path);
-    cleanup.set_loader(loader_guard);
-    println!("[e2e] pushpin-loader started");
-
-    let expected = expected_backends_from_manifest();
-    wait_for_manifest_and_backends(logs.clone(), expected, Duration::from_secs(10))
-        .await
-        .expect("Loader failed to fetch backends");
-    println!("[e2e] Loader fetched backends");
-
-    // Copy routes to pushpin location
-    let generated_routes = loader_cwd.join("routes");
-    let pushpin_routes =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/config/routes");
-
-    // Test route that routes all traffic to mock origind
-    let mut routes_content =
-        std::fs::read_to_string(&generated_routes).expect("Failed to read generated routes");
-    routes_content.push_str("* 127.0.0.1:50051\n");
-
-    std::fs::write(&pushpin_routes, routes_content).expect("Failed to write routes file");
-    println!("[e2e] Routes copied and test route added");
-
-    write_test_certs();
-    cleanup.set_cleanup_certs();
+    write_test_certs(&test_dir);
 
     // Start mock origind server
-    let temp_dir = std::env::temp_dir();
     let origind_handle = start_mock_origind(
         "127.0.0.1:50051".to_string(),
         "127.0.0.1:8443".to_string(),
-        temp_dir
+        test_dir
             .join("test_server_cert.pem")
             .to_str()
             .unwrap()
             .to_string(),
-        temp_dir
+        test_dir
             .join("test_server_key.pem")
             .to_str()
             .unwrap()
             .to_string(),
     )
     .await;
-    cleanup.set_origind_handle(origind_handle);
+    cleanup.add_task(origind_handle);
     println!("[e2e] Mock origind started on 127.0.0.1:50051");
 
     // Give origind time to start
@@ -103,20 +67,25 @@ async fn test_mtls_e2e() {
 
     // Start mTLS backend server
     let (backend_ready_tx, backend_ready_rx) = oneshot::channel();
-    let backend_handle = start_mtls_backend("127.0.0.1:8443".to_string(), backend_ready_tx).await;
-    cleanup.set_backend_handle(backend_handle);
+    let backend_handle = start_mtls_backend(
+        "127.0.0.1:8443".to_string(),
+        test_dir.clone(),
+        backend_ready_tx,
+    )
+    .await;
+    cleanup.add_task(backend_handle);
 
     let _ = tokio::time::timeout(Duration::from_secs(5), backend_ready_rx)
         .await
         .expect("mTLS backend did not become ready");
     println!("[e2e] mTLS backend server started on 127.0.0.1:8443");
 
-    // Start Pushpin
-    let pushpin_guard = spawn_pushpin();
-    cleanup.set_pushpin(pushpin_guard);
+    // Start Pushpin with test config
+    let pushpin_guard = spawn_pushpin_process(&test_config);
+    cleanup.add_process(pushpin_guard);
     println!("[e2e] Pushpin started");
 
-    wait_for_pushpin()
+    wait_for_pushpin_ready(Duration::from_secs(10))
         .await
         .expect("Pushpin did not become ready");
     println!("[e2e] Pushpin is ready");
@@ -283,146 +252,17 @@ async fn start_mock_origind(
     })
 }
 
-/// Cleanup guard for e2e test resources
-struct TestCleanup {
-    loader: Option<std::process::Child>,
-    pushpin: Option<std::process::Child>,
-    backend_handle: Option<tokio::task::JoinHandle<()>>,
-    server_handle: Option<tokio::task::JoinHandle<()>>,
-    origind_handle: Option<tokio::task::JoinHandle<()>>,
-    cleanup_certs: bool,
-    files_to_remove: Vec<std::path::PathBuf>,
-}
-
-impl TestCleanup {
-    fn new() -> Self {
-        Self {
-            loader: None,
-            pushpin: None,
-            backend_handle: None,
-            server_handle: None,
-            origind_handle: None,
-            cleanup_certs: false,
-            files_to_remove: Vec::new(),
-        }
-    }
-
-    fn set_loader(&mut self, child: std::process::Child) {
-        self.loader = Some(child);
-    }
-
-    fn set_pushpin(&mut self, child: std::process::Child) {
-        self.pushpin = Some(child);
-    }
-
-    fn set_backend_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
-        self.backend_handle = Some(handle);
-    }
-
-    fn set_server_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
-        self.server_handle = Some(handle);
-    }
-
-    fn set_origind_handle(&mut self, handle: tokio::task::JoinHandle<()>) {
-        self.origind_handle = Some(handle);
-    }
-
-    fn set_cleanup_certs(&mut self) {
-        self.cleanup_certs = true;
-    }
-
-    fn add_file(&mut self, path: std::path::PathBuf) {
-        self.files_to_remove.push(path);
-    }
-}
-
-impl Drop for TestCleanup {
-    fn drop(&mut self) {
-        println!("[e2e] Cleaning up test resources...");
-
-        if let Some(mut loader) = self.loader.take() {
-            let _ = loader.kill();
-            let _ = loader.wait();
-        }
-        if let Some(mut pushpin) = self.pushpin.take() {
-            let _ = pushpin.kill();
-            let _ = pushpin.wait();
-        }
-
-        if let Some(handle) = self.backend_handle.take() {
-            handle.abort();
-        }
-        if let Some(handle) = self.server_handle.take() {
-            handle.abort();
-        }
-        if let Some(handle) = self.origind_handle.take() {
-            handle.abort();
-        }
-
-        // Give the OS time to reclaim ports after aborting tasks
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        if self.cleanup_certs {
-            cleanup_test_certs();
-        }
-
-        for path in &self.files_to_remove {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
-async fn wait_for_pushpin() -> Result<(), String> {
-    let start = tokio::time::Instant::now();
-    let timeout = Duration::from_secs(15);
-
-    loop {
-        if tokio::net::TcpStream::connect("127.0.0.1:7999")
-            .await
-            .is_ok()
-        {
-            return Ok(());
-        }
-
-        if tokio::time::Instant::now().duration_since(start) > timeout {
-            return Err("Pushpin did not become ready in time".to_string());
-        }
-
-        sleep(Duration::from_millis(50)).await;
-    }
-}
-
-fn spawn_pushpin() -> std::process::Child {
-    let mut child = Command::new("cargo")
-        .arg("run")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to spawn pushpin");
-
-    set_stdout_stderr("pushpin-e2e", &mut child);
-    child
-}
-
-fn write_test_certs() {
-    let temp_dir = std::env::temp_dir();
-
-    std::fs::write(temp_dir.join("test_server_cert.pem"), TEST_CERT)
+fn write_test_certs(test_dir: &std::path::Path) {
+    std::fs::write(test_dir.join("test_server_cert.pem"), TEST_CERT)
         .expect("Failed to write server cert");
-    std::fs::write(temp_dir.join("test_server_key.pem"), TEST_KEY)
+    std::fs::write(test_dir.join("test_server_key.pem"), TEST_KEY)
         .expect("Failed to write server key");
-    std::fs::write(temp_dir.join("test_ca_cert.pem"), TEST_CERT).expect("Failed to write CA cert");
-}
-
-fn cleanup_test_certs() {
-    let temp_dir = std::env::temp_dir();
-    let _ = std::fs::remove_file(temp_dir.join("test_server_cert.pem"));
-    let _ = std::fs::remove_file(temp_dir.join("test_server_key.pem"));
-    let _ = std::fs::remove_file(temp_dir.join("test_ca_cert.pem"));
+    std::fs::write(test_dir.join("test_ca_cert.pem"), TEST_CERT).expect("Failed to write CA cert");
 }
 
 async fn start_mtls_backend(
     addr: String,
+    test_dir: std::path::PathBuf,
     ready_tx: oneshot::Sender<()>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -431,31 +271,18 @@ async fn start_mtls_backend(
 
         acceptor
             .set_private_key_file(
-                std::env::temp_dir()
-                    .join("test_server_key.pem")
-                    .to_str()
-                    .unwrap(),
+                test_dir.join("test_server_key.pem").to_str().unwrap(),
                 SslFiletype::PEM,
             )
             .unwrap();
         acceptor
-            .set_certificate_chain_file(
-                std::env::temp_dir()
-                    .join("test_server_cert.pem")
-                    .to_str()
-                    .unwrap(),
-            )
+            .set_certificate_chain_file(test_dir.join("test_server_cert.pem").to_str().unwrap())
             .unwrap();
         acceptor.check_private_key().unwrap();
 
         acceptor.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         acceptor
-            .set_ca_file(
-                std::env::temp_dir()
-                    .join("test_ca_cert.pem")
-                    .to_str()
-                    .unwrap(),
-            )
+            .set_ca_file(test_dir.join("test_ca_cert.pem").to_str().unwrap())
             .unwrap();
 
         let acceptor = acceptor.build();
