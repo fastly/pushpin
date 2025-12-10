@@ -2,6 +2,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 
+/// Environment variable name used to tell pushpin-loader to connect to a mock Fetchly server
+#[allow(dead_code)]
+pub const LOADER_TEST_ENV: &str = "LOADER_TEST";
+
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct RequestRecord {
@@ -146,7 +150,7 @@ pub fn spawn_loader(
 ) -> std::process::Child {
     let mut child = Command::new(loader_path)
         .current_dir(loader_cwd)
-        .env("LOADER_TEST", socket_path.to_str().unwrap())
+        .env(LOADER_TEST_ENV, socket_path.to_str().unwrap())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

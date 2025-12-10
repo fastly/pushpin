@@ -1,4 +1,7 @@
-use crate::common::{wait_for_manifest_and_backends, RequestRecord, TEST_CERT, TEST_KEY};
+use crate::common::{
+    remove_packaging_cache, set_stdout_stderr, spawn_loader, wait_for_manifest_and_backends,
+    RequestRecord, TEST_CERT, TEST_KEY,
+};
 
 use http_body_util::Full;
 use hyper::body::Bytes;
@@ -6,7 +9,8 @@ use hyper::Response;
 use hyperlocal::UnixListenerExt;
 use serde_json::json;
 use serde_json::Value;
-use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::io::prelude::*;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -27,7 +31,7 @@ async fn test_mtls_configuration() {
     // Set up and start the mock Fetchly server
     let socket_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("fastly-build/packaging/mock_server.sock");
-    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&socket_path); // Clean up any existing socket
     cleanup.add_file(socket_path.clone());
 
     let logs = Arc::new(Mutex::new(Vec::new()));
@@ -193,32 +197,6 @@ impl Drop for TestCleanup {
     }
 }
 
-// Removes any packaging cache so the loader will fetch backends.
-fn remove_packaging_cache(packaging_dir: &std::path::Path) {
-    let cache_dir = packaging_dir.join("cache");
-    if cache_dir.exists() {
-        let _ = std::fs::remove_dir_all(&cache_dir);
-    }
-}
-
-fn spawn_loader(
-    loader_path: &std::path::Path,
-    loader_cwd: &std::path::Path,
-    socket_path: &std::path::Path,
-) -> std::process::Child {
-    let mut child = Command::new(loader_path)
-        .current_dir(loader_cwd)
-        .env("LOADER_TEST", socket_path.to_str().unwrap())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|e| panic!("Failed to spawn loader at {:?}: {}", loader_path, e));
-
-    set_stdout_stderr("loader", &mut child);
-
-    child
-}
-
 fn spawn_pushpin() -> std::process::Child {
     let mut child = Command::new("cargo")
         .arg("run")
@@ -230,34 +208,6 @@ fn spawn_pushpin() -> std::process::Child {
     set_stdout_stderr("pushpin", &mut child);
 
     child
-}
-
-fn set_stdout_stderr(app_name: &str, child: &mut std::process::Child) {
-    if let Some(out) = child.stdout.take() {
-        let app_name = app_name.to_string();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(out);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => println!("[{} stdout] {}", app_name, l),
-                    Err(_) => break,
-                }
-            }
-        });
-    }
-
-    if let Some(err) = child.stderr.take() {
-        let app_name = app_name.to_string();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(err);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => eprintln!("[{} stderr] {}", app_name, l),
-                    Err(_) => break,
-                }
-            }
-        });
-    }
 }
 
 fn expected_backends_from_manifest() -> Vec<String> {
