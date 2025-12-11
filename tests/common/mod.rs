@@ -147,11 +147,17 @@ pub fn spawn_loader(
     loader_path: &std::path::Path,
     loader_cwd: &std::path::Path,
     key_path: &std::path::Path,
+    routes_output: &std::path::Path,
+    backends_dir: &std::path::Path,
 ) -> std::process::Child {
     let mut child = Command::new(loader_path)
         .current_dir(loader_cwd)
         .arg("--key")
         .arg(key_path)
+        .arg("--output")
+        .arg(routes_output)
+        .arg("--backends-dir")
+        .arg(backends_dir)
         .env(LOADER_TEST_ENV, "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -439,7 +445,16 @@ pub async fn start_loader(
             )
         })?;
 
-    let loader_guard = spawn_loader(&loader_path, loader_cwd, &key_path);
+    // Write routes to test directory instead of shared location
+    let routes_path = test_dir.join("routes");
+    let backends_dir = test_dir.join("backends");
+    let loader_guard = spawn_loader(
+        &loader_path,
+        loader_cwd,
+        &key_path,
+        &routes_path,
+        &backends_dir,
+    );
     cleanup.add_process(loader_guard);
 
     // Wait for loader to fetch backends
@@ -448,7 +463,7 @@ pub async fn start_loader(
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))?;
 
-    Ok((loader_cwd.join("routes"), logs))
+    Ok((routes_path, logs))
 }
 
 /// Spawn pushpin with the given config
