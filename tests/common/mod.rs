@@ -469,14 +469,11 @@ pub async fn start_loader(
 /// Spawn pushpin with the given config
 #[allow(dead_code)]
 pub fn spawn_pushpin(config_path: &std::path::Path) -> std::process::Child {
-    use std::os::unix::process::CommandExt;
-
     let pushpin_bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pushpin");
 
     let mut child = std::process::Command::new(&pushpin_bin)
         .arg("--config")
         .arg(config_path)
-        .process_group(0)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -568,32 +565,48 @@ impl TestCleanup {
 impl Drop for TestCleanup {
     fn drop(&mut self) {
         // Kill all processes and their children
+        // The pushpin runner spawns child processes (connmgr, proxy, handler)
+        // so we have to kill them explicitly
         for mut process in self.processes.drain(..) {
             let pid = process.id();
 
             #[cfg(unix)]
             {
-                use nix::sys::signal::{killpg, Signal};
+                use nix::sys::signal::{kill, Signal};
                 use nix::unistd::Pid;
 
-                // Send SIGTERM to process group for graceful shutdown
-                let _ = killpg(Pid::from_raw(pid as i32), Signal::SIGTERM);
-                std::thread::sleep(std::time::Duration::from_millis(300));
+                let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                let _ = kill(Pid::from_raw(pid as i32), Signal::SIGKILL);
 
-                // Force kill if still running
-                let _ = killpg(Pid::from_raw(pid as i32), Signal::SIGKILL);
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                let _ = std::process::Command::new("pkill")
+                    .args(&["-9", "-f", "pushpin-connmgr"])
+                    .output();
+                let _ = std::process::Command::new("pkill")
+                    .args(&["-9", "-f", "pushpin-proxy"])
+                    .output();
+                let _ = std::process::Command::new("pkill")
+                    .args(&["-9", "-f", "pushpin-handler"])
+                    .output();
             }
 
             #[cfg(windows)]
             {
                 use std::process::Command as StdCommand;
 
-                // Use taskkill to kill process tree
                 let _ = StdCommand::new("taskkill")
                     .args(&["/F", "/T", "/PID", &pid.to_string()])
                     .output();
-                std::thread::sleep(std::time::Duration::from_millis(300));
+
+                let _ = StdCommand::new("taskkill")
+                    .args(&["/F", "/IM", "pushpin-connmgr.exe"])
+                    .output();
+                let _ = StdCommand::new("taskkill")
+                    .args(&["/F", "/IM", "pushpin-proxy.exe"])
+                    .output();
+                let _ = StdCommand::new("taskkill")
+                    .args(&["/F", "/IM", "pushpin-handler.exe"])
+                    .output();
             }
 
             let _ = process.wait();
