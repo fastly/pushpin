@@ -11,10 +11,6 @@ use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-/// Environment variable name used to tell pushpin-loader to connect to a mock Fetchly server
-#[allow(dead_code)]
-pub const LOADER_TEST_ENV: &str = "LOADER_TEST";
-
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct RequestRecord {
@@ -158,7 +154,7 @@ pub fn spawn_loader(
         .arg(routes_output)
         .arg("--backends-dir")
         .arg(backends_dir)
-        .env(LOADER_TEST_ENV, "1")
+        .arg("--test")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
