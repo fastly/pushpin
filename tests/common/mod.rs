@@ -11,7 +11,6 @@ use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct RequestRecord {
     pub method: String,
@@ -19,7 +18,6 @@ pub struct RequestRecord {
     pub headers: Vec<(String, String)>,
 }
 
-#[allow(dead_code)]
 pub async fn wait_for_manifest_and_backends(
     logs: Arc<Mutex<Vec<RequestRecord>>>,
     expected_backends: Vec<String>,
@@ -76,8 +74,7 @@ pub async fn wait_for_manifest_and_backends(
     }
 }
 
-/// Test certificate for mTLS testing (used for CA, server, and client)
-#[allow(dead_code)]
+/// Test certificate for mTLS testing (used for CA, server, and client
 pub const TEST_CERT: &str = r#"-----BEGIN CERTIFICATE-----
 MIIC+zCCAeOgAwIBAgIJAK5NJY1Pm0F8MA0GCSqGSIb3DQEBCwUAMBQxEjAQBgNV
 BAMMCWxvY2FsaG9zdDAeFw0yNTExMTkwMDMwNDNaFw0zNTExMTcwMDMwNDNaMBQx
@@ -98,7 +95,6 @@ FLHzY9d3EuR064DlJrVBEs3yrcRmiwnohzHTNGvbkR6rkiiZBfOxaWxLuWWR4i4=
 -----END CERTIFICATE-----"#;
 
 /// Test key for mTLS testing (used for CA, server, and client)
-#[allow(dead_code)]
 pub const TEST_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
 MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDr96HqQ2XeU81a
 aK0tpCzNtsNhj51DUUtjAuo/gYbodQKazBEa2BtAJ4FTZhwPW4tV2H7nbnJ7P8r8
@@ -129,7 +125,6 @@ D+5Yx6F3xobZlkCo9JRPeIbMMg==
 -----END PRIVATE KEY-----"#;
 
 /// Remove packaging cache dir so the loader will fetch backends
-#[allow(dead_code)]
 pub fn remove_packaging_cache(packaging_dir: &std::path::Path) {
     let cache_dir = packaging_dir.join("cache");
     if cache_dir.exists() {
@@ -138,7 +133,6 @@ pub fn remove_packaging_cache(packaging_dir: &std::path::Path) {
 }
 
 /// Spawn pushpin-loader
-#[allow(dead_code)]
 pub fn spawn_loader(
     loader_path: &std::path::Path,
     loader_cwd: &std::path::Path,
@@ -165,7 +159,6 @@ pub fn spawn_loader(
 }
 
 /// Redirect child process stdout/stderr to test output with prefix
-#[allow(dead_code)]
 pub fn set_stdout_stderr(app_name: &str, child: &mut std::process::Child) {
     if let Some(out) = child.stdout.take() {
         let app_name = app_name.to_string();
@@ -195,7 +188,6 @@ pub fn set_stdout_stderr(app_name: &str, child: &mut std::process::Child) {
 }
 
 /// Start a mock Fetchly server on a Unix socket
-#[allow(dead_code)]
 pub async fn start_mock_fetchly_server(
     socket_path: std::path::PathBuf,
     logs: Arc<Mutex<Vec<RequestRecord>>>,
@@ -270,7 +262,6 @@ pub async fn start_mock_fetchly_server(
     })
 }
 
-#[allow(dead_code)]
 fn get_service_response() -> Response<Full<Bytes>> {
     let body = serde_json::to_vec(&get_mock_services()).unwrap();
     Response::builder()
@@ -283,7 +274,6 @@ fn get_service_response() -> Response<Full<Bytes>> {
         .unwrap()
 }
 
-#[allow(dead_code)]
 fn get_backend_response(service_id: &str, version: &str) -> Response<Full<Bytes>> {
     let body = serde_json::to_vec(&get_mock_backends_with_mtls(service_id, version)).unwrap();
     Response::builder()
@@ -296,7 +286,6 @@ fn get_backend_response(service_id: &str, version: &str) -> Response<Full<Bytes>
         .unwrap()
 }
 
-#[allow(dead_code)]
 fn get_mock_services() -> Value {
     json!({
         "service": {
@@ -311,7 +300,6 @@ fn get_mock_services() -> Value {
     })
 }
 
-#[allow(dead_code)]
 fn get_mock_backends_with_mtls(_service_id: &str, _version: &str) -> Value {
     json!({
         "backends": [
@@ -331,14 +319,12 @@ fn get_mock_backends_with_mtls(_service_id: &str, _version: &str) -> Value {
     })
 }
 
-#[allow(dead_code)]
 fn parse_backend_path(path: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = path.split('/').collect();
     assert!(parts.len() >= 8);
     Some((parts[4].to_string(), parts[6].to_string()))
 }
 
-#[allow(dead_code)]
 pub fn expected_backends_from_manifest() -> Vec<String> {
     let services_value = get_mock_services();
     let services = services_value.get("service");
@@ -356,7 +342,6 @@ pub fn expected_backends_from_manifest() -> Vec<String> {
     expected_backends
 }
 
-#[allow(dead_code)]
 pub fn create_test_dir() -> std::io::Result<std::path::PathBuf> {
     let test_dir = std::env::temp_dir().join(format!("pushpin-test-{}", std::process::id()));
     std::fs::create_dir_all(&test_dir)?;
@@ -364,7 +349,6 @@ pub fn create_test_dir() -> std::io::Result<std::path::PathBuf> {
 }
 
 /// Create pushpin config with correct routes file path
-#[allow(dead_code)]
 pub fn create_test_config(
     test_dir: &std::path::Path,
     routes_file: &std::path::Path,
@@ -397,7 +381,6 @@ pub fn create_test_config(
 }
 
 /// Create API key file for testing
-#[allow(dead_code)]
 pub fn create_api_key_file(test_dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
     let key_path = test_dir.join("key");
     let mut key_file = std::fs::File::create(&key_path)?;
@@ -407,7 +390,6 @@ pub fn create_api_key_file(test_dir: &std::path::Path) -> std::io::Result<std::p
 
 /// Set up and start the loader with mock Fetchly server
 /// Returns (loader_guard, logs) for test verification
-#[allow(dead_code)]
 pub async fn start_loader(
     test_dir: &std::path::Path,
     cleanup: &mut TestCleanup,
@@ -463,7 +445,6 @@ pub async fn start_loader(
 }
 
 /// Spawn pushpin with the given config
-#[allow(dead_code)]
 pub fn spawn_pushpin(config_path: &std::path::Path) -> std::process::Child {
     let pushpin_bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pushpin");
 
@@ -480,7 +461,6 @@ pub fn spawn_pushpin(config_path: &std::path::Path) -> std::process::Child {
 }
 
 /// Wait for pushpin to be ready by polling the port
-#[allow(dead_code)]
 pub async fn wait_for_pushpin_ready(timeout: Duration) -> Result<(), String> {
     let start = tokio::time::Instant::now();
     loop {
