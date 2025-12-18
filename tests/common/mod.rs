@@ -216,7 +216,11 @@ pub async fn start_mock_fetchly_server(
                             } else if path.starts_with("/v1/config/service/")
                                 && path.ends_with("/backends")
                             {
-                                let (service_id, version) = parse_backend_path(path).unwrap();
+                                let parts: Vec<&str> = path.split('/').collect();
+                                assert!(parts.len() >= 8);
+
+                                let (service_id, version) =
+                                    (parts[4].to_string(), parts[6].to_string());
                                 response = get_backend_response(&service_id, &version);
                             } else {
                                 response = Response::builder()
@@ -317,12 +321,6 @@ fn get_mock_backends_with_mtls(_service_id: &str, _version: &str) -> Value {
             }
         ]
     })
-}
-
-fn parse_backend_path(path: &str) -> Option<(String, String)> {
-    let parts: Vec<&str> = path.split('/').collect();
-    assert!(parts.len() >= 8);
-    Some((parts[4].to_string(), parts[6].to_string()))
 }
 
 pub fn expected_backends_from_manifest() -> Vec<String> {
