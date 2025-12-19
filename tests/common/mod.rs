@@ -207,8 +207,7 @@ pub async fn start_mock_fetchly_server(
                                 && path.ends_with("/backends")
                             {
                                 let parts: Vec<&str> = path.split('/').collect();
-                                assert!(parts.len() >= 8);
-
+                                assert_eq!(parts.len(), 8, "Invalid backend path: {}", path);
                                 let (service_id, version) =
                                     (parts[4].to_string(), parts[6].to_string());
                                 response = get_backend_response(&service_id, &version);
