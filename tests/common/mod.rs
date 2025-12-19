@@ -442,7 +442,7 @@ pub async fn start_loader(
 
 /// Spawn pushpin with the given config
 pub fn spawn_pushpin(config_path: &std::path::Path) -> std::process::Child {
-    let pushpin_bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pushpin");
+    let pushpin_bin = std::path::Path::new(env!("CARGO_BIN_EXE_pushpin"));
 
     let mut child = std::process::Command::new(&pushpin_bin)
         .arg("--config")
