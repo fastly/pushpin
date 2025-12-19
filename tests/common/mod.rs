@@ -18,16 +18,16 @@ pub struct RequestRecord {
     pub headers: Vec<(String, String)>,
 }
 
+/// Poll request logs every 50ms until loader fetches service manifest and all expected backends or times out
 pub async fn wait_for_manifest_and_backends(
     logs: Arc<Mutex<Vec<RequestRecord>>>,
     expected_backends: Vec<String>,
     timeout_dur: Duration,
 ) -> Result<(), String> {
-    type RequestSnapshot = (String, String, Vec<(String, String)>);
     let start = tokio::time::Instant::now();
 
     loop {
-        let (found_service, found_backends, should_timeout, snapshot) = {
+        let (found_service, found_backends, should_timeout) = {
             let guard = logs.lock().unwrap();
 
             let found_service = guard.iter().any(|r| {
@@ -51,16 +51,7 @@ pub async fn wait_for_manifest_and_backends(
 
             let should_timeout = tokio::time::Instant::now().duration_since(start) > timeout_dur;
 
-            let snapshot: Vec<RequestSnapshot> = if should_timeout {
-                guard
-                    .iter()
-                    .map(|r| (r.method.clone(), r.path.clone(), r.headers.clone()))
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-            (found_service, found_backends, should_timeout, snapshot)
+            (found_service, found_backends, should_timeout)
         };
 
         if found_service && found_backends {
@@ -68,8 +59,9 @@ pub async fn wait_for_manifest_and_backends(
         }
 
         if should_timeout {
-            return Err(format!("timeout; logs snapshot: {:?}", snapshot));
+            return Err("timeout".to_string());
         }
+
         sleep(Duration::from_millis(50)).await;
     }
 }
@@ -437,7 +429,13 @@ pub async fn start_loader(
     let expected = expected_backends_from_manifest();
     wait_for_manifest_and_backends(logs.clone(), expected, Duration::from_secs(10))
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))?;
+        .map_err(|e| {
+            let snapshot = logs.lock().unwrap();
+            std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("{} - logs snapshot: {:?}", e, &*snapshot),
+            )
+        })?;
 
     Ok((routes_path, logs))
 }
