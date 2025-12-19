@@ -514,22 +514,30 @@ impl TestCleanup {
     fn cleanup_loader_artifacts(packaging_dir: &std::path::Path) {
         let routes_file = packaging_dir.join("routes");
         if routes_file.exists() {
-            let _ = std::fs::remove_file(&routes_file);
+            if let Err(e) = std::fs::remove_file(&routes_file) {
+                eprintln!("Failed to remove routes file {:?}: {}", routes_file, e);
+            }
         }
 
         let backends_dir = packaging_dir.join("backends");
         if backends_dir.exists() {
-            let _ = std::fs::remove_dir_all(&backends_dir);
+            if let Err(e) = std::fs::remove_dir_all(&backends_dir) {
+                eprintln!("Failed to remove backends dir {:?}: {}", backends_dir, e);
+            }
         }
 
         let cache_dir = packaging_dir.join("cache");
         if cache_dir.exists() {
-            let _ = std::fs::remove_dir_all(&cache_dir);
+            if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                eprintln!("Failed to remove cache dir {:?}: {}", cache_dir, e);
+            }
         }
 
         let socket_file = packaging_dir.join("mock_server.sock");
         if socket_file.exists() {
-            let _ = std::fs::remove_file(&socket_file);
+            if let Err(e) = std::fs::remove_file(&socket_file) {
+                eprintln!("Failed to remove socket file {:?}: {}", socket_file, e);
+            }
         }
     }
 }
@@ -598,7 +606,9 @@ impl Drop for TestCleanup {
 
         // Clean up test directory
         if let Some(ref test_dir) = self.test_dir {
-            let _ = std::fs::remove_dir_all(test_dir);
+            if let Err(e) = std::fs::remove_dir_all(test_dir) {
+                eprintln!("Failed to remove test dir {:?}: {}", test_dir, e);
+            }
         }
     }
 }
