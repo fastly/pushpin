@@ -1,5 +1,6 @@
 use http_body_util::Full;
 use hyper::body::Bytes;
+use hyper::header::HeaderMap;
 use hyper::Response;
 use hyperlocal::UnixListenerExt;
 use serde_json::{json, Value};
@@ -11,11 +12,11 @@ use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RequestRecord {
     pub method: String,
     pub path: String,
-    pub headers: Vec<(String, String)>,
+    pub headers: HeaderMap,
 }
 
 /// Poll request logs every 50ms until loader fetches service manifest and all expected backends or times out
@@ -32,13 +33,10 @@ pub async fn wait_for_manifest_and_backends(
 
             let found_service = guard.iter().any(|r| {
                 r.path == "/v1/config/service"
+                    && r.headers.contains_key("fetchly-consumer")
                     && r.headers
-                        .iter()
-                        .any(|(k, v)| k.to_lowercase() == "fetchly-consumer" && !v.is_empty())
-                    && r.headers.iter().any(|(k, v)| {
-                        k.to_lowercase() == "accept"
-                            && v.to_lowercase().contains("application/json")
-                    })
+                        .get("accept")
+                        .is_some_and(|v| v.to_str().unwrap_or("").contains("application/json"))
             });
 
             let mut found_backends = true;
@@ -225,16 +223,7 @@ pub async fn start_mock_fetchly_server(
                             guard.push(RequestRecord {
                                 method: request.method().to_string(),
                                 path: request.uri().path().to_string(),
-                                headers: request
-                                    .headers()
-                                    .iter()
-                                    .map(|(k, v)| {
-                                        (
-                                            k.as_str().to_string(),
-                                            v.to_str().unwrap_or("").to_string(),
-                                        )
-                                    })
-                                    .collect(),
+                                headers: request.headers().clone(),
                             });
 
                             Ok::<_, hyper::Error>(response)
