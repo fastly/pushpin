@@ -14,7 +14,7 @@ ENV RUST_BACKTRACE=1
 RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
 RUN printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
 
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev libqt6core6t64-dbgsym libqt6network6t64-dbgsym libglib2.0-0t64-dbgsym=2.80.0-6ubuntu3.4 fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+RUN apt-get update && apt-get -y upgrade && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev libqt6core6t64-dbgsym libqt6network6t64-dbgsym libglib2.0-0t64-dbgsym fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN mkdir -p ~/.ssh && \
   ssh-keyscan github.com >> ~/.ssh/known_hosts
