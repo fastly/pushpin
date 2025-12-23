@@ -21,9 +21,10 @@ import sys
 import tempfile
 import time
 import urllib.parse
-
+import os
 
 PKG_VERSION = '1.0.0'
+TEST = False
 
 PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
 GRIP_ENABLED_FLAG = 'loader-pushpin-grip-enabled'
@@ -154,6 +155,7 @@ class BaseClient(object):
     def request(self, url, accept, inm=None):
         connect_hostport, conn_type, host, headers = self.get_request_details()
 
+
         # Use an established connection, open a new one if that fails.
         for reuse in (True, False):
             if reuse and self.conn is None:
@@ -187,6 +189,7 @@ class BaseClient(object):
             headers[k] = v
 
         nredirs = 0
+        
         while True:
             conn.request('GET', url, None, headers)
             resp = conn.getresponse()
@@ -217,9 +220,13 @@ class BaseClient(object):
 
 
 class FetchlyClient(BaseClient):
+    def __init__(self):
+        super().__init__()
+        self.socket_path = './mock_server.sock' if TEST else '/run/fetchly/fetchly.sock'
+
     def get_request_details(self):
         consumer_name = 'pushpin-loader/' + PKG_VERSION
-        return ('/run/fetchly/fetchly.sock', 'unix', '', {'Fetchly-Consumer': consumer_name})
+        return (self.socket_path, 'unix', '', {'Fetchly-Consumer': consumer_name})
 
 
 class FanoutInternalClient(BaseClient):
@@ -768,6 +775,8 @@ def main():
                         default='sig-keys', help='directory to write sig keys (default: ./sig-keys)')
     parser.add_argument('--backends-dir', metavar='PATH', dest='backends_dir',
                         default='backends', help='directory to write backends (default: ./backends)')
+    parser.add_argument('--test', dest='test', action='store_true',
+                        help='use test mode (connects to ./mock_server.sock instead of /run/fetchly/fetchly.sock)')
     parser.add_argument('--secrets-user', metavar='USERNAME', dest='secrets_user',
                         help='owning user to set for keys/backends')
     parser.add_argument('--secrets-group', metavar='GROUP', dest='secrets_group',
@@ -777,12 +786,22 @@ def main():
 
     args = parser.parse_args()
 
+    global TEST
+    TEST = args.test
+
     log_level = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG][args.log_level]
 
     configure_logging(sys.stdout, log_level)
 
-    with open(args.key, 'r') as f:
-        api_key = f.read().strip()
+    try:
+        with open(args.key, 'r') as f:
+            api_key = f.read().strip()
+    except FileNotFoundError:
+        print(f"API key file not found in file path: {args.key}.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Failed to read API key file: {e}", file=sys.stderr)
+        sys.exit(1)
 
     routes_file = args.output
 
