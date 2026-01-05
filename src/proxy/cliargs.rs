@@ -16,10 +16,10 @@
 
 use crate::core::config::default_config_file;
 use crate::core::version;
-use clap::{arg, Parser};
+use clap::Parser;
 use std::ffi::{c_char, CString};
 use std::path::PathBuf;
-use std::slice;
+use std::ptr;
 
 /// Struct to hold the command line arguments
 #[derive(Parser, Debug)]
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgs) {
     if !ffi_args.routes.is_null() {
         // SAFETY: the raw parts were originally derived from a boxed slice
         let routes = unsafe {
-            Box::from_raw(slice::from_raw_parts_mut(
+            Box::from_raw(ptr::slice_from_raw_parts_mut(
                 ffi_args.routes,
                 ffi_args.routes_count,
             ))

@@ -16,7 +16,7 @@
 
 use crate::core::config::default_config_file;
 use crate::core::version;
-use clap::{arg, Parser};
+use clap::Parser;
 use std::ffi::CString;
 use std::path::PathBuf;
 
