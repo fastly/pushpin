@@ -20,7 +20,7 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
-strip = "none"
+strip = "debuginfo"
 
 [lib]
 crate-type = ["rlib", "staticlib"]
