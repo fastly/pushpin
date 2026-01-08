@@ -339,9 +339,7 @@ impl<B: Backend> GenericList<B> {
     }
 
     pub fn pop_front(&mut self, backend: &mut B) -> Option<B::Index> {
-        let Some(index) = self.head.take() else {
-            return None;
-        };
+        let index = self.head.take()?;
 
         let next = backend.take_link(index.to_ref(), Relation::Next);
 
@@ -414,9 +412,7 @@ impl<B: Backend> Iterator for GenericListIterator<'_, B> {
     type Item = B::Index;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(next) = self.next.take() else {
-            return None;
-        };
+        let next = self.next.take()?;
 
         self.next = self.backend.clone_link(next.to_ref(), Relation::Next);
 

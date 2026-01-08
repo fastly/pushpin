@@ -64,16 +64,16 @@ impl<T> Memory<T> {
         }
     }
 
-    pub fn len(&self) -> usize {
-        let entries = self.entries.borrow();
+    pub fn is_empty(&self) -> bool {
+        self.entries.borrow().is_empty()
+    }
 
-        entries.len()
+    pub fn len(&self) -> usize {
+        self.entries.borrow().len()
     }
 
     pub fn capacity(&self) -> usize {
-        let entries = self.entries.borrow();
-
-        entries.capacity()
+        self.entries.borrow().capacity()
     }
 
     fn insert(&self, e: T) -> Result<usize, ()> {
