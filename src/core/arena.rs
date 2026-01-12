@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +16,12 @@
  */
 
 use slab::Slab;
-use std::cell::{RefCell, RefMut};
+use std::cell::{Cell, RefCell, RefMut};
+use std::marker::PhantomData;
 use std::mem;
 use std::ops::{Deref, DerefMut};
+use std::process::abort;
+use std::ptr::NonNull;
 use std::sync::{Mutex, MutexGuard};
 
 pub struct EntryGuard<'a, T> {
@@ -101,6 +105,10 @@ impl<T> Memory<T> {
             entry,
             key,
         })
+    }
+
+    fn key_of(&self, present_element: &T) -> usize {
+        self.entries.borrow().key_of(present_element)
     }
 
     // For tests, as a way to confirm the memory isn't moving. Be careful
@@ -308,67 +316,127 @@ impl<T> Reusable<T> {
     }
 }
 
-pub struct RcEntry<T> {
-    value: T,
-    refs: usize,
+#[cold]
+fn unlikely_abort() {
+    abort();
 }
 
-pub type RcMemory<T> = Memory<RcEntry<T>>;
+#[repr(C, align(2))]
+pub struct RcInner<T> {
+    refs: Cell<usize>,
+    memory: std::rc::Rc<RcMemory<T>>,
+    value: T,
+}
+
+impl<T> RcInner<T> {
+    #[inline]
+    fn inc(&self) {
+        // Optimized checked increment adapted from std::rc::Rc
+
+        let refs = self.refs.get();
+
+        // We insert an `assume` here to hint LLVM at an otherwise
+        // missed optimization.
+        // SAFETY: The reference count will never be zero when this is
+        // called.
+        // NOTE: Commented out since our MSRV is too low.
+        //unsafe {
+        //    std::hint::assert_unchecked(refs != 0);
+        //}
+
+        let refs = refs.wrapping_add(1);
+        self.refs.set(refs);
+
+        // We want to abort on overflow instead of dropping the value.
+        // Checking for overflow after the store instead of before
+        // allows for slightly better code generation.
+        if refs == 0 {
+            unlikely_abort();
+        }
+    }
+
+    #[inline]
+    fn dec(&self) {
+        self.refs.set(self.refs.get() - 1);
+    }
+}
+
+pub type RcMemory<T> = Memory<RcInner<T>>;
 
 pub struct Rc<T> {
-    memory: std::rc::Rc<RcMemory<T>>,
-    key: usize,
+    ptr: NonNull<RcInner<T>>,
+    phantom: PhantomData<RcInner<T>>,
 }
 
 impl<T> Rc<T> {
     #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, ()> {
-        let key = memory.insert(RcEntry { value: v, refs: 1 })?;
+        let key = memory.insert(RcInner {
+            refs: Cell::new(1),
+            memory: std::rc::Rc::clone(memory),
+            value: v,
+        })?;
+
+        // Guaranteed to succeed since we inserted the element above
+        let mut inner = memory.get(key).unwrap();
+
+        // Get a pointer to the inner data
+        let ptr = (&mut *inner).into();
 
         Ok(Self {
-            memory: std::rc::Rc::clone(memory),
-            key,
+            ptr,
+            phantom: PhantomData,
         })
     }
 
     #[allow(clippy::should_implement_trait)]
+    #[inline]
     pub fn clone(rc: &Rc<T>) -> Self {
-        let mut e = rc.memory.get(rc.key).unwrap();
-
-        e.refs += 1;
+        rc.inner().inc();
 
         Self {
-            memory: rc.memory.clone(),
-            key: rc.key,
+            ptr: rc.ptr,
+            phantom: rc.phantom,
         }
     }
 
-    pub fn get<'a>(&'a self) -> &'a T {
-        let e = self.memory.get(self.key).unwrap();
+    #[inline(always)]
+    pub fn get(&self) -> &T {
+        &self.inner().value
+    }
 
-        // Get a reference to the inner value
-        let value = &e.value;
+    #[inline(always)]
+    fn inner(&self) -> &RcInner<T> {
+        // SAFETY: ptr points to a slab element, and slab element addresses
+        // are guaranteed to be stable once created, and the only place we
+        // remove the pointed-to element is in Rc's drop method and only if
+        // no other Rc instances are referencing it. Therefore, while this Rc
+        // is alive, ptr is always valid.
+        unsafe { self.ptr.as_ref() }
+    }
 
-        // Entry addresses are guaranteed to be stable once created, and the
-        // entry managed by this Rc won't be dropped until this Rc drops,
-        // therefore it is safe to assume the entry managed by this Rc will
-        // live at least as long as this Rc, and we can extend the lifetime
-        // of the reference beyond the EntryGuard
-        unsafe { mem::transmute::<&T, &'a T>(value) }
+    #[inline(never)]
+    fn drop_slow(&mut self) {
+        let inner = self.inner();
+        let key = inner.memory.key_of(inner);
+        let entry = inner.memory.get(key).unwrap();
+        entry.remove();
     }
 }
 
 impl<T> Drop for Rc<T> {
+    #[inline]
     fn drop(&mut self) {
-        let mut e = self.memory.get(self.key).unwrap();
-
-        if e.refs == 1 {
-            e.remove();
-            return;
+        self.inner().dec();
+        if self.inner().refs.get() == 0 {
+            self.drop_slow()
         }
-
-        e.refs -= 1;
     }
+}
+
+pub struct RcEntry<T> {
+    value: T,
+    refs: usize,
 }
 
 pub type ArcMemory<T> = SyncMemory<RcEntry<T>>;
