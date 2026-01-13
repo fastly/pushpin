@@ -17,11 +17,105 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use pushpin::core::arena;
 use std::cell::RefCell;
+use std::mem;
 use std::rc::Rc;
+
+fn bench_arena_rc_new<const N: usize>(c: &mut Criterion, op_count: usize) {
+    let bytes = mem::size_of::<[u64; N]>();
+    let memory = Rc::new(arena::RcMemory::new(op_count));
+    let instances = RefCell::new(Vec::with_capacity(op_count));
+
+    c.bench_function(&format!("arena rc new {bytes}b x{op_count}"), |b| {
+        b.iter_batched_ref(
+            || {
+                instances.borrow_mut().clear();
+            },
+            |_| {
+                let instances = &mut *instances.borrow_mut();
+                let mut next_value: [u64; N] = [0; N];
+                while next_value[0] < op_count as u64 {
+                    let n = arena::Rc::new(next_value, &memory).unwrap();
+                    instances.push(n);
+                    next_value[0] += 1;
+                }
+            },
+            BatchSize::PerIteration,
+        )
+    });
+}
+
+fn bench_std_rc_new<const N: usize>(c: &mut Criterion, op_count: usize) {
+    let bytes = mem::size_of::<[u64; N]>();
+    let instances = RefCell::new(Vec::with_capacity(op_count));
+
+    c.bench_function(&format!("std rc new {bytes}b x{op_count}"), |b| {
+        b.iter_batched_ref(
+            || {
+                instances.borrow_mut().clear();
+            },
+            |_| {
+                let instances = &mut *instances.borrow_mut();
+                let mut next_value: [u64; N] = [0; N];
+                while next_value[0] < op_count as u64 {
+                    let n = Rc::new(next_value);
+                    instances.push(n);
+                    next_value[0] += 1;
+                }
+            },
+            BatchSize::PerIteration,
+        )
+    });
+}
+
+fn bench_arena_rc_drop<const N: usize>(c: &mut Criterion, op_count: usize) {
+    let bytes = mem::size_of::<[u64; N]>();
+    let memory = Rc::new(arena::RcMemory::new(op_count));
+    let instances = RefCell::new(Vec::with_capacity(op_count));
+
+    c.bench_function(&format!("arena rc drop {bytes}b x{op_count}"), |b| {
+        b.iter_batched_ref(
+            || {
+                let instances = &mut *instances.borrow_mut();
+                let mut next_value: [u64; N] = [0; N];
+                while next_value[0] < op_count as u64 {
+                    let n = arena::Rc::new(next_value, &memory).unwrap();
+                    instances.push(n);
+                    next_value[0] += 1;
+                }
+            },
+            |_| {
+                instances.borrow_mut().clear();
+            },
+            BatchSize::PerIteration,
+        )
+    });
+}
+
+fn bench_std_rc_drop<const N: usize>(c: &mut Criterion, op_count: usize) {
+    let bytes = mem::size_of::<[u64; N]>();
+    let instances = RefCell::new(Vec::with_capacity(op_count));
+
+    c.bench_function(&format!("std rc drop {bytes}b x{op_count}"), |b| {
+        b.iter_batched_ref(
+            || {
+                let instances = &mut *instances.borrow_mut();
+                let mut next_value: [u64; N] = [0; N];
+                while next_value[0] < op_count as u64 {
+                    let n = Rc::new(next_value);
+                    instances.push(n);
+                    next_value[0] += 1;
+                }
+            },
+            |_| {
+                instances.borrow_mut().clear();
+            },
+            BatchSize::PerIteration,
+        )
+    });
+}
 
 fn criterion_benchmark(c: &mut Criterion) {
     const OP_COUNT: usize = 100000;
-    const MEDIUM_ALLOC_OP_COUNT: usize = 100000;
 
     {
         // Preallocate the instances
@@ -168,85 +262,17 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     }
 
-    {
-        let memory = Rc::new(arena::RcMemory::new(OP_COUNT));
-        let mut instances = Vec::new();
+    bench_arena_rc_new::<1>(c, OP_COUNT);
+    bench_std_rc_new::<1>(c, OP_COUNT);
 
-        c.bench_function(&format!("arena rc new/drop x{OP_COUNT}"), |b| {
-            b.iter(|| {
-                let mut next_value: u64 = 0;
-                while next_value < OP_COUNT as u64 {
-                    let n = arena::Rc::new(next_value, &memory).unwrap();
-                    instances.push(n);
-                    next_value += 1;
-                }
+    bench_arena_rc_drop::<1>(c, OP_COUNT);
+    bench_std_rc_drop::<1>(c, OP_COUNT);
 
-                instances.clear();
-            })
-        });
-    }
+    bench_arena_rc_new::<80>(c, OP_COUNT);
+    bench_std_rc_new::<80>(c, OP_COUNT);
 
-    {
-        let mut instances = Vec::new();
-
-        c.bench_function(&format!("std rc new/drop x{OP_COUNT}"), |b| {
-            b.iter(|| {
-                let mut next_value: u64 = 0;
-                while next_value < OP_COUNT as u64 {
-                    let n = Rc::new(next_value);
-                    instances.push(n);
-                    next_value += 1;
-                }
-
-                instances.clear();
-            })
-        });
-    }
-
-    {
-        let memory = Rc::new(arena::RcMemory::new(MEDIUM_ALLOC_OP_COUNT));
-        let mut instances = Vec::with_capacity(MEDIUM_ALLOC_OP_COUNT);
-
-        c.bench_function(
-            &format!("arena rc new/drop medium x{MEDIUM_ALLOC_OP_COUNT}"),
-            |b| {
-                b.iter(|| {
-                    let mut next_value: [u64; 80] = [0; 80];
-                    while next_value[0] < MEDIUM_ALLOC_OP_COUNT as u64 {
-                        let n = arena::Rc::new(next_value, &memory).unwrap();
-                        instances.push(n);
-                        for v in &mut next_value {
-                            *v += 1;
-                        }
-                    }
-
-                    instances.clear();
-                })
-            },
-        );
-    }
-
-    {
-        let mut instances = Vec::with_capacity(MEDIUM_ALLOC_OP_COUNT);
-
-        c.bench_function(
-            &format!("std rc new/drop medium x{MEDIUM_ALLOC_OP_COUNT}"),
-            |b| {
-                b.iter(|| {
-                    let mut next_value: [u64; 80] = [0; 80];
-                    while next_value[0] < MEDIUM_ALLOC_OP_COUNT as u64 {
-                        let n = Rc::new(next_value);
-                        instances.push(n);
-                        for v in &mut next_value {
-                            *v += 1;
-                        }
-                    }
-
-                    instances.clear();
-                })
-            },
-        );
-    }
+    bench_arena_rc_drop::<80>(c, OP_COUNT);
+    bench_std_rc_drop::<80>(c, OP_COUNT);
 }
 
 criterion_group!(benches, criterion_benchmark);
