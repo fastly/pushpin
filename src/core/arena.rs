@@ -55,7 +55,11 @@ impl<T> Memory<T> {
         self.entries.borrow().len()
     }
 
-    fn insert(&self, e: T) -> Result<usize, InsertError<T>> {
+    // Returns a pointer to the inserted entry.
+    //
+    // SAFETY: The returned pointer is guaranteed to be valid until the entry
+    // is removed or the Memory is dropped.
+    fn insert(&self, e: T) -> Result<*const T, InsertError<T>> {
         let mut entries = self.entries.borrow_mut();
 
         // Out of capacity. By preventing inserts beyond the capacity, we
@@ -64,17 +68,35 @@ impl<T> Memory<T> {
             return Err(InsertError(e));
         }
 
-        Ok(entries.insert(e))
+        let key = entries.insert(e);
+
+        // SAFETY: The element was inserted above
+        let entry = unsafe { entries.get_unchecked(key) };
+
+        // Slab element addresses are guaranteed to be stable once created,
+        // therefore we can return a pointer to the element and guarantee
+        // its validity until the element is removed.
+
+        Ok(entry as *const T)
     }
 
-    fn remove(&self, key: usize) {
-        self.entries.borrow_mut().remove(key);
+    // The specified pointer must be one returned by the insert method
+    unsafe fn remove(&self, e: *const T) {
+        let mut entries = self.entries.borrow_mut();
+
+        // SAFETY: We trust `e` is valid
+        let e: &T = unsafe { &*e };
+
+        let key = entries.key_of(e);
+
+        entries.remove(key);
     }
 
     // Returns a pointer to an entry if it exists.
     //
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
     // is removed or the Memory is dropped.
+    #[cfg(test)]
     fn addr_of(&self, key: usize) -> Option<*const T> {
         let entries = self.entries.borrow();
 
@@ -85,10 +107,6 @@ impl<T> Memory<T> {
         // its validity until the element is removed.
 
         Some(entry as *const T)
-    }
-
-    fn key_of(&self, present_element: &T) -> usize {
-        self.entries.borrow().key_of(present_element)
     }
 }
 
@@ -339,16 +357,13 @@ pub struct Rc<T> {
 impl<T> Rc<T> {
     #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, InsertError<T>> {
-        let key = memory
+        let ptr = memory
             .insert(RcInner {
                 refs: Cell::new(1),
                 memory: std::rc::Rc::clone(memory),
                 value: v,
             })
             .map_err(|e| InsertError(e.0.value))?;
-
-        // Guaranteed to succeed since we inserted the element above
-        let ptr: *const RcInner<T> = memory.addr_of(key).unwrap();
 
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
@@ -393,16 +408,10 @@ impl<T> Rc<T> {
         // is being removed. To ensure this, we clone the Rc to the Memory
         // before removing the entry.
 
-        let memory = {
-            let inner = self.inner();
-            let memory = std::rc::Rc::clone(&inner.memory);
-            memory.remove(memory.key_of(inner));
+        let memory = std::rc::Rc::clone(&self.inner().memory);
 
-            memory
-        };
-
-        // The entry has been removed by this point
-        drop(memory);
+        // SAFETY: While this Rc is alive, `ptr` is always valid
+        unsafe { memory.remove(self.ptr.as_ptr()) };
     }
 }
 
