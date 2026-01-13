@@ -55,11 +55,11 @@ impl<T> Memory<T> {
         self.entries.borrow().len()
     }
 
-    // Returns a pointer to the inserted entry.
+    // Returns a key and a pointer to the inserted entry.
     //
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
     // is removed or the Memory is dropped.
-    fn insert(&self, e: T) -> Result<*const T, InsertError<T>> {
+    fn insert(&self, e: T) -> Result<(usize, *const T), InsertError<T>> {
         let mut entries = self.entries.borrow_mut();
 
         // Out of capacity. By preventing inserts beyond the capacity, we
@@ -77,19 +77,11 @@ impl<T> Memory<T> {
         // therefore we can return a pointer to the element and guarantee
         // its validity until the element is removed.
 
-        Ok(entry as *const T)
+        Ok((key, entry as *const T))
     }
 
-    // The specified pointer must be one returned by the insert method
-    unsafe fn remove(&self, e: *const T) {
-        let mut entries = self.entries.borrow_mut();
-
-        // SAFETY: We trust `e` is valid
-        let e: &T = unsafe { &*e };
-
-        let key = entries.key_of(e);
-
-        entries.remove(key);
+    fn remove(&self, key: usize) {
+        self.entries.borrow_mut().remove(key);
     }
 
     // Returns a pointer to an entry if it exists.
@@ -311,6 +303,7 @@ fn unlikely_abort() {
 pub struct RcInner<T> {
     refs: Cell<usize>,
     memory: std::rc::Rc<RcMemory<T>>,
+    key: Cell<usize>,
     value: T,
 }
 
@@ -357,10 +350,11 @@ pub struct Rc<T> {
 impl<T> Rc<T> {
     #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, InsertError<T>> {
-        let ptr = memory
+        let (key, ptr) = memory
             .insert(RcInner {
                 refs: Cell::new(1),
                 memory: std::rc::Rc::clone(memory),
+                key: Cell::new(0),
                 value: v,
             })
             .map_err(|e| InsertError(e.0.value))?;
@@ -368,6 +362,9 @@ impl<T> Rc<T> {
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
         let ptr = unsafe { NonNull::new_unchecked(ptr as *mut RcInner<T>) };
+
+        // SAFETY: ptr is convertible to a reference
+        unsafe { ptr.as_ref().key.set(key) };
 
         Ok(Self {
             ptr,
@@ -409,9 +406,9 @@ impl<T> Rc<T> {
         // before removing the entry.
 
         let memory = std::rc::Rc::clone(&self.inner().memory);
+        let key = self.inner().key.get();
 
-        // SAFETY: While this Rc is alive, `ptr` is always valid
-        unsafe { memory.remove(self.ptr.as_ptr()) };
+        memory.remove(key);
     }
 }
 
