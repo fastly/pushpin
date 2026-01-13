@@ -27,9 +27,7 @@ fn bench_arena_rc_new<const N: usize>(c: &mut Criterion, op_count: usize) {
 
     c.bench_function(&format!("arena rc new {bytes}b x{op_count}"), |b| {
         b.iter_batched_ref(
-            || {
-                instances.borrow_mut().clear();
-            },
+            || instances.borrow_mut().clear(),
             |_| {
                 let instances = &mut *instances.borrow_mut();
                 let mut next_value: [u64; N] = [0; N];
@@ -50,9 +48,7 @@ fn bench_std_rc_new<const N: usize>(c: &mut Criterion, op_count: usize) {
 
     c.bench_function(&format!("std rc new {bytes}b x{op_count}"), |b| {
         b.iter_batched_ref(
-            || {
-                instances.borrow_mut().clear();
-            },
+            || instances.borrow_mut().clear(),
             |_| {
                 let instances = &mut *instances.borrow_mut();
                 let mut next_value: [u64; N] = [0; N];
@@ -83,9 +79,7 @@ fn bench_arena_rc_drop<const N: usize>(c: &mut Criterion, op_count: usize) {
                     next_value[0] += 1;
                 }
             },
-            |_| {
-                instances.borrow_mut().clear();
-            },
+            |_| instances.borrow_mut().clear(),
             BatchSize::PerIteration,
         )
     });
@@ -106,9 +100,7 @@ fn bench_std_rc_drop<const N: usize>(c: &mut Criterion, op_count: usize) {
                     next_value[0] += 1;
                 }
             },
-            |_| {
-                instances.borrow_mut().clear();
-            },
+            |_| instances.borrow_mut().clear(),
             BatchSize::PerIteration,
         )
     });
