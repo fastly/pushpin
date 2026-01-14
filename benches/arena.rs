@@ -265,6 +265,12 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     bench_arena_rc_drop::<80>(c, OP_COUNT);
     bench_std_rc_drop::<80>(c, OP_COUNT);
+
+    bench_arena_rc_new::<160>(c, OP_COUNT);
+    bench_std_rc_new::<160>(c, OP_COUNT);
+
+    bench_arena_rc_drop::<160>(c, OP_COUNT);
+    bench_std_rc_drop::<160>(c, OP_COUNT);
 }
 
 criterion_group!(benches, criterion_benchmark);
