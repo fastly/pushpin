@@ -299,10 +299,9 @@ fn unlikely_abort() {
     abort();
 }
 
-#[repr(C, align(2))]
 pub struct RcInner<T> {
     refs: Cell<usize>,
-    memory: std::rc::Rc<RcMemory<T>>,
+    memory_ptr: *const RcMemory<T>,
     key: Cell<usize>,
     value: T,
 }
@@ -350,14 +349,25 @@ pub struct Rc<T> {
 impl<T> Rc<T> {
     #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, InsertError<T>> {
+        // SAFETY: This pointer will be placed in an RcInner and remain valid
+        // for the lifetime of the RcInner
+        let memory_ptr = std::rc::Rc::into_raw(std::rc::Rc::clone(memory));
+
         let (key, ptr) = memory
             .insert(RcInner {
                 refs: Cell::new(1),
-                memory: std::rc::Rc::clone(memory),
+                memory_ptr,
                 key: Cell::new(0),
                 value: v,
             })
-            .map_err(|e| InsertError(e.0.value))?;
+            .map_err(|e| {
+                // Convert this back to an Rc to avoid leaking.
+                // SAFETY: memory_ptr is a valid pointer that was produced
+                // above.
+                unsafe { std::rc::Rc::from_raw(e.0.memory_ptr) };
+
+                InsertError(e.0.value)
+            })?;
 
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
@@ -400,13 +410,11 @@ impl<T> Rc<T> {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
-        // Entries contain a std::rc::Rc to the Memory they are contained in,
-        // and we need to be careful the Memory is not dropped while an entry
-        // is being removed. To ensure this, we clone the Rc to the Memory
-        // before removing the entry.
-
-        let memory = std::rc::Rc::clone(&self.inner().memory);
         let key = self.inner().key.get();
+
+        // SAFETY: memory_ptr is guaranteed to be valid for the lifetime of
+        // its owning RcInner
+        let memory = unsafe { std::rc::Rc::from_raw(self.inner().memory_ptr) };
 
         memory.remove(key);
     }
