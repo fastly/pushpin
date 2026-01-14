@@ -33,6 +33,39 @@ impl<T> fmt::Debug for InsertError<T> {
     }
 }
 
+struct SlabMirror<T> {
+    entries: Vec<EntryMirror<T>>,
+    len: usize,
+    next: usize,
+}
+
+// 2. Mirror the internal Entry enum
+#[allow(dead_code)]
+enum EntryMirror<T> {
+    Vacant(usize),
+    Occupied(T),
+}
+
+fn fast_remove_no_copy<T>(slab: &mut Slab<T>, key: usize) {
+    unsafe {
+        // Force the compiler to treat the Slab as our Mirror
+        let mirror: &mut SlabMirror<T> = mem::transmute(slab);
+
+        if let Some(entry) = mirror.entries.get_mut(key) {
+            if let EntryMirror::Occupied(_) = entry {
+                // Perform the swap IN-PLACE without moving T to the stack
+                // We overwrite the memory with a Vacant marker
+                let old_next = mirror.next;
+                *entry = EntryMirror::Vacant(old_next);
+
+                // Update Slab metadata
+                mirror.next = key;
+                mirror.len -= 1;
+            }
+        }
+    }
+}
+
 // This is essentially a sharable slab for use within a single thread.
 // Operations are protected by a RefCell, however lookup operations return
 // pointers that can be used without RefCell protection.
@@ -84,7 +117,7 @@ impl<T> Memory<T> {
     }
 
     fn remove(&self, key: usize) {
-        self.entries.borrow_mut().remove(key);
+        fast_remove_no_copy(&mut *self.entries.borrow_mut(), key);
     }
 
     // Returns a pointer to an entry if it exists.
