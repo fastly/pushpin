@@ -20,7 +20,7 @@ use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::{self, MaybeUninit};
+use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::process::abort;
 use std::ptr::NonNull;
@@ -38,7 +38,7 @@ impl<T> fmt::Debug for InsertError<T> {
 // Operations are protected by a RefCell, however lookup operations return
 // pointers that can be used without RefCell protection.
 pub struct Memory<T> {
-    entries: RefCell<MiniSlab<MaybeUninit<T>>>,
+    entries: RefCell<MiniSlab<T>>,
 }
 
 impl<T> Memory<T> {
@@ -60,10 +60,7 @@ impl<T> Memory<T> {
     //
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
     // is removed or the Memory is dropped.
-    fn insert(
-        &self,
-        e: MaybeUninit<T>,
-    ) -> Result<(usize, *const MaybeUninit<T>), InsertError<MaybeUninit<T>>> {
+    fn insert(&self, e: T) -> Result<(usize, *const T), InsertError<T>> {
         let mut entries = self.entries.borrow_mut();
 
         // Out of capacity. By preventing inserts beyond the capacity, we
@@ -81,7 +78,7 @@ impl<T> Memory<T> {
         // therefore we can return a pointer to the element and guarantee
         // its validity until the element is removed.
 
-        Ok((key, entry as *const MaybeUninit<T>))
+        Ok((key, entry as *const T))
     }
 
     fn remove(&self, key: usize) {
@@ -94,7 +91,7 @@ impl<T> Memory<T> {
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
     // is removed or the Memory is dropped.
     #[cfg(test)]
-    fn addr_of(&self, key: usize) -> Option<*const MaybeUninit<T>> {
+    fn addr_of(&self, key: usize) -> Option<*const T> {
         let entries = self.entries.borrow();
 
         let entry = entries.get(key)?;
@@ -103,7 +100,7 @@ impl<T> Memory<T> {
         // therefore we can return a pointer to the element and guarantee
         // its validity until the element is removed.
 
-        Some(entry as *const MaybeUninit<T>)
+        Some(entry as *const T)
     }
 }
 
@@ -347,7 +344,7 @@ impl<T> RcInner<T> {
 pub type RcMemory<T> = Memory<RcInner<T>>;
 
 pub struct Rc<T> {
-    ptr: NonNull<MaybeUninit<RcInner<T>>>,
+    ptr: NonNull<RcInner<T>>,
     phantom: PhantomData<RcInner<T>>,
 }
 
@@ -359,28 +356,27 @@ impl<T> Rc<T> {
         let memory_ptr = std::rc::Rc::into_raw(std::rc::Rc::clone(memory));
 
         let (key, ptr) = memory
-            .insert(MaybeUninit::new(RcInner {
+            .insert(RcInner {
                 refs: Cell::new(1),
                 memory_ptr,
                 key: Cell::new(0),
                 value: v,
-            }))
+            })
             .map_err(|e| {
                 // Convert this back to an Rc to avoid leaking.
                 // SAFETY: memory_ptr is a valid pointer that was produced
                 // above.
-                unsafe { std::rc::Rc::from_raw(e.0.assume_init_ref().memory_ptr) };
+                unsafe { std::rc::Rc::from_raw(e.0.memory_ptr) };
 
-                // SAFETY: e was initialized above
-                InsertError(unsafe { e.0.assume_init() }.value)
+                InsertError(e.0.value)
             })?;
 
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
-        let ptr = unsafe { NonNull::new_unchecked(ptr as *mut MaybeUninit<RcInner<T>>) };
+        let ptr = unsafe { NonNull::new_unchecked(ptr as *mut RcInner<T>) };
 
         // SAFETY: ptr is convertible to a reference
-        unsafe { ptr.as_ref().assume_init_ref().key.set(key) };
+        unsafe { ptr.as_ref().key.set(key) };
 
         Ok(Self {
             ptr,
@@ -411,7 +407,7 @@ impl<T> Rc<T> {
         // remove the pointed-to element is in Rc's drop method and only if
         // no other Rc instances are referencing it. Therefore, while this Rc
         // is alive, ptr is always valid.
-        unsafe { self.ptr.as_ref().assume_init_ref() }
+        unsafe { self.ptr.as_ref() }
     }
 
     #[inline(never)]
@@ -421,9 +417,6 @@ impl<T> Rc<T> {
         // SAFETY: memory_ptr is guaranteed to be valid for the lifetime of
         // its owning RcInner
         let memory = unsafe { std::rc::Rc::from_raw(self.inner().memory_ptr) };
-
-        // SAFETY: While this Rc is alive, ptr is always valid
-        unsafe { self.ptr.as_mut().assume_init_drop() };
 
         memory.remove(key);
     }
