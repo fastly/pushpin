@@ -81,6 +81,7 @@ impl<T> Memory<T> {
         Ok((key, entry as *const T))
     }
 
+    #[allow(clippy::let_unit_value)]
     fn remove(&self, key: usize) {
         // Ensure remove() method doesn't return a value
         let _: () = self.entries.borrow_mut().remove(key);
