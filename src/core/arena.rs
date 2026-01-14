@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::core::minislab::MiniSlab;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::fmt;
@@ -33,50 +34,17 @@ impl<T> fmt::Debug for InsertError<T> {
     }
 }
 
-struct SlabMirror<T> {
-    entries: Vec<EntryMirror<T>>,
-    len: usize,
-    next: usize,
-}
-
-// 2. Mirror the internal Entry enum
-#[allow(dead_code)]
-enum EntryMirror<T> {
-    Vacant(usize),
-    Occupied(T),
-}
-
-fn fast_remove_no_copy<T>(slab: &mut Slab<T>, key: usize) {
-    unsafe {
-        // Force the compiler to treat the Slab as our Mirror
-        let mirror: &mut SlabMirror<T> = mem::transmute(slab);
-
-        if let Some(entry) = mirror.entries.get_mut(key) {
-            if let EntryMirror::Occupied(_) = entry {
-                // Perform the swap IN-PLACE without moving T to the stack
-                // We overwrite the memory with a Vacant marker
-                let old_next = mirror.next;
-                *entry = EntryMirror::Vacant(old_next);
-
-                // Update Slab metadata
-                mirror.next = key;
-                mirror.len -= 1;
-            }
-        }
-    }
-}
-
 // This is essentially a sharable slab for use within a single thread.
 // Operations are protected by a RefCell, however lookup operations return
 // pointers that can be used without RefCell protection.
 pub struct Memory<T> {
-    entries: RefCell<Slab<MaybeUninit<T>>>,
+    entries: RefCell<MiniSlab<MaybeUninit<T>>>,
 }
 
 impl<T> Memory<T> {
     pub fn new(capacity: usize) -> Self {
         // Allocate the slab with fixed capacity
-        let s = Slab::with_capacity(capacity);
+        let s = MiniSlab::with_capacity(capacity);
 
         Self {
             entries: RefCell::new(s),
@@ -117,7 +85,8 @@ impl<T> Memory<T> {
     }
 
     fn remove(&self, key: usize) {
-        fast_remove_no_copy(&mut *self.entries.borrow_mut(), key);
+        // Ensure remove() method doesn't return a value
+        let _: () = self.entries.borrow_mut().remove(key);
     }
 
     // Returns a pointer to an entry if it exists.
