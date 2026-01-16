@@ -64,6 +64,10 @@ time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"]
 cbindgen = "0.27"
 
 [[bench]]
+name = "arena"
+harness = false
+
+[[bench]]
 name = "server"
 harness = false
 
