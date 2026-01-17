@@ -35,8 +35,8 @@ struct PoolItem<K, V> {
 }
 
 pub struct Pool<K, V> {
-    nodes: Slab<list::Node<PoolItem<K, V>>>,
-    by_key: HashMap<K, list::List>,
+    nodes: Slab<list::SlabNode<PoolItem<K, V>>>,
+    by_key: HashMap<K, list::SlabList<PoolItem<K, V>>>,
     wheel: TimerWheel,
     start: Instant,
     current_ticks: u64,
@@ -69,7 +69,7 @@ where
 
             let timer_id = self.wheel.add(expires, nkey).unwrap();
 
-            entry.insert(list::Node::new(PoolItem {
+            entry.insert(list::SlabNode::new(PoolItem {
                 key: key.clone(),
                 value,
                 timer_id,

@@ -68,6 +68,10 @@ name = "arena"
 harness = false
 
 [[bench]]
+name = "list"
+harness = false
+
+[[bench]]
 name = "server"
 harness = false
 
