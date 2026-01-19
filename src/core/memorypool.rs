@@ -159,6 +159,20 @@ pub struct Rc<T> {
 }
 
 impl<T> Rc<T> {
+    pub fn new(v: T) -> Self {
+        let ptr = Box::leak(Box::new(RcInner {
+            refs: Cell::new(1),
+            memory: Cell::new(None),
+            key: Cell::new(0),
+            value: v,
+        }));
+
+        Self {
+            ptr: ptr.into(),
+            phantom: PhantomData,
+        }
+    }
+
     pub fn try_new_in(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, AllocError> {
         let (key, ptr) = memory
             .insert(RcInner {
@@ -194,16 +208,24 @@ impl<T> Rc<T> {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
-        let key = self.inner().key.get();
+        if let Some(memory) = self.inner().memory.take() {
+            // Slab allocations contain a std::rc::Rc to the Memory they are
+            // contained in, and we need to be careful the Memory is not
+            // dropped while an entry is being removed. To ensure this, the
+            // Rc is moved out of the entry above, and it is dropped only
+            // after the entry is removed.
 
-        // Entries contain a std::rc::Rc to the Memory they are contained in,
-        // and we need to be careful the Memory is not dropped while an entry
-        // is being removed. To ensure this, the Rc is moved out of the entry
-        // and dropped only after the entry is removed.
+            let key = self.inner().key.get();
 
-        let memory = self.inner().memory.take().unwrap();
+            memory.remove(key);
+        } else {
+            // If there is no reference to slab memory, then the memory is
+            // managed by the system allocator. To free it, we simply convert
+            // the pointer back to a Box and drop it.
 
-        memory.remove(key);
+            // SAFETY: While this Rc is alive, ptr is always valid
+            unsafe { drop(Box::from_raw(self.ptr.as_mut())) };
+        }
     }
 }
 
@@ -333,8 +355,40 @@ impl ReusableVec {
 mod tests {
     use super::*;
 
+    struct FlagOnDrop {
+        dropped: std::rc::Rc<Cell<bool>>,
+    }
+
+    impl Drop for FlagOnDrop {
+        fn drop(&mut self) {
+            self.dropped.set(true);
+        }
+    }
+
     #[test]
     fn test_rc() {
+        let dropped = std::rc::Rc::new(Cell::new(false));
+
+        let f = FlagOnDrop {
+            dropped: std::rc::Rc::clone(&dropped),
+        };
+
+        let a = Rc::new(f);
+        assert_eq!(a.inner().refs.get(), 1);
+
+        let b = Rc::clone(&a);
+        assert_eq!(a.inner().refs.get(), 2);
+
+        drop(a);
+        assert_eq!(b.inner().refs.get(), 1);
+        assert!(!dropped.get());
+
+        drop(b);
+        assert!(dropped.get());
+    }
+
+    #[test]
+    fn test_rc_in() {
         let memory = std::rc::Rc::new(RcMemory::new(2));
         assert_eq!(memory.len(), 0);
 
