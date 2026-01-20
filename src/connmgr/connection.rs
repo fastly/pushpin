@@ -6354,7 +6354,6 @@ pub mod testutil {
 
     pub struct BenchServerReqHandler {
         reactor: Reactor,
-        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
@@ -6366,7 +6365,6 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
                 scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
                 resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
@@ -6387,7 +6385,6 @@ pub mod testutil {
 
         pub fn run(&self, args: &mut BenchServerReqHandlerArgs) {
             let reactor = &self.reactor;
-            let msg_mem = &self.msg_mem;
             let scratch_mem = &self.scratch_mem;
             let resp_mem = &self.resp_mem;
             let packet_buf = &self.packet_buf;
@@ -6442,8 +6439,7 @@ pub mod testutil {
                 "o\n,}",
             );
 
-            let msg = zmq::Message::from(msg.as_bytes());
-            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let scratch =
                 memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
@@ -6513,7 +6509,6 @@ pub mod testutil {
 
     pub struct BenchServerReqConnection {
         reactor: Reactor,
-        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
@@ -6525,7 +6520,6 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
                 scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
                 resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
@@ -6539,7 +6533,6 @@ pub mod testutil {
 
         pub fn run(&self, sock: &Rc<RefCell<FakeSock>>) {
             let reactor = &self.reactor;
-            let msg_mem = &self.msg_mem;
             let scratch_mem = &self.scratch_mem;
             let resp_mem = &self.resp_mem;
             let rb_tmp = &self.rb_tmp;
@@ -6594,8 +6587,7 @@ pub mod testutil {
                 "o\n,}",
             );
 
-            let msg = zmq::Message::from(msg.as_bytes());
-            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let scratch =
                 memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
@@ -6676,7 +6668,6 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandler {
         reactor: Reactor,
-        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
@@ -6690,7 +6681,6 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
                 scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
                 resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 shared_mem: Rc::new(memorypool::RcMemory::new(1)),
@@ -6712,7 +6702,6 @@ pub mod testutil {
 
         pub fn run(&self, args: &mut BenchServerStreamHandlerArgs) {
             let reactor = &self.reactor;
-            let msg_mem = &self.msg_mem;
             let scratch_mem = &self.scratch_mem;
             let resp_mem = &self.resp_mem;
             let shared_mem = &self.shared_mem;
@@ -6769,8 +6758,7 @@ pub mod testutil {
                 "4:body,6:hello\n,}",
             );
 
-            let msg = zmq::Message::from(msg.as_bytes());
-            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let scratch =
                 memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
@@ -6851,7 +6839,6 @@ pub mod testutil {
 
     pub struct BenchServerStreamConnection {
         reactor: Reactor,
-        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
@@ -6865,7 +6852,6 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
                 scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
                 resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 shared_mem: Rc::new(memorypool::RcMemory::new(1)),
@@ -6881,7 +6867,6 @@ pub mod testutil {
 
         pub fn run(&self, sock: &Rc<RefCell<FakeSock>>) {
             let reactor = &self.reactor;
-            let msg_mem = &self.msg_mem;
             let scratch_mem = &self.scratch_mem;
             let resp_mem = &self.resp_mem;
             let shared_mem = &self.shared_mem;
@@ -6939,8 +6924,7 @@ pub mod testutil {
                 "4:body,6:hello\n,}",
             );
 
-            let msg = zmq::Message::from(msg.as_bytes());
-            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let scratch =
                 memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
@@ -7090,7 +7074,6 @@ mod tests {
     fn server_req_without_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7168,8 +7151,7 @@ mod tests {
             "o\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7207,7 +7189,6 @@ mod tests {
     fn server_req_with_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7288,8 +7269,7 @@ mod tests {
             "o\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7358,7 +7338,6 @@ mod tests {
     fn server_req_pipeline() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7438,8 +7417,7 @@ mod tests {
             "o\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7493,8 +7471,7 @@ mod tests {
             "o\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7524,7 +7501,6 @@ mod tests {
     fn server_req_secure() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7602,8 +7578,7 @@ mod tests {
             "o\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7696,7 +7671,6 @@ mod tests {
     fn server_stream_without_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7780,8 +7754,7 @@ mod tests {
             "4:body,6:hello\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7819,7 +7792,6 @@ mod tests {
     fn server_stream_with_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -7907,8 +7879,7 @@ mod tests {
         let msg =
             concat!("T69:7:credits,4:1024#3:seq,1:0#2:id,1:1,4:from,7:handler,4:type,6:credit,}",);
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7944,8 +7915,7 @@ mod tests {
             "4:body,6:hello\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -7983,7 +7953,6 @@ mod tests {
     fn server_stream_chunked() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -8067,8 +8036,7 @@ mod tests {
             ",4:code,3:200#}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8083,8 +8051,7 @@ mod tests {
 
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8127,7 +8094,6 @@ mod tests {
     fn server_stream_early_response() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -8217,8 +8183,7 @@ mod tests {
             "ode,3:400#4:body,18:stopping this now\n,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8256,7 +8221,6 @@ mod tests {
     fn server_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -8320,8 +8284,7 @@ mod tests {
             "4:more,4:true!}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8369,8 +8332,7 @@ mod tests {
         let mut buf = [0; 2048];
         let size = resp.serialize(&mut buf).unwrap();
 
-        let msg = zmq::Message::from(&buf[..size]);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8403,7 +8365,6 @@ mod tests {
     fn server_stream_disconnect() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -8487,8 +8448,7 @@ mod tests {
             "4:more,4:true!}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8537,7 +8497,6 @@ mod tests {
     fn server_websocket() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -8604,8 +8563,7 @@ mod tests {
             "rom,7:handler,4:code,3:101#7:credits,4:1024#}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8681,8 +8639,7 @@ mod tests {
             ":true!}12:content-type,4:text,4:body,5:world,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8710,7 +8667,6 @@ mod tests {
     fn server_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -8779,8 +8735,7 @@ mod tests {
             "rom,7:handler,4:code,3:101#7:credits,4:1024#}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8867,8 +8822,7 @@ mod tests {
             ":true!}12:content-type,4:text,4:body,5:world,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -8906,7 +8860,6 @@ mod tests {
     fn server_websocket_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -8973,8 +8926,7 @@ mod tests {
             "rom,7:handler,4:code,3:101#7:credits,4:1024#}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9026,8 +8978,7 @@ mod tests {
         let mut buf = [0; 2048];
         let size = resp.serialize(&mut buf).unwrap();
 
-        let msg = zmq::Message::from(&buf[..size]);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9112,7 +9063,6 @@ mod tests {
     fn client_req_without_id() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let req_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -9122,8 +9072,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9221,7 +9170,6 @@ mod tests {
     fn client_req_with_id() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
         let req_mem = Rc::new(memorypool::RcMemory::new(1));
 
@@ -9231,8 +9179,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9417,7 +9364,6 @@ mod tests {
     fn client_stream() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -9428,8 +9374,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9548,8 +9493,7 @@ mod tests {
 
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9627,7 +9571,6 @@ mod tests {
     fn client_stream_router_resp() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -9639,8 +9582,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9762,8 +9704,7 @@ mod tests {
 
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9841,7 +9782,6 @@ mod tests {
     fn client_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -9852,8 +9792,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -9967,8 +9906,7 @@ mod tests {
         let mut buf = [0; 2048];
         let size = req.serialize(&mut buf).unwrap();
 
-        let msg = zmq::Message::from(&buf[..size]);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -10002,7 +9940,6 @@ mod tests {
     fn client_websocket() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -10012,8 +9949,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -10223,8 +10159,7 @@ mod tests {
             ":true!}12:content-type,4:text,4:body,5:world,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -10253,7 +10188,6 @@ mod tests {
     fn client_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
         let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
         let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
@@ -10263,8 +10197,7 @@ mod tests {
         )
         .as_bytes();
 
-        let msg = zmq::Message::from(data);
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
@@ -10487,8 +10420,7 @@ mod tests {
             ":true!}12:content-type,4:text,4:body,5:world,}",
         );
 
-        let msg = zmq::Message::from(msg.as_bytes());
-        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
+        let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
         let scratch =
             memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
