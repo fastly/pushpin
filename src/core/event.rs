@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::list;
+use crate::core::memorypool;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
 use slab::Slab;
@@ -445,12 +445,14 @@ pub struct LocalRegistrationEntry {
 }
 
 pub struct LocalRegistration {
-    entry: arena::Rc<LocalRegistrationEntry>,
+    entry: memorypool::Rc<LocalRegistrationEntry>,
 }
 
 impl LocalRegistration {
-    pub fn new(memory: &Rc<arena::RcMemory<LocalRegistrationEntry>>) -> (Self, LocalSetReadiness) {
-        let reg = arena::Rc::new(
+    pub fn new(
+        memory: &Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
+    ) -> (Self, LocalSetReadiness) {
+        let reg = memorypool::Rc::new(
             LocalRegistrationEntry {
                 data: RefCell::new(LocalRegistrationData {
                     data: None,
@@ -462,7 +464,7 @@ impl LocalRegistration {
         .unwrap();
 
         let registration = Self {
-            entry: arena::Rc::clone(&reg),
+            entry: memorypool::Rc::clone(&reg),
         };
 
         let set_readiness = LocalSetReadiness { entry: reg };
@@ -484,7 +486,7 @@ impl Drop for LocalRegistration {
 }
 
 pub struct LocalSetReadiness {
-    entry: arena::Rc<LocalRegistrationEntry>,
+    entry: memorypool::Rc<LocalRegistrationEntry>,
 }
 
 impl LocalSetReadiness {
@@ -528,7 +530,7 @@ pub struct Poller {
     poll: Poll,
     events: Events,
     custom_sources: CustomSources,
-    local_registration_memory: Rc<arena::RcMemory<LocalRegistrationEntry>>,
+    local_registration_memory: Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
     local_budget: u32,
 }
 
@@ -542,7 +544,7 @@ impl Poller {
             poll,
             events,
             custom_sources,
-            local_registration_memory: Rc::new(arena::RcMemory::new(max_custom_sources)),
+            local_registration_memory: Rc::new(memorypool::RcMemory::new(max_custom_sources)),
             local_budget: LOCAL_BUDGET,
         })
     }
@@ -587,7 +589,7 @@ impl Poller {
         self.custom_sources.deregister(registration)
     }
 
-    pub fn local_registration_memory(&self) -> &Rc<arena::RcMemory<LocalRegistrationEntry>> {
+    pub fn local_registration_memory(&self) -> &Rc<memorypool::RcMemory<LocalRegistrationEntry>> {
         &self.local_registration_memory
     }
 

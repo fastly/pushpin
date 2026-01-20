@@ -16,7 +16,6 @@
  */
 
 use crate::connmgr::zhttppacket::{parse_ids, Id, ParseScratch};
-use crate::core::arena;
 use crate::core::buffer::trim_for_display;
 use crate::core::channel::{
     self, AsyncReceiver, AsyncSender, RecvFuture, WaitWritableFuture, REGISTRATIONS_PER_CHANNEL,
@@ -24,6 +23,7 @@ use crate::core::channel::{
 use crate::core::event;
 use crate::core::executor::Executor;
 use crate::core::list;
+use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_10, select_option, select_slice, Select10};
 use crate::core::tnetstring;
@@ -386,23 +386,23 @@ struct ClientStreamSockets {
 }
 
 struct ReqPipeEnd {
-    sender: channel::Sender<arena::Arc<zmq::Message>>,
+    sender: channel::Sender<memorypool::Arc<zmq::Message>>,
     receiver: channel::Receiver<zmq::Message>,
 }
 
 struct StreamPipeEnd {
-    sender: channel::Sender<(arena::Arc<zmq::Message>, bool)>,
+    sender: channel::Sender<(memorypool::Arc<zmq::Message>, bool)>,
     receiver_any: channel::Receiver<zmq::Message>,
     receiver_addr: channel::Receiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
 
 struct AsyncReqPipeEnd {
-    sender: AsyncSender<arena::Arc<zmq::Message>>,
+    sender: AsyncSender<memorypool::Arc<zmq::Message>>,
     receiver: AsyncReceiver<zmq::Message>,
 }
 
 struct AsyncStreamPipeEnd {
-    sender: AsyncSender<(arena::Arc<zmq::Message>, bool)>,
+    sender: AsyncSender<(memorypool::Arc<zmq::Message>, bool)>,
     receiver_any: AsyncReceiver<zmq::Message>,
     receiver_addr: AsyncReceiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
@@ -423,24 +423,24 @@ struct ServerStreamSockets {
 }
 
 struct ServerReqPipeEnd {
-    sender: channel::Sender<(MultipartHeader, arena::Arc<zmq::Message>)>,
+    sender: channel::Sender<(MultipartHeader, memorypool::Arc<zmq::Message>)>,
     receiver: channel::Receiver<(MultipartHeader, zmq::Message)>,
 }
 
 struct ServerStreamPipeEnd {
-    sender_any: channel::Sender<(arena::Arc<zmq::Message>, Session)>,
-    sender_direct: channel::Sender<arena::Arc<zmq::Message>>,
+    sender_any: channel::Sender<(memorypool::Arc<zmq::Message>, Session)>,
+    sender_direct: channel::Sender<memorypool::Arc<zmq::Message>>,
     receiver: channel::Receiver<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
 }
 
 struct AsyncServerReqPipeEnd {
-    sender: AsyncSender<(MultipartHeader, arena::Arc<zmq::Message>)>,
+    sender: AsyncSender<(MultipartHeader, memorypool::Arc<zmq::Message>)>,
     receiver: AsyncReceiver<(MultipartHeader, zmq::Message)>,
 }
 
 struct AsyncServerStreamPipeEnd {
-    sender_any: AsyncSender<(arena::Arc<zmq::Message>, Session)>,
-    sender_direct: AsyncSender<arena::Arc<zmq::Message>>,
+    sender_any: AsyncSender<(memorypool::Arc<zmq::Message>, Session)>,
+    sender_direct: AsyncSender<memorypool::Arc<zmq::Message>>,
     receiver: AsyncReceiver<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
 }
 
@@ -498,7 +498,7 @@ impl<T> Future for RecvWrapperFuture<'_, T> {
 }
 
 struct RecvScratch<T> {
-    tasks: arena::ReusableVec,
+    tasks: memorypool::ReusableVec,
     slice_scratch: Vec<usize>,
     _marker: marker::PhantomData<T>,
 }
@@ -506,7 +506,7 @@ struct RecvScratch<T> {
 impl<T> RecvScratch<T> {
     fn new(capacity: usize) -> Self {
         Self {
-            tasks: arena::ReusableVec::new::<RecvWrapperFuture<T>>(capacity),
+            tasks: memorypool::ReusableVec::new::<RecvWrapperFuture<T>>(capacity),
             slice_scratch: Vec::with_capacity(capacity),
             _marker: marker::PhantomData,
         }
@@ -515,7 +515,7 @@ impl<T> RecvScratch<T> {
     fn get<'a>(
         &mut self,
     ) -> (
-        arena::ReusableVecHandle<'_, RecvWrapperFuture<'a, T>>,
+        memorypool::ReusableVecHandle<'_, RecvWrapperFuture<'a, T>>,
         &mut Vec<usize>,
     ) {
         (self.tasks.get_as_new(), &mut self.slice_scratch)
@@ -523,7 +523,7 @@ impl<T> RecvScratch<T> {
 }
 
 struct CheckSendScratch<T> {
-    tasks: arena::ReusableVec,
+    tasks: memorypool::ReusableVec,
     slice_scratch: Vec<usize>,
     _marker: marker::PhantomData<T>,
 }
@@ -531,7 +531,7 @@ struct CheckSendScratch<T> {
 impl<T> CheckSendScratch<T> {
     fn new(capacity: usize) -> Self {
         Self {
-            tasks: arena::ReusableVec::new::<WaitWritableFuture<T>>(capacity),
+            tasks: memorypool::ReusableVec::new::<WaitWritableFuture<T>>(capacity),
             slice_scratch: Vec::with_capacity(capacity),
             _marker: marker::PhantomData,
         }
@@ -540,7 +540,7 @@ impl<T> CheckSendScratch<T> {
     fn get<'a>(
         &mut self,
     ) -> (
-        arena::ReusableVecHandle<'_, WaitWritableFuture<'a, T>>,
+        memorypool::ReusableVecHandle<'_, WaitWritableFuture<'a, T>>,
         &mut Vec<usize>,
     ) {
         (self.tasks.get_as_new(), &mut self.slice_scratch)
@@ -619,7 +619,7 @@ impl ReqHandles {
         }
     }
 
-    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
+    async fn send(&self, msg: &memorypool::Arc<zmq::Message>, ids: &[Id<'_>]) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
@@ -638,7 +638,7 @@ impl ReqHandles {
             if p.valid.get() && do_send {
                 // Blocking send. Handle is expected to read as fast as possible
                 // without downstream backpressure
-                match p.pe.sender.send(arena::Arc::clone(msg)).await {
+                match p.pe.sender.send(memorypool::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
                         p.valid.set(false);
@@ -793,7 +793,7 @@ impl StreamHandles {
         }
     }
 
-    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>], from_router: bool) {
+    async fn send(&self, msg: &memorypool::Arc<zmq::Message>, ids: &[Id<'_>], from_router: bool) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
@@ -815,7 +815,7 @@ impl StreamHandles {
                 match p
                     .pe
                     .sender
-                    .send((arena::Arc::clone(msg), from_router))
+                    .send((memorypool::Arc::clone(msg), from_router))
                     .await
                 {
                     Ok(_) => {}
@@ -865,7 +865,7 @@ struct ServerReqHandles {
     nodes: Slab<list::Node<ServerReqPipe>>,
     list: list::List,
     recv_scratch: RefCell<RecvScratch<(MultipartHeader, zmq::Message)>>,
-    check_send_scratch: RefCell<CheckSendScratch<(MultipartHeader, arena::Arc<zmq::Message>)>>,
+    check_send_scratch: RefCell<CheckSendScratch<(MultipartHeader, memorypool::Arc<zmq::Message>)>>,
     need_cleanup: Cell<bool>,
     send_index: Cell<usize>,
 }
@@ -983,7 +983,7 @@ impl ServerReqHandles {
     fn send(
         &self,
         header: MultipartHeader,
-        msg: &arena::Arc<zmq::Message>,
+        msg: &memorypool::Arc<zmq::Message>,
     ) -> Result<(), ReqHandlesSendError> {
         if self.nodes.is_empty() {
             return Err(ReqHandlesSendError(header));
@@ -1014,7 +1014,7 @@ impl ServerReqHandles {
         let n = &self.nodes[nkey];
         let p = &n.value;
 
-        if let Err(e) = p.pe.sender.try_send((header, arena::Arc::clone(msg))) {
+        if let Err(e) = p.pe.sender.try_send((header, memorypool::Arc::clone(msg))) {
             let header = match e {
                 mpsc::TrySendError::Full((header, _)) => header,
                 mpsc::TrySendError::Disconnected((header, _)) => {
@@ -1071,7 +1071,7 @@ struct ServerStreamHandles {
     nodes: Slab<list::Node<ServerStreamPipe>>,
     list: list::List,
     recv_scratch: RefCell<RecvScratch<(Option<ArrayVec<u8, 64>>, zmq::Message)>>,
-    check_send_any_scratch: RefCell<CheckSendScratch<(arena::Arc<zmq::Message>, Session)>>,
+    check_send_any_scratch: RefCell<CheckSendScratch<(memorypool::Arc<zmq::Message>, Session)>>,
     send_direct_scratch: RefCell<Vec<bool>>,
     need_cleanup: Cell<bool>,
     send_index: Cell<usize>,
@@ -1192,7 +1192,7 @@ impl ServerStreamHandles {
     // non-blocking send. caller should use check_send_any() first
     fn send_any(
         &self,
-        msg: &arena::Arc<zmq::Message>,
+        msg: &memorypool::Arc<zmq::Message>,
         from: &[u8],
         ids: &[Id],
     ) -> Result<(), StreamHandlesSendError> {
@@ -1240,7 +1240,10 @@ impl ServerStreamHandles {
             Err(SessionAddError::Exists) => return Err(StreamHandlesSendError::SessionExists),
         };
 
-        if let Err(e) = p.pe.sender_any.try_send((arena::Arc::clone(msg), session)) {
+        if let Err(e) =
+            p.pe.sender_any
+                .try_send((memorypool::Arc::clone(msg), session))
+        {
             match e {
                 mpsc::TrySendError::Full(_) => {}
                 mpsc::TrySendError::Disconnected(_) => {
@@ -1257,7 +1260,7 @@ impl ServerStreamHandles {
     }
 
     #[allow(clippy::await_holding_refcell_ref)]
-    async fn send_direct(&self, msg: &arena::Arc<zmq::Message>, from: &[u8], ids: &[Id<'_>]) {
+    async fn send_direct(&self, msg: &memorypool::Arc<zmq::Message>, from: &[u8], ids: &[Id<'_>]) {
         if self.nodes.is_empty() {
             return;
         }
@@ -1298,7 +1301,7 @@ impl ServerStreamHandles {
             if p.valid.get() && do_send {
                 // Blocking send. Handle is expected to read as fast as possible
                 // without downstream backpressure
-                match p.pe.sender_direct.send(arena::Arc::clone(msg)).await {
+                match p.pe.sender_direct.send(memorypool::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
                         p.valid.set(false);
@@ -1354,7 +1357,7 @@ impl ClientSocketManager {
     // each of the handles (i.e. Process and drop a message before reading
     // the next), then the value here should be 4, because there would be
     // no more than 4 dequeued messages alive at any one time. This number
-    // is needed to help size the internal arena
+    // is needed to help size the internal memorypool
     pub fn new(
         ctx: Arc<zmq::Context>,
         instance_id: &str,
@@ -1497,13 +1500,13 @@ impl ClientSocketManager {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
 
-        // The messages arena needs to fit the max number of potential incoming messages that
+        // The messages memorypool needs to fit the max number of potential incoming messages that
         // still need to be processed. This is the entire channel queue for every handle, plus
         // the most number of messages the user might retain, plus 1 extra for the next message
         // we are preparing to send to the handles
-        let arena_size = (HANDLES_MAX * handle_bound) + retained_max + 1;
+        let memorypool_size = (HANDLES_MAX * handle_bound) + retained_max + 1;
 
-        let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
+        let messages_memory = Arc::new(memorypool::SyncMemory::new(memorypool_size));
 
         let client_req = ClientReqSockets {
             sock: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::DEALER)),
@@ -1840,10 +1843,10 @@ impl ClientSocketManager {
 
     async fn handle_req_message(
         msg: zmq::Message,
-        messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
+        messages_memory: &Arc<memorypool::ArcMemory<zmq::Message>>,
         handles: &ReqHandles,
     ) {
-        let msg = arena::Arc::new(msg, messages_memory).unwrap();
+        let msg = memorypool::Arc::new(msg, messages_memory).unwrap();
 
         let mut scratch = ParseScratch::new();
 
@@ -1860,11 +1863,11 @@ impl ClientSocketManager {
 
     async fn handle_stream_message(
         msg: zmq::Message,
-        messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
+        messages_memory: &Arc<memorypool::ArcMemory<zmq::Message>>,
         expect_addr: Option<&str>,
         handles: &StreamHandles,
     ) {
-        let msg = arena::Arc::new(msg, messages_memory).unwrap();
+        let msg = memorypool::Arc::new(msg, messages_memory).unwrap();
 
         let buf = msg.get();
 
@@ -1951,7 +1954,7 @@ impl ServerSocketManager {
     // each of the handles (i.e. Process and drop a message before reading
     // the next), then the value here should be 4, because there would be
     // no more than 4 dequeued messages alive at any one time. This number
-    // is needed to help size the internal arena
+    // is needed to help size the internal memorypool
     pub fn new(
         ctx: Arc<zmq::Context>,
         instance_id: &str,
@@ -2093,14 +2096,14 @@ impl ServerSocketManager {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
 
-        // The messages arena needs to fit the max number of potential incoming messages that
+        // The messages memorypool needs to fit the max number of potential incoming messages that
         // still need to be processed. This is the entire channel queue for every handle, plus
         // the most number of messages the user might retain, plus 1 extra for the next message
         // we are preparing to send to the handles, x2 since there are two sending channels
         // per stream handle
-        let arena_size = ((HANDLES_MAX * handle_bound) + retained_max + 1) * 2;
+        let memorypool_size = ((HANDLES_MAX * handle_bound) + retained_max + 1) * 2;
 
-        let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
+        let messages_memory = Arc::new(memorypool::SyncMemory::new(memorypool_size));
 
         // Sessions are created at the time of attempting to send to a handle, so we need enough
         // sessions to max out the workers, and max out all the handle channels, and have one
@@ -2312,7 +2315,7 @@ impl ServerSocketManager {
                             trace!("IN server req {}", packet_to_string(&msg));
                         }
 
-                        let msg = arena::Arc::new(msg, &messages_memory).unwrap();
+                        let msg = memorypool::Arc::new(msg, &messages_memory).unwrap();
 
                         req_in_msg = Some((header, msg));
                     }
@@ -2343,7 +2346,7 @@ impl ServerSocketManager {
                             trace!("IN server stream {}", packet_to_string(&msg));
                         }
 
-                        let msg = arena::Arc::new(msg, &messages_memory).unwrap();
+                        let msg = memorypool::Arc::new(msg, &messages_memory).unwrap();
 
                         stream_in_msg = Some(msg);
                     }
@@ -2443,7 +2446,7 @@ impl ServerSocketManager {
     }
 
     fn handle_req_message(
-        next_msg: &mut Option<(MultipartHeader, arena::Arc<zmq::Message>)>,
+        next_msg: &mut Option<(MultipartHeader, memorypool::Arc<zmq::Message>)>,
         handles: &ServerReqHandles,
     ) {
         let (header, msg) = next_msg.take().unwrap();
@@ -2454,7 +2457,7 @@ impl ServerSocketManager {
     }
 
     fn handle_stream_message_any(
-        next_msg: &mut Option<arena::Arc<zmq::Message>>,
+        next_msg: &mut Option<memorypool::Arc<zmq::Message>>,
         handles: &ServerStreamHandles,
     ) {
         let msg = next_msg.take().unwrap();
@@ -2488,10 +2491,10 @@ impl ServerSocketManager {
 
     async fn handle_stream_message_direct(
         msg: zmq::Message,
-        messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
+        messages_memory: &Arc<memorypool::ArcMemory<zmq::Message>>,
         handles: &ServerStreamHandles,
     ) {
-        let msg = arena::Arc::new(msg, messages_memory).unwrap();
+        let msg = memorypool::Arc::new(msg, messages_memory).unwrap();
 
         let mut scratch = ParseScratch::new();
 
@@ -2524,7 +2527,7 @@ pub enum SendError {
 
 pub struct ClientReqHandle {
     sender: channel::Sender<zmq::Message>,
-    receiver: channel::Receiver<arena::Arc<zmq::Message>>,
+    receiver: channel::Receiver<memorypool::Arc<zmq::Message>>,
 }
 
 impl ClientReqHandle {
@@ -2536,7 +2539,7 @@ impl ClientReqHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv(&self) -> Result<memorypool::Arc<zmq::Message>, io::Error> {
         match self.receiver.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -2559,7 +2562,7 @@ impl ClientReqHandle {
 
 pub struct AsyncClientReqHandle {
     sender: AsyncSender<zmq::Message>,
-    receiver: AsyncReceiver<arena::Arc<zmq::Message>>,
+    receiver: AsyncReceiver<memorypool::Arc<zmq::Message>>,
 }
 
 impl AsyncClientReqHandle {
@@ -2570,7 +2573,7 @@ impl AsyncClientReqHandle {
         }
     }
 
-    pub async fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub async fn recv(&self) -> Result<memorypool::Arc<zmq::Message>, io::Error> {
         match self.receiver.recv().await {
             Ok(msg) => Ok(msg),
             Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
@@ -2588,7 +2591,7 @@ impl AsyncClientReqHandle {
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
     sender_addr: channel::Sender<(ArrayVec<u8, 64>, zmq::Message)>,
-    receiver: channel::Receiver<(arena::Arc<zmq::Message>, bool)>,
+    receiver: channel::Receiver<(memorypool::Arc<zmq::Message>, bool)>,
 }
 
 impl ClientStreamHandle {
@@ -2604,7 +2607,7 @@ impl ClientStreamHandle {
         self.sender_addr.get_write_registration()
     }
 
-    pub fn recv(&self) -> Result<(arena::Arc<zmq::Message>, bool), io::Error> {
+    pub fn recv(&self) -> Result<(memorypool::Arc<zmq::Message>, bool), io::Error> {
         match self.receiver.try_recv() {
             Ok(ret) => Ok(ret),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -2643,7 +2646,7 @@ impl ClientStreamHandle {
 pub struct AsyncClientStreamHandle {
     sender_any: AsyncSender<zmq::Message>,
     sender_addr: AsyncSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    receiver: AsyncReceiver<(arena::Arc<zmq::Message>, bool)>,
+    receiver: AsyncReceiver<(memorypool::Arc<zmq::Message>, bool)>,
 }
 
 impl AsyncClientStreamHandle {
@@ -2655,7 +2658,7 @@ impl AsyncClientStreamHandle {
         }
     }
 
-    pub async fn recv(&self) -> Result<(arena::Arc<zmq::Message>, bool), io::Error> {
+    pub async fn recv(&self) -> Result<(memorypool::Arc<zmq::Message>, bool), io::Error> {
         self.receiver
             .recv()
             .await
@@ -2683,7 +2686,7 @@ impl AsyncClientStreamHandle {
 
 pub struct ServerReqHandle {
     sender: channel::Sender<(MultipartHeader, zmq::Message)>,
-    receiver: channel::Receiver<(MultipartHeader, arena::Arc<zmq::Message>)>,
+    receiver: channel::Receiver<(MultipartHeader, memorypool::Arc<zmq::Message>)>,
 }
 
 impl ServerReqHandle {
@@ -2695,7 +2698,7 @@ impl ServerReqHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv(&self) -> Result<(MultipartHeader, arena::Arc<zmq::Message>), io::Error> {
+    pub fn recv(&self) -> Result<(MultipartHeader, memorypool::Arc<zmq::Message>), io::Error> {
         match self.receiver.try_recv() {
             Ok(ret) => Ok(ret),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -2718,7 +2721,7 @@ impl ServerReqHandle {
 
 pub struct AsyncServerReqHandle {
     sender: AsyncSender<(MultipartHeader, zmq::Message)>,
-    receiver: AsyncReceiver<(MultipartHeader, arena::Arc<zmq::Message>)>,
+    receiver: AsyncReceiver<(MultipartHeader, memorypool::Arc<zmq::Message>)>,
 }
 
 impl AsyncServerReqHandle {
@@ -2729,7 +2732,9 @@ impl AsyncServerReqHandle {
         }
     }
 
-    pub async fn recv(&self) -> Result<(MultipartHeader, arena::Arc<zmq::Message>), io::Error> {
+    pub async fn recv(
+        &self,
+    ) -> Result<(MultipartHeader, memorypool::Arc<zmq::Message>), io::Error> {
         match self.receiver.recv().await {
             Ok(msg) => Ok(msg),
             Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
@@ -2746,8 +2751,8 @@ impl AsyncServerReqHandle {
 
 pub struct ServerStreamHandle {
     sender: channel::Sender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
-    receiver_any: channel::Receiver<(arena::Arc<zmq::Message>, Session)>,
-    receiver_direct: channel::Receiver<arena::Arc<zmq::Message>>,
+    receiver_any: channel::Receiver<(memorypool::Arc<zmq::Message>, Session)>,
+    receiver_direct: channel::Receiver<memorypool::Arc<zmq::Message>>,
 }
 
 impl ServerStreamHandle {
@@ -2763,7 +2768,7 @@ impl ServerStreamHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv_from_any(&self) -> Result<(arena::Arc<zmq::Message>, Session), io::Error> {
+    pub fn recv_from_any(&self) -> Result<(memorypool::Arc<zmq::Message>, Session), io::Error> {
         match self.receiver_any.try_recv() {
             Ok(ret) => Ok(ret),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -2773,7 +2778,7 @@ impl ServerStreamHandle {
         }
     }
 
-    pub fn recv_directed(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv_directed(&self) -> Result<memorypool::Arc<zmq::Message>, io::Error> {
         match self.receiver_direct.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -2804,8 +2809,8 @@ impl ServerStreamHandle {
 
 pub struct AsyncServerStreamHandle {
     sender: AsyncSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
-    receiver_any: AsyncReceiver<(arena::Arc<zmq::Message>, Session)>,
-    receiver_direct: AsyncReceiver<arena::Arc<zmq::Message>>,
+    receiver_any: AsyncReceiver<(memorypool::Arc<zmq::Message>, Session)>,
+    receiver_direct: AsyncReceiver<memorypool::Arc<zmq::Message>>,
 }
 
 impl AsyncServerStreamHandle {
@@ -2817,14 +2822,16 @@ impl AsyncServerStreamHandle {
         }
     }
 
-    pub async fn recv_from_any(&self) -> Result<(arena::Arc<zmq::Message>, Session), io::Error> {
+    pub async fn recv_from_any(
+        &self,
+    ) -> Result<(memorypool::Arc<zmq::Message>, Session), io::Error> {
         match self.receiver_any.recv().await {
             Ok(ret) => Ok(ret),
             Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
         }
     }
 
-    pub async fn recv_directed(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub async fn recv_directed(&self) -> Result<memorypool::Arc<zmq::Message>, io::Error> {
         match self.receiver_direct.recv().await {
             Ok(msg) => Ok(msg),
             Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),

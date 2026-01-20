@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
+use crate::core::memorypool;
 use crate::core::tnetstring;
 use arrayvec::ArrayVec;
 use std::cell::RefCell;
@@ -1720,8 +1720,8 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Response<'buf, 's
 
 pub struct OwnedPacket<T> {
     inner: T,
-    _scratch: arena::Rc<RefCell<ParseScratch<'static>>>,
-    _src: arena::Arc<zmq::Message>,
+    _scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
+    _src: memorypool::Arc<zmq::Message>,
 }
 
 impl<T> OwnedPacket<T>
@@ -1729,9 +1729,9 @@ where
     T: PacketParse<'static, 'static, Parsed = T>,
 {
     pub fn parse(
-        src: arena::Arc<zmq::Message>,
+        src: memorypool::Arc<zmq::Message>,
         offset: usize,
-        scratch: arena::Rc<RefCell<ParseScratch<'static>>>,
+        scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
     ) -> Result<Self, ParseError> {
         let src_ref: &[u8] = &src.get()[offset..];
 
@@ -1742,7 +1742,7 @@ where
         let src_ref: &'static [u8] = unsafe { mem::transmute(src_ref) };
 
         // SAFETY: Self will take ownership of scratch, and the location
-        // referred to by scratch_mut is in an arena, and scratch will not
+        // referred to by scratch_mut is in an memorypool, and scratch will not
         // be dropped until Self is dropped, so the location referred to by
         // scratch_mut will remain valid for the lifetime of Self
         //
@@ -2041,11 +2041,12 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(arena::ArcMemory::new(1));
-        let scratch_memory = Rc::new(arena::RcMemory::new(1));
+        let msg_memory = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = arena::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
-        let scratch = arena::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+        let msg = memorypool::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
+        let scratch =
+            memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let req = OwnedRequest::parse(msg, 0, scratch).unwrap();
 
@@ -2067,11 +2068,12 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(arena::ArcMemory::new(1));
-        let scratch_memory = Rc::new(arena::RcMemory::new(1));
+        let msg_memory = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = arena::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
-        let scratch = arena::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+        let msg = memorypool::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
+        let scratch =
+            memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let resp = OwnedResponse::parse(msg, 5, scratch).unwrap();
 

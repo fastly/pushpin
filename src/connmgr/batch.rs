@@ -17,8 +17,8 @@
 
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::FROM_MAX;
-use crate::core::arena;
 use crate::core::list;
+use crate::core::memorypool;
 use arrayvec::ArrayVec;
 use slab::Slab;
 use std::convert::TryFrom;
@@ -31,7 +31,7 @@ pub struct BatchKey {
 pub struct BatchGroup<'a, 'b> {
     addr: &'b [u8],
     use_router: bool,
-    ids: arena::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
+    ids: memorypool::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
 }
 
 impl<'a> BatchGroup<'a, '_> {
@@ -58,7 +58,7 @@ pub struct Batch {
     nodes: Slab<list::Node<usize>>,
     addrs: Vec<AddrItem>,
     addr_index: usize,
-    group_ids: arena::ReusableVec,
+    group_ids: memorypool::ReusableVec,
     last_group_ckeys: Vec<usize>,
 }
 
@@ -68,7 +68,7 @@ impl Batch {
             nodes: Slab::with_capacity(capacity),
             addrs: Vec::with_capacity(capacity),
             addr_index: 0,
-            group_ids: arena::ReusableVec::new::<zhttppacket::Id>(capacity),
+            group_ids: memorypool::ReusableVec::new::<zhttppacket::Id>(capacity),
             last_group_ckeys: Vec::with_capacity(capacity),
         }
     }

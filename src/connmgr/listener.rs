@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena::recycle_vec;
 use crate::core::channel;
 use crate::core::executor::Executor;
+use crate::core::memorypool::recycle_vec;
 use crate::core::net::{AsyncNetListener, NetAcceptFuture, NetListener, NetStream, SocketAddr};
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_slice, Select2};

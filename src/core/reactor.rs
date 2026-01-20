@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::event;
 use crate::core::event::ReadinessExt;
+use crate::core::memorypool;
 use crate::core::timer::TimerWheel;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
@@ -724,7 +724,9 @@ impl Reactor {
         })
     }
 
-    pub fn local_registration_memory(&self) -> Rc<arena::RcMemory<event::LocalRegistrationEntry>> {
+    pub fn local_registration_memory(
+        &self,
+    ) -> Rc<memorypool::RcMemory<event::LocalRegistrationEntry>> {
         self.inner.poll.borrow().local_registration_memory().clone()
     }
 
