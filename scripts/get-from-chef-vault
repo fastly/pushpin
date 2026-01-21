@@ -1,19 +1,17 @@
 #!/opt/cinc/embedded/bin/ruby
 
-t0 = Time.now.getutc.to_f
+$timing = [Time.now.getutc.to_f]
 
-require 'chef/application/client'
-require 'chef-vault'
 require 'optparse'
-require 'json'
 
-t1 = Time.now.getutc.to_f
-
-options = {}
+options = {mode: :both}
 OptionParser.new do |opt|
   opt.on('--vault NAME') { |o| options[:vault] = o }
   opt.on('--item NAME') { |o| options[:item] = o }
   opt.on('--dest DIR') { |o| options[:dest] = o }
+  opt.on('--old') { |o| options[:mode] = :old }
+  opt.on('--new') { |o| options[:mode] = :new }
+  opt.on('--both') { |o| options[:mode] = :both }
 end.parse!
 
 raise 'Option --vault NAME is required'    if options[:vault].nil?
@@ -21,30 +19,84 @@ raise 'Option --item NAME is required'     if options[:item].nil?
 raise 'Option --dest DIR is required'      if options[:dest].nil?
 raise 'At least one filename is required'  if ARGV.empty?
 
-t2 = Time.now.getutc.to_f
+def try_new_vault(options)
+  $timing.push Time.now.getutc.to_f
+  begin
+    require 'vault'
+  rescue LoadError => e
+    STDERR.puts("ERROR loading NEW vault: #{e}")
+    return nil
+  end
+  $timing.push Time.now.getutc.to_f
+  begin
+    vclient = Vault::Client.new(address: 'https://infra-secrets.prd.k8s.secretcdn.net')
+    vclient.token = File.read('/etc/vault_agent/run/token')
+    $timing.push Time.now.getutc.to_f
+    return vclient.kv('chef/cdn_fastly').read("#{options[:vault]}/#{options[:item]}").data[:files]
+  rescue => e
+    STDERR.puts("ERROR using NEW vault: #{e}")
+    return nil
+  end
+end
 
-Chef::Application::Client.new.configure_chef
+def try_old_vault(options)
+  $timing.push Time.now.getutc.to_f
+  begin
+    require 'chef/application/client'
+    require 'chef-vault'
+  rescue LoadError => e
+    STDERR.puts("ERROR loading OLD vault: #{e}")
+    return nil
+  end
+  $timing.push Time.now.getutc.to_f
+  begin
+    Chef::Application::Client.new.configure_chef
+    $timing.push Time.now.getutc.to_f
+    return ChefVault::Item.load(options[:vault], options[:item]).to_h["files"].collect { |x| x.transform_keys(&:to_sym) }
+  rescue => e
+    STDERR.puts("ERROR using OLD vault: #{e}")
+    return nil
+  end
+end
 
-t3 = Time.now.getutc.to_f
 
-data = ChefVault::Item.load(options[:vault], options[:item]).to_h
+data = nil
+if options[:mode] != :old
+  data = try_new_vault(options)
+  if data.nil?
+    STDERR.puts('The NEW vault is not available')
+  else
+    STDERR.puts('Using the NEW vault')
+  end
+end
+if data.nil? and options[:mode] != :new
+  data = try_old_vault(options)
+  if data.nil?
+    STDERR.puts('The OLD vault is not available')
+  else
+    STDERR.puts('Using the OLD vault')
+  end
+end
 
-t4 = Time.now.getutc.to_f
+$timing.push Time.now.getutc.to_f
+
+raise 'Failed trying to use the requested vault' if data.nil?
 
 ARGV.each do |filename|
-  m = data['files'].select { |rec| rec['filename'] == filename }
+  m = data.select { |rec| rec[:filename] == filename }
   raise "Filename #{filename} not found in vault item" if m.empty?
   raise "Multiple entries for filename #{filename} found in vault item" if m.length != 1
-  content = m[0]['content']
+  content = m[0][:content]
 
   abs_filename = File.join(options[:dest], filename)
-  File.delete(abs_filename) if File.exists?(abs_filename)
+  File.delete(abs_filename) if File.exist?(abs_filename)
   File.open(abs_filename, 'wb', 0600) do |f|
     f.write(content)
   end
 end
 
-t5 = Time.now.getutc.to_f
+$timing.push Time.now.getutc.to_f
 
-STDERR.puts('Timing: %.3f + %.3f + %.3f + %.3f + %.3f = %.3f (seconds)' % [
-    t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4, t5 - t0])
+deltas = []
+(1...$timing.length).each { |i| deltas.push '%.3f' % ($timing[i] - $timing[i-1]) }
+STDERR.puts('Timing: %s = %.3f (seconds)' % [deltas.join(' + '), $timing[-1] - $timing[0]])
