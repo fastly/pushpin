@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::event::{self, ReadinessExt};
 use crate::core::executor::Executor;
+use crate::core::memorypool;
 use crate::core::reactor::{CustomEvented, Reactor, Registration};
 use std::future::Future;
 use std::pin::Pin;
@@ -82,7 +82,7 @@ pub struct CancellationToken {
 
 impl CancellationToken {
     pub fn new(
-        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+        memory: &Rc<memorypool::RcMemory<event::LocalRegistrationEntry>>,
     ) -> (CancellationSender, Self) {
         let (read_reg, read_sr) = event::LocalRegistration::new(memory);
 

@@ -25,12 +25,12 @@ use crate::connmgr::resolver::Resolver;
 use crate::connmgr::tls::TlsConfigCache;
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
-use crate::core::arena;
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
+use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
 use crate::core::task::{self, yield_to_local_events, CancellationSender, CancellationToken};
@@ -152,8 +152,9 @@ struct ConnectionDone {
 struct ConnectionItem {
     id: Option<SessionKey>,
     stop: Option<CancellationSender>,
-    zreceiver_sender: Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
-    shared: Option<arena::Rc<StreamSharedData>>,
+    zreceiver_sender:
+        Option<channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>>,
+    shared: Option<memorypool::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
 }
 
@@ -208,9 +209,9 @@ impl Connections {
         &self,
         stop: CancellationSender,
         zreceiver_sender: Option<
-            channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+            channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
         >,
-        shared: Option<arena::Rc<StreamSharedData>>,
+        shared: Option<memorypool::Rc<StreamSharedData>>,
     ) -> Result<usize, ()> {
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
@@ -237,7 +238,7 @@ impl Connections {
     fn remove(
         &self,
         ckey: usize,
-    ) -> Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>> {
+    ) -> Option<channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -293,8 +294,8 @@ impl Connections {
     fn try_send(
         &self,
         ckey: usize,
-        value: (arena::Rc<zhttppacket::OwnedRequest>, usize),
-    ) -> Result<(), mpsc::TrySendError<(arena::Rc<zhttppacket::OwnedRequest>, usize)>> {
+        value: (memorypool::Rc<zhttppacket::OwnedRequest>, usize),
+    ) -> Result<(), mpsc::TrySendError<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>> {
         let nkey = ckey;
 
         let items = &*self.items.borrow();
@@ -822,8 +823,8 @@ impl Worker {
 
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * req_maxconn);
 
-        let req_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
-        let req_req_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+        let req_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let req_req_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
 
         // max_senders is 1 per connection + 1 for this task
         let (zreq_sender, zreq_receiver) = local_channel(handle_bound, req_maxconn + 1);
@@ -894,7 +895,7 @@ impl Worker {
                 // req_handle_recv
                 Select5::R5(result) => match result {
                     Ok((header, msg)) => {
-                        let scratch = arena::Rc::new(
+                        let scratch = memorypool::Rc::new(
                             RefCell::new(zhttppacket::ParseScratch::new()),
                             &req_scratch_mem,
                         )
@@ -941,7 +942,7 @@ impl Worker {
                             None
                         };
 
-                        let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
+                        let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
 
                         let (cstop, r_cstop) =
                             CancellationToken::new(&reactor.local_registration_memory());
@@ -1031,7 +1032,7 @@ impl Worker {
     ) {
         let reactor = Reactor::current().unwrap();
 
-        let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
+        let stream_shared_mem = Rc::new(memorypool::RcMemory::new(stream_maxconn));
 
         let zreceiver_pool = Rc::new(ChannelPool::new(stream_maxconn));
         for _ in 0..stream_maxconn {
@@ -1040,8 +1041,8 @@ impl Worker {
 
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * stream_maxconn);
 
-        let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
-        let stream_req_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+        let stream_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let stream_req_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
 
         // Bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
@@ -1117,7 +1118,7 @@ impl Worker {
                         Ok(ret) => {
                             let (msg, session) = ret;
 
-                            let scratch = arena::Rc::new(
+                            let scratch = memorypool::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1164,7 +1165,7 @@ impl Worker {
                                 }
                             };
 
-                            let zreq = arena::Rc::new(zreq, &stream_req_mem).unwrap();
+                            let zreq = memorypool::Rc::new(zreq, &stream_req_mem).unwrap();
 
                             let (cstop, r_cstop) =
                                 CancellationToken::new(&reactor.local_registration_memory());
@@ -1181,14 +1182,14 @@ impl Worker {
                                 zreceiver_pool.take().unwrap();
 
                             let shared =
-                                arena::Rc::new(StreamSharedData::new(), &stream_shared_mem)
+                                memorypool::Rc::new(StreamSharedData::new(), &stream_shared_mem)
                                     .unwrap();
 
                             let ckey = conns
                                 .add(
                                     cstop,
                                     Some(zstream_receiver_sender),
-                                    Some(arena::Rc::clone(&shared)),
+                                    Some(memorypool::Rc::clone(&shared)),
                                 )
                                 .unwrap();
 
@@ -1207,7 +1208,7 @@ impl Worker {
                                     id,
                                     ckey,
                                     cid,
-                                    arena::Rc::clone(&zreq),
+                                    memorypool::Rc::clone(&zreq),
                                     Arc::clone(&resolver),
                                     Arc::clone(&tls_config_cache),
                                     Arc::clone(&conn_pool),
@@ -1237,7 +1238,7 @@ impl Worker {
                     // stream_handle.recv_directed
                     Select6::R6(result) => match result {
                         Ok(msg) => {
-                            let scratch = arena::Rc::new(
+                            let scratch = memorypool::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1251,7 +1252,7 @@ impl Worker {
                                 }
                             };
 
-                            let zreq = arena::Rc::new(zreq, &stream_req_mem).unwrap();
+                            let zreq = memorypool::Rc::new(zreq, &stream_req_mem).unwrap();
 
                             let zreq_ref = zreq.get().get();
 
@@ -1298,7 +1299,7 @@ impl Worker {
 
                                 // This should always succeed, since afterwards we yield
                                 // to let the connection receive the message
-                                match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
+                                match conns.try_send(key, (memorypool::Rc::clone(&zreq), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
                                         "client-worker {}: connection-{} cannot receive message",
@@ -1342,7 +1343,7 @@ impl Worker {
         worker_id: usize,
         ckey: usize,
         cid: Option<ArrayVec<u8, REQ_ID_MAX>>,
-        zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
+        zreq: (MultipartHeader, memorypool::Rc<zhttppacket::OwnedRequest>),
         resolver: Arc<Resolver>,
         tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
@@ -1400,16 +1401,16 @@ impl Worker {
         worker_id: usize,
         ckey: usize,
         cid: ArrayVec<u8, REQ_ID_MAX>,
-        zreq: arena::Rc<zhttppacket::OwnedRequest>,
+        zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
         resolver: Arc<Resolver>,
         tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        zreceiver: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
         deny: Rc<Vec<IpNet>>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
-        shared: arena::Rc<StreamSharedData>,
+        shared: memorypool::Rc<StreamSharedData>,
         session: Option<zhttpsocket::Session>,
     ) {
         let done = AsyncLocalSender::new(done);
@@ -1432,7 +1433,7 @@ impl Worker {
             token,
             &log_id,
             &cid,
-            arena::Rc::clone(&zreq),
+            memorypool::Rc::clone(&zreq),
             opts.buffer_size,
             stream_opts.blocks_max,
             &stream_opts.blocks_avail,
@@ -1652,11 +1653,11 @@ impl Client {
             let (done, _) = local_channel(1, 1);
             let (sender, _) = local_channel(1, 1);
 
-            let req_scratch_mem = Rc::new(arena::RcMemory::new(1));
-            let req_req_mem = Rc::new(arena::RcMemory::new(1));
-            let msg_mem = Arc::new(arena::ArcMemory::new(1));
+            let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+            let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
+            let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
 
-            let scratch = arena::Rc::new(
+            let scratch = memorypool::Rc::new(
                 RefCell::new(zhttppacket::ParseScratch::new()),
                 &req_scratch_mem,
             )
@@ -1668,10 +1669,10 @@ impl Client {
                 "0:text/plain,]]4:body,5:hello,4:more,4:true!}",
             );
 
-            let msg = arena::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
+            let msg = memorypool::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-            let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
+            let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
@@ -1717,11 +1718,11 @@ impl Client {
             let conn_items = Rc::new(RefCell::new(ConnectionItems::new(1, batch)));
             let conns = Rc::new(Connections::new(conn_items, 1));
 
-            let req_scratch_mem = Rc::new(arena::RcMemory::new(1));
-            let req_req_mem = Rc::new(arena::RcMemory::new(1));
-            let msg_mem = Arc::new(arena::ArcMemory::new(1));
+            let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+            let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
+            let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
 
-            let scratch = arena::Rc::new(
+            let scratch = memorypool::Rc::new(
                 RefCell::new(zhttppacket::ParseScratch::new()),
                 &req_scratch_mem,
             )
@@ -1733,18 +1734,18 @@ impl Client {
                 "0:text/plain,]]4:body,5:hello,4:more,4:true!}",
             );
 
-            let msg = arena::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
+            let msg = memorypool::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-            let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
+            let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
             let pool = Arc::new(ConnectionPool::new(0));
 
-            let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
+            let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let shared = arena::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
 
             let fut = Worker::stream_connection_task(
                 stop,

@@ -43,7 +43,6 @@ use crate::connmgr::track::{
 };
 use crate::connmgr::websocket;
 use crate::connmgr::zhttppacket;
-use crate::core::arena;
 use crate::core::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
@@ -55,6 +54,7 @@ use crate::core::io::{
     io_split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper,
     WriteHalf,
 };
+use crate::core::memorypool;
 use crate::core::net::{AsyncTcpStream, SocketAddr};
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_3, select_4, select_option, Select2, Select3, Select4};
@@ -1027,10 +1027,11 @@ struct ZhttpStreamSessionIn<'a, 'b, R> {
     id: &'a str,
     send_buf_size: usize,
     websocket: bool,
-    receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    receiver:
+        &'a TrackedAsyncLocalReceiver<'b, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &'a StreamSharedData,
     msg_read: &'a R,
-    next: Option<(Track<'b, arena::Rc<zhttppacket::OwnedResponse>>, usize)>,
+    next: Option<(Track<'b, memorypool::Rc<zhttppacket::OwnedResponse>>, usize)>,
     seq: u32,
     credits: u32,
     first_data: bool,
@@ -1044,7 +1045,10 @@ where
         id: &'a str,
         send_buf_size: usize,
         websocket: bool,
-        receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        receiver: &'a TrackedAsyncLocalReceiver<
+            'b,
+            (memorypool::Rc<zhttppacket::OwnedResponse>, usize),
+        >,
         shared: &'a StreamSharedData,
         msg_read: &'a R,
     ) -> Self {
@@ -1070,7 +1074,7 @@ where
         self.credits -= amount;
     }
 
-    async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedResponse>, Error> {
+    async fn peek_msg(&mut self) -> Result<&memorypool::Rc<zhttppacket::OwnedResponse>, Error> {
         if self.next.is_none() {
             let (r, id_index) = loop {
                 let (r, id_index) = Track::map_first(self.receiver.recv().await?);
@@ -1167,7 +1171,7 @@ where
 
     async fn recv_msg(
         &mut self,
-    ) -> Result<Track<'b, arena::Rc<zhttppacket::OwnedResponse>>, Error> {
+    ) -> Result<Track<'b, memorypool::Rc<zhttppacket::OwnedResponse>>, Error> {
         self.peek_msg().await?;
 
         Ok(self.next.take().unwrap().0)
@@ -1177,10 +1181,10 @@ where
 struct ZhttpServerStreamSessionIn<'a, 'b, R> {
     log_id: &'a str,
     id: &'a [u8],
-    receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    receiver: &'a TrackedAsyncLocalReceiver<'b, (memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
     shared: &'a StreamSharedData,
     msg_read: &'a R,
-    next: Option<(Track<'b, arena::Rc<zhttppacket::OwnedRequest>>, usize)>,
+    next: Option<(Track<'b, memorypool::Rc<zhttppacket::OwnedRequest>>, usize)>,
     seq: u32,
     credits: u32,
 }
@@ -1193,7 +1197,10 @@ where
         log_id: &'a str,
         id: &'a [u8],
         credits: u32,
-        receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        receiver: &'a TrackedAsyncLocalReceiver<
+            'b,
+            (memorypool::Rc<zhttppacket::OwnedRequest>, usize),
+        >,
         shared: &'a StreamSharedData,
         msg_read: &'a R,
     ) -> Self {
@@ -1217,7 +1224,7 @@ where
         self.credits -= amount;
     }
 
-    async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedRequest>, Error> {
+    async fn peek_msg(&mut self) -> Result<&memorypool::Rc<zhttppacket::OwnedRequest>, Error> {
         if self.next.is_none() {
             let (r, id_index) = loop {
                 let (r, id_index) = Track::map_first(self.receiver.recv().await?);
@@ -1296,7 +1303,9 @@ where
         Ok(&self.next.as_ref().unwrap().0)
     }
 
-    async fn recv_msg(&mut self) -> Result<Track<'b, arena::Rc<zhttppacket::OwnedRequest>>, Error> {
+    async fn recv_msg(
+        &mut self,
+    ) -> Result<Track<'b, memorypool::Rc<zhttppacket::OwnedRequest>>, Error> {
         self.peek_msg().await?;
 
         Ok(self.next.take().unwrap().0)
@@ -1308,7 +1317,7 @@ async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) ->
 }
 
 async fn discard_while<F, T, E>(
-    receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    receiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     fut: F,
 ) -> Result<T, Error>
 where
@@ -1327,7 +1336,7 @@ where
 }
 
 async fn server_discard_while<F, T>(
-    receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    receiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
     fut: F,
 ) -> F::Output
 where
@@ -1341,7 +1350,7 @@ where
 
 async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     mut resp: server::Response<'_, R, W>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     e: &Error,
 ) -> Result<(), Error> {
     let headers = &[http1::Header {
@@ -1451,7 +1460,7 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     secure: bool,
     body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<zmq::Message, Error> {
     // Receive request body
 
@@ -1534,7 +1543,7 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     secure: bool,
     body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<Option<zmq::Message>, Error> {
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
@@ -1603,7 +1612,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
     body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<Option<ReqRespond<'buf, 'st, R, W>>, Error> {
     let msg = {
         let req_header = req.recv_header(resp.as_mut().unwrap());
@@ -1722,7 +1731,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<bool, Error> {
     let stream = RefCell::new(stream);
 
@@ -1808,7 +1817,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
@@ -1878,7 +1887,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: AsyncLocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) {
     let value_active = TrackFlag::default();
 
@@ -1975,7 +1984,7 @@ where
 
 // This function will either return immediately or await messages
 async fn handle_other<R>(
-    zresp: Track<'_, arena::Rc<zhttppacket::OwnedResponse>>,
+    zresp: Track<'_, memorypool::Rc<zhttppacket::OwnedResponse>>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
@@ -2000,7 +2009,7 @@ where
 
 // This function will either return immediately or await messages
 async fn server_handle_other<R>(
-    zreq: Track<'_, arena::Rc<zhttppacket::OwnedRequest>>,
+    zreq: Track<'_, memorypool::Rc<zhttppacket::OwnedRequest>>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<(), Error>
@@ -3393,7 +3402,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &StreamSharedData,
     recv_buf_size: usize,
 ) -> Result<
@@ -3481,7 +3490,10 @@ async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     instance_id: &str,
     zsender: &AsyncLocalSender<zmq::Message>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-    zreceiver: &'zs TrackedAsyncLocalReceiver<'tr, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &'zs TrackedAsyncLocalReceiver<
+        'tr,
+        (memorypool::Rc<zhttppacket::OwnedResponse>, usize),
+    >,
     shared: &'zs StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &'zs R2,
@@ -3815,7 +3827,7 @@ async fn server_stream_handler<S, R1, R2>(
     instance_id: &str,
     zsender: &AsyncLocalSender<zmq::Message>,
     zsender_stream: &AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
@@ -4006,8 +4018,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: arena::Rc<StreamSharedData>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
+    shared: memorypool::Rc<StreamSharedData>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
@@ -4166,8 +4178,8 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: arena::Rc<StreamSharedData>,
+    zreceiver: AsyncLocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
+    shared: memorypool::Rc<StreamSharedData>,
 ) {
     let value_active = TrackFlag::default();
 
@@ -4723,7 +4735,7 @@ where
 async fn client_req_connect(
     log_id: &str,
     id: Option<&[u8]>,
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     body_buf: &mut ContiguousBuffer,
@@ -4886,7 +4898,7 @@ async fn client_req_connection_inner(
     token: CancellationToken,
     log_id: &str,
     id: Option<&[u8]>,
-    zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
+    zreq: (MultipartHeader, memorypool::Rc<zhttppacket::OwnedRequest>),
     buffer_size: usize,
     body_buffer_size: usize,
     rb_tmp: &Rc<TmpBuffer>,
@@ -4954,7 +4966,7 @@ pub async fn client_req_connection(
     token: CancellationToken,
     log_id: &str,
     id: Option<&[u8]>,
-    zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
+    zreq: (MultipartHeader, memorypool::Rc<zhttppacket::OwnedRequest>),
     buffer_size: usize,
     body_buffer_size: usize,
     rb_tmp: &Rc<TmpBuffer>,
@@ -5532,7 +5544,7 @@ where
 async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     buffer_size: usize,
@@ -5547,7 +5559,7 @@ async fn client_stream_connect<E, R1, R2>(
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &StreamSharedData,
     enable_routing: &E,
@@ -5801,7 +5813,7 @@ async fn client_stream_connection_inner<E>(
     token: CancellationToken,
     log_id: &str,
     id: &[u8],
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
     blocks_max: usize,
     blocks_avail: &Counter,
@@ -5816,9 +5828,9 @@ async fn client_stream_connection_inner<E>(
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
-    shared: arena::Rc<StreamSharedData>,
+    shared: memorypool::Rc<StreamSharedData>,
     enable_routing: &E,
 ) -> Result<(), Error>
 where
@@ -5951,7 +5963,7 @@ pub async fn client_stream_connection<E>(
     token: CancellationToken,
     log_id: &str,
     id: &[u8],
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
     blocks_max: usize,
     blocks_avail: &Counter,
@@ -5966,9 +5978,9 @@ pub async fn client_stream_connection<E>(
     resolver: &resolver::Resolver,
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
-    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: AsyncLocalReceiver<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
-    shared: arena::Rc<StreamSharedData>,
+    shared: memorypool::Rc<StreamSharedData>,
     enable_routing: &E,
 ) where
     E: Fn(),
@@ -6305,7 +6317,7 @@ pub mod testutil {
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         buf1: &mut VecRingBuffer,
         buf2: &mut VecRingBuffer,
@@ -6342,9 +6354,9 @@ pub mod testutil {
 
     pub struct BenchServerReqHandler {
         reactor: Reactor,
-        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
+        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6354,9 +6366,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(arena::ArcMemory::new(1)),
-                scratch_mem: Rc::new(arena::RcMemory::new(1)),
-                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
+                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
+                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6431,14 +6443,14 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6464,7 +6476,7 @@ pub mod testutil {
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     ) -> Result<(), Error> {
@@ -6501,9 +6513,9 @@ pub mod testutil {
 
     pub struct BenchServerReqConnection {
         reactor: Reactor,
-        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
+        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6513,9 +6525,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(arena::ArcMemory::new(1)),
-                scratch_mem: Rc::new(arena::RcMemory::new(1)),
-                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
+                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
+                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6583,14 +6595,14 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6617,12 +6629,12 @@ pub mod testutil {
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
         s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
         buf1: &mut VecRingBuffer,
         buf2: &mut VecRingBuffer,
-        shared: arena::Rc<StreamSharedData>,
+        shared: memorypool::Rc<StreamSharedData>,
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
@@ -6664,10 +6676,10 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandler {
         reactor: Reactor,
-        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
+        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
+        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -6678,10 +6690,10 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(arena::ArcMemory::new(1)),
-                scratch_mem: Rc::new(arena::RcMemory::new(1)),
-                resp_mem: Rc::new(arena::RcMemory::new(1)),
-                shared_mem: Rc::new(arena::RcMemory::new(1)),
+                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
+                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
+                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -6720,7 +6732,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
+                let shared = memorypool::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_handler_fut(
                     sock,
@@ -6758,14 +6770,14 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6792,11 +6804,11 @@ pub mod testutil {
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
         s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
-        shared: arena::Rc<StreamSharedData>,
+        shared: memorypool::Rc<StreamSharedData>,
     ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
@@ -6839,10 +6851,10 @@ pub mod testutil {
 
     pub struct BenchServerStreamConnection {
         reactor: Reactor,
-        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
+        msg_mem: Arc<memorypool::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
+        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -6853,10 +6865,10 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                msg_mem: Arc::new(arena::ArcMemory::new(1)),
-                scratch_mem: Rc::new(arena::RcMemory::new(1)),
-                resp_mem: Rc::new(arena::RcMemory::new(1)),
-                shared_mem: Rc::new(arena::RcMemory::new(1)),
+                msg_mem: Arc::new(memorypool::ArcMemory::new(1)),
+                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
+                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -6890,7 +6902,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
+                let shared = memorypool::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_connection_inner_fut(
                     token,
@@ -6928,14 +6940,14 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+            let msg = memorypool::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -7038,7 +7050,7 @@ mod tests {
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
@@ -7078,9 +7090,9 @@ mod tests {
     fn server_req_without_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7157,13 +7169,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7194,9 +7207,9 @@ mod tests {
     fn server_req_with_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7276,13 +7289,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7344,9 +7358,9 @@ mod tests {
     fn server_req_pipeline() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7425,13 +7439,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7479,13 +7494,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7508,9 +7524,9 @@ mod tests {
     fn server_req_secure() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7587,13 +7603,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7627,7 +7644,7 @@ mod tests {
         allow_compression: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
         s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
@@ -7647,8 +7664,8 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
-        let shared_mem = Rc::new(arena::RcMemory::new(1));
-        let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+        let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+        let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
 
         server_stream_connection_inner(
             token,
@@ -7679,9 +7696,9 @@ mod tests {
     fn server_stream_without_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7764,13 +7781,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7801,9 +7819,9 @@ mod tests {
     fn server_stream_with_body() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7890,13 +7908,14 @@ mod tests {
             concat!("T69:7:credits,4:1024#3:seq,1:0#2:id,1:1,4:from,7:handler,4:type,6:credit,}",);
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7926,13 +7945,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7963,9 +7983,9 @@ mod tests {
     fn server_stream_chunked() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let resp_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8048,13 +8068,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8063,13 +8084,14 @@ mod tests {
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8105,9 +8127,9 @@ mod tests {
     fn server_stream_early_response() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8196,13 +8218,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8233,9 +8256,9 @@ mod tests {
     fn server_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8298,13 +8321,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -8346,13 +8370,14 @@ mod tests {
         let size = resp.serialize(&mut buf).unwrap();
 
         let msg = zmq::Message::from(&buf[..size]);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -8378,9 +8403,9 @@ mod tests {
     fn server_stream_disconnect() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let resp_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8463,13 +8488,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8511,9 +8537,9 @@ mod tests {
     fn server_websocket() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let resp_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8579,13 +8605,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8655,13 +8682,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8682,9 +8710,9 @@ mod tests {
     fn server_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let resp_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8752,13 +8780,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8839,13 +8868,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8876,9 +8906,9 @@ mod tests {
     fn server_websocket_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let resp_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8944,13 +8974,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8996,13 +9027,14 @@ mod tests {
         let size = resp.serialize(&mut buf).unwrap();
 
         let msg = zmq::Message::from(&buf[..size]);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -9026,7 +9058,7 @@ mod tests {
 
     async fn client_req_fut(
         id: Option<Vec<u8>>,
-        zreq: arena::Rc<zhttppacket::OwnedRequest>,
+        zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
         sock: Rc<RefCell<FakeSock>>,
         s_from_conn: channel::LocalSender<zmq::Message>,
     ) -> Result<(), Error> {
@@ -9080,9 +9112,9 @@ mod tests {
     fn client_req_without_id() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let req_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let req_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let data = concat!(
             "T74:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9091,13 +9123,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9188,9 +9221,9 @@ mod tests {
     fn client_req_with_id() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let req_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
+        let req_mem = Rc::new(memorypool::RcMemory::new(1));
 
         let data = concat!(
             "T83:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9199,13 +9232,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9294,12 +9328,12 @@ mod tests {
 
     async fn client_stream_fut(
         id: Vec<u8>,
-        zreq: arena::Rc<zhttppacket::OwnedRequest>,
+        zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
         sock: Rc<RefCell<FakeSock>>,
         allow_compression: bool,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        r_to_conn: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>,
         s_from_conn: channel::LocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
-        shared: arena::Rc<StreamSharedData>,
+        shared: memorypool::Rc<StreamSharedData>,
     ) -> Result<(), Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
@@ -9383,9 +9417,9 @@ mod tests {
     fn client_stream() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let req_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9395,13 +9429,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9416,8 +9451,8 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(arena::RcMemory::new(1));
-            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
@@ -9514,13 +9549,14 @@ mod tests {
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = arena::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::new(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -9591,9 +9627,9 @@ mod tests {
     fn client_stream_router_resp() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let req_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let data = concat!(
             "T187:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9604,13 +9640,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9625,8 +9662,8 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(arena::RcMemory::new(1));
-            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
             shared.get().set_router_resp(true);
@@ -9726,13 +9763,14 @@ mod tests {
         let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = arena::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::new(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -9803,9 +9841,9 @@ mod tests {
     fn client_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let req_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9815,13 +9853,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9836,8 +9875,8 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(arena::RcMemory::new(1));
-            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
@@ -9929,13 +9968,14 @@ mod tests {
         let size = req.serialize(&mut buf).unwrap();
 
         let msg = zmq::Message::from(&buf[..size]);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = arena::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::new(req, &req_mem).unwrap();
 
         assert!(s_to_conn.try_send((req, 0)).is_ok());
 
@@ -9962,9 +10002,9 @@ mod tests {
     fn client_websocket() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let req_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -9973,13 +10013,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9994,8 +10035,8 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(arena::RcMemory::new(1));
-            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
@@ -10183,13 +10224,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = arena::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::new(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -10211,9 +10253,9 @@ mod tests {
     fn client_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(2));
-        let scratch_mem = Rc::new(arena::RcMemory::new(2));
-        let req_mem = Rc::new(arena::RcMemory::new(2));
+        let msg_mem = Arc::new(memorypool::ArcMemory::new(2));
+        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
+        let req_mem = Rc::new(memorypool::RcMemory::new(2));
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -10222,13 +10264,14 @@ mod tests {
         .as_bytes();
 
         let msg = zmq::Message::from(data);
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -10243,8 +10286,8 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(arena::RcMemory::new(1));
-            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
@@ -10445,13 +10488,14 @@ mod tests {
         );
 
         let msg = zmq::Message::from(msg.as_bytes());
-        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+        let msg = memorypool::Arc::new(msg, &msg_mem).unwrap();
 
         let scratch =
-            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = arena::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::new(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 

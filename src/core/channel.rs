@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::event;
 use crate::core::list;
+use crate::core::memorypool;
 use crate::core::reactor::CustomEvented;
 use crate::core::task::get_reactor;
 use slab::Slab;
@@ -366,7 +366,7 @@ impl<T> LocalSender<T> {
     #[allow(clippy::result_unit_err)]
     pub fn try_clone(
         &self,
-        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+        memory: &Rc<memorypool::RcMemory<event::LocalRegistrationEntry>>,
     ) -> Result<Self, ()> {
         let (write_reg, write_sr) = event::LocalRegistration::new(memory);
 
@@ -383,7 +383,7 @@ impl<T> LocalSender<T> {
     #[allow(clippy::result_unit_err)]
     pub fn make_receiver(
         &self,
-        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+        memory: &Rc<memorypool::RcMemory<event::LocalRegistrationEntry>>,
     ) -> Result<LocalReceiver<T>, ()> {
         if self.channel.read_set_readiness.borrow().is_some() {
             return Err(());
@@ -453,7 +453,7 @@ impl<T> Drop for LocalReceiver<T> {
 pub fn local_channel<T>(
     bound: usize,
     max_senders: usize,
-    memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+    memory: &Rc<memorypool::RcMemory<event::LocalRegistrationEntry>>,
 ) -> (LocalSender<T>, LocalReceiver<T>) {
     let (read_reg, read_sr) = event::LocalRegistration::new(memory);
     let (write_reg, write_sr) = event::LocalRegistration::new(memory);
