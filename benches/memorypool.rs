@@ -33,7 +33,7 @@ fn bench_memorypool_rc_new<const N: usize>(c: &mut Criterion, op_kcount: usize) 
                 let instances = &mut *instances.borrow_mut();
                 let mut next_value: [u64; N] = [0; N];
                 while next_value[0] < op_count as u64 {
-                    let n = memorypool::Rc::new(next_value, &memory).unwrap();
+                    let n = memorypool::Rc::try_new_in(next_value, &memory).unwrap();
                     instances.push(n);
                     next_value[0] += 1;
                 }
@@ -77,7 +77,7 @@ fn bench_memorypool_rc_drop<const N: usize>(c: &mut Criterion, op_kcount: usize)
                 let instances = &mut *instances.borrow_mut();
                 let mut next_value: [u64; N] = [0; N];
                 while next_value[0] < op_count as u64 {
-                    let n = memorypool::Rc::new(next_value, &memory).unwrap();
+                    let n = memorypool::Rc::try_new_in(next_value, &memory).unwrap();
                     instances.push(n);
                     next_value[0] += 1;
                 }
@@ -120,7 +120,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {
-            let n = memorypool::Rc::new(next_value, &memory).unwrap();
+            let n = memorypool::Rc::try_new_in(next_value, &memory).unwrap();
             instances.push(n);
             next_value += 1;
         }
@@ -173,7 +173,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {
-            let n = memorypool::Rc::new(next_value, &memory).unwrap();
+            let n = memorypool::Rc::try_new_in(next_value, &memory).unwrap();
             instances.push(n);
             next_value += 1;
         }
@@ -226,7 +226,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {
-            let n = memorypool::Rc::new(next_value, &memory).unwrap();
+            let n = memorypool::Rc::try_new_in(next_value, &memory).unwrap();
             instances.push(n);
             next_value += 1;
         }
@@ -234,7 +234,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         c.bench_function(&format!("mp-rc-deref-x{OP_KCOUNT}k"), |b| {
             b.iter(|| {
                 for (expected_value, r) in instances.iter().enumerate() {
-                    assert_eq!(*r.get(), expected_value as u64);
+                    assert_eq!(**r, expected_value as u64);
                 }
             })
         });

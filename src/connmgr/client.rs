@@ -374,7 +374,7 @@ impl Connections {
     fn batch_add(&self, ckey: usize) -> Result<(), ()> {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[ckey].value;
-        let cshared = ci.shared.as_ref().unwrap().get();
+        let cshared = ci.shared.as_ref().unwrap();
 
         // Only batch connections with known handler addresses
         let addr_ref = cshared.to_addr();
@@ -403,7 +403,7 @@ impl Connections {
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
-                    let cshared = ci.shared.as_ref().unwrap().get();
+                    let cshared = ci.shared.as_ref().unwrap();
 
                     // Addr could have been removed after adding to the batch
                     cshared.to_addr().get()?;
@@ -455,7 +455,7 @@ impl Connections {
 
             for &ckey in batch.last_group_ckeys() {
                 let ci = &mut nodes[ckey].value;
-                let cshared = ci.shared.as_ref().unwrap().get();
+                let cshared = ci.shared.as_ref().unwrap();
 
                 cshared.inc_out_seq();
                 ci.batch_key = None;
@@ -895,7 +895,7 @@ impl Worker {
                 // req_handle_recv
                 Select5::R5(result) => match result {
                     Ok((header, msg)) => {
-                        let scratch = memorypool::Rc::new(
+                        let scratch = memorypool::Rc::try_new_in(
                             RefCell::new(zhttppacket::ParseScratch::new()),
                             &req_scratch_mem,
                         )
@@ -942,7 +942,7 @@ impl Worker {
                             None
                         };
 
-                        let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
+                        let zreq = memorypool::Rc::try_new_in(zreq, &req_req_mem).unwrap();
 
                         let (cstop, r_cstop) =
                             CancellationToken::new(&reactor.local_registration_memory());
@@ -1118,7 +1118,7 @@ impl Worker {
                         Ok(ret) => {
                             let (msg, session) = ret;
 
-                            let scratch = memorypool::Rc::new(
+                            let scratch = memorypool::Rc::try_new_in(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1165,7 +1165,7 @@ impl Worker {
                                 }
                             };
 
-                            let zreq = memorypool::Rc::new(zreq, &stream_req_mem).unwrap();
+                            let zreq = memorypool::Rc::try_new_in(zreq, &stream_req_mem).unwrap();
 
                             let (cstop, r_cstop) =
                                 CancellationToken::new(&reactor.local_registration_memory());
@@ -1181,9 +1181,11 @@ impl Worker {
                             let (zstream_receiver_sender, zstream_receiver) =
                                 zreceiver_pool.take().unwrap();
 
-                            let shared =
-                                memorypool::Rc::new(StreamSharedData::new(), &stream_shared_mem)
-                                    .unwrap();
+                            let shared = memorypool::Rc::try_new_in(
+                                StreamSharedData::new(),
+                                &stream_shared_mem,
+                            )
+                            .unwrap();
 
                             let ckey = conns
                                 .add(
@@ -1238,7 +1240,7 @@ impl Worker {
                     // stream_handle.recv_directed
                     Select6::R6(result) => match result {
                         Ok(msg) => {
-                            let scratch = memorypool::Rc::new(
+                            let scratch = memorypool::Rc::try_new_in(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1252,9 +1254,9 @@ impl Worker {
                                 }
                             };
 
-                            let zreq = memorypool::Rc::new(zreq, &stream_req_mem).unwrap();
+                            let zreq = memorypool::Rc::try_new_in(zreq, &stream_req_mem).unwrap();
 
-                            let zreq_ref = zreq.get().get();
+                            let zreq_ref = zreq.get();
 
                             let ids = zreq_ref.ids;
 
@@ -1453,8 +1455,7 @@ impl Worker {
             shared,
             &|| {
                 // handle task limits addr to FROM_MAX so this is guaranteed to succeed
-                let from: ArrayVec<u8, FROM_MAX> =
-                    ArrayVec::try_from(zreq.get().get().from).unwrap();
+                let from: ArrayVec<u8, FROM_MAX> = ArrayVec::try_from(zreq.get().from).unwrap();
 
                 let cid = (from, cid.clone());
                 conns.set_id(ckey, Some(&cid))
@@ -1656,7 +1657,7 @@ impl Client {
             let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
             let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let scratch = memorypool::Rc::new(
+            let scratch = memorypool::Rc::try_new_in(
                 RefCell::new(zhttppacket::ParseScratch::new()),
                 &req_scratch_mem,
             )
@@ -1671,7 +1672,7 @@ impl Client {
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-            let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
+            let zreq = memorypool::Rc::try_new_in(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
@@ -1720,7 +1721,7 @@ impl Client {
             let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
             let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let scratch = memorypool::Rc::new(
+            let scratch = memorypool::Rc::try_new_in(
                 RefCell::new(zhttppacket::ParseScratch::new()),
                 &req_scratch_mem,
             )
@@ -1735,7 +1736,7 @@ impl Client {
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-            let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
+            let zreq = memorypool::Rc::try_new_in(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
@@ -1743,7 +1744,8 @@ impl Client {
 
             let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
+            let shared =
+                memorypool::Rc::try_new_in(StreamSharedData::new(), &stream_shared_mem).unwrap();
 
             let fut = Worker::stream_connection_task(
                 stop,

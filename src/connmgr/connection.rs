@@ -1079,7 +1079,7 @@ where
             let (r, id_index) = loop {
                 let (r, id_index) = Track::map_first(self.receiver.recv().await?);
 
-                let zresp = r.get().get();
+                let zresp = r.get();
 
                 if zresp.ids[id_index].id != self.id.as_bytes() {
                     // Skip messages addressed to old ids
@@ -1089,7 +1089,7 @@ where
                 break (r, id_index);
             };
 
-            let zresp = r.get().get();
+            let zresp = r.get();
 
             if !zresp.ptype_str.is_empty() {
                 debug!(
@@ -1229,7 +1229,7 @@ where
             let (r, id_index) = loop {
                 let (r, id_index) = Track::map_first(self.receiver.recv().await?);
 
-                let zreq = r.get().get();
+                let zreq = r.get();
 
                 if zreq.ids[id_index].id != self.id {
                     // Skip messages addressed to old ids
@@ -1239,7 +1239,7 @@ where
                 break (r, id_index);
             };
 
-            let zreq = r.get().get();
+            let zreq = r.get();
 
             if !zreq.ptype_str.is_empty() {
                 debug!(
@@ -1638,7 +1638,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
         // ABR: direct read
         let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
 
-        let zresp_ref = zresp.get().get();
+        let zresp_ref = zresp.get();
 
         if zresp_ref.ids[id_index].id != id.as_bytes() {
             // Skip messages addressed to old ids
@@ -1663,7 +1663,7 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
     };
 
     let (header, prepare_body) = {
-        let zresp = zresp.get().get();
+        let zresp = zresp.get();
 
         let rdata = match &zresp.ptype {
             zhttppacket::ResponsePacket::Data(rdata) => rdata,
@@ -1991,7 +1991,7 @@ async fn handle_other<R>(
 where
     R: Fn(),
 {
-    match &zresp.get().get().ptype {
+    match &zresp.get().ptype {
         zhttppacket::ResponsePacket::KeepAlive => Ok(()),
         zhttppacket::ResponsePacket::Credit(_) => Ok(()),
         zhttppacket::ResponsePacket::HandoffStart => {
@@ -2016,7 +2016,7 @@ async fn server_handle_other<R>(
 where
     R: Fn(),
 {
-    match &zreq.get().get().ptype {
+    match &zreq.get().ptype {
         zhttppacket::RequestPacket::KeepAlive => Ok(()),
         zhttppacket::RequestPacket::Credit(_) => Ok(()),
         zhttppacket::RequestPacket::HandoffStart => {
@@ -2109,7 +2109,7 @@ where
             Select3::R3(ret) => {
                 let r = ret?;
 
-                let zresp_ref = r.get().get();
+                let zresp_ref = r.get();
 
                 match &zresp_ref.ptype {
                     zhttppacket::ResponsePacket::Data(_) => break,
@@ -2287,7 +2287,7 @@ where
             Select4::R3(ret) => {
                 let zresp = ret?;
 
-                match &zresp.get().get().ptype {
+                match &zresp.get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => {
                         let size = resp_body.prepare(rdata.body, !rdata.more)?;
 
@@ -2486,7 +2486,7 @@ where
             Select4::R3(ret) => {
                 let zreq = ret?;
 
-                match &zreq.get().get().ptype {
+                match &zreq.get().ptype {
                     zhttppacket::RequestPacket::Data(rdata) => {
                         let size = req_body.prepare(rdata.body, !rdata.more)?;
 
@@ -2740,7 +2740,7 @@ where
             Select4::R4(ret) => {
                 let zresp = ret?;
 
-                match &zresp.get().get().ptype {
+                match &zresp.get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
                             let avail = handler.accept_avail();
@@ -3086,7 +3086,7 @@ where
             Select4::R4(ret) => {
                 let zreq = ret?;
 
-                match &zreq.get().get().ptype {
+                match &zreq.get().ptype {
                     zhttppacket::RequestPacket::Data(rdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
                             let avail = handler.accept_avail();
@@ -3579,7 +3579,7 @@ where
             Select2::R1(ret) => {
                 let zresp = ret?;
 
-                match zresp.get().get().ptype {
+                match zresp.get().ptype {
                     zhttppacket::ResponsePacket::Data(_)
                     | zhttppacket::ResponsePacket::Error(_) => break zresp,
                     _ => {
@@ -3594,7 +3594,7 @@ where
 
     // Determine how to respond
 
-    let rdata = match &zresp.get().get().ptype {
+    let rdata = match &zresp.get().ptype {
         zhttppacket::ResponsePacket::Data(rdata) => rdata,
         zhttppacket::ResponsePacket::Error(edata) => {
             if ws_req_data.is_some() && edata.condition == "rejected" {
@@ -3928,7 +3928,7 @@ where
                 Select2::R2(ret) => {
                     let zresp = ret?;
 
-                    match &zresp.get().get().ptype {
+                    match &zresp.get().ptype {
                         zhttppacket::ResponsePacket::Data(rdata) => {
                             let (size, overflowed) =
                                 prepare_body.prepare(rdata.body, !rdata.more)?;
@@ -4064,7 +4064,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &zsender,
                 &zsender_stream,
                 zreceiver,
-                shared.get(),
+                &shared,
                 &refresh_stream_timeout,
                 &refresh_session_timeout,
             ));
@@ -4092,8 +4092,6 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                     );
 
                     if !handler_caused {
-                        let shared = shared.get();
-
                         let msg = if let Some(addr) = shared.to_addr().get() {
                             let id = cid.as_ref();
 
@@ -4147,7 +4145,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
         buf2.clear();
         buf2.resize(buffer_size);
-        shared.get().reset();
+        shared.reset();
 
         *cid = cid_provider.get_new_assigned_cid();
     }
@@ -4745,7 +4743,7 @@ async fn client_req_connect(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
 ) -> Result<zmq::Message, Error> {
-    let zreq = zreq.get().get();
+    let zreq = zreq.get();
 
     let rdata = match &zreq.ptype {
         zhttppacket::RequestPacket::Data(data) => data,
@@ -5572,7 +5570,7 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    let zreq = zreq.get().get();
+    let zreq = zreq.get();
 
     // Assign address so we can send replies
     let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq.from) {
@@ -5875,7 +5873,7 @@ where
             pool,
             zreceiver,
             &zsender,
-            shared.get(),
+            &shared,
             enable_routing,
             &mut response_received,
             &refresh_stream_timeout,
@@ -5906,8 +5904,6 @@ where
             );
 
             if !handler_caused {
-                let shared = shared.get();
-
                 let resp = if let Some(addr) = shared.to_addr().get() {
                     let mut zresp = if response_received {
                         zhttppacket::Response::new_cancel(b"", &[])
@@ -6441,12 +6437,14 @@ pub mod testutil {
 
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-            let scratch =
-                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
-                    .unwrap();
+            let scratch = memorypool::Rc::try_new_in(
+                RefCell::new(zhttppacket::ParseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::try_new_in(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6589,12 +6587,14 @@ pub mod testutil {
 
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-            let scratch =
-                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
-                    .unwrap();
+            let scratch = memorypool::Rc::try_new_in(
+                RefCell::new(zhttppacket::ParseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::try_new_in(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6653,7 +6653,7 @@ pub mod testutil {
             &s_from_conn,
             &s_stream_from_conn,
             &r_to_conn,
-            shared.get(),
+            &shared,
             &|| {},
             &|| {},
         )
@@ -6721,7 +6721,8 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = memorypool::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
+                let shared =
+                    memorypool::Rc::try_new_in(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_handler_fut(
                     sock,
@@ -6760,12 +6761,14 @@ pub mod testutil {
 
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-            let scratch =
-                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
-                    .unwrap();
+            let scratch = memorypool::Rc::try_new_in(
+                RefCell::new(zhttppacket::ParseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::try_new_in(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -6887,7 +6890,8 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = memorypool::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
+                let shared =
+                    memorypool::Rc::try_new_in(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_connection_inner_fut(
                     token,
@@ -6926,12 +6930,14 @@ pub mod testutil {
 
             let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-            let scratch =
-                memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
-                    .unwrap();
+            let scratch = memorypool::Rc::try_new_in(
+                RefCell::new(zhttppacket::ParseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = memorypool::Rc::new(resp, resp_mem).unwrap();
+            let resp = memorypool::Rc::try_new_in(resp, resp_mem).unwrap();
 
             assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -7153,12 +7159,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7271,12 +7279,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7419,12 +7429,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7473,12 +7485,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7580,12 +7594,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7640,7 +7656,7 @@ mod tests {
         let timeout = Duration::from_millis(5_000);
 
         let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-        let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+        let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
 
         server_stream_connection_inner(
             token,
@@ -7756,12 +7772,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7881,12 +7899,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -7917,12 +7937,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8038,12 +8060,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8053,12 +8077,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8185,12 +8211,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8286,12 +8314,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -8334,12 +8364,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -8450,12 +8482,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8565,12 +8599,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8641,12 +8677,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8737,12 +8775,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8824,12 +8864,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8928,12 +8970,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
@@ -8980,12 +9024,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-        let resp = memorypool::Rc::new(resp, &resp_mem).unwrap();
+        let resp = memorypool::Rc::try_new_in(resp, &resp_mem).unwrap();
 
         assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
@@ -9025,7 +9071,7 @@ mod tests {
         let mut body_buf = ContiguousBuffer::new(buffer_size);
         let packet_buf = RefCell::new(vec![0; 2048]);
 
-        let zreq = zreq.get().get();
+        let zreq = zreq.get();
 
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(rdata) => rdata,
@@ -9074,12 +9120,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9181,12 +9229,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9302,7 +9352,7 @@ mod tests {
         let refresh_stream_timeout = || {};
         let refresh_session_timeout = || {};
 
-        let zreq = zreq.get().get();
+        let zreq = zreq.get();
 
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(rdata) => rdata,
@@ -9314,13 +9364,8 @@ mod tests {
         let log_id = "test";
         let instance_id = "test";
 
-        let zsess_out = ZhttpServerStreamSessionOut::new(
-            instance_id,
-            &id,
-            &packet_buf,
-            &s_from_conn,
-            shared.get(),
-        );
+        let zsess_out =
+            ZhttpServerStreamSessionOut::new(instance_id, &id, &packet_buf, &s_from_conn, &shared);
 
         zsess_out.check_send().await;
 
@@ -9331,7 +9376,7 @@ mod tests {
             &id,
             rdata.credits,
             &r_to_conn,
-            shared.get(),
+            &shared,
             &refresh_session_timeout,
         );
 
@@ -9376,12 +9421,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9397,9 +9444,9 @@ mod tests {
                 .unwrap();
 
             let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
-            shared.get().set_to_addr(Some(addr));
+            shared.set_to_addr(Some(addr));
 
             client_stream_fut(
                 b"1".to_vec(),
@@ -9495,12 +9542,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = memorypool::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::try_new_in(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -9584,12 +9633,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9605,10 +9656,10 @@ mod tests {
                 .unwrap();
 
             let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
-            shared.get().set_to_addr(Some(addr));
-            shared.get().set_router_resp(true);
+            shared.set_to_addr(Some(addr));
+            shared.set_router_resp(true);
 
             client_stream_fut(
                 b"1".to_vec(),
@@ -9706,12 +9757,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = memorypool::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::try_new_in(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -9794,12 +9847,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9815,9 +9870,9 @@ mod tests {
                 .unwrap();
 
             let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
-            shared.get().set_to_addr(Some(addr));
+            shared.set_to_addr(Some(addr));
 
             client_stream_fut(
                 b"1".to_vec(),
@@ -9908,12 +9963,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(&buf[..size]));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = memorypool::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::try_new_in(req, &req_mem).unwrap();
 
         assert!(s_to_conn.try_send((req, 0)).is_ok());
 
@@ -9951,12 +10008,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9972,9 +10031,9 @@ mod tests {
                 .unwrap();
 
             let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
-            shared.get().set_to_addr(Some(addr));
+            shared.set_to_addr(Some(addr));
 
             client_stream_fut(
                 b"1".to_vec(),
@@ -10161,12 +10220,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = memorypool::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::try_new_in(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
@@ -10199,12 +10260,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let zreq = memorypool::Rc::new(zreq, &req_mem).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -10220,9 +10283,9 @@ mod tests {
                 .unwrap();
 
             let shared_mem = Rc::new(memorypool::RcMemory::new(1));
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
-            shared.get().set_to_addr(Some(addr));
+            shared.set_to_addr(Some(addr));
 
             client_stream_fut(
                 b"1".to_vec(),
@@ -10422,12 +10485,14 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
-        let scratch =
-            memorypool::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
-                .unwrap();
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
         let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
-        let req = memorypool::Rc::new(req, &req_mem).unwrap();
+        let req = memorypool::Rc::try_new_in(req, &req_mem).unwrap();
 
         assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
 
