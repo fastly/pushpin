@@ -16,7 +16,6 @@
  */
 
 use crate::core::minislab::MiniSlab;
-use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::marker::PhantomData;
@@ -24,7 +23,6 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::process::abort;
 use std::ptr::NonNull;
-use std::sync::Mutex;
 
 pub struct InsertError<T>(pub T);
 
@@ -102,102 +100,6 @@ impl<T> Memory<T> {
         // its validity until the element is removed.
 
         Some(entry as *const T)
-    }
-}
-
-pub struct ReusableValue<T> {
-    reusable: std::sync::Arc<Reusable<T>>,
-    value: *mut T,
-    key: usize,
-}
-
-impl<T> ReusableValue<T> {
-    // Vec element addresses are guaranteed to be stable once created,
-    // and elements are only removed when the Reusable is dropped, and
-    // the Arc'd Reusable is guaranteed to live as long as
-    // ReusableValue, therefore it is safe to assume the element will
-    // live at least as long as the ReusableValue
-
-    fn get(&self) -> &T {
-        unsafe { &*self.value }
-    }
-
-    fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.value }
-    }
-}
-
-impl<T> Drop for ReusableValue<T> {
-    fn drop(&mut self) {
-        let mut entries = self.reusable.entries.lock().unwrap();
-
-        entries.0.remove(self.key);
-    }
-}
-
-impl<T> Deref for ReusableValue<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.get()
-    }
-}
-
-impl<T> DerefMut for ReusableValue<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.get_mut()
-    }
-}
-
-// Like Memory, but for preinitializing each value and reusing
-pub struct Reusable<T> {
-    entries: Mutex<(Slab<()>, Vec<T>)>,
-}
-
-impl<T> Reusable<T> {
-    pub fn new<F>(capacity: usize, init_fn: F) -> Self
-    where
-        F: Fn() -> T,
-    {
-        let mut values = Vec::with_capacity(capacity);
-
-        for _ in 0..capacity {
-            values.push(init_fn());
-        }
-
-        // Allocate the slab with fixed capacity
-        let s = Slab::with_capacity(capacity);
-
-        Self {
-            entries: Mutex::new((s, values)),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        let entries = self.entries.lock().unwrap();
-
-        entries.0.len()
-    }
-
-    #[allow(clippy::result_unit_err)]
-    pub fn reserve(self: &std::sync::Arc<Self>) -> Result<ReusableValue<T>, ()> {
-        let mut entries = self.entries.lock().unwrap();
-
-        // Out of capacity. The number of buffers is fixed
-        if entries.0.len() == entries.0.capacity() {
-            return Err(());
-        }
-
-        let key = entries.0.insert(());
-
-        let value = &mut entries.1[key] as *mut T;
-
-        Ok(ReusableValue {
-            reusable: self.clone(),
-            value,
-            key,
-        })
     }
 }
 
@@ -423,33 +325,6 @@ impl ReusableVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_reusable() {
-        let reusable = std::sync::Arc::new(Reusable::new(2, || vec![0; 128]));
-        assert_eq!(reusable.len(), 0);
-
-        let mut buf1 = reusable.reserve().unwrap();
-        assert_eq!(reusable.len(), 1);
-
-        let mut buf2 = reusable.reserve().unwrap();
-        assert_eq!(reusable.len(), 2);
-
-        // No room
-        assert!(reusable.reserve().is_err());
-
-        buf1[..5].copy_from_slice(b"hello");
-        buf2[..5].copy_from_slice(b"world");
-
-        assert_eq!(&buf1[..5], b"hello");
-        assert_eq!(&buf2[..5], b"world");
-
-        mem::drop(buf1);
-        assert_eq!(reusable.len(), 1);
-
-        mem::drop(buf2);
-        assert_eq!(reusable.len(), 0);
-    }
 
     #[test]
     fn test_rc() {
