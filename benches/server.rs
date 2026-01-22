@@ -90,7 +90,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerReqConnection::new();
 
-        c.bench_function("server-req-connection", |b| {
+        c.bench_function("server-req-conn", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -98,7 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerStreamConnection::new();
 
-        c.bench_function("server-stream-connection", |b| {
+        c.bench_function("server-stream-conn", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
