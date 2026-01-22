@@ -1516,7 +1516,7 @@ impl Worker {
                     // stream_handle.recv
                     Select8::R8(result) => match result {
                         Ok((msg, from_router)) => {
-                            let msg_data = &msg.get()[..];
+                            let msg_data = &*msg;
 
                             let offset = if from_router {
                                 0
@@ -2231,16 +2231,8 @@ impl TestServer {
         let req_maxconn = 100;
         let stream_maxconn = 100;
 
-        let maxconn = req_maxconn + stream_maxconn;
-
-        let mut zsockman = zhttpsocket::ClientSocketManager::new(
-            Arc::clone(&zmq_context),
-            "test",
-            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
-            100,
-            100,
-            100,
-        );
+        let mut zsockman =
+            zhttpsocket::ClientSocketManager::new(Arc::clone(&zmq_context), "test", 100, 100, 100);
 
         zsockman
             .set_client_req_specs(&[SpecInfo {
