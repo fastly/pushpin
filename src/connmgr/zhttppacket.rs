@@ -21,6 +21,7 @@ use std::cell::RefCell;
 use std::io;
 use std::mem;
 use std::str;
+use std::sync::Arc;
 use thiserror::Error;
 
 pub const IDS_MAX: usize = 128;
@@ -1721,7 +1722,7 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Response<'buf, 's
 pub struct OwnedPacket<T> {
     inner: T,
     _scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
-    _src: memorypool::Arc<zmq::Message>,
+    _src: Arc<zmq::Message>,
 }
 
 impl<T> OwnedPacket<T>
@@ -1729,11 +1730,11 @@ where
     T: PacketParse<'static, 'static, Parsed = T>,
 {
     pub fn parse(
-        src: memorypool::Arc<zmq::Message>,
+        src: Arc<zmq::Message>,
         offset: usize,
         scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
     ) -> Result<Self, ParseError> {
-        let src_ref: &[u8] = &src.get()[offset..];
+        let src_ref: &[u8] = &src[offset..];
 
         // SAFETY: Self will take ownership of src, and the bytes referred to
         // by src_ref are on the heap, and src will not be modified or
@@ -2041,10 +2042,9 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = memorypool::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
         let scratch =
             memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
@@ -2068,10 +2068,9 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(memorypool::ArcMemory::new(1));
         let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = memorypool::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
         let scratch =
             memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
