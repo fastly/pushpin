@@ -31,7 +31,7 @@ pub mod tls;
 pub mod websocket;
 
 use self::client::Client;
-use self::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
+use self::server::Server;
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
 use log::{debug, info};
@@ -145,8 +145,6 @@ impl App {
 
         let handle_bound = cmp::max(other_hwm / config.workers, 1);
 
-        let maxconn = config.req_maxconn + config.stream_maxconn;
-
         let server = if !config.listen.is_empty() {
             let mut any_req = false;
             let mut any_stream = false;
@@ -162,8 +160,6 @@ impl App {
             let mut zsockman = zhttpsocket::ClientSocketManager::new(
                 Arc::clone(&zmq_context),
                 &config.instance_id,
-                (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
-                    + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
                 INIT_HWM,
                 other_hwm,
                 handle_bound,
@@ -263,8 +259,6 @@ impl App {
             let mut zsockman = zhttpsocket::ServerSocketManager::new(
                 Arc::clone(&zmq_context),
                 &config.instance_id,
-                (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
-                    + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
                 INIT_HWM,
                 other_hwm,
                 handle_bound,

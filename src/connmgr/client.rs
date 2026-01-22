@@ -1655,7 +1655,6 @@ impl Client {
 
             let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
             let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
-            let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
 
             let scratch = memorypool::Rc::new(
                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1669,7 +1668,7 @@ impl Client {
                 "0:text/plain,]]4:body,5:hello,4:more,4:true!}",
             );
 
-            let msg = memorypool::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
             let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
@@ -1720,7 +1719,6 @@ impl Client {
 
             let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
             let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
-            let msg_mem = Arc::new(memorypool::ArcMemory::new(1));
 
             let scratch = memorypool::Rc::new(
                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1734,7 +1732,7 @@ impl Client {
                 "0:text/plain,]]4:body,5:hello,4:more,4:true!}",
             );
 
-            let msg = memorypool::Arc::new(zmq::Message::from(msg.as_bytes()), &msg_mem).unwrap();
+            let msg = Arc::new(zmq::Message::from(msg.as_bytes()));
 
             let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
             let zreq = memorypool::Rc::new(zreq, &req_req_mem).unwrap();
@@ -1828,12 +1826,9 @@ impl TestClient {
         let req_maxconn = 100;
         let stream_maxconn = 100;
 
-        let maxconn = req_maxconn + stream_maxconn;
-
         let mut zsockman = zhttpsocket::ServerSocketManager::new(
             Arc::clone(&zmq_context),
             "test",
-            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
             100,
             100,
             100,

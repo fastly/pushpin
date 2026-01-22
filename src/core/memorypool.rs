@@ -24,7 +24,7 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::process::abort;
 use std::ptr::NonNull;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 pub struct InsertError<T>(pub T);
 
@@ -102,102 +102,6 @@ impl<T> Memory<T> {
         // its validity until the element is removed.
 
         Some(entry as *const T)
-    }
-}
-
-pub struct SyncEntryGuard<'a, T> {
-    entries: MutexGuard<'a, Slab<T>>,
-    entry: &'a mut T,
-    key: usize,
-}
-
-impl<T> SyncEntryGuard<'_, T> {
-    fn remove(mut self) {
-        self.entries.remove(self.key);
-    }
-}
-
-impl<T> Deref for SyncEntryGuard<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.entry
-    }
-}
-
-impl<T> DerefMut for SyncEntryGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.entry
-    }
-}
-
-// This is essentially a thread-safe slab. Operations are protected by a
-// mutex. When an element is retrieved for reading or modification, it is
-// wrapped in a EntryGuard which keeps the entire slab locked until the
-// caller is done working with the element
-pub struct SyncMemory<T> {
-    entries: Mutex<Slab<T>>,
-}
-
-impl<T> SyncMemory<T> {
-    pub fn new(capacity: usize) -> Self {
-        // Allocate the slab with fixed capacity
-        let s = Slab::with_capacity(capacity);
-
-        Self {
-            entries: Mutex::new(s),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        let entries = self.entries.lock().unwrap();
-
-        entries.len()
-    }
-
-    fn insert(&self, e: T) -> Result<usize, ()> {
-        let mut entries = self.entries.lock().unwrap();
-
-        // Out of capacity. By preventing inserts beyond the capacity, we
-        // ensure the underlying memory won't get moved due to a realloc
-        if entries.len() == entries.capacity() {
-            return Err(());
-        }
-
-        Ok(entries.insert(e))
-    }
-
-    fn get<'a>(&'a self, key: usize) -> Option<SyncEntryGuard<'a, T>> {
-        let mut entries = self.entries.lock().unwrap();
-
-        let entry = entries.get_mut(key)?;
-
-        // Slab element addresses are guaranteed to be stable once created,
-        // and the only place we remove the element is in SyncEntryGuard's
-        // remove method which consumes itself, therefore it is safe to
-        // assume the element will live at least as long as the SyncEntryGuard
-        // and we can extend the lifetime of the reference beyond the
-        // MutexGuard
-        let entry = unsafe { mem::transmute::<&mut T, &'a mut T>(entry) };
-
-        Some(SyncEntryGuard {
-            entries,
-            entry,
-            key,
-        })
-    }
-
-    // For tests, as a way to confirm the memory isn't moving. Be careful
-    // with this. The very first element inserted will be at index 0, but
-    // if the slab has been used and cleared, then the next element
-    // inserted may not be at index 0 and calling this method afterward
-    // will panic
-    #[cfg(test)]
-    fn entry0_ptr(&self) -> *const T {
-        let entries = self.entries.lock().unwrap();
-
-        entries.get(0).unwrap() as *const T
     }
 }
 
@@ -425,69 +329,6 @@ impl<T> Drop for Rc<T> {
     }
 }
 
-pub struct RcEntry<T> {
-    value: T,
-    refs: usize,
-}
-
-pub type ArcMemory<T> = SyncMemory<RcEntry<T>>;
-
-pub struct Arc<T> {
-    memory: std::sync::Arc<ArcMemory<T>>,
-    key: usize,
-}
-
-impl<T> Arc<T> {
-    #[allow(clippy::result_unit_err)]
-    pub fn new(v: T, memory: &std::sync::Arc<ArcMemory<T>>) -> Result<Self, ()> {
-        let key = memory.insert(RcEntry { value: v, refs: 1 })?;
-
-        Ok(Self {
-            memory: memory.clone(),
-            key,
-        })
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    pub fn clone(rc: &Arc<T>) -> Self {
-        let mut e = rc.memory.get(rc.key).unwrap();
-
-        e.refs += 1;
-
-        Self {
-            memory: rc.memory.clone(),
-            key: rc.key,
-        }
-    }
-
-    pub fn get<'a>(&'a self) -> &'a T {
-        let e = self.memory.get(self.key).unwrap();
-
-        // Get a reference to the inner value
-        let value = &e.value;
-
-        // Entry addresses are guaranteed to be stable once created, and the
-        // entry managed by this Arc won't be dropped until this Arc drops,
-        // therefore it is safe to assume the entry managed by this Arc will
-        // live at least as long as this Arc, and we can extend the lifetime
-        // of the reference beyond the SyncEntryGuard
-        unsafe { mem::transmute::<&T, &'a T>(value) }
-    }
-}
-
-impl<T> Drop for Arc<T> {
-    fn drop(&mut self) {
-        let mut e = self.memory.get(self.key).unwrap();
-
-        if e.refs == 1 {
-            e.remove();
-            return;
-        }
-
-        e.refs -= 1;
-    }
-}
-
 // Adapted from https://github.com/rust-lang/rfcs/pull/2802
 pub fn recycle_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
     assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
@@ -637,41 +478,6 @@ mod tests {
         mem::drop(e0b);
         assert_eq!(memory.len(), 2);
         assert_eq!(memory.addr_of(0).unwrap(), p);
-
-        mem::drop(e0a);
-        assert_eq!(memory.len(), 1);
-
-        mem::drop(e1a);
-        assert_eq!(memory.len(), 0);
-    }
-
-    #[test]
-    fn test_arc() {
-        let memory = std::sync::Arc::new(ArcMemory::new(2));
-        assert_eq!(memory.len(), 0);
-
-        let e0a = Arc::new(123 as i32, &memory).unwrap();
-        assert_eq!(memory.len(), 1);
-        let p = memory.entry0_ptr();
-
-        let e0b = Arc::clone(&e0a);
-        assert_eq!(memory.len(), 1);
-        assert_eq!(memory.entry0_ptr(), p);
-
-        let e1a = Arc::new(456 as i32, &memory).unwrap();
-        assert_eq!(memory.len(), 2);
-        assert_eq!(memory.entry0_ptr(), p);
-
-        // No room
-        assert!(Arc::new(789 as i32, &memory).is_err());
-
-        assert_eq!(*e0a.get(), 123);
-        assert_eq!(*e0b.get(), 123);
-        assert_eq!(*e1a.get(), 456);
-
-        mem::drop(e0b);
-        assert_eq!(memory.len(), 2);
-        assert_eq!(memory.entry0_ptr(), p);
 
         mem::drop(e0a);
         assert_eq!(memory.len(), 1);
