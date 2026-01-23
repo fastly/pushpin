@@ -24,6 +24,9 @@ use std::ops::{Deref, DerefMut};
 use std::process::abort;
 use std::ptr::NonNull;
 
+#[derive(Debug)]
+pub struct AllocError;
+
 pub struct InsertError<T>(pub T);
 
 impl<T> fmt::Debug for InsertError<T> {
@@ -156,8 +159,7 @@ pub struct Rc<T> {
 }
 
 impl<T> Rc<T> {
-    #[allow(clippy::result_unit_err)]
-    pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, InsertError<T>> {
+    pub fn try_new_in(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, AllocError> {
         let (key, ptr) = memory
             .insert(RcInner {
                 refs: Cell::new(1),
@@ -165,7 +167,7 @@ impl<T> Rc<T> {
                 key: Cell::new(0),
                 value: v,
             })
-            .map_err(|e| InsertError(e.0.value))?;
+            .map_err(|_| AllocError)?;
 
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
@@ -178,22 +180,6 @@ impl<T> Rc<T> {
             ptr,
             phantom: PhantomData,
         })
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    #[inline]
-    pub fn clone(rc: &Rc<T>) -> Self {
-        rc.inner().inc();
-
-        Self {
-            ptr: rc.ptr,
-            phantom: rc.phantom,
-        }
-    }
-
-    #[inline(always)]
-    pub fn get(&self) -> &T {
-        &self.inner().value
     }
 
     #[inline(always)]
@@ -218,6 +204,27 @@ impl<T> Rc<T> {
         let memory = self.inner().memory.take().unwrap();
 
         memory.remove(key);
+    }
+}
+
+impl<T> Clone for Rc<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        self.inner().inc();
+
+        Self {
+            ptr: self.ptr,
+            phantom: self.phantom,
+        }
+    }
+}
+
+impl<T> Deref for Rc<T> {
+    type Target = T;
+
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.inner().value
     }
 }
 
@@ -331,7 +338,7 @@ mod tests {
         let memory = std::rc::Rc::new(RcMemory::new(2));
         assert_eq!(memory.len(), 0);
 
-        let e0a = Rc::new(123 as i32, &memory).unwrap();
+        let e0a = Rc::try_new_in(123 as i32, &memory).unwrap();
         assert_eq!(memory.len(), 1);
         let p = memory.addr_of(0).unwrap();
 
@@ -339,16 +346,16 @@ mod tests {
         assert_eq!(memory.len(), 1);
         assert_eq!(memory.addr_of(0).unwrap(), p);
 
-        let e1a = Rc::new(456 as i32, &memory).unwrap();
+        let e1a = Rc::try_new_in(456 as i32, &memory).unwrap();
         assert_eq!(memory.len(), 2);
         assert_eq!(memory.addr_of(0).unwrap(), p);
 
         // No room
-        assert!(Rc::new(789 as i32, &memory).is_err());
+        assert!(Rc::try_new_in(789 as i32, &memory).is_err());
 
-        assert_eq!(*e0a.get(), 123);
-        assert_eq!(*e0b.get(), 123);
-        assert_eq!(*e1a.get(), 456);
+        assert_eq!(*e0a, 123);
+        assert_eq!(*e0b, 123);
+        assert_eq!(*e1a, 456);
 
         mem::drop(e0b);
         assert_eq!(memory.len(), 2);

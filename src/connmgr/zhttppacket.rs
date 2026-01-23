@@ -1751,7 +1751,7 @@ where
         // into scratch_mut, because src_ref and scratch_mut have the same
         // Lifetime
         let scratch_mut: &'static mut ParseScratch<'static> =
-            unsafe { scratch.get().as_ptr().as_mut().unwrap() };
+            unsafe { scratch.as_ptr().as_mut().unwrap() };
 
         let inner = T::parse(src_ref, scratch_mut)?;
 
@@ -2046,7 +2046,7 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =
-            memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+            memorypool::Rc::try_new_in(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let req = OwnedRequest::parse(msg, 0, scratch).unwrap();
 
@@ -2072,7 +2072,7 @@ mod tests {
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =
-            memorypool::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+            memorypool::Rc::try_new_in(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let resp = OwnedResponse::parse(msg, 5, scratch).unwrap();
 

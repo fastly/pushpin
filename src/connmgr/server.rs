@@ -478,7 +478,7 @@ impl Connections {
     fn batch_add(&self, ckey: usize) -> Result<(), ()> {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[ckey].value;
-        let cshared = ci.shared.as_ref().unwrap().get();
+        let cshared = ci.shared.as_ref().unwrap();
 
         // Only batch connections with known handler addresses
         let addr_ref = cshared.to_addr();
@@ -507,7 +507,7 @@ impl Connections {
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
-                    let cshared = ci.shared.as_ref().unwrap().get();
+                    let cshared = ci.shared.as_ref().unwrap();
 
                     // Addr could have been removed after adding to the batch
                     cshared.to_addr().get()?;
@@ -564,7 +564,7 @@ impl Connections {
 
             for &ckey in batch.last_group_ckeys() {
                 let ci = &mut nodes[ckey].value;
-                let cshared = ci.shared.as_ref().unwrap().get();
+                let cshared = ci.shared.as_ref().unwrap();
 
                 cshared.inc_out_seq();
                 ci.batch_key = None;
@@ -1179,7 +1179,7 @@ impl Worker {
                     let (zstream_receiver_sender, zstream_receiver) =
                         zreceiver_pool.take().unwrap();
 
-                    let shared = memorypool::Rc::new(
+                    let shared = memorypool::Rc::try_new_in(
                         StreamSharedData::new(),
                         &stream_opts.stream_shared_mem,
                     )
@@ -1353,7 +1353,7 @@ impl Worker {
                 // req_handle.recv
                 Select6::R6(result) => match result {
                     Ok(msg) => {
-                        let scratch = memorypool::Rc::new(
+                        let scratch = memorypool::Rc::try_new_in(
                             RefCell::new(zhttppacket::ParseScratch::new()),
                             &req_scratch_mem,
                         )
@@ -1367,11 +1367,11 @@ impl Worker {
                             }
                         };
 
-                        let zresp = memorypool::Rc::new(zresp, &req_resp_mem).unwrap();
+                        let zresp = memorypool::Rc::try_new_in(zresp, &req_resp_mem).unwrap();
 
                         let mut count = 0;
 
-                        for (i, rid) in zresp.get().get().ids.iter().enumerate() {
+                        for (i, rid) in zresp.get().ids.iter().enumerate() {
                             let key = match get_key(rid.id) {
                                 Ok(key) => key,
                                 Err(_) => continue,
@@ -1537,7 +1537,7 @@ impl Worker {
                                 offset
                             };
 
-                            let scratch = memorypool::Rc::new(
+                            let scratch = memorypool::Rc::try_new_in(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1552,11 +1552,12 @@ impl Worker {
                                     }
                                 };
 
-                            let zresp = memorypool::Rc::new(zresp, &stream_resp_mem).unwrap();
+                            let zresp =
+                                memorypool::Rc::try_new_in(zresp, &stream_resp_mem).unwrap();
 
                             let mut count = 0;
 
-                            for (i, rid) in zresp.get().get().ids.iter().enumerate() {
+                            for (i, rid) in zresp.get().ids.iter().enumerate() {
                                 let key = match get_key(rid.id) {
                                     Ok(key) => key,
                                     Err(_) => continue,
@@ -2165,7 +2166,8 @@ impl Server {
 
             let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let shared = memorypool::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
+            let shared =
+                memorypool::Rc::try_new_in(StreamSharedData::new(), &stream_shared_mem).unwrap();
 
             let fut = Worker::stream_connection_task(
                 stop,

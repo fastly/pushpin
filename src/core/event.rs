@@ -285,7 +285,7 @@ impl CustomSources {
         subtoken: Token,
         interests: Interest,
     ) -> Result<(), io::Error> {
-        let mut reg = registration.entry.get().data.borrow_mut();
+        let mut reg = registration.entry.data.borrow_mut();
 
         if reg.data.is_none() {
             let key = self.local.register(subtoken, interests)?;
@@ -303,7 +303,7 @@ impl CustomSources {
     }
 
     fn deregister_local(&self, registration: &LocalRegistration) -> Result<(), io::Error> {
-        let mut reg = registration.entry.get().data.borrow_mut();
+        let mut reg = registration.entry.data.borrow_mut();
 
         if let Some((key, _)) = reg.data {
             self.local.deregister(key)?;
@@ -452,7 +452,7 @@ impl LocalRegistration {
     pub fn new(
         memory: &Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
     ) -> (Self, LocalSetReadiness) {
-        let reg = memorypool::Rc::new(
+        let reg = memorypool::Rc::try_new_in(
             LocalRegistrationEntry {
                 data: RefCell::new(LocalRegistrationData {
                     data: None,
@@ -475,7 +475,7 @@ impl LocalRegistration {
 
 impl Drop for LocalRegistration {
     fn drop(&mut self) {
-        let mut reg = self.entry.get().data.borrow_mut();
+        let mut reg = self.entry.data.borrow_mut();
 
         if let Some((key, sources)) = &reg.data {
             sources.deregister(*key).unwrap();
@@ -491,7 +491,7 @@ pub struct LocalSetReadiness {
 
 impl LocalSetReadiness {
     pub fn set_readiness(&self, readiness: Interest) -> Result<(), io::Error> {
-        let mut reg = self.entry.get().data.borrow_mut();
+        let mut reg = self.entry.data.borrow_mut();
 
         match &reg.data {
             Some((key, sources)) => sources.set_readiness(*key, readiness)?,
