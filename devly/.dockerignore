@@ -1,0 +1,7 @@
+# Exclude socket files from build context
+metrics
+origind-test
+run/
+target/
+.venv/
+.git/
