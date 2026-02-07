@@ -58,14 +58,18 @@ fn run_http1_roundtrip(listener: TcpListener, addr: SocketAddr) -> TcpListener {
             let mut scratch = ParseScratch::<32>::new();
             let (req_info, req_body) = req_header.recv(&mut scratch).await.unwrap();
 
-            // Read request body
+            // Read request body into buffer
             let req_body = req_body.discard_header(req_info);
-            let mut buf = [0u8; BODY_READ_BUF_SIZE];
+            let mut body_buf = Vec::with_capacity(MEDIUM_BODY.len());
+            let mut chunk = [0u8; BODY_READ_BUF_SIZE];
             loop {
-                match req_body.try_recv(&mut buf).unwrap() {
+                match req_body.try_recv(&mut chunk).unwrap() {
                     RecvStatus::NeedBytes(()) => req_body.add_to_buffer().await.unwrap(),
-                    RecvStatus::Read((), _) => continue,
-                    RecvStatus::Complete((), _) => break,
+                    RecvStatus::Read((), size) => body_buf.extend_from_slice(&chunk[..size]),
+                    RecvStatus::Complete((), size) => {
+                        body_buf.extend_from_slice(&chunk[..size]);
+                        break;
+                    }
                 }
             }
 
@@ -164,16 +168,21 @@ fn run_http1_roundtrip(listener: TcpListener, addr: SocketAddr) -> TcpListener {
             let (resp_info, resp_body_keep_header) = resp.recv_header(&mut scratch).await.unwrap();
             assert_eq!(resp_info.get().code, 200);
 
-            // Read response body
+            // Read response body into buffer (matching production ContiguousBuffer usage)
             let resp_body = resp_body_keep_header.discard_header(resp_info).unwrap();
-            let mut buf = [0u8; BODY_READ_BUF_SIZE];
+            let mut body_buf = Vec::with_capacity(RESPONSE_BODY.len());
+            let mut chunk = [0u8; BODY_READ_BUF_SIZE];
             loop {
-                match resp_body.try_recv(&mut buf).unwrap() {
+                match resp_body.try_recv(&mut chunk).unwrap() {
                     RecvStatus::NeedBytes(_) => resp_body.add_to_buffer().await.unwrap(),
-                    RecvStatus::Read(_, _) => continue,
-                    RecvStatus::Complete(_, _) => break,
+                    RecvStatus::Read(_, size) => body_buf.extend_from_slice(&chunk[..size]),
+                    RecvStatus::Complete(_, size) => {
+                        body_buf.extend_from_slice(&chunk[..size]);
+                        break;
+                    }
                 }
             }
+            assert_eq!(&body_buf[..], RESPONSE_BODY);
         })
         .unwrap();
 
@@ -195,5 +204,88 @@ fn core_http1_medium(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, core_http1_medium);
+// ============================================================================
+// Hyper HTTP/1 benchmark
+// ============================================================================
+
+use http_body_util::{BodyExt, Full};
+use hyper::body::Bytes;
+use hyper::server::conn::http1 as hyper_http1;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
+use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
+
+async fn hyper_server_handler(
+    req: hyper::Request<hyper::body::Incoming>,
+) -> Result<hyper::Response<Full<Bytes>>, std::convert::Infallible> {
+    // Read request body into memory (matching http1's ContiguousBuffer usage)
+    let _body = req.into_body().collect().await.unwrap().to_bytes();
+
+    Ok(hyper::Response::builder()
+        .status(RESPONSE_CODE)
+        .body(Full::new(Bytes::from_static(RESPONSE_BODY)))
+        .unwrap())
+}
+
+async fn run_hyper_roundtrip(listener: TokioTcpListener) -> TokioTcpListener {
+    let addr = listener.local_addr().unwrap();
+
+    // Start server
+    let server_handle = tokio::spawn(async move {
+        let (server_stream, _) = listener.accept().await.unwrap();
+        let server_io = TokioIo::new(server_stream);
+        hyper_http1::Builder::new()
+            .serve_connection(server_io, service_fn(hyper_server_handler))
+            .await
+            .unwrap();
+        listener
+    });
+
+    // Start client
+    let stream = TokioTcpStream::connect(addr).await.unwrap();
+    let io = TokioIo::new(stream);
+
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
+
+    // Connection driver
+    tokio::spawn(async move {
+        if let Err(e) = conn.await {
+            if !e.is_closed() {
+                panic!("Connection error: {:?}", e);
+            }
+        }
+    });
+
+    let req = hyper::Request::builder()
+        .method(REQUEST_METHOD)
+        .uri(REQUEST_PATH)
+        .header("Host", REQUEST_HOST)
+        .header("Content-Type", "application/json")
+        .header("Connection", "close")
+        .body(Full::new(Bytes::from_static(MEDIUM_BODY)))
+        .unwrap();
+
+    let resp = sender.send_request(req).await.unwrap();
+    assert_eq!(resp.status(), RESPONSE_CODE);
+
+    // Read response body into memory (matching http1's ContiguousBuffer usage)
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&body[..], RESPONSE_BODY);
+
+    server_handle.await.unwrap()
+}
+
+fn hyper_http1_medium(c: &mut Criterion) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let mut listener =
+        Some(rt.block_on(async { TokioTcpListener::bind("127.0.0.1:0").await.unwrap() }));
+
+    c.bench_function("hyper_http1_medium", |b| {
+        b.iter(|| {
+            listener = Some(rt.block_on(run_hyper_roundtrip(listener.take().unwrap())));
+        });
+    });
+}
+
+criterion_group!(benches, core_http1_medium, hyper_http1_medium);
 criterion_main!(benches);
