@@ -105,8 +105,12 @@ cbindgen = "0.27"
 name = "server"
 harness = false
 
+# [[bench]]
+# name = "client"
+# harness = false
+
 [[bench]]
-name = "client"
+name = "http"
 harness = false
 
 [[bin]]
