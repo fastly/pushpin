@@ -385,9 +385,12 @@ fn main() {
         )
         .get_matches();
 
+    // Allow all log levels globally so individual loggers can limit as they choose
+    log::set_max_level(LevelFilter::Trace);
+
     log::set_logger(get_simple_logger()).unwrap();
 
-    log::set_max_level(LevelFilter::Info);
+    get_simple_logger().set_max_level(LevelFilter::Info);
 
     let level = matches.get_one::<String>("log-level").unwrap();
 
@@ -408,7 +411,7 @@ fn main() {
         _ => unreachable!(),
     };
 
-    log::set_max_level(level);
+    get_simple_logger().set_max_level(level);
 
     local_offset_check();
 

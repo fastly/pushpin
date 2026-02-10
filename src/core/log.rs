@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
-use log::{Level, Log, Metadata, Record};
+use log::{LevelFilter, Log, Metadata, Record};
 use std::fs::File;
 use std::io::{self, Write};
+use std::mem;
 use std::str;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
@@ -59,14 +61,40 @@ impl Write for SharedOutput<'_> {
     }
 }
 
+struct AtomicLevelFilter(AtomicUsize);
+
+impl AtomicLevelFilter {
+    fn set(&self, level: LevelFilter) {
+        self.0.store(level as usize, Ordering::Relaxed);
+    }
+
+    fn get(&self) -> LevelFilter {
+        // SAFETY: We store only valid enum values
+        unsafe { mem::transmute(self.0.load(Ordering::Relaxed)) }
+    }
+}
+
+impl Default for AtomicLevelFilter {
+    fn default() -> Self {
+        Self(AtomicUsize::new(LevelFilter::Off as usize))
+    }
+}
+
 pub struct SimpleLogger {
+    max_level: AtomicLevelFilter,
     output_file: Option<Mutex<File>>,
     runner_mode: bool,
 }
 
+impl SimpleLogger {
+    pub fn set_max_level(&self, level: LevelFilter) {
+        self.max_level.set(level);
+    }
+}
+
 impl Log for SimpleLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
+        metadata.level() <= self.max_level.get()
     }
 
     fn log(&self, record: &Record) {
@@ -134,6 +162,7 @@ static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
     LOGGER.get_or_init(|| SimpleLogger {
+        max_level: AtomicLevelFilter::default(),
         output_file: output_file.map(Mutex::new),
         runner_mode,
     });
