@@ -118,6 +118,19 @@ pub trait AsyncWriteExt: AsyncWrite {
         }
     }
 
+    #[allow(async_fn_in_trait)]
+    async fn write_all(&mut self, mut buf: &[u8]) -> Result<(), io::Error> {
+        while !buf.is_empty() {
+            match self.write(buf).await {
+                Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero)),
+                Ok(size) => buf = &buf[size..],
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(())
+    }
+
     fn write_vectored<'a>(
         &'a mut self,
         bufs: &'a [io::IoSlice<'a>],
@@ -415,32 +428,47 @@ impl<W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Drop for WriteSharedFuture<'_, W, B
 mod tests {
     use super::*;
     use crate::core::executor::Executor;
+    use crate::core::task::poll_async;
     use std::cmp;
+    use std::pin::pin;
+    use std::rc::Rc;
     use std::task::Context;
 
-    struct TestBuffer {
+    struct TestBufferInner {
         data: Vec<u8>,
+        write_limit: Option<usize>,
+    }
+
+    struct TestBuffer {
+        inner: Rc<RefCell<TestBufferInner>>,
     }
 
     impl TestBuffer {
         fn new() -> Self {
-            Self { data: Vec::new() }
+            Self {
+                inner: Rc::new(RefCell::new(TestBufferInner {
+                    data: Vec::new(),
+                    write_limit: None,
+                })),
+            }
         }
     }
 
     impl AsyncRead for TestBuffer {
         fn poll_read(
-            mut self: Pin<&mut Self>,
+            self: Pin<&mut Self>,
             _cx: &mut Context,
             buf: &mut [u8],
         ) -> Poll<Result<usize, io::Error>> {
-            let size = cmp::min(buf.len(), self.data.len());
+            let inner = &mut *self.inner.borrow_mut();
 
-            let left = self.data.split_off(size);
+            let size = cmp::min(buf.len(), inner.data.len());
 
-            (&mut buf[..size]).copy_from_slice(&self.data);
+            let left = inner.data.split_off(size);
 
-            self.data = left;
+            buf[..size].copy_from_slice(&inner.data);
+
+            inner.data = left;
 
             Poll::Ready(Ok(size))
         }
@@ -450,11 +478,27 @@ mod tests {
 
     impl AsyncWrite for TestBuffer {
         fn poll_write(
-            mut self: Pin<&mut Self>,
+            self: Pin<&mut Self>,
             _cx: &mut Context,
             buf: &[u8],
         ) -> Poll<Result<usize, io::Error>> {
-            let size = self.data.write(buf).unwrap();
+            let inner = &mut *self.inner.borrow_mut();
+
+            let size = if let Some(limit) = inner.write_limit {
+                cmp::min(buf.len(), limit)
+            } else {
+                buf.len()
+            };
+
+            if size == 0 {
+                return Poll::Pending;
+            }
+
+            let size = inner.data.write(&buf[..size]).unwrap();
+
+            if let Some(limit) = &mut inner.write_limit {
+                *limit -= size;
+            }
 
             Poll::Ready(Ok(size))
         }
@@ -464,7 +508,11 @@ mod tests {
         }
 
         fn is_writable(&self) -> bool {
-            true
+            if let Some(limit) = self.inner.borrow().write_limit {
+                limit > 0
+            } else {
+                true
+            }
         }
 
         fn cancel(&mut self) {}
@@ -506,6 +554,37 @@ mod tests {
 
                 assert_eq!(write_fut.await.unwrap(), 5);
                 assert_eq!(read_fut.await.unwrap(), 5);
+                assert_eq!(&data[..5], b"hello");
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn async_write_all() {
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let mut buf = TestBuffer::new();
+                let buf_inner = Rc::clone(&buf.inner);
+
+                let mut data = [0; 16];
+
+                assert_eq!(buf.read(&mut data).await.unwrap(), 0);
+
+                {
+                    buf_inner.borrow_mut().write_limit = Some(2);
+                    let mut fut = pin!(buf.write_all(b"hello"));
+                    assert!(poll_async(&mut fut).await.is_pending());
+                    assert_eq!(buf_inner.borrow().data, b"he");
+
+                    buf_inner.borrow_mut().write_limit = Some(10);
+                    assert!(poll_async(&mut fut).await.is_ready());
+                }
+
+                assert_eq!(buf.read(&mut data).await.unwrap(), 5);
                 assert_eq!(&data[..5], b"hello");
             })
             .unwrap();
