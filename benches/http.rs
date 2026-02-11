@@ -181,7 +181,7 @@ fn run_http1_roundtrip(
             let (resp_info, resp_body_keep_header) = resp.recv_header(&mut scratch).await.unwrap();
             assert_eq!(resp_info.get().code, 200);
 
-            // Read response body into buffer (matching production ContiguousBuffer usage)
+            // Read response body into buffer
             let resp_body = resp_body_keep_header.discard_header(resp_info).unwrap();
             let mut body_buf = Vec::with_capacity(RESPONSE_BODY.len());
             let mut chunk = [0u8; BODY_READ_BUF_SIZE];
@@ -265,7 +265,7 @@ use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
 async fn hyper_server_handler(
     req: hyper::Request<hyper::body::Incoming>,
 ) -> Result<hyper::Response<Full<Bytes>>, std::convert::Infallible> {
-    // Read request body into memory (matching http1's ContiguousBuffer usage)
+    // Read request body into memory
     let _body = req.into_body().collect().await.unwrap().to_bytes();
 
     Ok(hyper::Response::builder()
@@ -318,7 +318,7 @@ async fn run_hyper_roundtrip(
     let resp = sender.send_request(req).await.unwrap();
     assert_eq!(resp.status(), RESPONSE_CODE);
 
-    // Read response body into memory (matching http1's ContiguousBuffer usage)
+    // Read response body into memory
     let body = resp.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&body[..], RESPONSE_BODY);
 
