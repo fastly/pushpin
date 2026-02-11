@@ -57,11 +57,11 @@ impl<T> Memory<T> {
         self.entries.borrow().len()
     }
 
-    // Returns a key and a pointer to the inserted entry.
+    // Returns a pointer to the inserted entry.
     //
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
     // is removed or the Memory is dropped.
-    fn insert(&self, e: T) -> Result<(usize, *const T), InsertError<T>> {
+    fn insert(&self, e: T) -> Result<*const T, InsertError<T>> {
         let mut entries = self.entries.borrow_mut();
 
         // Out of capacity. By preventing inserts beyond the capacity, we
@@ -79,13 +79,19 @@ impl<T> Memory<T> {
         // therefore we can return a pointer to the element and guarantee
         // its validity until the element is removed.
 
-        Ok((key, entry as *const T))
+        Ok(entry as *const T)
     }
 
+    // SAFETY: `ptr` must be a valid pointer returned by `insert` that has
+    // not yet been removed.
     #[allow(clippy::let_unit_value)]
-    fn remove(&self, key: usize) {
+    unsafe fn remove(&self, ptr: *const T) {
+        let mut entries = self.entries.borrow_mut();
+
+        let key = entries.key_of(&*ptr);
+
         // Ensure remove() method doesn't return a value
-        let _: () = self.entries.borrow_mut().remove(key);
+        let _: () = entries.remove(key);
     }
 
     // Returns a pointer to an entry if it exists.
@@ -111,10 +117,10 @@ fn unlikely_abort() {
     abort();
 }
 
+#[repr(C, align(2))]
 pub struct RcInner<T> {
     refs: Cell<usize>,
     memory: Cell<Option<std::rc::Rc<RcMemory<T>>>>,
-    key: Cell<usize>,
     value: T,
 }
 
@@ -163,7 +169,6 @@ impl<T> Rc<T> {
         let ptr = Box::leak(Box::new(RcInner {
             refs: Cell::new(1),
             memory: Cell::new(None),
-            key: Cell::new(0),
             value: v,
         }));
 
@@ -174,11 +179,10 @@ impl<T> Rc<T> {
     }
 
     pub fn try_new_in(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, AllocError> {
-        let (key, ptr) = memory
+        let ptr = memory
             .insert(RcInner {
                 refs: Cell::new(1),
                 memory: Cell::new(Some(std::rc::Rc::clone(memory))),
-                key: Cell::new(0),
                 value: v,
             })
             .map_err(|_| AllocError)?;
@@ -186,9 +190,6 @@ impl<T> Rc<T> {
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
         let ptr = unsafe { NonNull::new_unchecked(ptr as *mut RcInner<T>) };
-
-        // SAFETY: ptr is convertible to a reference
-        unsafe { ptr.as_ref().key.set(key) };
 
         Ok(Self {
             ptr,
@@ -215,9 +216,8 @@ impl<T> Rc<T> {
             // Rc is moved out of the entry above, and it is dropped only
             // after the entry is removed.
 
-            let key = self.inner().key.get();
-
-            memory.remove(key);
+            // SAFETY: While this Rc is alive, ptr is always valid
+            unsafe { memory.remove(self.ptr.as_ref()) };
         } else {
             // If there is no reference to slab memory, then the memory is
             // managed by the system allocator. To free it, we simply convert

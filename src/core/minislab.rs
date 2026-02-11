@@ -22,6 +22,8 @@
 // * remove() returns nothing.
 // * All methods/types we don't use are removed.
 
+use std::mem;
+
 #[derive(Debug)]
 pub struct RemoveError;
 
@@ -120,5 +122,22 @@ impl<T> MiniSlab<T> {
     #[track_caller]
     pub fn remove(&mut self, key: usize) {
         self.try_remove(key).expect("invalid key");
+    }
+
+    #[track_caller]
+    pub fn key_of(&self, present_element: &T) -> usize {
+        let element_ptr = present_element as *const T as usize;
+        let base_ptr = self.entries.as_ptr() as usize;
+        // Use wrapping subtraction in case the reference is bad
+        let byte_offset = element_ptr.wrapping_sub(base_ptr);
+        // The division rounds away any offset of T inside Entry
+        // The size of Entry<T> is never zero even if T is due to Vacant(usize)
+        let key = byte_offset / mem::size_of::<Entry<T>>();
+        // Prevent returning unspecified (but out of bounds) values
+        if key >= self.entries.len() {
+            panic!("The reference points to a value outside this slab");
+        }
+        // The reference cannot point to a vacant entry, because then it would not be valid
+        key
     }
 }
