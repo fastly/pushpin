@@ -31,7 +31,7 @@ use std::mem;
 use std::pin::pin;
 use std::rc::Rc;
 use std::str;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
@@ -202,27 +202,32 @@ pub fn get_simple_logger() -> &'static SimpleLogger {
     LOGGER.get().expect("logger should be initialized")
 }
 
-const QUEUE_MAX: usize = 1000;
-
 #[derive(Clone)]
 struct LogMessage {
     inner: String,
 }
 
 struct LogClient {
-    sender: channel::LocalSender<Rc<LogMessage>>,
+    sender: channel::LocalSender<(Rc<LogMessage>, u64)>,
+    drop_count: u64,
     _cancel: CancellationSender,
+}
+
+enum ClientWriteError {
+    Io(io::Error),
+    Cancelled,
 }
 
 struct LogBroadcaster {
     thread: Option<thread::JoinHandle<()>>,
-    msgs: Option<channel::Sender<LogMessage>>,
+    msgs: Option<channel::Sender<(LogMessage, u64)>>,
     interest: Arc<AtomicBool>,
+    drop_count: AtomicU64,
 }
 
 impl LogBroadcaster {
-    fn new(listener: UnixListener) -> Self {
-        let (msgs, r_msgs) = channel::channel(QUEUE_MAX);
+    fn new(listener: UnixListener, queue_max: usize) -> Self {
+        let (msgs, r_msgs) = channel::channel(queue_max);
 
         let interest = Arc::new(AtomicBool::new(false));
 
@@ -238,7 +243,9 @@ impl LogBroadcaster {
                     let spawner = executor.spawner();
 
                     executor
-                        .spawn(Self::accept_task(listener, spawner, r_msgs, interest))
+                        .spawn(Self::accept_task(
+                            listener, queue_max, spawner, r_msgs, interest,
+                        ))
                         .unwrap();
 
                     executor.run(|timeout| reactor.poll(timeout)).unwrap();
@@ -250,6 +257,7 @@ impl LogBroadcaster {
             thread: Some(thread),
             msgs: Some(msgs),
             interest,
+            drop_count: AtomicU64::new(0),
         }
     }
 
@@ -259,15 +267,30 @@ impl LogBroadcaster {
 
     fn send(&self, message: String) {
         if let Some(sender) = &self.msgs {
+            let message = LogMessage { inner: message };
+
+            // `send` can be called from multiple threads at the same time.
+            // To handle the drop count accurately, we do an atomic swap to
+            // take the current value for sending, and if we fail to send
+            // then we add the value back.
+            let drop_count = self.drop_count.swap(0, Ordering::Relaxed);
+
             // Send immediately if the queue isn't full, else drop
-            let _ = sender.try_send(LogMessage { inner: message });
+            match sender.try_send((message, drop_count)) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(_)) => {
+                    self.drop_count.fetch_add(drop_count + 1, Ordering::Relaxed);
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => unreachable!(),
+            }
         }
     }
 
     async fn accept_task(
         listener: UnixListener,
+        queue_max: usize,
         spawner: Spawner,
-        msgs: channel::Receiver<LogMessage>,
+        msgs: channel::Receiver<(LogMessage, u64)>,
         interest: Arc<AtomicBool>,
     ) {
         let listener = AsyncUnixListener::new(listener);
@@ -287,17 +310,30 @@ impl LogBroadcaster {
 
             match result {
                 Select2::R1(ret) => {
-                    let msg = match ret {
-                        Ok(msg) => Rc::new(msg),
+                    let (msg, drop_count) = match ret {
+                        Ok(ret) => ret,
                         Err(mpsc::RecvError) => break,
                     };
 
+                    let msg = Rc::new(msg);
+
                     if !clients.is_empty() {
-                        clients.retain(|c| {
+                        clients.retain_mut(|c| {
+                            c.drop_count += drop_count;
+
                             // Send immediately if the client's queue isn't full, else drop
-                            match c.sender.try_send(Rc::clone(&msg)) {
+                            match c.sender.try_send((Rc::clone(&msg), c.drop_count)) {
+                                Ok(()) => {
+                                    c.drop_count = 0;
+
+                                    true
+                                }
+                                Err(mpsc::TrySendError::Full(_)) => {
+                                    c.drop_count += 1;
+
+                                    true
+                                }
                                 Err(mpsc::TrySendError::Disconnected(_)) => false,
-                                _ => true, // Success or full
                             }
                         });
 
@@ -318,13 +354,13 @@ impl LogBroadcaster {
                     let reactor = get_reactor();
 
                     let (s_msgs, r_msgs) =
-                        channel::local_channel(QUEUE_MAX, 1, &reactor.local_registration_memory());
+                        channel::local_channel(queue_max, 1, &reactor.local_registration_memory());
 
                     let (cancel, token) =
                         CancellationToken::new(&reactor.local_registration_memory());
 
                     if spawner
-                        .spawn(Self::handle_stream(r_msgs, token, stream))
+                        .spawn(Self::handle_stream(r_msgs, stream, token))
                         .is_err()
                     {
                         warn!("too many debug log connections, rejecting");
@@ -337,6 +373,7 @@ impl LogBroadcaster {
 
                     clients.push(LogClient {
                         sender: s_msgs,
+                        drop_count: 0,
                         _cancel: cancel,
                     });
                 }
@@ -345,33 +382,54 @@ impl LogBroadcaster {
     }
 
     async fn handle_stream(
-        msgs: channel::LocalReceiver<Rc<LogMessage>>,
-        token: CancellationToken,
+        msgs: channel::LocalReceiver<(Rc<LogMessage>, u64)>,
         stream: mio::net::UnixStream,
+        token: CancellationToken,
     ) {
         let msgs = channel::AsyncLocalReceiver::new(msgs);
         let mut stream = AsyncUnixStream::new(stream);
 
-        // Loop to read from the channel and write to the client socket. If
-        // the channel closes or the cancellation token is cancelled, then
-        // the task ends.
+        if let Err(ClientWriteError::Io(e)) = Self::relay_logs(&msgs, &mut stream, &token).await {
+            debug!("failed to write to debug log connection: {e}");
+        }
+    }
 
-        while let Ok(msg) = msgs.recv().await {
-            let result = select_2(
-                pin!(stream.write_all(msg.inner.as_bytes())),
-                token.cancelled(),
-            )
-            .await;
-
-            match result {
-                Select2::R1(ret) => {
-                    if let Err(e) = ret {
-                        debug!("failed to write to debug log connection: {e}");
-                        break;
-                    }
-                }
-                Select2::R2(()) => break,
+    async fn relay_logs(
+        msgs: &channel::AsyncLocalReceiver<(Rc<LogMessage>, u64)>,
+        stream: &mut AsyncUnixStream,
+        token: &CancellationToken,
+    ) -> Result<(), ClientWriteError> {
+        // Loop to read from the channel and write to the client socket. Exit
+        // when the channel closes or the token is cancelled.
+        while let Ok((msg, drop_count)) = msgs.recv().await {
+            if drop_count > 0 {
+                Self::write_to_stream(stream, &format!("** dropped {drop_count} logs"), token)
+                    .await?;
             }
+
+            Self::write_to_stream(stream, &msg.inner, token).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn write_to_stream(
+        stream: &mut AsyncUnixStream,
+        message: &str,
+        token: &CancellationToken,
+    ) -> Result<(), ClientWriteError> {
+        let result = select_2(
+            pin!(stream.write_all(message.as_bytes())),
+            token.cancelled(),
+        )
+        .await;
+
+        match result {
+            Select2::R1(ret) => match ret {
+                Ok(()) => Ok(()),
+                Err(e) => Err(ClientWriteError::Io(e)),
+            },
+            Select2::R2(()) => Err(ClientWriteError::Cancelled),
         }
     }
 }
@@ -396,7 +454,7 @@ struct DebugLoggerInner {
 }
 
 impl DebugLoggerInner {
-    pub fn new(listener: UnixListener) -> Arc<Self> {
+    pub fn new(listener: UnixListener, queue_max: usize) -> Arc<Self> {
         let inner = DEBUG_LOGGER.get_or_init(|| Mutex::new(None));
         let mut inner = inner.lock().unwrap();
 
@@ -405,7 +463,7 @@ impl DebugLoggerInner {
         }
 
         let new_inner = Arc::new(Self {
-            broadcaster: LogBroadcaster::new(listener),
+            broadcaster: LogBroadcaster::new(listener, queue_max),
         });
 
         *inner = Some(Arc::downgrade(&new_inner));
@@ -428,9 +486,9 @@ pub struct DebugLogger {
 }
 
 impl DebugLogger {
-    pub fn new(listener: UnixListener) -> Self {
+    pub fn new(listener: UnixListener, queue_max: usize) -> Self {
         Self {
-            inner: DebugLoggerInner::new(listener),
+            inner: DebugLoggerInner::new(listener, queue_max),
         }
     }
 

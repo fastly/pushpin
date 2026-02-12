@@ -200,7 +200,10 @@ impl App {
                 }
             }
 
-            debug_logger = Some(DebugLogger::new(l));
+            // Scale the log queue with the number of workers
+            let queue_max = (config.workers * 1000) + 1000;
+
+            debug_logger = Some(DebugLogger::new(l, queue_max));
         }
 
         let zmq_context = Arc::new(zmq::Context::new());
