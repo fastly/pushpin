@@ -6051,7 +6051,7 @@ where
         )
         .await;
 
-        shared.get().set_state("done");
+        shared.set_state("done");
 
         match ret {
             Select4::R1(ret) => ret,
@@ -9567,7 +9567,7 @@ mod tests {
             &tmp_buf,
             &mut zsess_in,
             &zsess_out,
-            shared.get(),
+            &shared,
             &mut response_received,
             &refresh_stream_timeout,
         )

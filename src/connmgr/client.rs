@@ -180,7 +180,7 @@ impl PolledFlag {
 // to true and logs an error message if one was set on the flag
 struct FlagWheneverPolled<F> {
     fut: F,
-    flag: arena::Rc<PolledFlag>,
+    flag: memorypool::Rc<PolledFlag>,
 }
 
 impl<F> Future for FlagWheneverPolled<F>
@@ -198,8 +198,6 @@ where
             (fut, &s.flag)
         };
 
-        let flag = flag.get();
-
         flag.value.set(true);
 
         if let Some(msg) = flag.err_msg_on_poll.take().take() {
@@ -214,8 +212,8 @@ where
 //
 // Example:
 //
-// let arena_mem = Rc::new(arena::RcMemory::new(1));
-// let polled = arena::Rc::new(PolledFlag::new(false), &arena_mem).unwrap();
+// let pool_mem = Rc::new(memorypool::RcMemory::new(1));
+// let polled = memorypool::Rc::try_new_in(PolledFlag::new(false), &pool_mem).unwrap();
 // assert!(polled.get().get(), false);
 //
 // let mut x = 0;
@@ -228,10 +226,13 @@ where
 //
 // assert_eq!(x, 1);
 // assert!(polled.get().get(), true);
-fn flag_whenever_polled<F: Future>(fut: F, flag: &arena::Rc<PolledFlag>) -> FlagWheneverPolled<F> {
+fn flag_whenever_polled<F: Future>(
+    fut: F,
+    flag: &memorypool::Rc<PolledFlag>,
+) -> FlagWheneverPolled<F> {
     FlagWheneverPolled {
         fut,
-        flag: arena::Rc::clone(flag),
+        flag: memorypool::Rc::clone(flag),
     }
 }
 
@@ -246,7 +247,7 @@ struct ConnectionItem {
         Option<channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedRequest>, usize)>>,
     shared: Option<memorypool::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
-    polled: Option<arena::Rc<PolledFlag>>,
+    polled: Option<memorypool::Rc<PolledFlag>>,
 }
 
 struct ConnectionItems {
@@ -390,7 +391,7 @@ impl Connections {
         let items = &*self.items.borrow();
         let ci = &items.nodes[nkey].value;
 
-        ci.shared.as_ref().map(|s| s.get().state())
+        ci.shared.as_ref().map(|s| s.state())
     }
 
     fn clear_polled(&self, ckey: usize) {
@@ -400,7 +401,7 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         if let Some(polled) = &ci.polled {
-            polled.get().set(false);
+            polled.set(false);
         }
     }
 
@@ -411,7 +412,7 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         match &ci.polled {
-            Some(polled) => polled.get().get(),
+            Some(polled) => polled.get(),
             None => false,
         }
     }
@@ -423,7 +424,7 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         if let Some(polled) = &ci.polled {
-            polled.get().set_err_msg_on_poll(msg);
+            polled.set_err_msg_on_poll(msg);
         }
     }
 
@@ -1353,8 +1354,11 @@ impl Worker {
                             )
                             .unwrap();
 
-                            let polled =
-                                arena::Rc::new(PolledFlag::new(false), &stream_polled_mem).unwrap();
+                            let polled = memorypool::Rc::try_new_in(
+                                PolledFlag::new(false),
+                                &stream_polled_mem,
+                            )
+                            .unwrap();
 
                             let ckey = conns
                                 .add(

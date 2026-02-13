@@ -216,8 +216,6 @@ impl App {
 
         let handle_bound = cmp::max(other_hwm / config.workers, 1);
 
-        let maxconn = config.req_maxconn + config.stream_maxconn;
-
         let enable_client = !config.zserver_req.is_empty() || !config.zserver_stream.is_empty();
 
         let server = if !config.listen.is_empty() {
