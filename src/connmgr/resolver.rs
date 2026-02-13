@@ -136,7 +136,7 @@ impl Queries {
         Ok((nkey, reg))
     }
 
-    // block until a query is available, or stopped
+    // Block until a query is available, or stopped
     fn get_next(&self, invalidated: &Arc<AtomicBool>) -> Option<(usize, Hostname)> {
         let (lock, cvar) = &*self.inner;
 
@@ -190,7 +190,7 @@ impl Queries {
     fn remove(&self, item_key: usize, registration: event::Registration) {
         let queries = &mut *self.inner.0.lock().unwrap();
 
-        // remove from next list if present
+        // Remove from next list if present
         queries.next.remove(&mut queries.nodes, item_key);
 
         let qi = queries.nodes.remove(item_key).value;
@@ -399,7 +399,7 @@ impl Drop for QueryFuture {
         if let Some(evented) = &self.evented {
             let query = self.query.as_ref().unwrap();
 
-            // normally, a registration will deregister itself when dropped.
+            // Normally, a registration will deregister itself when dropped.
             // however, the query's registration is not dropped when the
             // query is dropped, so we need to explicitly deregister
             evented
@@ -427,7 +427,7 @@ mod tests {
         // queries_max is 1, so this should error
         assert_eq!(resolver.resolve("127.0.0.1").is_err(), true);
 
-        // register query interest with poller
+        // Register query interest with poller
         poller
             .register_custom(
                 query.get_read_registration(),
@@ -436,7 +436,7 @@ mod tests {
             )
             .unwrap();
 
-        // wait for completion
+        // Wait for completion
         let result = loop {
             if let Some(result) = query.process() {
                 break result;
@@ -447,7 +447,7 @@ mod tests {
             for _ in poller.iter_events() {}
         };
 
-        // deregister query interest
+        // Deregister query interest
         poller
             .deregister_custom(query.get_read_registration())
             .unwrap();
@@ -468,10 +468,10 @@ mod tests {
 
                     let guard = lock.lock().unwrap();
 
-                    // let main thread know we've started
+                    // Let main thread know we've started
                     cvar.notify_one();
 
-                    // wait for query to be removed
+                    // Wait for query to be removed
                     let _guard = cvar.wait(guard).unwrap();
 
                     Ok(Addrs::new())
@@ -490,7 +490,7 @@ mod tests {
 
             drop(query);
 
-            // let worker know the query has been removed
+            // Let worker know the query has been removed
             cvar.notify_one();
 
             inner

@@ -48,7 +48,7 @@ public:
 
 		if(pipe(sig_pipe) == -1)
 		{
-			// no support then
+			// No support then
 			return;
 		}
 
@@ -88,8 +88,8 @@ public:
 	{
 		struct sigaction sa;
 		sigaction(sig, NULL, &sa);
-		// if the signal is ignored, don't take it over.  this is
-		//   recommended by the glibc manual
+		// If the signal is ignored, don't take it over.  This is
+		// recommended by the glibc manual
 		if(sa.sa_handler == SIG_IGN)
 			return;
 		sigemptyset(&(sa.sa_mask));
@@ -102,8 +102,8 @@ public:
 	{
 		struct sigaction sa;
 		sigaction(sig, NULL, &sa);
-		// ignored means we skipped it earlier, so we should
-		//   skip it again
+		// Ignored means we skipped it earlier, so we should
+		// skip it again
 		if(sa.sa_handler == SIG_IGN)
 			return;
 		sigemptyset(&(sa.sa_mask));
@@ -135,7 +135,7 @@ public:
 private:
 	void do_emit()
 	{
-		// only signal once
+		// Only signal once
 		if(!done)
 		{
 			done = true;

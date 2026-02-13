@@ -46,7 +46,7 @@ public:
 
 	static bool hasClientMode(const QString &binFile);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QStringList arguments() const;
 

@@ -137,19 +137,19 @@ impl List {
         S: IndexMut<usize, Output = Node<T>>,
     {
         if other.is_empty() {
-            // nothing to do
+            // Nothing to do
             return;
         }
 
-        // other is non-empty so this is guaranteed to succeed
+        // Other is non-empty so this is guaranteed to succeed
         let hkey = other.head.unwrap();
 
         let next = nodes[hkey].next;
 
-        // since we're inserting after the tail, this will set next=None
+        // Since we're inserting after the tail, this will set next=None
         self.insert(nodes, self.tail, hkey);
 
-        // restore the node's next key
+        // Restore the node's next key
         nodes[hkey].next = next;
 
         self.tail = other.tail;
@@ -205,7 +205,7 @@ mod tests {
         let n2 = nodes.insert(Node::new("n2"));
         let n3 = nodes.insert(Node::new("n3"));
 
-        // prevent unused warning on data field
+        // Prevent unused warning on data field
         assert_eq!(nodes[n1].value, "n1");
 
         assert_eq!(nodes[n1].prev, None);
@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, None);
 
-        // already removed
+        // Already removed
         l.remove(&mut nodes, n1);
         assert_eq!(l.is_empty(), true);
         assert_eq!(l.head, None);

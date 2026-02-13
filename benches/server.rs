@@ -74,7 +74,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerReqHandler::new();
 
-        c.bench_function("req_handler", |b| {
+        c.bench_function("server-req-handler", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -82,7 +82,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerStreamHandler::new();
 
-        c.bench_function("stream_handler", |b| {
+        c.bench_function("server-stream-handler", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -90,7 +90,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerReqConnection::new();
 
-        c.bench_function("req_connection", |b| {
+        c.bench_function("server-req-conn", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -98,7 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchServerStreamConnection::new();
 
-        c.bench_function("stream_connection", |b| {
+        c.bench_function("server-stream-conn", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -106,7 +106,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchSendMessage::new(false);
 
-        c.bench_function("ws_send", |b| {
+        c.bench_function("ws-send", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -114,7 +114,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchSendMessage::new(true);
 
-        c.bench_function("ws_send_deflate", |b| {
+        c.bench_function("ws-send-deflate", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -122,7 +122,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchRecvMessage::new(false);
 
-        c.bench_function("ws_recv", |b| {
+        c.bench_function("ws-recv", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
@@ -130,27 +130,25 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let t = BenchRecvMessage::new(true);
 
-        c.bench_function("ws_recv_deflate", |b| {
+        c.bench_function("ws-recv-deflate", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }
 
-    {
-        let server = TestServer::new(1);
+    for worker_count in [1, 2] {
+        let server = TestServer::new(worker_count);
         let req_addr = server.req_addr();
         let stream_addr = server.stream_addr();
 
-        c.bench_function("req_server workers=1", |b| b.iter(|| req(req_addr)));
-        c.bench_function("stream_server workers=1", |b| b.iter(|| req(stream_addr)));
-    }
+        c.bench_function(
+            &format!("server-req-{worker_count}w-x{REQS_PER_ITER}"),
+            |b| b.iter(|| req(req_addr)),
+        );
 
-    {
-        let server = TestServer::new(2);
-        let req_addr = server.req_addr();
-        let stream_addr = server.stream_addr();
-
-        c.bench_function("req_server workers=2", |b| b.iter(|| req(req_addr)));
-        c.bench_function("stream_server workers=2", |b| b.iter(|| req(stream_addr)));
+        c.bench_function(
+            &format!("server-stream-{worker_count}w-x{REQS_PER_ITER}"),
+            |b| b.iter(|| req(stream_addr)),
+        );
     }
 }
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec};
+use pushpin::connmgr::{run, App, Config, DebugSocketConfig, ListenConfig, ListenSpec};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
 use std::error::Error;
@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::process;
 use std::time::Duration;
 
-// safety values
+// Safety values
 const WORKERS_MAX: usize = 1024;
 const CONNS_MAX: usize = 10_000_000;
 
@@ -63,6 +63,7 @@ struct Args {
     tls_identities_dir: String,
     allow_compression: bool,
     deny_out_internal: bool,
+    debug_socket: Option<String>,
     origind: Option<String>,
     origind_rate: u8,
 }
@@ -111,6 +112,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         certs_dir: PathBuf::from(args.tls_identities_dir),
         allow_compression: args.allow_compression,
         deny: Vec::new(),
+        debug_socket: None,
         origind_path: args.origind,
         origind_rate: args.origind_rate,
     };
@@ -118,7 +120,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     for v in args.listen.iter() {
         let mut parts = v.split(',');
 
-        // there's always a first part
+        // There's always a first part
         let part1 = parts.next().unwrap();
 
         let mut stream = true;
@@ -196,6 +198,45 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         for s in PRIVATE_SUBNETS.iter() {
             config.deny.push(s.parse().unwrap());
         }
+    }
+
+    if let Some(v) = &args.debug_socket {
+        let mut parts = v.split(',');
+
+        // There's always a first part
+        let part1 = parts.next().unwrap();
+
+        let mut mode = None;
+        let mut user = None;
+        let mut group = None;
+
+        for part in parts {
+            let (k, v) = match part.find('=') {
+                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
+                None => (part, ""),
+            };
+
+            match k {
+                "mode" => match u32::from_str_radix(v, 8) {
+                    Ok(x) => mode = Some(x),
+                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
+                },
+                "user" => user = Some(String::from(v)),
+                "group" => group = Some(String::from(v)),
+                _ => {
+                    return Err(
+                        format!("failed to parse debug-socket: invalid param: {}", part).into(),
+                    )
+                }
+            }
+        }
+
+        config.debug_socket = Some(DebugSocketConfig {
+            path: PathBuf::from(part1),
+            mode,
+            user,
+            group,
+        });
     }
 
     run(&config)
@@ -382,6 +423,13 @@ fn main() {
                 .help("Block outbound connections to local/internal IP address ranges"),
         )
         .arg(
+            Arg::new("debug-socket")
+                .long("debug-socket")
+                .num_args(1)
+                .value_name("path")
+                .help("Unix socket for serving debug logs"),
+        )
+        .arg(
             Arg::new("origind")
                 .long("origind")
                 .num_args(1)
@@ -404,9 +452,12 @@ fn main() {
         )
         .get_matches();
 
+    // Allow all log levels globally so individual loggers can limit as they choose
+    log::set_max_level(LevelFilter::Trace);
+
     log::set_logger(get_simple_logger()).unwrap();
 
-    log::set_max_level(LevelFilter::Info);
+    get_simple_logger().set_max_level(LevelFilter::Info);
 
     let level = matches.get_one::<String>("log-level").unwrap();
 
@@ -427,7 +478,7 @@ fn main() {
         _ => unreachable!(),
     };
 
-    log::set_max_level(level);
+    get_simple_logger().set_max_level(level);
 
     local_offset_check();
 
@@ -594,6 +645,8 @@ fn main() {
 
     let deny_out_internal = *matches.get_one("deny-out-internal").unwrap();
 
+    let debug_socket = matches.get_one::<String>("debug-socket").cloned();
+
     let origind = matches.get_one::<String>("origind");
 
     let origind_rate = matches
@@ -609,8 +662,8 @@ fn main() {
         }
     };
 
-    // if no zmq server specs are set (needed by client mode), specify
-    // default listen configuration in order to enable server mode. this
+    // If no zmq server specs are set (needed by client mode), specify
+    // default listen configuration in order to enable server mode. This
     // means if zmq server specs are set, then server mode won't be enabled
     // by default
     if listen.is_empty() && zserver_req_specs.is_empty() && zserver_stream_specs.is_empty() {
@@ -640,6 +693,7 @@ fn main() {
         tls_identities_dir: tls_identities_dir.to_string(),
         allow_compression,
         deny_out_internal,
+        debug_socket,
         origind: origind.cloned(),
         origind_rate,
     };

@@ -25,7 +25,7 @@
 #include "eventloop.h"
 
 // loop_advance should process enough events to cause the timers to
-// activate, without sleeping, in order to prove timeouts of zero are
+// Activate, without sleeping, in order to prove timeouts of zero are
 // processed immediately
 static int runZeroTimeout(std::function<void ()> loop_advance)
 {
@@ -52,10 +52,10 @@ static void zeroTimeout()
 	EventLoop loop(1);
 
 	int count = runZeroTimeout([&] {
-		// activate the first timer and queue the second
+		// Activate the first timer and queue the second
 		loop.step();
 
-		// activate the second
+		// Activate the second
 		loop.step();
 	});
 

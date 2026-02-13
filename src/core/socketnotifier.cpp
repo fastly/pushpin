@@ -33,12 +33,12 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 {
 	assert((interest & Read) || (interest & Write));
 
-	// start by assuming ready
+	// Start by assuming ready
 	readiness_ = interest;
 
 	if(loop_)
 	{
-		// if the rust-based eventloop is available, use it
+		// If the rust-based eventloop is available, use it
 
 		uint8_t einterest = 0;
 
@@ -53,7 +53,7 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 	}
 	else
 	{
-		// else fall back to qt eventloop
+		// Else fall back to qt eventloop
 
 		if(interest & Read)
 		{
@@ -62,7 +62,7 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 				innerReadActivated(socket);
 			});
 
-			// start out disabled. will enable when initial readiness cleared
+			// Start out disabled. Will enable when initial readiness cleared
 			readInner_->setEnabled(false);
 		}
 
@@ -73,7 +73,7 @@ SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 				innerWriteActivated(socket);
 			});
 
-			// start out disabled. will enable when initial readiness cleared
+			// Start out disabled. Will enable when initial readiness cleared
 			writeInner_->setEnabled(false);
 		}
 	}
@@ -128,7 +128,7 @@ void SocketNotifier::innerReadActivated(int socket)
 {
 	Q_UNUSED(socket);
 
-	// QSocketNotifier is level-triggered. disable until readiness cleared
+	// QSocketNotifier is level-triggered. Disable until readiness cleared
 	readInner_->setEnabled(false);
 
 	apply(Read);
@@ -138,7 +138,7 @@ void SocketNotifier::innerWriteActivated(int socket)
 {
 	Q_UNUSED(socket);
 
-	// QSocketNotifier is level-triggered. disable until readiness cleared
+	// QSocketNotifier is level-triggered. Disable until readiness cleared
 	writeInner_->setEnabled(false);
 
 	apply(Write);
@@ -146,7 +146,7 @@ void SocketNotifier::innerWriteActivated(int socket)
 
 void SocketNotifier::apply(uint8_t readiness)
 {
-	// calculate which bits went from 0->1
+	// Calculate which bits went from 0->1
 	uint8_t changes = readiness & ~readiness_;
 
 	readiness_ |= readiness;

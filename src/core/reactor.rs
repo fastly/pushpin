@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +15,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::event;
 use crate::core::event::ReadinessExt;
+use crate::core::memorypool;
 use crate::core::timer::TimerWheel;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
@@ -39,7 +40,7 @@ fn duration_to_ticks_round_down(d: Duration) -> u64 {
 }
 
 fn duration_to_ticks_round_up(d: Duration) -> u64 {
-    d.as_millis().div_ceil(TICK_DURATION_MS as u128) as u64
+    d.as_nanos().div_ceil((TICK_DURATION_MS * 1000000) as u128) as u64
 }
 
 fn ticks_to_duration(t: u64) -> Duration {
@@ -65,14 +66,14 @@ impl WakerInterest {
                 if (interest.is_readable() && interest.is_writable())
                     || current_interest == interest
                 {
-                    // all interest or interest unchanged. stay using a
+                    // All interest or interest unchanged. Stay using a
                     // single waker
 
                     let waker = if current_waker.will_wake(waker) {
-                        // keep the current waker
+                        // Keep the current waker
                         current_waker
                     } else {
-                        // switch to the new waker
+                        // Switch to the new waker
                         waker.clone()
                     };
 
@@ -80,8 +81,8 @@ impl WakerInterest {
                 } else {
                     assert!(interest.is_readable() != interest.is_writable());
 
-                    // one interest was specified when we had at least the
-                    // opposite interest. switch to separate
+                    // One interest was specified when we had at least the
+                    // opposite interest. Switch to separate
 
                     match (interest.is_readable(), interest.is_writable()) {
                         (true, false) => Self::Separate(waker.clone(), current_waker),
@@ -93,7 +94,7 @@ impl WakerInterest {
             Self::Separate(read_waker, write_waker) => {
                 match (interest.is_readable(), interest.is_writable()) {
                     (true, true) => {
-                        // if multiple interests on one waker, switch to single
+                        // If multiple interests on one waker, switch to single
 
                         let waker = if read_waker.will_wake(waker) {
                             read_waker
@@ -107,10 +108,10 @@ impl WakerInterest {
                     }
                     (true, false) => {
                         let read_waker = if read_waker.will_wake(waker) {
-                            // keep the current waker
+                            // Keep the current waker
                             read_waker
                         } else {
-                            // switch to the new waker
+                            // Switch to the new waker
                             waker.clone()
                         };
 
@@ -118,16 +119,16 @@ impl WakerInterest {
                     }
                     (false, true) => {
                         let write_waker = if write_waker.will_wake(waker) {
-                            // keep the current waker
+                            // Keep the current waker
                             write_waker
                         } else {
-                            // switch to the new waker
+                            // Switch to the new waker
                             waker.clone()
                         };
 
                         Self::Separate(read_waker, write_waker)
                     }
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -139,15 +140,15 @@ impl WakerInterest {
                 if (interest.is_readable() && interest.is_writable())
                     || interest == other.interest()
                 {
-                    // there is already a single waker of both interests or
+                    // There is already a single waker of both interests or
                     // of one interest that is the same interest as the
-                    // other. leave alone
+                    // other. Leave alone
                     Self::Single(waker, interest)
                 } else {
                     assert!(interest.is_readable() != interest.is_writable());
 
-                    // there is a single waker of one interest, and the other
-                    // has at least the opposite interest. switch to separate
+                    // There is a single waker of one interest, and the other
+                    // has at least the opposite interest. Switch to separate
 
                     match (interest.is_readable(), interest.is_writable()) {
                         (true, false) => {
@@ -171,7 +172,7 @@ impl WakerInterest {
                 }
             }
             separate => {
-                // there are already separate wakers for both interests.
+                // There are already separate wakers for both interests.
                 // leave alone
                 separate
             }
@@ -183,10 +184,10 @@ impl WakerInterest {
             Self::Single(waker, cur) => cur.remove(interest).map(|i| Self::Single(waker, i)),
             Self::Separate(read_waker, write_waker) => {
                 match (interest.is_readable(), interest.is_writable()) {
-                    (true, true) => None, // clear all
+                    (true, true) => None, // Clear all
                     (true, false) => Some(Self::Single(write_waker, mio::Interest::WRITABLE)),
                     (false, true) => Some(Self::Single(read_waker, mio::Interest::READABLE)),
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -223,7 +224,7 @@ impl WakerInterest {
 
                         Some(Self::Single(read_waker, mio::Interest::READABLE))
                     }
-                    (false, false) => unreachable!(), // interest always has a value
+                    (false, false) => unreachable!(), // Interest always has a value
                 }
             }
         }
@@ -452,7 +453,9 @@ impl Registration {
             timer.wheel.remove(timer_key);
         }
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, self.key) {
             Ok(timer_key) => timer_key,
@@ -660,7 +663,9 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+        let duration = expires.saturating_duration_since(timer.start);
+
+        let expires_ticks = duration_to_ticks_round_up(duration);
 
         let timer_key = match timer.wheel.add(expires_ticks, key) {
             Ok(timer_key) => timer_key,
@@ -679,8 +684,8 @@ impl Reactor {
         })
     }
 
-    // we advance time after polling. this way, Reactor::now() is accurate
-    // during task processing. we assume the actual time doesn't change much
+    // We advance time after polling. This way, Reactor::now() is accurate
+    // during task processing. We assume the actual time doesn't change much
     // between task processing and the next poll
     pub fn poll(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
         self.poll_for_events(self.next_timeout(timeout))?;
@@ -690,7 +695,7 @@ impl Reactor {
         Ok(())
     }
 
-    // return the timeout that would have been used for a blocking poll
+    // Return the timeout that would have been used for a blocking poll
     pub fn poll_nonblocking(&self, current_time: Instant) -> Result<Option<Duration>, io::Error> {
         let timeout = self.next_timeout(None);
 
@@ -719,7 +724,9 @@ impl Reactor {
         })
     }
 
-    pub fn local_registration_memory(&self) -> Rc<arena::RcMemory<event::LocalRegistrationEntry>> {
+    pub fn local_registration_memory(
+        &self,
+    ) -> Rc<memorypool::RcMemory<event::LocalRegistrationEntry>> {
         self.inner.poll.borrow().local_registration_memory().clone()
     }
 
@@ -893,7 +900,7 @@ impl<S: mio::event::Source> IoEvented<S> {
         &self.inner.as_ref().unwrap().io
     }
 
-    // return registration and io object, without deregistering it
+    // Return registration and io object, without deregistering it
     pub fn into_parts(mut self) -> (Registration, S) {
         let inner = self.inner.take().unwrap();
 
@@ -1000,12 +1007,43 @@ impl TimerEvented {
 
     pub fn set_expires(&self, expires: Instant) -> Result<(), io::Error> {
         if self.expires.get() == expires {
-            // no change
+            // No change
             return Ok(());
         }
 
         self.expires.set(expires);
         self.registration.reregister_timer(expires)
+    }
+}
+
+mod ffi {
+    use super::*;
+    use std::convert::TryInto;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn reactor_create(registrations_max: libc::size_t) -> *mut Reactor {
+        Box::into_raw(Box::new(Reactor::new(registrations_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_destroy(r: *mut Reactor) {
+        if !r.is_null() {
+            drop(Box::from_raw(r));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn reactor_poll(r: *const Reactor, ms: c_int) -> c_int {
+        let r = unsafe { r.as_ref().unwrap() };
+
+        let duration = ms.try_into().ok().map(Duration::from_millis);
+
+        if r.poll(duration).is_err() {
+            return -1;
+        }
+
+        0
     }
 }
 
@@ -1139,7 +1177,9 @@ mod tests {
 
         let reactor = Reactor::new_with_time(1, now);
 
-        let evented = TimerEvented::new(now + Duration::from_millis(100), &reactor).unwrap();
+        // to test rounding, set a 10 tick timeout using a 90.1ms duration
+        let evented =
+            TimerEvented::new(now + Duration::from_micros((90 * 1000) + 100), &reactor).unwrap();
 
         let waker = Rc::new(TestWaker::new());
 
@@ -1159,18 +1199,18 @@ mod tests {
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
-            .poll_nonblocking(now + Duration::from_millis(40))
+            .poll_nonblocking(now + Duration::from_millis(90))
             .unwrap();
 
         assert_eq!(timeout, Some(Duration::from_millis(80)));
-        assert_eq!(reactor.now(), now + Duration::from_millis(40));
+        assert_eq!(reactor.now(), now + Duration::from_millis(90));
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
             .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
-        assert_eq!(timeout, Some(Duration::from_millis(60)));
+        assert_eq!(timeout, Some(Duration::from_millis(10)));
         assert_eq!(waker.was_waked(), true);
         assert_eq!(reactor.now(), now + Duration::from_millis(100));
     }

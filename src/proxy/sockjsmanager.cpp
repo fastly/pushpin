@@ -166,11 +166,11 @@ public:
 
 	void removeSession(Session *s)
 	{
-		// can't remove unless unlinked
+		// Can't remove unless unlinked
 		assert(!s->ext);
 
-		// note: this method assumes the session has already been removed
-		//   from pendingSessions if needed
+		// Note: this method assumes the session has already been removed
+		// from pendingSessions if needed
 		if(s->req)
 			sessionsByRequest.remove(s->req);
 		if(s->sock)
@@ -195,7 +195,7 @@ public:
 
 		if(s->closeValue.isValid())
 		{
-			// if there's a close value, hang around for a little bit
+			// If there's a close value, hang around for a little bit
 			s->timer = std::make_unique<Timer>();
 			s->timerConnection = s->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, s->timer.get()));
 			s->timer->setSingleShot(true);
@@ -313,7 +313,7 @@ public:
 	void respondEmpty(ZhttpRequest *req)
 	{
 		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain"); // workaround FF issue. see sockjs spec.
+		headers += HttpHeader("Content-Type", "text/plain"); // Workaround FF issue. See sockjs spec.
 		respond(req, 204, "No Content", headers, QByteArray());
 	}
 
@@ -345,7 +345,7 @@ public:
 			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
 		}
 		else if(!body.isEmpty())
-			body += "\n"; // newline is required
+			body += "\n"; // Newline is required
 
 		respond(req, 200, "OK", headers, body);
 	}
@@ -372,7 +372,7 @@ public:
 
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message, bool discard = false)
 	{
-		// if discarded, manager takes ownership of req to handle sending
+		// If discarded, manager takes ownership of req to handle sending
 		if(discard)
 		{
 			discardedRequests += req;
@@ -459,7 +459,7 @@ public:
 				{
 					if(existing->ext)
 					{
-						// give to external session
+						// Give to external session
 						ZhttpRequest *req = s->req;
 						QByteArray body = s->reqBody.toByteArray();
 						QByteArray jsonpCallback = s->jsonpCallback;
@@ -550,7 +550,7 @@ public:
 			s->pending = false;
 			if(!s->req && !s->sock)
 			{
-				// this means the object was a zombie. clean up and take next
+				// This means the object was a zombie. Clean up and take next
 				removeSession(s);
 				s = 0;
 				continue;
@@ -570,7 +570,7 @@ public:
 			sessionsByRequest.remove(s->req);
 			s->req = 0;
 		}
-		else // s->sock
+		else // S->sock
 		{
 			if(!s->sid.isEmpty())
 			{
@@ -593,8 +593,8 @@ public:
 private:
 	void req_readyRead(ZhttpRequest *req)
 	{
-		// for a request to have been discardable, we must have read the
-		//   entire input already and handed to the session
+		// For a request to have been discardable, we must have read the
+		// entire input already and handed to the session
 		assert(!discardedRequests.contains(req));
 
 		Session *s = sessionsByRequest.value(req);

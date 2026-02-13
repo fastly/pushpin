@@ -44,7 +44,7 @@ public:
 
 	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;

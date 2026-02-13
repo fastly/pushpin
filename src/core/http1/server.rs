@@ -74,7 +74,7 @@ pub struct RequestHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 }
 
 impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
-    // read from stream into buf, and parse buf as a request header
+    // Read from stream into buf, and parse buf as a request header
     pub async fn recv<'c, const N: usize>(
         self,
         mut scratch: &'c mut ParseScratch<N>,
@@ -130,13 +130,13 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
         ]
         .contains(&self.inner.protocol.state()));
 
-        // at this point, req has taken rbuf's inner buffer, such that
+        // At this point, req has taken rbuf's inner buffer, such that
         // rbuf has no inner buffer
 
-        // put remaining readable bytes in wbuf
+        // Put remaining readable bytes in wbuf
         self.inner.wbuf.write_all(req.remaining_bytes())?;
 
-        // swap inner buffers, such that rbuf now contains the remaining
+        // Swap inner buffers, such that rbuf now contains the remaining
         // readable bytes, and wbuf is now the one with no inner buffer
         self.inner.rbuf.swap_inner(self.inner.wbuf);
 
@@ -177,7 +177,7 @@ pub struct RequestBody<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 }
 
 impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
-    // on EOF and any subsequent calls, return success
+    // On EOF and any subsequent calls, return success
     #[allow(clippy::await_holding_refcell_ref)]
     pub async fn add_to_buffer(&self) -> Result<(), Error> {
         let mut b_inner = self.inner.borrow_mut();
@@ -265,11 +265,11 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
                     inner.rbuf.read_commit(read);
 
                     if read > 0 && written == 0 {
-                        // input consumed but no output produced, retry
+                        // Input consumed but no output produced, retry
                         continue;
                     }
 
-                    // written is only zero here if read is also zero
+                    // Written is only zero here if read is also zero
                     assert!(written > 0 || read == 0);
 
                     return Ok(RecvStatus::Read((), written));
@@ -376,7 +376,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
             loop {
                 if let Err(e) = recv_nonzero(&mut inner.r, inner.rbuf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
+                        // If there's no more space, suspend forever
                         std::future::pending::<()>().await;
                     }
 
@@ -503,7 +503,7 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponseHeader<'a, 'b, R, W> {
         let mut overflow = state.overflow.borrow_mut();
 
         if let Some(overflow_ref) = &mut *overflow {
-            // overflow is guaranteed to fit
+            // Overflow is guaranteed to fit
             let mut wbuf = state.wbuf.borrow_mut();
             wbuf.inner.write_all(overflow_ref.read_buf()).unwrap();
             *overflow = None;
@@ -518,12 +518,12 @@ pub struct ResponsePrepareBody<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 }
 
 impl<R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'_, '_, R, W> {
-    // only returns an error on invalid input
+    // Only returns an error on invalid input
     pub fn prepare(&mut self, src: &[u8], end: bool) -> Result<(usize, usize), Error> {
         let state = self.state.borrow();
         let state = state.as_ref().unwrap();
 
-        // call not allowed if the end has already been indicated
+        // Call not allowed if the end has already been indicated
         if state.end.get() {
             return Err(Error::FurtherInputNotAllowed);
         }
@@ -544,7 +544,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'_, '_, R, W> {
         };
 
         let (size, overflowed) = if accepted < src.len() {
-            // only allow overflowing as much as there are header bytes left
+            // Only allow overflowing as much as there are header bytes left
             let overflow = overflow.get_or_insert_with(|| ContiguousBuffer::new(wbuf.limit));
 
             let remaining = &src[accepted..];
@@ -628,7 +628,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
 
-            // call not allowed if the end has already been indicated
+            // Call not allowed if the end has already been indicated
             if w.end {
                 return Err(Error::FurtherInputNotAllowed);
             }
@@ -688,7 +688,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
             match self.process().await {
                 Some(Ok(size)) => break size,
                 Some(Err(e)) => return SendStatus::Error((), e),
-                None => {} // received data
+                None => {} // Received data
             }
         };
 
@@ -726,7 +726,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
             loop {
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
+                        // If there's no more space, suspend forever
                         std::future::pending::<()>().await;
                     }
 
@@ -762,7 +762,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
                     }
 
                     // protocol.send_body() expects the input to leave room
-                    // for at least two more buffers in case chunked encoding
+                    // For at least two more buffers in case chunked encoding
                     // is used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);
@@ -787,7 +787,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
 
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
+                        // If there's no more space, suspend forever
                         std::future::pending::<()>().await;
                     }
 
@@ -802,8 +802,8 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
         match result {
             Select2::R1(ret) => Some(ret),
             Select2::R2(ret) => match ret {
-                Ok(()) => None,         // received data
-                Err(e) => Some(Err(e)), // error while receiving data
+                Ok(()) => None,         // Received data
+                Err(e) => Some(Err(e)), // Error while receiving data
             },
         }
     }
@@ -991,7 +991,7 @@ mod tests {
                 let mut buf1 = VecRingBuffer::new(64, &tmp);
                 let mut buf2 = VecRingBuffer::new(64, &tmp);
 
-                // shift the write cursor and leave a "P" towards the end
+                // Shift the write cursor and leave a "P" towards the end
                 buf1.write_all(&[b'a'; 40]).unwrap();
                 buf1.write_all(b"P").unwrap();
                 assert_eq!(buf1.read(&mut [0; 40]).unwrap(), 40);
@@ -1172,14 +1172,14 @@ mod tests {
 
                 let mut state = ResponseState::default();
 
-                // this will serialize to 39 bytes, leaving 25 bytes left
+                // This will serialize to 39 bytes, leaving 25 bytes left
                 let (header, mut prepare_body) =
                     match resp.prepare_header(200, "OK", &[], BodySize::Known(64), &mut state) {
                         Ok(ret) => ret,
                         Err(_) => unreachable!(),
                     };
 
-                // only the first 64 bytes will fit
+                // Only the first 64 bytes will fit
                 assert_eq!(
                     prepare_body
                         .prepare(attempted_body.as_bytes(), true)
@@ -1187,7 +1187,7 @@ mod tests {
                     (64, 39)
                 );
 
-                // end is ignored if input doesn't fit, so set end again
+                // End is ignored if input doesn't fit, so set end again
                 assert_eq!(prepare_body.prepare(&[], true).unwrap(), (0, 0));
 
                 let sent = header.send().await.unwrap();

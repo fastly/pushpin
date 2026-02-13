@@ -52,7 +52,7 @@
 #define ZHTTP_SHOULD_PROCESS (ZHTTP_EXPIRE * 3 / 4)
 #define ZHTTP_REFRESH_BUCKETS (ZHTTP_SHOULD_PROCESS / REFRESH_INTERVAL)
 
-// needs to match the peer
+// Needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
 class ZhttpManager::Private
@@ -352,7 +352,7 @@ public:
 	{
 		assert(!packet.from.isEmpty());
 
-		// if this was not an error packet, send cancel
+		// If this was not an error packet, send cancel
 		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
 		{
 			ZhttpResponsePacket out;
@@ -627,7 +627,7 @@ public:
 
 		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
-			// is this for a websocket?
+			// Is this for a websocket?
 			ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id.asQByteArray()));
 			if(sock)
 			{
@@ -638,7 +638,7 @@ public:
 				continue;
 			}
 
-			// is this for an http request?
+			// Is this for an http request?
 			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id.asQByteArray()));
 			if(req)
 			{
@@ -808,7 +808,7 @@ public:
 
 		if(msg.count() < 3)
 		{
-			// reply to probe
+			// Reply to probe
 			writeProbeAck(msg[0]);
 			return;
 		}
@@ -840,7 +840,7 @@ public:
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
-			// is this for a websocket?
+			// Is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
 			if(sock)
 			{
@@ -851,7 +851,7 @@ public:
 				continue;
 			}
 
-			// is this for an http request?
+			// Is this for an http request?
 			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
 			if(req)
 			{
@@ -868,10 +868,10 @@ public:
 
 	void refresh_timeout()
 	{
-		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type
-		QHash<QByteArray, QList<KeepAliveRegistration*> > serverSessionsBySender[4]; // index corresponds to type and response mode
+		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // Index corresponds to type
+		QHash<QByteArray, QList<KeepAliveRegistration*> > serverSessionsBySender[4]; // Index corresponds to type and response mode
 
-		// process the current bucket
+		// Process the current bucket
 		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
 		foreach(KeepAliveRegistration *r, bucket)
 		{
@@ -922,7 +922,7 @@ public:
 			QList<KeepAliveRegistration*> &sessions = sessionsBySender[sender];
 			sessions += r;
 
-			// if we're at max, send out now
+			// If we're at max, send out now
 			if(sessions.count() >= ZHTTP_IDS_MAX)
 			{
 				if(isServer)
@@ -959,7 +959,7 @@ public:
 			}
 		}
 
-		// send last packets
+		// Send last packets
 
 		for(int n = 0; n < 2; ++n)
 		{
@@ -1137,7 +1137,7 @@ ZhttpRequest *ZhttpManager::takeNextRequest()
 		req = d->serverPendingReqs.takeFirst();
 		if(!d->serverReqsByRid.contains(req->rid()))
 		{
-			// this means the object was a zombie. clean up and take next
+			// This means the object was a zombie. Clean up and take next
 			delete req;
 			req = 0;
 			continue;
@@ -1152,7 +1152,7 @@ ZhttpRequest *ZhttpManager::takeNextRequest()
 
 ZWebSocket *ZhttpManager::createSocket()
 {
-	// websockets not allowed in req mode
+	// Websockets not allowed in req mode
 	assert(!d->client_req_sock);
 
 	ZWebSocket *sock = new ZWebSocket;
@@ -1172,7 +1172,7 @@ ZWebSocket *ZhttpManager::takeNextSocket()
 		sock = d->serverPendingSocks.takeFirst();
 		if(!d->serverSocksByRid.contains(sock->rid()))
 		{
-			// this means the object was a zombie. clean up and take next
+			// This means the object was a zombie. Clean up and take next
 			delete sock;
 			sock = 0;
 			continue;

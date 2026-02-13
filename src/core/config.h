@@ -35,7 +35,7 @@ public:
 	QString libDir;
 };
 
-// value is thread local
+// Value is thread local
 Config & get();
 
 }

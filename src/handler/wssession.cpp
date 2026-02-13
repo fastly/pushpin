@@ -114,7 +114,7 @@ void WsSession::processPublishQueue()
 
 		if(f.haveContentFilters)
 		{
-			// ensure content filters match
+			// Ensure content filters match
 			QStringList contentFilters;
 			foreach(const QString &f, channels[item.channel].filters)
 			{
@@ -139,7 +139,7 @@ void WsSession::processPublishQueue()
 		filters = std::make_unique<Filter::MessageFilterStack>(channels[item.channel].filters);
 		filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
 
-		// websocket sessions currently don't support previous IDs on
+		// Websocket sessions currently don't support previous IDs on
 		// subscriptions, but we still need to populate the channel names in
 		// in the filter context even if all the values will be null
 		QHash<QString, QString> prevIds;
@@ -161,8 +161,8 @@ void WsSession::processPublishQueue()
 		fc.trusted = targetTrusted;
 		fc.limiter = filterLimiter;
 
-		// may call filtersFinished immediately. if it does, queue processing
-		// will continue. else, the loop will end and queue processing will
+		// May call filtersFinished immediately. If it does, queue processing
+		// will continue. Else, the loop will end and queue processing will
 		// resume after the filters finish
 		filters->start(fc, f.body);
 	}
@@ -191,7 +191,7 @@ void WsSession::filtersFinished(const Filter::MessageFilter::Result &result)
 		afterFilters(item, result.sendAction, result.content);
 	}
 
-	// if filters finished asynchronously then we need to resume processing
+	// If filters finished asynchronously then we need to resume processing
 	if(!inProcessPublishQueue)
 		processPublishQueue();
 }
@@ -220,7 +220,7 @@ void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAct
 			case PublishFormat::Binary: i.contentType = "binary"; break;
 			case PublishFormat::Ping:   i.contentType = "ping"; break;
 			case PublishFormat::Pong:   i.contentType = "pong"; break;
-			default: return; // unrecognized type, skip
+			default: return; // Unrecognized type, skip
 		}
 
 		i.message = content;
@@ -260,7 +260,7 @@ void WsSession::setupRequestTimer()
 {
 	if(!pendingRequests.isEmpty())
 	{
-		// find next expiring request
+		// Find next expiring request
 		int64_t lowestTime = -1;
 		QHashIterator<int, int64_t> it(pendingRequests);
 		while(it.hasNext())
@@ -312,7 +312,7 @@ void WsSession::delayedTimer_timeout()
 
 void WsSession::requestTimer_timeout()
 {
-	// on error, destroy any other pending requests
+	// On error, destroy any other pending requests
 	pendingRequests.clear();
 	setupRequestTimer();
 

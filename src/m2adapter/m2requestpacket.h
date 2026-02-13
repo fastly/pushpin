@@ -33,7 +33,7 @@ public:
 	enum Type
 	{
 		HttpRequest,
-		WebSocketHandshake, // body will contain accept token
+		WebSocketHandshake, // Body will contain accept token
 		WebSocketFrame,
 		Disconnect,
 		Credits

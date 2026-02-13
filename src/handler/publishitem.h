@@ -39,7 +39,7 @@ public:
 	int size;
 	bool noSeq;
 
-	PublishFormat format; // for single format items
+	PublishFormat format; // For single format items
 
 	PublishItem() :
 		size(-1),

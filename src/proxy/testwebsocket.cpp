@@ -164,7 +164,7 @@ TestWebSocket::~TestWebSocket()
 
 QHostAddress TestWebSocket::peerAddress() const
 {
-	// this class is client only
+	// This class is client only
 	return QHostAddress();
 }
 
@@ -219,7 +219,7 @@ void TestWebSocket::respondSuccess(const QByteArray &reason, const HttpHeaders &
 	Q_UNUSED(reason);
 	Q_UNUSED(headers);
 
-	// this class is client only
+	// This class is client only
 	assert(0);
 }
 
@@ -230,7 +230,7 @@ void TestWebSocket::respondError(int code, const QByteArray &reason, const HttpH
 	Q_UNUSED(headers);
 	Q_UNUSED(body);
 
-	// this class is client only
+	// This class is client only
 	assert(0);
 }
 

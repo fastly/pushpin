@@ -34,7 +34,7 @@ class ContentRenderer
 public:
 	ContentRenderer(const QByteArray &defaultId, bool hex);
 
-	// return null array on error
+	// Return null array on error
 	QByteArray update(const QByteArray &data);
 	QByteArray finalize();
 

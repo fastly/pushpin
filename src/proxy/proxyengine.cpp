@@ -143,7 +143,7 @@ public:
 	{
 		destroying = true;
 
-		// need to delete all objects that may have connections before
+		// Need to delete all objects that may have connections before
 		// deleting zhttpmanagers/zroutes
 
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
@@ -173,12 +173,12 @@ public:
 		}
 		requestSessions.clear();
 
-		// may have background connections
+		// May have background connections
 		sockJsManager.reset();
 
 		WebSocketOverHttp::clearDisconnectManager();
 
-		// need to make sure this is deleted before inspect manager
+		// Need to make sure this is deleted before inspect manager
 		inspectChecker.reset();
 	}
 
@@ -221,7 +221,8 @@ public:
 
 		sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
 		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
-
+		
+		// Set up the Inspect endpoint in pushpin-handler
 		if(!config.inspectSpec.isEmpty())
 		{
 			inspect = std::make_unique<ZrpcManager>();
@@ -229,7 +230,7 @@ public:
 			inspect->setIpcFileMode(config.ipcFileMode);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 
@@ -237,7 +238,8 @@ public:
 
 			inspectChecker = std::make_unique<ZrpcChecker>();
 		}
-
+		
+		// Set up the Accept endpoint in pushpin-handler
 		if(!config.acceptSpec.isEmpty())
 		{
 			accept = std::make_unique<ZrpcManager>();
@@ -246,11 +248,11 @@ public:
 			accept->setIpcFileMode(config.ipcFileMode);
 			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 
-			// there's no acceptTimeout config option so we'll reuse inspectTimeout
+			// There's no acceptTimeout config option so we'll reuse inspectTimeout
 			accept->setTimeout(config.inspectTimeout + 5);
 		}
 
@@ -295,6 +297,7 @@ public:
 			}
 		}
 
+		// Set up StatsManager
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
 			stats = std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
@@ -313,7 +316,7 @@ public:
 			{
 				if(!stats->setSpec(config.statsSpec))
 				{
-					// statsmanager logs error
+					// StatsManager logs error
 					return false;
 				}
 			}
@@ -339,12 +342,12 @@ public:
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
-				// zrpcmanager logs error
+				// ZrpcManager logs error
 				return false;
 			}
 		}
 
-		// init zroutes
+		// Init zroutes
 		routesChanged();
 
 		return true;
@@ -360,7 +363,7 @@ public:
 			zhttpRoutes = zhttpRoutes.mid(0, ZROUTES_MAX);
 		}
 
-		// connect to new zhttp targets, disconnect from old
+		// Connect to new zhttp targets, disconnect from old
 		zroutes->setup(zhttpRoutes);
 	}
 
@@ -368,7 +371,7 @@ public:
 	{
 		DomainMap::Entry route = rs->route();
 
-		// we'll always have a route
+		// We'll always have a route
 		assert(!route.isNull());
 
 		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
@@ -422,7 +425,7 @@ public:
 		else
 			log_debug("reusing proxysession");
 
-		// proxysession will take it from here
+		// ProxySession will take it from here
 		// TODO: use callbacks for performance
 		reqSessionConnectionMap.erase(rs);
 
@@ -452,7 +455,7 @@ public:
 		i->ps = ps;
 		wsProxyItemsBySession.insert(i->ps, i);
 
-		// after this call, ps->logicalClientAddress() will be valid
+		// After this call, ps->logicalClientAddress() will be valid
 		ps->start(sock, cid, route);
 
 		if(stats)
@@ -465,11 +468,11 @@ public:
 
 	bool canTake()
 	{
-		// don't accept new sessions during shutdown
+		// Don't accept new sessions during shutdown
 		if(destroying)
 			return false;
 
-		// don't accept new sessions if we're servicing maximum
+		// Don't accept new sessions if we're servicing maximum
 		int curSessions = requestSessions.count() + wsProxyItemsBySession.count();
 		if(curSessions >= config.sessionsMax)
 			return false;
@@ -490,7 +493,7 @@ public:
 		if(!canTake())
 			return;
 
-		// prioritize external requests over internal requests
+		// Prioritize external requests over internal requests
 
 		ZhttpRequest *req = zhttpIn->takeNextRequest();
 		if(!req)
@@ -509,11 +512,11 @@ public:
 		QVariant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
-			// passthrough request, from handler
+			// Passthrough request, from handler
 
 			const QVariantHash data = passthroughData.toHash();
 
-			// there is always a route
+			// There is always a route
 			routeId = QString::fromUtf8(data["route"].toByteArray());
 
 			if(data.contains("prefer-internal"))
@@ -524,7 +527,7 @@ public:
 		}
 		else
 		{
-			// regular request
+			// Regular request
 
 			if(config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
 				req->setIsTls(true);
@@ -537,7 +540,7 @@ public:
 
 		if(passthroughData.isValid() && !preferInternal)
 		{
-			// passthrough request with preferInternal=false. in this case,
+			// Passthrough request with preferInternal=false. In this case,
 			// set up a direct route, using some settings from the original
 			// route
 
@@ -549,7 +552,7 @@ public:
 
 			DomainMap::Entry route;
 
-			// use sig settings from the original route, if available
+			// Use sig settings from the original route, if available
 			if(!originalRoute.isNull())
 			{
 				route.sigIss = originalRoute.sigIss;
@@ -570,8 +573,8 @@ public:
 		}
 		else
 		{
-			// regular request (with or without a route ID), or a passthrough
-			// request with preferInternal=true. in that case, use domainmap
+			// Regular request (with or without a route ID), or a passthrough
+			// request with preferInternal=true. In that case, use domainmap
 			// for lookup, with route ID if available
 
 			rs->setRouteId(routeId);
@@ -579,7 +582,7 @@ public:
 
 		if(!passthroughData.isValid())
 		{
-			// these only make sense on regular requests
+			// These only make sense on regular requests
 
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
@@ -629,14 +632,14 @@ public:
 		if(config.acceptPushpinRoute)
 			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route").asQByteArray());
 
-		// look up the route
+		// Look up the route
 		DomainMap::Entry route;
 		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 			route = domainMap->entry(routeId);
 		else
 			route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
 
-		// before we do anything else, see if this is a sockjs request
+		// Before we do anything else, see if this is a sockjs request
 		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 		{
 			sockJsManager->giveSocket(sock, route.sockJsPath.length(), route.sockJsAsPath, route);
@@ -677,7 +680,7 @@ public:
 
 		DomainMap::Entry route = rs->route();
 
-		// only log route id if explicitly set
+		// Only log route id if explicitly set
 		if(route.separateStats)
 			rd.routeId = route.id;
 
@@ -727,14 +730,14 @@ private:
 
 	void rs_inspectError(RequestSession *rs)
 	{
-		// default action is to proxy without sharing
+		// Default action is to proxy without sharing
 		doProxy(rs);
 	}
 
 	void rs_inspected(const InspectData &idata, RequestSession *rs)
 	{
-		// if we get here, then the request must be proxied. if it was to be directly
-		//   accepted, then finishedByAccept would have been emitted instead
+		// If we get here, then the request must be proxied. If it was to be directly
+		// accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
@@ -768,7 +771,7 @@ private:
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
-		// no more sharing for this session
+		// No more sharing for this session
 		if(i->shared)
 		{
 			i->shared = false;
@@ -897,9 +900,9 @@ private:
 			if(!p.route.isEmpty())
 				rs->setRouteId(QString::fromUtf8(p.route));
 
-			// note: if the routing table was changed, there's a chance the request
-			//   might get a different route id this time around. this could confuse
-			//   stats processors tracking route+connection mappings.
+			// Note: if the routing table was changed, there's a chance the request
+			// might get a different route id this time around. This could confuse
+			// stats processors tracking route+connection mappings.
 			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);

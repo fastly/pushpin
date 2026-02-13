@@ -31,7 +31,7 @@ public:
 	TcpListener();
 	~TcpListener();
 
-	// disable copying
+	// Disable copying
 	TcpListener(const TcpListener &) = delete;
 	TcpListener & operator=(const TcpListener &) = delete;
 

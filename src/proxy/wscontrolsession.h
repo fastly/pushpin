@@ -34,6 +34,8 @@ using Signal = boost::signals2::signal<void()>;
 
 class WsControlManager;
 
+/// Handles communication with the handler for controlling an active WebSocket connection including
+/// sending GRIP control messages, managing channel subscriptions, and coordinating keepalives
 class WsControlSession
 {
 public:
@@ -47,7 +49,7 @@ public:
 	void sendNeedKeepAlive();
 	void sendSubscribe(const QByteArray &channel);
 
-	// tell session that a received sendEvent has been written
+	// Tell session that a received sendEvent has been written
 	void sendEventWritten();
 
 	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;

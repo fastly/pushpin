@@ -89,7 +89,7 @@ int TimerManager::add(int msec, Timer *r)
 	int64_t expiresTicks;
 	if(msec <= 0)
 	{
-		// for timeouts of zero, set immediate expiration with no rounding up
+		// For timeouts of zero, set immediate expiration with no rounding up
 		expiresTicks = currentTicks_;
 	}
 	else
@@ -123,7 +123,7 @@ void TimerManager::t_timeout()
 {
 	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	// time must go forward
+	// Time must go forward
 	if(currentTime > startTime_)
 	{
 		currentTicks_ = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
@@ -159,15 +159,15 @@ void TimerManager::updateTimeout(int64_t currentTime)
 
 		uint64_t currentTicks = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
 
-		// time must go forward
+		// Time must go forward
 		currentTicks = qMax(currentTicks, currentTicks_);
 
 		int64_t ticksSinceWheelUpdate = (int64_t)(currentTicks - currentTicks_);
 
-		// reduce the timeout by the time already elapsed
+		// Reduce the timeout by the time already elapsed
 		timeoutTicks = qMax(timeoutTicks - ticksSinceWheelUpdate, (int64_t)0);
 
-		// cap the timeout so the wheel is regularly updated
+		// Cap the timeout so the wheel is regularly updated
 		int64_t maxTimeoutTicks = qMax(UPDATE_TICKS_MAX - ticksSinceWheelUpdate, (int64_t)0);
 		timeoutTicks = qMin(timeoutTicks, maxTimeoutTicks);
 
@@ -223,7 +223,7 @@ void Timer::start()
 
 	if(loop_)
 	{
-		// if the rust-based eventloop is available, use it
+		// If the rust-based eventloop is available, use it
 
 		int id = loop_->registerTimer(interval_, Timer::cb_timer_activated, this);
 		assert(id >= 0);
@@ -232,9 +232,9 @@ void Timer::start()
 	}
 	else
 	{
-		// else fall back to qt eventloop
+		// Else fall back to qt eventloop
 
-		// must call Timer::init first
+		// Must call Timer::init first
 		assert(g_manager);
 
 		int id = g_manager->add(interval_, this);

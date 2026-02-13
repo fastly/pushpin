@@ -16,12 +16,12 @@
 
 use crate::core::config::default_config_file;
 use crate::core::version;
-use clap::{arg, Parser};
+use clap::Parser;
 use std::ffi::{c_char, CString};
 use std::path::PathBuf;
-use std::slice;
+use std::ptr;
 
-// Struct to hold the command line arguments
+/// Struct to hold the command line arguments
 #[derive(Parser, Debug)]
 #[command(
     name= "pushpin-proxy",
@@ -111,7 +111,7 @@ impl CliArgs {
         for item in &self.route {
             let item = item.as_bytes();
 
-            // ensure no trailing nul byte
+            // Ensure no trailing nul byte
             let end = item.iter().position(|b| *b == 0).unwrap_or(item.len());
             let item = &item[..end];
 
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn destroy_proxy_cli_args(ffi_args: ffi::ProxyCliArgs) {
     if !ffi_args.routes.is_null() {
         // SAFETY: the raw parts were originally derived from a boxed slice
         let routes = unsafe {
-            Box::from_raw(slice::from_raw_parts_mut(
+            Box::from_raw(ptr::slice_from_raw_parts_mut(
                 ffi_args.routes,
                 ffi_args.routes_count,
             ))

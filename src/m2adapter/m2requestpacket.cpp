@@ -35,8 +35,8 @@ static bool isAllCaps(const QString &s)
 	{
 		QChar c = s[n];
 
-		// non-letters are allowed, so what we really check against is
-		//   lowercase
+		// Non-letters are allowed, so what we really check against is
+		// lowercase
 		if(c.isLower())
 			return false;
 	}
@@ -108,8 +108,8 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	skipHeaders += "x-mongrel2-upload-start";
 	skipHeaders += "x-mongrel2-upload-done";
 
-	headers.clear(); // will store full headers
-	QMap<QString, QByteArray> m2headers; // single-value map for easy processing
+	headers.clear(); // Will store full headers
+	QMap<QString, QByteArray> m2headers; // Single-value map for easy processing
 	if(htype == TnetString::Hash)
 	{
 		QVariantMap headersMap = vheaders.toMap();
@@ -284,8 +284,8 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");
 	if(!uploadDoneRaw.isEmpty())
 	{
-		// these headers must match for the packet to be valid. not
-		//   sure why mongrel2 can't enforce this for us but whatever
+		// These headers must match for the packet to be valid. Not
+		// sure why mongrel2 can't enforce this for us but whatever
 		if(uploadStartRaw != uploadDoneRaw)
 			return false;
 

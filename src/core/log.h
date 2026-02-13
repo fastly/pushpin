@@ -23,7 +23,7 @@
 
 #include <QString>
 
-// really simply logging stuff
+// Really simply logging stuff
 
 #define LOG_LEVEL_ERROR   0
 #define LOG_LEVEL_WARNING 1
@@ -42,7 +42,7 @@ void log_warning(const char *fmt, ...);
 void log_info(const char *fmt, ...);
 void log_debug(const char *fmt, ...);
 
-// log without prefixing or anything. useful for forwarding log data
+// Log without prefixing or anything. Useful for forwarding log data
 void log_raw(const char *line);
 
 #endif

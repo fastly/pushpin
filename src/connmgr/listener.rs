@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-use crate::core::arena::recycle_vec;
 use crate::core::channel;
 use crate::core::executor::Executor;
+use crate::core::memorypool::recycle_vec;
 use crate::core::net::{AsyncNetListener, NetAcceptFuture, NetListener, NetStream, SocketAddr};
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_slice, Select2};
@@ -85,7 +85,7 @@ impl Listener {
         let mut stop_recv = stop.recv();
 
         'accept: loop {
-            // wait for a sender to become writable
+            // Wait for a sender to become writable
 
             let mut sender_tasks = recycle_vec(sender_tasks_mem);
 
@@ -106,7 +106,7 @@ impl Listener {
                 Select2::R2(_) => {}
             }
 
-            // accept a connection
+            // Accept a connection
 
             let mut listener_tasks = recycle_vec(listener_tasks_mem);
 
@@ -139,7 +139,7 @@ impl Listener {
 
             listeners_pos = (pos + 1) % listeners.len();
 
-            // write connection to sender
+            // Write connection to sender
 
             let mut pending_sock = Some((pos, stream, peer_addr));
 
@@ -157,7 +157,7 @@ impl Listener {
                     Ok(()) => {}
                     Err(mpsc::TrySendError::Full(s)) => pending_sock = Some(s),
                     Err(mpsc::TrySendError::Disconnected(_)) => {
-                        // this could happen during shutdown
+                        // This could happen during shutdown
                         debug!("receiver disconnected");
                     }
                 }
@@ -174,8 +174,8 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        // this should never fail. receiver won't disconnect unless
-        //   we tell it to
+        // This should never fail. Receiver won't disconnect unless
+        // we tell it to
         self.stop.send(()).unwrap();
 
         let thread = self.thread.take().unwrap();

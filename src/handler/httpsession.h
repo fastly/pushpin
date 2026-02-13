@@ -34,7 +34,7 @@
 #include "filter.h"
 #include "clientsession.h"
 
-// each session can have a bunch of timers:
+// Each session can have a bunch of timers:
 // incoming request
 // outgoing request
 // 2 additional timers

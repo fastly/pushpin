@@ -56,7 +56,7 @@ static void set_unsubscribe(void *sock, const char *data, int size)
 {
 	size_t opt_len = size;
 	ffi::wzmq_setsockopt(sock, ffi::WZMQ_UNSUBSCRIBE, data, opt_len);
-	// note: we ignore errors, such as unsubscribing a nonexisting filter
+	// Note: we ignore errors, such as unsubscribing a nonexisting filter
 }
 
 static void set_linger(void *sock, int value)
@@ -318,10 +318,10 @@ public:
 		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));
 		updateTimer->setSingleShot(true);
 
-		// socket notifier starts out ready. attempt to read events
+		// Socket notifier starts out ready. Attempt to read events
 		if(processEvents())
 		{
-			// if there are events, queue them for processing
+			// If there are events, queue them for processing
 			update();
 		}
 	}
@@ -419,7 +419,7 @@ public:
 		}
 	}
 
-	// return true if flags changed
+	// Return true if flags changed
 	bool processEvents()
 	{
 		int flags = get_events(sock);
@@ -469,8 +469,8 @@ public:
 	{
 		while(canWrite && !pendingWrites.empty())
 		{
-			// whether this write succeeds or not, we assume we
-			//   can't write afterwards
+			// Whether this write succeeds or not, we assume we
+			// can't write afterwards
 			canWrite = false;
 
 			if(zmqWrite(pendingWrites.front()))

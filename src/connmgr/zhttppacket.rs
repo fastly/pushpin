@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
+use crate::core::memorypool;
 use crate::core::tnetstring;
 use arrayvec::ArrayVec;
 use std::cell::RefCell;
 use std::io;
 use std::mem;
 use std::str;
+use std::sync::Arc;
 use thiserror::Error;
 
 pub const IDS_MAX: usize = 128;
@@ -254,7 +255,7 @@ impl<'buf: 'ids, 'ids> CommonData<'buf, 'ids> {
 
                                             seq = Some(x as u32);
                                         }
-                                        _ => {} // skip unknown fields
+                                        _ => {} // Skip unknown fields
                                     }
                                 }
 
@@ -308,7 +309,7 @@ impl<'buf: 'ids, 'ids> CommonData<'buf, 'ids> {
                         }
                     }
                 }
-                _ => {} // skip unknown fields
+                _ => {} // Skip unknown fields
             }
         }
 
@@ -331,7 +332,7 @@ pub struct RequestData<'buf, 'headers> {
     pub method: &'buf str,
     pub uri: &'buf str,
     pub headers: &'headers [Header<'buf>],
-    pub content_type: Option<ContentType>, // websocket
+    pub content_type: Option<ContentType>, // Websocket
     pub body: &'buf [u8],
     pub peer_address: &'buf str,
     pub peer_port: u16,
@@ -681,7 +682,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
 
                     backend_data = s;
                 }
-                _ => {} // skip unknown fields
+                _ => {} // Skip unknown fields
             }
         }
 
@@ -718,7 +719,7 @@ pub struct ResponseData<'buf, 'headers> {
     pub code: u16,
     pub reason: &'buf str,
     pub headers: &'headers [Header<'buf>],
-    pub content_type: Option<ContentType>, // websocket
+    pub content_type: Option<ContentType>, // Websocket
     pub body: &'buf [u8],
 }
 
@@ -895,7 +896,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for ResponseData<'buf, 'scr
 
                     body = s;
                 }
-                _ => {} // skip unknown fields
+                _ => {} // Skip unknown fields
             }
         }
 
@@ -958,7 +959,7 @@ pub struct RejectedInfo<'buf, 'headers> {
 
 pub struct ResponseErrorData<'buf, 'headers> {
     pub condition: &'buf str,
-    pub rejected_info: Option<RejectedInfo<'buf, 'headers>>, // rejected (websocket)
+    pub rejected_info: Option<RejectedInfo<'buf, 'headers>>, // Rejected (websocket)
 }
 
 impl<'a> Serialize<'a> for ResponseErrorData<'a, 'a> {
@@ -1080,7 +1081,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for ResponseErrorData<'buf,
 
                     body = s;
                 }
-                _ => {} // skip unknown fields
+                _ => {} // Skip unknown fields
             }
         }
 
@@ -1143,7 +1144,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for CreditData {
 }
 
 pub struct CloseData<'a> {
-    // code, reason
+    // Code, reason
     pub status: Option<(u16, &'a str)>,
 }
 
@@ -1193,7 +1194,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for CloseData<'buf> {
 
                     reason = s;
                 }
-                _ => {} // skip unknown fields
+                _ => {} // Skip unknown fields
             }
         }
 
@@ -1229,7 +1230,7 @@ fn parse_ping_or_pong(root: tnetstring::MapIterator<'_>) -> Result<(u32, &[u8]),
 
                 body = s;
             }
-            _ => {} // skip unknown fields
+            _ => {} // Skip unknown fields
         }
     }
 
@@ -1372,7 +1373,7 @@ pub fn parse_ids<'buf, 'scratch>(
                     return Err(ParseError::NotMapOrString("id"));
                 }
             },
-            _ => {} // skip other fields
+            _ => {} // Skip other fields
         }
     }
 
@@ -1539,7 +1540,7 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Request<'buf, 'sc
         } = CommonData::parse(root, &mut scratch.ids)?;
 
         let ptype = match ptype_str {
-            // data
+            // Data
             "" => RequestPacket::Data(RequestData::parse(root, &mut scratch.headers)?),
             "error" => RequestPacket::Error(RequestErrorData::parse(root, &mut scratch.headers)?),
             "credit" => RequestPacket::Credit(CreditData::parse(root, &mut scratch.headers)?),
@@ -1710,7 +1711,7 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Response<'buf, 's
         } = CommonData::parse(root, &mut scratch.ids)?;
 
         let ptype = match ptype_str {
-            // data
+            // Data
             "" => ResponsePacket::Data(ResponseData::parse(root, &mut scratch.headers)?),
             "error" => ResponsePacket::Error(ResponseErrorData::parse(root, &mut scratch.headers)?),
             "credit" => ResponsePacket::Credit(CreditData::parse(root, &mut scratch.headers)?),
@@ -1736,8 +1737,8 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Response<'buf, 's
 
 pub struct OwnedPacket<T> {
     inner: T,
-    _scratch: arena::Rc<RefCell<ParseScratch<'static>>>,
-    _src: arena::Arc<zmq::Message>,
+    _scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
+    _src: Arc<zmq::Message>,
 }
 
 impl<T> OwnedPacket<T>
@@ -1745,11 +1746,11 @@ where
     T: PacketParse<'static, 'static, Parsed = T>,
 {
     pub fn parse(
-        src: arena::Arc<zmq::Message>,
+        src: Arc<zmq::Message>,
         offset: usize,
-        scratch: arena::Rc<RefCell<ParseScratch<'static>>>,
+        scratch: memorypool::Rc<RefCell<ParseScratch<'static>>>,
     ) -> Result<Self, ParseError> {
-        let src_ref: &[u8] = &src.get()[offset..];
+        let src_ref: &[u8] = &src[offset..];
 
         // SAFETY: Self will take ownership of src, and the bytes referred to
         // by src_ref are on the heap, and src will not be modified or
@@ -1758,15 +1759,15 @@ where
         let src_ref: &'static [u8] = unsafe { mem::transmute(src_ref) };
 
         // SAFETY: Self will take ownership of scratch, and the location
-        // referred to by scratch_mut is in an arena, and scratch will not
+        // referred to by scratch_mut is in an memorypool, and scratch will not
         // be dropped until Self is dropped, so the location referred to by
         // scratch_mut will remain valid for the lifetime of Self
         //
         // further, it is safe for T::parse() to write references to src_ref
         // into scratch_mut, because src_ref and scratch_mut have the same
-        // lifetime
+        // Lifetime
         let scratch_mut: &'static mut ParseScratch<'static> =
-            unsafe { scratch.get().as_ptr().as_mut().unwrap() };
+            unsafe { scratch.as_ptr().as_mut().unwrap() };
 
         let inner = T::parse(src_ref, scratch_mut)?;
 
@@ -1781,7 +1782,7 @@ where
 pub type OwnedRequest = OwnedPacket<Request<'static, 'static, 'static>>;
 
 impl OwnedRequest {
-    // the lifetimes are needed
+    // The lifetimes are needed
     #[allow(clippy::needless_lifetimes)]
     pub fn get<'a>(&'a self) -> &'a Request<'a, 'a, 'a> {
         let req: &Request = &self.inner;
@@ -1795,7 +1796,7 @@ impl OwnedRequest {
 pub type OwnedResponse = OwnedPacket<Response<'static, 'static, 'static>>;
 
 impl OwnedResponse {
-    // the lifetimes are needed
+    // The lifetimes are needed
     #[allow(clippy::needless_lifetimes)]
     pub fn get<'a>(&'a self) -> &'a Response<'a, 'a, 'a> {
         let resp: &Response = &self.inner;
@@ -1820,7 +1821,7 @@ mod tests {
             expected: &'static str,
         }
 
-        // data, error, credit, keepalive, cancel, handoffstart/proceed, close, ping, pong
+        // Data, error, credit, keepalive, cancel, handoffstart/proceed, close, ping, pong
         let tests = [
             Test {
                 name: "data",
@@ -1910,7 +1911,7 @@ mod tests {
             expected: &'static str,
         }
 
-        // data, error, credit, keepalive, cancel, handoffstart/proceed, close, ping, pong
+        // Data, error, credit, keepalive, cancel, handoffstart/proceed, close, ping, pong
         let tests = [
             Test {
                 name: "data",
@@ -2060,11 +2061,11 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(arena::ArcMemory::new(1));
-        let scratch_memory = Rc::new(arena::RcMemory::new(1));
+        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = arena::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
-        let scratch = arena::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
+        let scratch =
+            memorypool::Rc::try_new_in(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let req = OwnedRequest::parse(msg, 0, scratch).unwrap();
 
@@ -2086,11 +2087,11 @@ mod tests {
         )
         .as_bytes();
 
-        let msg_memory = Arc::new(arena::ArcMemory::new(1));
-        let scratch_memory = Rc::new(arena::RcMemory::new(1));
+        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
 
-        let msg = arena::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
-        let scratch = arena::Rc::new(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
+        let msg = Arc::new(zmq::Message::from(data));
+        let scratch =
+            memorypool::Rc::try_new_in(RefCell::new(ParseScratch::new()), &scratch_memory).unwrap();
 
         let resp = OwnedResponse::parse(msg, 5, scratch).unwrap();
 

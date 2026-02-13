@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,43 @@
  * limitations under the License.
  */
 
-use log::{Level, Log, Metadata, Record};
+use crate::core::channel;
+use crate::core::executor::{Executor, Spawner};
+use crate::core::io::AsyncWriteExt;
+use crate::core::net::{AsyncUnixListener, AsyncUnixStream};
+use crate::core::reactor::Reactor;
+use crate::core::select::{select_2, Select2};
+use crate::core::task::{get_reactor, CancellationSender, CancellationToken};
+use log::{debug, warn, LevelFilter, Log, Metadata, Record};
+use mio::net::UnixListener;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Write};
+use std::mem;
+use std::pin::pin;
+use std::rc::Rc;
 use std::str;
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::thread;
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
+
+static LOCAL_OFFSET: OnceLock<Option<UtcOffset>> = OnceLock::new();
+
+// Obtains the local offset and caches it forever. This call may fail if
+// there are multiple threads running when it is called for the first time,
+// so it should be called early in the program before spawning threads.
+fn local_offset() -> Option<UtcOffset> {
+    *LOCAL_OFFSET.get_or_init(|| UtcOffset::current_local_offset().ok())
+}
+
+pub fn local_offset_check() {
+    if local_offset().is_none() {
+        log::warn!("Failed to determine local time offset. Log timestamps will be in UTC.");
+    }
+}
 
 enum SharedOutput<'a> {
     Stdout(io::Stdout),
@@ -44,19 +74,58 @@ impl Write for SharedOutput<'_> {
     }
 }
 
+struct AtomicLevelFilter(AtomicUsize);
+
+impl AtomicLevelFilter {
+    fn set(&self, level: LevelFilter) {
+        self.0.store(level as usize, Ordering::Relaxed);
+    }
+
+    fn get(&self) -> LevelFilter {
+        // SAFETY: We store only valid enum values
+        unsafe { mem::transmute(self.0.load(Ordering::Relaxed)) }
+    }
+}
+
+impl Default for AtomicLevelFilter {
+    fn default() -> Self {
+        Self(AtomicUsize::new(LevelFilter::Off as usize))
+    }
+}
+
 pub struct SimpleLogger {
-    local_offset: Option<UtcOffset>,
+    max_level: AtomicLevelFilter,
     output_file: Option<Mutex<File>>,
     runner_mode: bool,
 }
 
+impl SimpleLogger {
+    pub fn set_max_level(&self, level: LevelFilter) {
+        self.max_level.set(level);
+    }
+}
+
 impl Log for SimpleLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
+        if let Some(dl) = DebugLogger::instance() {
+            if dl.enabled(metadata) {
+                return true;
+            }
+        }
+
+        metadata.level() <= self.max_level.get()
     }
 
     fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        if let Some(dl) = DebugLogger::instance() {
+            dl.log(record);
+        }
+
+        if record.metadata().level() > self.max_level.get() {
             return;
         }
 
@@ -70,7 +139,7 @@ impl Log for SimpleLogger {
             return;
         }
 
-        let now = OffsetDateTime::now_utc().to_offset(self.local_offset.unwrap_or(UtcOffset::UTC));
+        let now = OffsetDateTime::now_utc().to_offset(local_offset().unwrap_or(UtcOffset::UTC));
 
         let format = format_description!(
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
@@ -116,49 +185,382 @@ impl Log for SimpleLogger {
     fn flush(&self) {}
 }
 
-// SAFETY: this method is unsound on platforms where another thread may
-// modify environment vars
-unsafe fn get_offset() -> Option<UtcOffset> {
-    time::util::local_offset::set_soundness(time::util::local_offset::Soundness::Unsound);
-
-    let offset = UtcOffset::current_local_offset().ok();
-
-    time::util::local_offset::set_soundness(time::util::local_offset::Soundness::Sound);
-
-    offset
-}
-
 static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
-    LOGGER.get_or_init(|| {
-        // SAFETY: we accept that this call is unsound. on some platforms it
-        // is the only way to know the time zone, with a chance of UB if
-        // another thread modifies environment vars during the call. the risk
-        // is low, as this call will happen very early in the program, and
-        // only once. we would rather accept this low risk and know the time
-        // zone than not know the time zone
-        let local_offset = unsafe { get_offset() };
-
-        SimpleLogger {
-            local_offset,
-            output_file: output_file.map(Mutex::new),
-            runner_mode,
-        }
+    LOGGER.get_or_init(|| SimpleLogger {
+        max_level: AtomicLevelFilter::default(),
+        output_file: output_file.map(Mutex::new),
+        runner_mode,
     });
 }
 
 pub fn get_simple_logger() -> &'static SimpleLogger {
     ensure_init_simple_logger(None, false);
 
-    // logger is guaranteed to have been initialized
+    // Logger is guaranteed to have been initialized
     LOGGER.get().expect("logger should be initialized")
 }
 
-pub fn local_offset_check() {
-    if get_simple_logger().local_offset.is_none() {
-        log::warn!("Failed to determine local time offset. Log timestamps will be in UTC.");
+#[derive(Clone)]
+struct LogMessage {
+    inner: String,
+}
+
+struct LogClient {
+    sender: channel::LocalSender<(Rc<LogMessage>, u64)>,
+    drop_count: u64,
+    _cancel: CancellationSender,
+}
+
+enum ClientWriteError {
+    Io(io::Error),
+    Cancelled,
+}
+
+struct LogBroadcaster {
+    thread: Option<thread::JoinHandle<()>>,
+    msgs: Option<channel::Sender<(LogMessage, u64)>>,
+    interest: Arc<AtomicBool>,
+    drop_count: AtomicU64,
+}
+
+impl LogBroadcaster {
+    fn new(listener: UnixListener, queue_max: usize) -> Self {
+        let (msgs, r_msgs) = channel::channel(queue_max);
+
+        let interest = Arc::new(AtomicBool::new(false));
+
+        let thread = {
+            let interest = Arc::clone(&interest);
+
+            thread::Builder::new()
+                .name("debug-logger".to_string())
+                .spawn(move || {
+                    let reactor = Reactor::new(100); // Plenty for 11 tasks
+                    let executor = Executor::new(11); // Accept task + 10 clients
+
+                    let spawner = executor.spawner();
+
+                    executor
+                        .spawn(Self::accept_task(
+                            listener, queue_max, spawner, r_msgs, interest,
+                        ))
+                        .unwrap();
+
+                    executor.run(|timeout| reactor.poll(timeout)).unwrap();
+                })
+                .unwrap()
+        };
+
+        Self {
+            thread: Some(thread),
+            msgs: Some(msgs),
+            interest,
+            drop_count: AtomicU64::new(0),
+        }
     }
+
+    fn has_interest(&self) -> bool {
+        self.interest.load(Ordering::Relaxed)
+    }
+
+    fn send(&self, message: String) {
+        if let Some(sender) = &self.msgs {
+            let message = LogMessage { inner: message };
+
+            // `send` can be called from multiple threads at the same time.
+            // To handle the drop count accurately, we do an atomic swap to
+            // take the current value for sending, and if we fail to send
+            // then we add the value back.
+            let drop_count = self.drop_count.swap(0, Ordering::Relaxed);
+
+            // Send immediately if the queue isn't full, else drop
+            match sender.try_send((message, drop_count)) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(_)) => {
+                    self.drop_count.fetch_add(drop_count + 1, Ordering::Relaxed);
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => unreachable!(),
+            }
+        }
+    }
+
+    async fn accept_task(
+        listener: UnixListener,
+        queue_max: usize,
+        spawner: Spawner,
+        msgs: channel::Receiver<(LogMessage, u64)>,
+        interest: Arc<AtomicBool>,
+    ) {
+        let listener = AsyncUnixListener::new(listener);
+        let msgs = channel::AsyncReceiver::new(msgs);
+
+        let mut clients: Vec<LogClient> = Vec::new();
+
+        debug!("debug logger started");
+
+        // Loop to read messages from a channel and to listen for new
+        // connections. Messages are broadcasted to all connections. If the
+        // channel closes, the task ends. When the task ends, the `clients`
+        // Vec is dropped, which causes all the client tasks to end as well.
+
+        loop {
+            let result = select_2(msgs.recv(), listener.accept()).await;
+
+            match result {
+                Select2::R1(ret) => {
+                    let (msg, drop_count) = match ret {
+                        Ok(ret) => ret,
+                        Err(mpsc::RecvError) => break,
+                    };
+
+                    let msg = Rc::new(msg);
+
+                    if !clients.is_empty() {
+                        clients.retain_mut(|c| {
+                            c.drop_count += drop_count;
+
+                            // Send immediately if the client's queue isn't full, else drop
+                            match c.sender.try_send((Rc::clone(&msg), c.drop_count)) {
+                                Ok(()) => {
+                                    c.drop_count = 0;
+
+                                    true
+                                }
+                                Err(mpsc::TrySendError::Full(_)) => {
+                                    c.drop_count += 1;
+
+                                    true
+                                }
+                                Err(mpsc::TrySendError::Disconnected(_)) => false,
+                            }
+                        });
+
+                        if clients.is_empty() {
+                            interest.store(false, Ordering::Relaxed);
+                        }
+                    }
+                }
+                Select2::R2(ret) => {
+                    let stream = match ret {
+                        Ok((stream, _)) => stream,
+                        Err(e) => {
+                            warn!("debug log accept error: {e}");
+                            continue;
+                        }
+                    };
+
+                    let reactor = get_reactor();
+
+                    let (s_msgs, r_msgs) =
+                        channel::local_channel(queue_max, 1, &reactor.local_registration_memory());
+
+                    let (cancel, token) =
+                        CancellationToken::new(&reactor.local_registration_memory());
+
+                    if spawner
+                        .spawn(Self::handle_stream(r_msgs, stream, token))
+                        .is_err()
+                    {
+                        warn!("too many debug log connections, rejecting");
+                        continue;
+                    }
+
+                    if clients.is_empty() {
+                        interest.store(true, Ordering::Relaxed);
+                    }
+
+                    clients.push(LogClient {
+                        sender: s_msgs,
+                        drop_count: 0,
+                        _cancel: cancel,
+                    });
+                }
+            }
+        }
+    }
+
+    async fn handle_stream(
+        msgs: channel::LocalReceiver<(Rc<LogMessage>, u64)>,
+        stream: mio::net::UnixStream,
+        token: CancellationToken,
+    ) {
+        let msgs = channel::AsyncLocalReceiver::new(msgs);
+        let mut stream = AsyncUnixStream::new(stream);
+
+        if let Err(ClientWriteError::Io(e)) = Self::relay_logs(&msgs, &mut stream, &token).await {
+            debug!("failed to write to debug log connection: {e}");
+        }
+    }
+
+    async fn relay_logs(
+        msgs: &channel::AsyncLocalReceiver<(Rc<LogMessage>, u64)>,
+        stream: &mut AsyncUnixStream,
+        token: &CancellationToken,
+    ) -> Result<(), ClientWriteError> {
+        // Loop to read from the channel and write to the client socket. Exit
+        // when the channel closes or the token is cancelled.
+        while let Ok((msg, drop_count)) = msgs.recv().await {
+            if drop_count > 0 {
+                Self::write_to_stream(stream, &format!("** dropped {drop_count} logs"), token)
+                    .await?;
+            }
+
+            Self::write_to_stream(stream, &msg.inner, token).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn write_to_stream(
+        stream: &mut AsyncUnixStream,
+        message: &str,
+        token: &CancellationToken,
+    ) -> Result<(), ClientWriteError> {
+        let result = select_2(
+            pin!(stream.write_all(message.as_bytes())),
+            token.cancelled(),
+        )
+        .await;
+
+        match result {
+            Select2::R1(ret) => match ret {
+                Ok(()) => Ok(()),
+                Err(e) => Err(ClientWriteError::Io(e)),
+            },
+            Select2::R2(()) => Err(ClientWriteError::Cancelled),
+        }
+    }
+}
+
+impl Drop for LogBroadcaster {
+    fn drop(&mut self) {
+        // Tell event loop to exit
+        self.msgs = None;
+
+        // Wait for thread to end
+        let thread = self.thread.take().unwrap();
+        thread.join().unwrap();
+
+        debug!("debug logger stopped");
+    }
+}
+
+static DEBUG_LOGGER: OnceLock<Mutex<Option<Weak<DebugLoggerInner>>>> = OnceLock::new();
+
+struct DebugLoggerInner {
+    broadcaster: LogBroadcaster,
+}
+
+impl DebugLoggerInner {
+    pub fn new(listener: UnixListener, queue_max: usize) -> Arc<Self> {
+        let inner = DEBUG_LOGGER.get_or_init(|| Mutex::new(None));
+        let mut inner = inner.lock().unwrap();
+
+        if inner.is_some() {
+            panic!("debug logger already exists");
+        }
+
+        let new_inner = Arc::new(Self {
+            broadcaster: LogBroadcaster::new(listener, queue_max),
+        });
+
+        *inner = Some(Arc::downgrade(&new_inner));
+
+        new_inner
+    }
+}
+
+impl Drop for DebugLoggerInner {
+    fn drop(&mut self) {
+        // Clear global
+        let inner = DEBUG_LOGGER.get().unwrap();
+        let mut inner = inner.lock().unwrap();
+        *inner = None;
+    }
+}
+
+pub struct DebugLogger {
+    inner: Arc<DebugLoggerInner>,
+}
+
+impl DebugLogger {
+    pub fn new(listener: UnixListener, queue_max: usize) -> Self {
+        Self {
+            inner: DebugLoggerInner::new(listener, queue_max),
+        }
+    }
+
+    pub fn instance() -> Option<Self> {
+        DEBUG_LOGGER.get().and_then(|inner| {
+            let inner = inner.lock().unwrap();
+
+            inner
+                .as_ref()
+                .and_then(|inner| inner.upgrade().map(|inner| Self { inner }))
+        })
+    }
+}
+
+impl Log for DebugLogger {
+    fn enabled(&self, _metadata: &Metadata) -> bool {
+        self.inner.broadcaster.has_interest()
+    }
+
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        let now = OffsetDateTime::now_utc().to_offset(local_offset().unwrap_or(UtcOffset::UTC));
+
+        let format = format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+        );
+
+        let mut ts = [0u8; 64];
+
+        let size = {
+            let mut ts = io::Cursor::new(&mut ts[..]);
+
+            now.format_into(&mut ts, &format)
+                .expect("failed to write timestamp");
+
+            ts.position() as usize
+        };
+
+        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
+
+        let lname = match record.level() {
+            log::Level::Error => "ERR",
+            log::Level::Warn => "WARN",
+            log::Level::Info => "INFO",
+            log::Level::Debug => "DEBUG",
+            log::Level::Trace => "TRACE",
+        };
+
+        let mut output = String::new();
+
+        if record.level() <= log::Level::Info {
+            writeln!(&mut output, "[{}] {} {}", lname, ts, record.args())
+                .expect("failed to write log output");
+        } else {
+            writeln!(
+                &mut output,
+                "[{}] {} [{}] {}",
+                lname,
+                ts,
+                record.target(),
+                record.args()
+            )
+            .expect("failed to write log output");
+        }
+
+        self.inner.broadcaster.send(output);
+    }
+
+    fn flush(&self) {}
 }
 
 mod ffi {
@@ -181,6 +583,6 @@ mod ffi {
             4..=core::i32::MAX => log::LevelFilter::Trace,
         };
 
-        log::set_max_level(level);
+        get_simple_logger().set_max_level(level);
     }
 }

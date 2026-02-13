@@ -31,9 +31,9 @@ public:
 		Write = 0x02,
 	};
 
-	// initializes notifier with interest and considers the socket ready for
-	// the specified interest. readiness must be cleared via clearReadiness()
-	// in order for the activated signal to be emitted. the expected way to
+	// Initializes notifier with interest and considers the socket ready for
+	// the specified interest. Readiness must be cleared via clearReadiness()
+	// in order for the activated signal to be emitted. The expected way to
 	// use this class is to initialize it, perform I/O until progress can no
 	// longer be made, clear readiness, then await the signal.
 	SocketNotifier(int socket, uint8_t interest);

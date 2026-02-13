@@ -349,7 +349,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	newResponse.headers.clear();
 	foreach(const HttpHeader &h, response.headers)
 	{
-		// strip out grip headers
+		// Strip out grip headers
 		if(qstrnicmp(h.first.data(), "Grip-", 5) == 0)
 			continue;
 
@@ -659,8 +659,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					return Instruct();
 				}
 
-				// if code was supplied in json instruct, then
-				//   we need to clear the default reason
+				// If code was supplied in json instruct, then
+				// we need to clear the default reason
 				newResponse.reason.clear();
 			}
 

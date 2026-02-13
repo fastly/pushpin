@@ -54,7 +54,7 @@ use std::time::{Duration, Instant, SystemTime};
 const DOMAIN_LEN_MAX: usize = 253;
 const CONFIG_CACHE_TTL: Duration = Duration::from_secs(60);
 
-// self-signed and expired (2023), with common name "localhost"
+// Self-signed and expired (2023), with common name "localhost"
 const TEST_CERT: &str = concat!(
     "-----BEGIN CERTIFICATE-----\n",
     "MIICpDCCAYwCCQDkzIPOmEje1DANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls\n",
@@ -147,12 +147,12 @@ struct Identity {
 
 impl Identity {
     fn from_name(dir: &Path, name: &str) -> Result<Self, IdentityError> {
-        // forbid long names
+        // Forbid long names
         if name.len() > DOMAIN_LEN_MAX {
             return Err(IdentityError::InvalidName);
         }
 
-        // forbid control chars and '/', for safe filesystem usage
+        // Forbid control chars and '/', for safe filesystem usage
         for c in name.chars() {
             if (c as u32) < 0x20 || path::is_separator(c) {
                 return Err(IdentityError::InvalidName);
@@ -242,12 +242,12 @@ impl IdentityCache {
     fn get_by_domain<'a>(&'a self, domain: &str) -> Option<IdentityRef<'a>> {
         let name = domain.to_lowercase();
 
-        // try to find a file named after the exact host, then try with a
-        //   wildcard pattern at the same subdomain level. the filename
-        //   format uses underscores instead of asterisks. so, a domain of
-        //   www.example.com will attempt to be matched against a file named
-        //   www.example.com.crt and _.example.com.crt. wildcards at other
-        //   levels are not supported
+        // Try to find a file named after the exact host, then try with a
+        // wildcard pattern at the same subdomain level. The filename
+        // format uses underscores instead of asterisks. So, a domain of
+        // www.example.com will attempt to be matched against a file named
+        // www.example.com.crt and _.example.com.crt. Wildcards at other
+        // levels are not supported
 
         if let Some(identity) = self.get_by_name(&name) {
             return Some(identity);
@@ -270,7 +270,7 @@ impl IdentityCache {
         let data = self.data.lock().unwrap();
 
         if let Some((name, value)) = data.get_key_value(name) {
-            // extending the lifetimes is safe because we keep the owning MutexGuard
+            // Extending the lifetimes is safe because we keep the owning MutexGuard
             let name = unsafe { mem::transmute::<&String, &'a String>(name) };
             let value = unsafe { mem::transmute::<&Identity, &'a Identity>(value) };
 
@@ -484,9 +484,9 @@ struct Connectors {
     verify_none: Option<Connector>,
 }
 
-// represents a cache of reusable data among sessions. internally, this data
+// Represents a cache of reusable data among sessions. Internally, this data
 // consists of SslConnectors for the purpose of caching root certs read from
-// disk. the type is given a vague name in order to avoid committing to what
+// disk. The type is given a vague name in order to avoid committing to what
 // exactly is cached.
 pub struct TlsConfigCache {
     connectors: Mutex<Connectors>,
@@ -542,13 +542,13 @@ impl TlsConfigCache {
     }
 }
 
-// guaranteed to return >=1 certs
+// Guaranteed to return >=1 certs
 fn chain_from_pem(pem: &[u8]) -> Result<Vec<X509>, ssl::Error> {
     let chain = X509::stack_from_pem(pem)?;
 
     if chain.is_empty() {
         // we want at least one cert, however stack_from_pem() doesn't
-        // return an error if the data doesn't contain any certs. to
+        // Return an error if the data doesn't contain any certs. To
         // generate an ssl::Error in this case, we'll use from_pem() on
         // empty data
         return Err(X509::from_pem(&[])
@@ -593,7 +593,7 @@ where
                 let mut chain = chain_from_pem(cert.as_bytes())?;
                 let key = PKey::private_key_from_pem(key.as_bytes())?;
 
-                // chain guaranteed to be non-empty
+                // Chain guaranteed to be non-empty
                 configuration.set_certificate(&chain.remove(0))?;
 
                 for cert in chain {
@@ -729,20 +729,20 @@ where
             &'static mut Box<dyn ReadWrite>,
         ) -> Result<Stream<&'static mut Box<dyn ReadWrite>>, ssl::Error>,
     {
-        // box the stream, casting to ReadWrite
+        // Box the stream, casting to ReadWrite
         let inner_box: Box<dyn ReadWrite> = Box::new(stream);
 
-        // box it again. this way we have a pointer-to-a-pointer on the heap,
+        // Box it again. This way we have a pointer-to-a-pointer on the heap,
         // allowing us to change where the outer pointer points to later on
         // without changing its location
         let mut outer_box: Box<Box<dyn ReadWrite>> = Box::new(inner_box);
 
-        // get the outer pointer
+        // Get the outer pointer
         let outer: &mut Box<dyn ReadWrite> = Box::as_mut(&mut outer_box);
 
         // safety: TlsStream will take ownership of outer_box, and the value
         // referred to by outer_box is on the heap, and outer_box will not
-        // be dropped until TlsStream is dropped, so the value referred to
+        // Be dropped until TlsStream is dropped, so the value referred to
         // by outer_box will remain valid for the lifetime of TlsStream.
         // further, outer is a mutable reference, and will only ever be
         // exclusively mutably accessed, either when wrapped by SslStream
@@ -908,14 +908,14 @@ impl TlsOp {
 
         let waker = if let Some((current_waker, _)) = inner.waker.take() {
             if current_waker.will_wake(waker) {
-                // keep the current waker
+                // Keep the current waker
                 current_waker
             } else {
-                // switch to the new waker
+                // Switch to the new waker
                 waker.clone()
             }
         } else {
-            // we didn't have a waker yet, so we'll use this one
+            // We didn't have a waker yet, so we'll use this one
             waker.clone()
         };
 
@@ -1025,7 +1025,7 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
             )
             .unwrap();
 
-        // assume I/O operations are ready to be attempted
+        // Assume I/O operations are ready to be attempted
         registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
 
         Self::new_with_registration(s, waker_data, registration)
@@ -1090,7 +1090,7 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         })
     }
 
-    // assumes stream is in non-blocking mode
+    // Assumes stream is in non-blocking mode
     pub fn from_std(
         stream: TlsStream<std::net::TcpStream>,
         waker_data: &'a RefWakerData<TlsWaker>,

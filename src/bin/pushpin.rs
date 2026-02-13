@@ -23,6 +23,7 @@ use std::env;
 use std::error::Error;
 use std::process;
 
+/// Main entry point for the Pushpin application
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
     let settings = Settings::new(&env::current_dir()?, args_data)?;

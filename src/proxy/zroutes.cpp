@@ -38,7 +38,7 @@ static QStringList baseSpecToSpecs(const QString &baseSpec)
 	assert(at != -1);
 
 	at = baseSpec.indexOf(':', at + 3);
-	if(at != -1) // probably a host:port spec
+	if(at != -1) // Probably a host:port spec
 	{
 		QString s = baseSpec.mid(0, at + 1);
 		QString portStr = baseSpec.mid(at + 1);
@@ -52,7 +52,7 @@ static QStringList baseSpecToSpecs(const QString &baseSpec)
 		out += s + QString::number(port + 2);
 		return out;
 	}
-	else // probably a path spec
+	else // Probably a path spec
 	{
 		QStringList out;
 		out += baseSpec + "-out";

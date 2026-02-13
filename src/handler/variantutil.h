@@ -43,7 +43,7 @@ QVariantList getList(const QVariant &in, const QString &parentName, const QStrin
 QString getString(const QVariant &in, bool *ok = 0);
 QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
 
-// return true if item modified
+// Return true if item modified
 bool convertToJsonStyleInPlace(QVariant *in);
 
 QVariant convertToJsonStyle(const QVariant &in);

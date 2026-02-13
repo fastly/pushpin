@@ -32,15 +32,21 @@ pub mod tls;
 pub mod websocket;
 
 use self::client::Client;
-use self::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
+use self::server::Server;
+use crate::core::fs::{set_group, set_user};
+use crate::core::log::DebugLogger;
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
 use log::{debug, info};
+use mio::net::UnixListener;
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::error::Error;
+use std::fs;
+use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -99,6 +105,13 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
+pub struct DebugSocketConfig {
+    pub path: PathBuf,
+    pub mode: Option<u32>,
+    pub user: Option<String>,
+    pub group: Option<String>,
+}
+
 pub struct Config {
     pub instance_id: String,
     pub workers: usize,
@@ -122,6 +135,7 @@ pub struct Config {
     pub certs_dir: PathBuf,
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
+    pub debug_socket: Option<DebugSocketConfig>,
     pub origind_path: Option<String>,
     pub origind_rate: u8,
 }
@@ -129,6 +143,7 @@ pub struct Config {
 pub struct App {
     _server: Option<Server>,
     _client: Option<Client>,
+    _debug_logger: Option<DebugLogger>,
 }
 
 impl App {
@@ -141,14 +156,65 @@ impl App {
             return Err("stream maxconn must be >= workers".into());
         }
 
+        let mut debug_logger = None;
+
+        if let Some(DebugSocketConfig {
+            path,
+            mode,
+            user,
+            group,
+        }) = &config.debug_socket
+        {
+            // Ensure pipe file doesn't exist
+            match fs::remove_file(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => panic!("{}", e),
+            }
+
+            let l = match UnixListener::bind(path) {
+                Ok(l) => l,
+                Err(e) => return Err(format!("failed to bind {:?}: {}", path, e)),
+            };
+
+            if let Some(mode) = mode {
+                let perms = fs::Permissions::from_mode(*mode);
+
+                if let Err(e) = fs::set_permissions(path, perms) {
+                    return Err(format!("failed to set mode on {:?}: {}", path, e));
+                }
+            }
+
+            if let Some(user) = user {
+                if let Err(e) = set_user(path, user) {
+                    return Err(format!(
+                        "failed to set user {:?} on {:?}: {}",
+                        user, path, e
+                    ));
+                }
+            }
+
+            if let Some(group) = group {
+                if let Err(e) = set_group(path, group) {
+                    return Err(format!(
+                        "failed to set group {:?} on {:?}: {}",
+                        group, path, e
+                    ));
+                }
+            }
+
+            // Scale the log queue with the number of workers
+            let queue_max = (config.workers * 1000) + 1000;
+
+            debug_logger = Some(DebugLogger::new(l, queue_max));
+        }
+
         let zmq_context = Arc::new(zmq::Context::new());
 
-        // set hwm to 5% of maxconn
+        // Set hwm to 5% of maxconn
         let other_hwm = cmp::max((config.req_maxconn + config.stream_maxconn) / 20, 1);
 
         let handle_bound = cmp::max(other_hwm / config.workers, 1);
-
-        let maxconn = config.req_maxconn + config.stream_maxconn;
 
         let enable_client = !config.zserver_req.is_empty() || !config.zserver_stream.is_empty();
 
@@ -167,8 +233,6 @@ impl App {
             let mut zsockman = zhttpsocket::ClientSocketManager::new(
                 Arc::clone(&zmq_context),
                 &config.instance_id,
-                (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
-                    + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
                 INIT_HWM,
                 other_hwm,
                 handle_bound,
@@ -272,8 +336,6 @@ impl App {
             let mut zsockman = zhttpsocket::ServerSocketManager::new(
                 Arc::clone(&zmq_context),
                 &config.instance_id,
-                (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
-                    + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
                 INIT_HWM,
                 other_hwm,
                 handle_bound,
@@ -324,7 +386,7 @@ impl App {
                 handle_bound,
             )?;
 
-            // stream specs must only be applied after client is initialized
+            // Stream specs must only be applied after client is initialized
             if !config.zserver_stream.is_empty() {
                 let mut in_specs = Vec::new();
                 let mut in_stream_specs = Vec::new();
@@ -379,6 +441,7 @@ impl App {
         Ok(Self {
             _server: server,
             _client: client,
+            _debug_logger: debug_logger,
         })
     }
 
@@ -387,11 +450,11 @@ impl App {
 
         let term_now = Arc::new(AtomicBool::new(false));
 
-        // ensure two term signals in a row causes the app to immediately exit
+        // Ensure two term signals in a row causes the app to immediately exit
         for signal_type in TERM_SIGNALS {
             signal_hook::flag::register_conditional_shutdown(
                 *signal_type,
-                1, // exit code
+                1, // Exit code
                 Arc::clone(&term_now),
             )
             .unwrap();
@@ -399,7 +462,7 @@ impl App {
             signal_hook::flag::register(*signal_type, Arc::clone(&term_now)).unwrap();
         }
 
-        // wait for termination
+        // Wait for termination
         let signal_type = signals.into_iter().next().unwrap();
         assert!(TERM_SIGNALS.contains(&signal_type));
     }

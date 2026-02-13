@@ -27,8 +27,8 @@ pub fn encode(
     claim: &str,
     key: &EncodingKey,
 ) -> Result<String, jsonwebtoken::errors::Error> {
-    // claim is already serialized, but the jsonwebtoken crate requires a
-    // serializable object. so we'll deserialize to a generic value first
+    // Claim is already serialized, but the jsonwebtoken crate requires a
+    // serializable object. So we'll deserialize to a generic value first
     let claim: serde_json::Value = serde_json::from_str(claim)?;
 
     jsonwebtoken::encode(header, &claim, key)
@@ -79,8 +79,8 @@ mod ffi {
     fn load_encoding_key_pem(
         key: &[u8],
     ) -> Result<(libc::c_int, jsonwebtoken::EncodingKey), jsonwebtoken::errors::Error> {
-        // pem data includes the key type, however the jsonwebtoken crate
-        // requires specifying the expected type when decoding. we'll just try
+        // Pem data includes the key type, however the jsonwebtoken crate
+        // requires specifying the expected type when decoding. We'll just try
         // the data against multiple possible types
         let decoders: [(libc::c_int, EncodingKeyFromPemFn); 2] = [
             (JWT_KEYTYPE_EC, jsonwebtoken::EncodingKey::from_ec_pem),
@@ -102,8 +102,8 @@ mod ffi {
     fn load_decoding_key_pem(
         key: &[u8],
     ) -> Result<(libc::c_int, jsonwebtoken::DecodingKey), jsonwebtoken::errors::Error> {
-        // pem data includes the key type, however the jsonwebtoken crate
-        // requires specifying the expected type when decoding. we'll just try
+        // Pem data includes the key type, however the jsonwebtoken crate
+        // requires specifying the expected type when decoding. We'll just try
         // the data against multiple possible types
         let decoders: [(libc::c_int, DecodingKeyFromPemFn); 2] = [
             (JWT_KEYTYPE_EC, jsonwebtoken::DecodingKey::from_ec_pem),
@@ -219,34 +219,34 @@ mod ffi {
         out_token: *mut *mut c_char,
     ) -> libc::c_int {
         if claim.is_null() || out_token.is_null() {
-            return 1; // null pointers
+            return 1; // Null pointers
         }
 
         let key = match key.as_ref() {
             Some(r) => r,
-            None => return 1, // null pointer
+            None => return 1, // Null pointer
         };
 
         let header = match alg {
             JWT_ALGORITHM_HS256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
             JWT_ALGORITHM_ES256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256),
             JWT_ALGORITHM_RS256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
-            _ => return 1, // unsupported algorithm
+            _ => return 1, // Unsupported algorithm
         };
 
         let claim = match CStr::from_ptr(claim).to_str() {
             Ok(s) => s,
-            Err(_) => return 1, // claim is a JSON string which will be valid UTF-8
+            Err(_) => return 1, // Claim is a JSON string which will be valid UTF-8
         };
 
         let token = match encode(&header, claim, key) {
             Ok(token) => token,
-            Err(_) => return 1, // failed to sign
+            Err(_) => return 1, // Failed to sign
         };
 
         let token = match CString::new(token) {
             Ok(s) => s,
-            Err(_) => return 1, // unexpected token string format
+            Err(_) => return 1, // Unexpected token string format
         };
 
         *out_token = token.into_raw();
@@ -263,37 +263,37 @@ mod ffi {
         out_claim: *mut *mut c_char,
     ) -> libc::c_int {
         if token.is_null() || out_claim.is_null() {
-            return 1; // null pointers
+            return 1; // Null pointers
         }
 
         let key = match key.as_ref() {
             Some(r) => r,
-            None => return 1, // null pointer
+            None => return 1, // Null pointer
         };
 
         let mut validation = match alg {
             JWT_ALGORITHM_HS256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
             JWT_ALGORITHM_ES256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256),
             JWT_ALGORITHM_RS256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256),
-            _ => return 1, // unsupported algorithm
+            _ => return 1, // Unsupported algorithm
         };
 
-        // don't check exp or anything. that's left to the caller
+        // Don't check exp or anything. That's left to the caller
         validation.required_spec_claims = HashSet::new();
 
         let token = match CStr::from_ptr(token).to_str() {
             Ok(s) => s,
-            Err(_) => return 1, // token string will be valid UTF-8
+            Err(_) => return 1, // Token string will be valid UTF-8
         };
 
         let claim = match decode(token, key, &validation) {
             Ok(claim) => claim,
-            Err(_) => return 1, // failed to validate
+            Err(_) => return 1, // Failed to validate
         };
 
         let claim = match CString::new(claim) {
             Ok(s) => s,
-            Err(_) => return 1, // unexpected claim string format
+            Err(_) => return 1, // Unexpected claim string format
         };
 
         *out_claim = claim.into_raw();

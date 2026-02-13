@@ -175,7 +175,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		}
 		else
 		{
-			// default
+			// Default
 			out.messageType = Text;
 		}
 

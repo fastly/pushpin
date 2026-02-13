@@ -35,7 +35,7 @@ pub fn set_socket_opts(stream: &mut TcpStream) {
         error!("set nodelay failed: {:?}", e);
     }
 
-    // safety: we move the value out of stream and replace it at the end
+    // Safety: we move the value out of stream and replace it at the end
     let ret = unsafe {
         let s = ptr::read(stream);
         let socket = Socket::from_raw_fd(s.into_raw_fd());
@@ -171,7 +171,7 @@ impl AsyncTcpStream {
         )
         .unwrap();
 
-        // when constructing via new(), assume I/O operations are ready to be
+        // When constructing via new(), assume I/O operations are ready to be
         // attempted
         evented
             .registration()
@@ -194,7 +194,7 @@ impl AsyncTcpStream {
 
             let mut stream = Self::new(stream);
 
-            // when constructing via connect(), the ready state should start out
+            // When constructing via connect(), the ready state should start out
             // false because we need to wait for a writability indication
             stream.evented.registration().set_ready(false);
 
@@ -223,7 +223,7 @@ impl AsyncTcpStream {
         unsafe { std::net::TcpStream::from_raw_fd(self.evented.into_inner().into_raw_fd()) }
     }
 
-    // assumes stream is in non-blocking mode
+    // Assumes stream is in non-blocking mode
     pub fn from_std(stream: std::net::TcpStream) -> Self {
         Self::new(TcpStream::from_std(stream))
     }
@@ -246,7 +246,7 @@ impl AsyncUnixStream {
         )
         .unwrap();
 
-        // when constructing via new(), assume I/O operations are ready to be
+        // When constructing via new(), assume I/O operations are ready to be
         // attempted
         evented
             .registration()
@@ -259,7 +259,7 @@ impl AsyncUnixStream {
         let stream = UnixStream::connect(path)?;
         let mut stream = Self::new(stream);
 
-        // when constructing via connect(), the ready state should start out
+        // When constructing via connect(), the ready state should start out
         // false because we need to wait for a writability indication
         stream.evented.registration().set_ready(false);
 
@@ -403,7 +403,7 @@ impl Future for TcpConnectFuture<'_> {
         }
 
         // mio documentation says to use take_error() and peer_addr() to
-        // check for connected
+        // Check for connected
 
         if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
@@ -448,7 +448,7 @@ impl Future for UnixConnectFuture<'_> {
         }
 
         // mio documentation says to use take_error() and peer_addr() to
-        // check for connected
+        // Check for connected
 
         if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
@@ -888,7 +888,7 @@ mod ffi {
         let ip = addr.ip().to_string();
 
         if ip.len() > *out_ip_size {
-            // if value doesn't fit, return success with empty value
+            // If value doesn't fit, return success with empty value
             *out_ip_size = 0;
             return 0;
         }
@@ -966,7 +966,7 @@ mod ffi {
 
         let addr = std::net::SocketAddr::new(ip, port);
 
-        // use mio to ensure socket begins in non-blocking mode
+        // Use mio to ensure socket begins in non-blocking mode
         let s = match mio::net::TcpStream::connect(addr) {
             Ok(s) => s,
             Err(e) => {
@@ -1000,7 +1000,7 @@ mod ffi {
         assert!(!out_errno.is_null());
 
         // mio documentation says to use take_error() and peer_addr() to
-        // check for connected
+        // Check for connected
 
         if let Ok(Some(e)) | Err(e) = s.0.take_error() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);
@@ -1008,7 +1008,7 @@ mod ffi {
             return -1;
         }
 
-        // returns libc::ENOTCONN if not yet connected
+        // Returns libc::ENOTCONN if not yet connected
         if let Err(e) = s.0.peer_addr() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);
             unsafe { out_errno.write(code) };
@@ -1137,7 +1137,7 @@ mod ffi {
 
         let path = Path::new(OsStr::from_bytes(path.to_bytes()));
 
-        // use mio to ensure socket begins in non-blocking mode
+        // Use mio to ensure socket begins in non-blocking mode
         let s = match mio::net::UnixStream::connect(path) {
             Ok(s) => s,
             Err(e) => {
@@ -1171,7 +1171,7 @@ mod ffi {
         assert!(!out_errno.is_null());
 
         // mio documentation says to use take_error() and peer_addr() to
-        // check for connected
+        // Check for connected
 
         if let Ok(Some(e)) | Err(e) = s.0.take_error() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);
@@ -1179,7 +1179,7 @@ mod ffi {
             return -1;
         }
 
-        // returns libc::ENOTCONN if not yet connected
+        // Returns libc::ENOTCONN if not yet connected
         if let Err(e) = s.0.peer_addr() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);
             unsafe { out_errno.write(code) };
@@ -1284,7 +1284,7 @@ mod tests {
 
     #[test]
     fn async_unixstream() {
-        // ensure pipe file doesn't exist
+        // Ensure pipe file doesn't exist
         match fs::remove_file("test-unixstream") {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}

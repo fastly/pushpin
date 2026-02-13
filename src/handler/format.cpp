@@ -78,7 +78,7 @@ QByteArray process(const QByteArray &format, Handler *handler, int *partialPos, 
 
 				QByteArray arg;
 
-				// scan for ')'
+				// Scan for ')'
 				bool ok = false;
 				for(; n < format.length(); ++n)
 				{

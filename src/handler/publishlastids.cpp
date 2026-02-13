@@ -45,7 +45,7 @@ void PublishLastIds::set(const QString &channel, const QString &id)
 	{
 		while(!table_.isEmpty() && table_.count() >= maxCapacity_)
 		{
-			// remove oldest
+			// Remove oldest
 			QMutableMapIterator<TimeStringPair, Item> it(recentlyUsed_);
 			assert(it.hasNext());
 			it.next();

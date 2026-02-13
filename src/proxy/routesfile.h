@@ -29,6 +29,7 @@
 
 namespace RoutesFile {
 
+/// Single space-separated element from a route line 
 class RouteSection
 {
 public:

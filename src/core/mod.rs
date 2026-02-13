@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-pub mod arena;
 pub mod backtrace;
 pub mod buffer;
 pub mod channel;
@@ -25,11 +24,14 @@ pub mod event;
 pub mod eventloop;
 pub mod executor;
 pub mod fs;
+pub mod future;
 pub mod http1;
 pub mod io;
 pub mod jwt;
 pub mod list;
 pub mod log;
+pub mod memorypool;
+pub mod minislab;
 pub mod net;
 pub mod reactor;
 pub mod security;

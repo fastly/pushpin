@@ -53,8 +53,8 @@ public:
 		};
 
 		Type type;
-		QString value; // error, initialvalue, prop
-		QString name; // prop;
+		QString value; // Error, initialvalue, prop
+		QString name; // Prop;
 
 		Token() :
 			type((Type)-1)
@@ -112,13 +112,13 @@ public:
 			{
 				int at = findNext(str_, "\", #", index_);
 
-				// quoted section?
+				// Quoted section?
 				if(at != -1 && str_[at] == '\"')
 				{
 					part += str_.mid(index_, at - index_);
 					++at;
 
-					// decode inner string
+					// Decode inner string
 					for(; at < str_.length(); ++at)
 					{
 						if(str_[at] == '\\')
@@ -162,7 +162,7 @@ public:
 					continue;
 				}
 
-				// all other chars, or end of string, means end of initial value or prop
+				// All other chars, or end of string, means end of initial value or prop
 
 				if(at == -1)
 					at = str_.length();
@@ -178,7 +178,7 @@ public:
 					// '=' in initial value?
 					if(n != -1)
 					{
-						// return empty initial value, re-read as a prop
+						// Return empty initial value, re-read as a prop
 						index_ = start;
 						state_ = ReadProp;
 						return Token(Token::InitialValue);
@@ -225,7 +225,7 @@ public:
 					++at;
 					state_ = ReadProp;
 				}
-				else // space, #, or end of line
+				else // Space, #, or end of line
 				{
 					state_ = ReadSeparator;
 				}

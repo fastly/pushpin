@@ -30,7 +30,7 @@ public:
 	ZmqContext(int ioThreads = 1);
 	~ZmqContext();
 
-	// the zmq context
+	// The zmq context
 	void *context() { return context_; }
 
 private:

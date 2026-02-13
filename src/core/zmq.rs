@@ -103,7 +103,7 @@ fn setup_spec(sock: &zmq::Socket, spec: &SpecInfo) -> Result<String, ZmqSocketEr
                     if spec.ipc_file_mode > 0 {
                         let perms = fs::Permissions::from_mode(spec.ipc_file_mode);
                         if let Err(e) = fs::set_permissions(path, perms) {
-                            // if setting perms fails, undo the bind
+                            // If setting perms fails, undo the bind
                             unbind(sock, &endpoint).unwrap();
 
                             return Err(ZmqSocketError::SetMode(spec.spec.clone(), e));
@@ -129,7 +129,7 @@ fn unsetup_spec(sock: &zmq::Socket, spec: &ActiveSpec) {
 
         if let Ok(path) = trim_prefix(&spec.endpoint, "ipc://") {
             if fs::remove_file(path).is_err() {
-                // oh well, we tried
+                // Oh well, we tried
             }
         }
     } else {
@@ -222,7 +222,7 @@ impl ZmqSocket {
     pub fn recv(&self, flags: i32) -> Result<zmq::Message, zmq::Error> {
         let flags = flags & zmq::DONTWAIT;
 
-        // get the first part
+        // Get the first part
         let msg = match self.inner.recv_msg(flags) {
             Ok(msg) => msg,
             Err(e) => {
@@ -233,7 +233,7 @@ impl ZmqSocket {
 
         let flags = 0;
 
-        // eat the rest of the parts
+        // Eat the rest of the parts
         while self.inner.get_rcvmore().unwrap() {
             self.inner.recv_msg(flags).unwrap();
         }
@@ -249,7 +249,7 @@ impl ZmqSocket {
         let mut header = MultipartHeader::new();
 
         loop {
-            // read parts until we reach the separator
+            // Read parts until we reach the separator
             match self.inner.recv_msg(flags) {
                 Ok(msg) => {
                     if msg.is_empty() {
@@ -257,11 +257,11 @@ impl ZmqSocket {
                     }
 
                     if header.len() == MULTIPART_HEADERS_MAX {
-                        // header too large
+                        // Header too large
 
                         let flags = 0;
 
-                        // eat the rest of the parts
+                        // Eat the rest of the parts
                         while self.inner.get_rcvmore().unwrap() {
                             self.inner.recv_msg(flags).unwrap();
                         }
@@ -282,13 +282,13 @@ impl ZmqSocket {
 
         let flags = 0;
 
-        // if we get here, we've read the separator. content parts should follow
+        // If we get here, we've read the separator. Content parts should follow
 
         if !self.inner.get_rcvmore().unwrap() {
             return Err(zmq::Error::EINVAL);
         }
 
-        // get the first part of the content
+        // Get the first part of the content
         let msg = match self.inner.recv_msg(flags) {
             Ok(msg) => msg,
             Err(e) => {
@@ -297,7 +297,7 @@ impl ZmqSocket {
             }
         };
 
-        // eat the rest of the parts
+        // Eat the rest of the parts
         while self.inner.get_rcvmore().unwrap() {
             self.inner.recv_msg(flags).unwrap();
         }
@@ -348,7 +348,7 @@ impl ZmqSocket {
 
         let mut added = Vec::new();
 
-        // add specs we dont have. on fail, undo them
+        // Add specs we dont have. On fail, undo them
         for spec in to_add.iter() {
             match setup_spec(&self.inner, spec) {
                 Ok(endpoint) => {
@@ -358,7 +358,7 @@ impl ZmqSocket {
                     });
                 }
                 Err(e) => {
-                    // undo previous adds
+                    // Undo previous adds
                     for spec in added.iter().rev() {
                         unsetup_spec(&self.inner, spec);
                     }
@@ -367,7 +367,7 @@ impl ZmqSocket {
             }
         }
 
-        // update ipc file mode
+        // Update ipc file mode
         let mut prev_perms = Vec::new();
         for spec in to_update.iter() {
             let mut err = None;
@@ -394,14 +394,14 @@ impl ZmqSocket {
             }
 
             if let Some(err) = err {
-                // undo previous perms changes
+                // Undo previous perms changes
                 for (path, perms) in prev_perms {
                     if fs::set_permissions(path, perms).is_err() {
-                        // oh well, we tried
+                        // Oh well, we tried
                     }
                 }
 
-                // undo previous adds
+                // Undo previous adds
                 for spec in added.iter().rev() {
                     unsetup_spec(&self.inner, spec);
                 }
@@ -414,14 +414,14 @@ impl ZmqSocket {
             unsetup_spec(&self.inner, spec);
         }
 
-        // move current specs aside
+        // Move current specs aside
         let prev_specs = std::mem::take(&mut *specs);
 
-        // recompute current specs
+        // Recompute current specs
         for new in new_specs {
             let mut s = None;
 
-            // is it one we added?
+            // Is it one we added?
             for spec in added.iter() {
                 if new.spec == spec.spec.spec && new.bind == spec.spec.bind {
                     s = Some(spec.clone());
@@ -429,7 +429,7 @@ impl ZmqSocket {
                 }
             }
 
-            // else, it must be one we had already
+            // Else, it must be one we had already
             if s.is_none() {
                 for spec in prev_specs.iter() {
                     if new.spec == spec.spec.spec && new.bind == spec.spec.bind {
@@ -473,8 +473,8 @@ impl AsyncZmqSocket {
         )
         .unwrap();
 
-        // zmq events are used for readiness, and registration readiness is
-        // used to tell us when to call update_events(). we'll call that
+        // Zmq events are used for readiness, and registration readiness is
+        // used to tell us when to call update_events(). We'll call that
         // below, so registration readiness can start out false
         evented.registration().set_ready(false);
 
@@ -542,7 +542,7 @@ impl Future for ZmqSendFuture<'_> {
         }
 
         // NOTE: when rust-zmq allows resending messages we can
-        //   avoid this copy
+        // avoid this copy
 
         let msg = zmq::Message::from(&f.msg[..]);
 
@@ -605,7 +605,7 @@ impl Future for ZmqSendToFuture<'_> {
         }
 
         // NOTE: when rust-zmq allows resending messages we can
-        //   avoid this copy
+        // avoid this copy
 
         let content = zmq::Message::from(&f.content[..]);
 
@@ -1617,7 +1617,7 @@ mod tests {
         }])
         .unwrap();
 
-        // ensure both peers are connected
+        // Ensure both peers are connected
 
         loop {
             let mut h = MultipartHeader::new();
@@ -1641,11 +1641,11 @@ mod tests {
             }
         }
 
-        // we can clear out r1
+        // We can clear out r1
         let (_, msg) = r1.recv_routed(0).unwrap();
         assert_eq!(msg, zmq::Message::from(&b"1"[..]));
 
-        // wrap in Rc so the inproc sender is not dropped until after the
+        // Wrap in Rc so the inproc sender is not dropped until after the
         // messages have been received
         let s = Rc::new(AsyncZmqSocket::new(s));
 
@@ -1656,13 +1656,13 @@ mod tests {
 
             executor
                 .spawn(async move {
-                    // second write will succeed immediately
+                    // Second write will succeed immediately
 
                     let mut h = MultipartHeader::new();
                     h.push(zmq::Message::from(&b"test2"[..]));
                     s.send_to(h, zmq::Message::from(&b"2"[..])).await.unwrap();
 
-                    // third write will block
+                    // Third write will block
 
                     let mut h = MultipartHeader::new();
                     h.push(zmq::Message::from(&b"test2"[..]));
@@ -1680,7 +1680,7 @@ mod tests {
 
         assert_eq!(executor.have_tasks(), true);
 
-        // this will allow the third write to go through
+        // This will allow the third write to go through
         let (_, msg) = r2.recv_routed(0).unwrap();
         assert_eq!(msg, zmq::Message::from(&b"1"[..]));
 

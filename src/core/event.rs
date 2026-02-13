@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
 use crate::core::list;
+use crate::core::memorypool;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
 use slab::Slab;
@@ -29,8 +29,8 @@ const EVENTS_MAX: usize = 1024;
 const LOCAL_BUDGET: u32 = 10;
 
 pub fn can_move_mio_sockets_between_threads() -> bool {
-    // on unix platforms, mio always uses epoll or kqueue, which support
-    // this. mio makes no guarantee about supporting this on non-unix
+    // On unix platforms, mio always uses epoll or kqueue, which support
+    // this. Mio makes no guarantee about supporting this on non-unix
     // platforms
     cfg!(unix)
 }
@@ -123,7 +123,7 @@ impl LocalSources {
         if !((item.interests.is_readable() && readiness.is_readable())
             || (item.interests.is_writable() && readiness.is_writable()))
         {
-            // not of interest
+            // Not of interest
             return Ok(());
         }
 
@@ -214,7 +214,7 @@ impl SyncSources {
         if !((item.interests.is_readable() && readiness.is_readable())
             || (item.interests.is_writable() && readiness.is_writable()))
         {
-            // not of interest
+            // Not of interest
             return Ok(());
         }
 
@@ -285,7 +285,7 @@ impl CustomSources {
         subtoken: Token,
         interests: Interest,
     ) -> Result<(), io::Error> {
-        let mut reg = registration.entry.get().data.borrow_mut();
+        let mut reg = registration.entry.data.borrow_mut();
 
         if reg.data.is_none() {
             let key = self.local.register(subtoken, interests)?;
@@ -303,7 +303,7 @@ impl CustomSources {
     }
 
     fn deregister_local(&self, registration: &LocalRegistration) -> Result<(), io::Error> {
-        let mut reg = registration.entry.get().data.borrow_mut();
+        let mut reg = registration.entry.data.borrow_mut();
 
         if let Some((key, _)) = reg.data {
             self.local.deregister(key)?;
@@ -445,12 +445,14 @@ pub struct LocalRegistrationEntry {
 }
 
 pub struct LocalRegistration {
-    entry: arena::Rc<LocalRegistrationEntry>,
+    entry: memorypool::Rc<LocalRegistrationEntry>,
 }
 
 impl LocalRegistration {
-    pub fn new(memory: &Rc<arena::RcMemory<LocalRegistrationEntry>>) -> (Self, LocalSetReadiness) {
-        let reg = arena::Rc::new(
+    pub fn new(
+        memory: &Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
+    ) -> (Self, LocalSetReadiness) {
+        let reg = memorypool::Rc::try_new_in(
             LocalRegistrationEntry {
                 data: RefCell::new(LocalRegistrationData {
                     data: None,
@@ -462,7 +464,7 @@ impl LocalRegistration {
         .unwrap();
 
         let registration = Self {
-            entry: arena::Rc::clone(&reg),
+            entry: memorypool::Rc::clone(&reg),
         };
 
         let set_readiness = LocalSetReadiness { entry: reg };
@@ -473,7 +475,7 @@ impl LocalRegistration {
 
 impl Drop for LocalRegistration {
     fn drop(&mut self) {
-        let mut reg = self.entry.get().data.borrow_mut();
+        let mut reg = self.entry.data.borrow_mut();
 
         if let Some((key, sources)) = &reg.data {
             sources.deregister(*key).unwrap();
@@ -484,12 +486,12 @@ impl Drop for LocalRegistration {
 }
 
 pub struct LocalSetReadiness {
-    entry: arena::Rc<LocalRegistrationEntry>,
+    entry: memorypool::Rc<LocalRegistrationEntry>,
 }
 
 impl LocalSetReadiness {
     pub fn set_readiness(&self, readiness: Interest) -> Result<(), io::Error> {
-        let mut reg = self.entry.get().data.borrow_mut();
+        let mut reg = self.entry.data.borrow_mut();
 
         match &reg.data {
             Some((key, sources)) => sources.set_readiness(*key, readiness)?,
@@ -528,7 +530,7 @@ pub struct Poller {
     poll: Poll,
     events: Events,
     custom_sources: CustomSources,
-    local_registration_memory: Rc<arena::RcMemory<LocalRegistrationEntry>>,
+    local_registration_memory: Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
     local_budget: u32,
 }
 
@@ -542,7 +544,7 @@ impl Poller {
             poll,
             events,
             custom_sources,
-            local_registration_memory: Rc::new(arena::RcMemory::new(max_custom_sources)),
+            local_registration_memory: Rc::new(memorypool::RcMemory::new(max_custom_sources)),
             local_budget: LOCAL_BUDGET,
         })
     }
@@ -587,7 +589,7 @@ impl Poller {
         self.custom_sources.deregister(registration)
     }
 
-    pub fn local_registration_memory(&self) -> &Rc<arena::RcMemory<LocalRegistrationEntry>> {
+    pub fn local_registration_memory(&self) -> &Rc<memorypool::RcMemory<LocalRegistrationEntry>> {
         &self.local_registration_memory
     }
 
@@ -616,7 +618,7 @@ impl Poller {
         if self.custom_sources.has_local_events() && self.local_budget > 0 {
             self.local_budget -= 1;
             self.custom_sources.set_next_local_only(true);
-            self.events.clear(); // don't reread previous mio events
+            self.events.clear(); // Don't reread previous mio events
 
             return Ok(());
         }
@@ -706,7 +708,7 @@ pub mod ffi {
         } else if interest & WRITABLE != 0 {
             mio::Interest::WRITABLE
         } else {
-            // must specify at least one of READABLE or WRITABLE
+            // Must specify at least one of READABLE or WRITABLE
             return Err(InterestError);
         };
 

@@ -29,7 +29,7 @@ use std::mem;
 use std::str;
 
 const CHUNK_SIZE_MAX: usize = 0xffff;
-const CHUNK_HEADER_SIZE_MAX: usize = 6; // ffff\r\n
+const CHUNK_HEADER_SIZE_MAX: usize = 6; // Ffff\r\n
 const CHUNK_FOOTER: &[u8] = b"\r\n";
 
 fn parse_as_int(src: &[u8]) -> Result<usize, io::Error> {
@@ -108,7 +108,7 @@ fn find_non_space(s: &str) -> Option<usize> {
     None
 }
 
-// return (value, remainder)
+// Return (value, remainder)
 fn parse_quoted(s: &str) -> Result<(&str, &str), io::Error> {
     match s.find('"') {
         Some(pos) => Ok((&s[..pos], &s[(pos + 1)..])),
@@ -116,8 +116,8 @@ fn parse_quoted(s: &str) -> Result<(&str, &str), io::Error> {
     }
 }
 
-// return (value, remainder).
-// remainder will start at the first non-space character following the param,
+// Return (value, remainder).
+// Remainder will start at the first non-space character following the param,
 // or will be empty
 fn parse_param_value(s: &str) -> Result<(&str, &str), io::Error> {
     let s = match find_non_space(s) {
@@ -222,17 +222,17 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
 
         let (first_part, params, remainder, done) = match find_one_of(self.s, b";,") {
             Some((pos, b';')) => {
-                // make a temporary params iterator
+                // Make a temporary params iterator
                 let mut params = HeaderParamsIterator::new(&self.s[(pos + 1)..]);
 
-                // drive it to the end
+                // Drive it to the end
                 for p in params.by_ref() {
                     if let Err(e) = p {
                         return Some(Err(e));
                     }
                 }
 
-                // when HeaderParamsIterator completes, its remaining value
+                // When HeaderParamsIterator completes, its remaining value
                 // will either start with a comma or be empty
                 let (remainder, done) = if params.s.starts_with(',') {
                     (&params.s[1..], false)
@@ -242,7 +242,7 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
                     unreachable!();
                 };
 
-                // prepare a fresh iterator for returning
+                // Prepare a fresh iterator for returning
                 let params = HeaderParamsIterator::new(&self.s[(pos + 1)..]);
 
                 (&self.s[..pos], params, remainder, done)
@@ -270,7 +270,7 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
     }
 }
 
-// parse a header value into parts
+// Parse a header value into parts
 pub fn parse_header_value(s: &[u8]) -> HeaderValueIterator<'_> {
     match str::from_utf8(s) {
         Ok(s) => HeaderValueIterator { s, done: false },
@@ -286,7 +286,7 @@ struct Chunk {
     sent: usize,
 }
 
-// writes src to dest as chunks. current chunk state is passed in
+// Writes src to dest as chunks. Current chunk state is passed in
 fn write_chunk<W: Write>(
     content: &[&[u8]],
     footer: &[u8],
@@ -422,7 +422,7 @@ struct OwnedHttparseRequest<'s, const N: usize> {
 }
 
 impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
-    // on success, takes ownership of the buffer/scratch
+    // On success, takes ownership of the buffer/scratch
     // on incomplete/error, returns the buffer/scratch
     fn parse(
         buf: FilledBuf,
@@ -442,7 +442,7 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
         // be released until Self is dropped, so the location referred to by
         // headers_mut will remain valid for the lifetime of Self
         //
-        // further, it is safe for httparse::Request::parse() to write
+        // Further, it is safe for httparse::Request::parse() to write
         // references to buf_ref into headers_mut, because we guarantee buf
         // lives as long as scratch, except if into_buf() is called in
         // which case we clear the content of scratch
@@ -509,7 +509,7 @@ struct OwnedHttparseResponse<'s, const N: usize> {
 }
 
 impl<'s, const N: usize> OwnedHttparseResponse<'s, N> {
-    // on success, takes ownership of the buffer/scratch
+    // On success, takes ownership of the buffer/scratch
     // on incomplete/error, returns the buffer/scratch
     fn parse(
         buf: FilledBuf,
@@ -529,7 +529,7 @@ impl<'s, const N: usize> OwnedHttparseResponse<'s, N> {
         // be released until Self is dropped, so the location referred to by
         // headers_mut will remain valid for the lifetime of Self
         //
-        // further, it is safe for httparse::Response::parse() to write
+        // Further, it is safe for httparse::Response::parse() to write
         // references to buf_ref into headers_mut, because we guarantee buf
         // lives as long as scratch, except if into_buf() is called in
         // which case we clear the content of scratch
@@ -665,22 +665,22 @@ impl<const N: usize> OwnedResponse<'_, N> {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ServerState {
     // call: recv_request
-    // next: ReceivingRequest, ReceivingBody, AwaitingResponse
+    // Next: ReceivingRequest, ReceivingBody, AwaitingResponse
     ReceivingRequest,
 
     // call: recv_body
-    // next: ReceivingBody, AwaitingResponse
+    // Next: ReceivingBody, AwaitingResponse
     ReceivingBody,
 
     // call: send_response
-    // next: SendingBody
+    // Next: SendingBody
     AwaitingResponse,
 
     // call: send_body
-    // next: SendingBody, Finished
+    // Next: SendingBody, Finished
     SendingBody,
 
-    // request/response has completed
+    // Request/response has completed
     Finished,
 }
 
@@ -833,7 +833,7 @@ impl<'buf, 'headers> ServerProtocol {
                 );
                 let read_size = cmp::min(src_avail, dest.len());
 
-                // rbuf holds body as-is
+                // Rbuf holds body as-is
                 let size = rbuf.read(&mut dest[..read_size])?;
 
                 chunk_left -= size;
@@ -844,7 +844,7 @@ impl<'buf, 'headers> ServerProtocol {
                 } else {
                     self.chunk_left = Some(chunk_left);
 
-                    // nothing to read?
+                    // Nothing to read?
                     if src_avail == 0 {
                         assert_eq!(size, 0);
                         return Ok(None);
@@ -891,7 +891,7 @@ impl<'buf, 'headers> ServerProtocol {
 
                     self.chunk_left = Some(chunk_left);
 
-                    // nothing to read?
+                    // Nothing to read?
                     if src_avail == 0 {
                         assert_eq!(size, 0);
                         return Ok(None);
@@ -900,7 +900,7 @@ impl<'buf, 'headers> ServerProtocol {
                     return Ok(Some((size, None)));
                 }
 
-                // done with content bytes. now to read the footer
+                // Done with content bytes. Now to read the footer
 
                 let mut trailing_headers = None;
 
@@ -908,7 +908,7 @@ impl<'buf, 'headers> ServerProtocol {
                     let buf = &rbuf.get_ref()[(rbuf.position() as usize)..];
 
                     if self.chunk_size == 0 {
-                        // trailing headers
+                        // Trailing headers
                         match httparse::parse_headers(buf, headers) {
                             Ok(httparse::Status::Complete((pos, headers))) => {
                                 rbuf.set_position(rbuf.position() + (pos as u64));
@@ -961,7 +961,7 @@ impl<'buf, 'headers> ServerProtocol {
         );
 
         let persistent = if self.state == ServerState::ReceivingBody {
-            // when responding early, input stream may be broken
+            // When responding early, input stream may be broken
             false
         } else {
             self.persistent
@@ -969,7 +969,7 @@ impl<'buf, 'headers> ServerProtocol {
 
         let mut body_size = body_size;
 
-        // certain responses have no body
+        // Certain responses have no body
         match code {
             100..=199 | 204 | 304 => {
                 body_size = BodySize::NoBody;
@@ -988,7 +988,7 @@ impl<'buf, 'headers> ServerProtocol {
         write!(writer, "{} {}\r\n", code, reason)?;
 
         for h in headers.iter() {
-            // we'll override these headers
+            // We'll override these headers
             if (h.name.eq_ignore_ascii_case("Connection") && code != 101)
                 || h.name.eq_ignore_ascii_case("Content-Length")
                 || h.name.eq_ignore_ascii_case("Transfer-Encoding")
@@ -1050,7 +1050,7 @@ impl<'buf, 'headers> ServerProtocol {
         }
 
         if let BodySize::NoBody = self.body_size {
-            // ignore the data
+            // Ignore the data
 
             if end {
                 self.state = ServerState::Finished;
@@ -1069,7 +1069,7 @@ impl<'buf, 'headers> ServerProtocol {
             return Ok(size);
         }
 
-        // chunked
+        // Chunked
 
         let mut content_written = 0;
 
@@ -1083,7 +1083,7 @@ impl<'buf, 'headers> ServerProtocol {
             )?;
         }
 
-        // if all content is written then we can send the closing chunk
+        // If all content is written then we can send the closing chunk
         if end && content_written >= src_len {
             let footer = if let Some(headers) = headers {
                 headers
@@ -1131,7 +1131,7 @@ impl<'buf, 'headers> ServerProtocol {
                 if h.value == b"chunked" {
                     chunked = true;
                 } else {
-                    // unknown transfer encoding
+                    // Unknown transfer encoding
                     return Err(Error::UnsupportedTransferEncoding);
                 }
             } else if h.name.eq_ignore_ascii_case("Connection") {
@@ -1234,7 +1234,7 @@ impl ClientRequest {
         write!(writer, "{} {} HTTP/1.1\r\n", method, uri)?;
 
         for h in headers.iter() {
-            // we'll override these headers
+            // We'll override these headers
             if (h.name.eq_ignore_ascii_case("Connection") && !websocket)
                 || h.name.eq_ignore_ascii_case("Content-Length")
                 || h.name.eq_ignore_ascii_case("Transfer-Encoding")
@@ -1318,7 +1318,7 @@ impl ClientRequestBody {
         }
 
         if let BodySize::NoBody = state.body_size {
-            // ignore the data
+            // Ignore the data
 
             if end {
                 return SendStatus::Complete(ClientResponse { state: self.state }, 0);
@@ -1342,7 +1342,7 @@ impl ClientRequestBody {
             return SendStatus::Partial(self, size);
         }
 
-        // chunked
+        // Chunked
 
         let mut content_written = 0;
 
@@ -1361,7 +1361,7 @@ impl ClientRequestBody {
             assert!(content_written <= src_len);
         }
 
-        // if all content is written then we can send the closing chunk
+        // If all content is written then we can send the closing chunk
         if end && content_written == src_len {
             let footer = if let Some(headers) = headers {
                 headers
@@ -1449,7 +1449,7 @@ impl ClientResponse {
                 if h.value == b"chunked" {
                     chunked = true;
                 } else {
-                    // unknown transfer encoding
+                    // Unknown transfer encoding
                     return Err(Error::UnsupportedTransferEncoding);
                 }
             } else if h.name.eq_ignore_ascii_case("Connection") {
@@ -1572,7 +1572,7 @@ impl ClientResponseBody {
         let max_read = cmp::min(chunk_left, src.len());
         let src = &src[..max_read];
 
-        // src holds body as-is
+        // Src holds body as-is
         let mut rbuf = io::Cursor::new(src);
         let size = rbuf.read(dest)?;
 
@@ -1591,15 +1591,15 @@ impl ClientResponseBody {
             ));
         }
 
-        // we are expecting more bytes
+        // We are expecting more bytes
 
         state.chunk_left = Some(chunk_left);
 
-        // nothing to read?
+        // Nothing to read?
         if src.is_empty() {
             assert_eq!(size, 0);
 
-            // if the input has ended, return error
+            // If the input has ended, return error
             if end {
                 return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
             }
@@ -1607,7 +1607,7 @@ impl ClientResponseBody {
             return Ok(RecvStatus::NeedBytes(self));
         }
 
-        // there was something to read. however, whether anything actually
+        // There was something to read. However, whether anything actually
         // got read depends on the length of dest
 
         Ok(RecvStatus::Read(self, size, size))
@@ -1619,11 +1619,11 @@ impl ClientResponseBody {
         dest: &mut [u8],
         end: bool,
     ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
-        // src holds body as-is
+        // Src holds body as-is
         let mut rbuf = io::Cursor::new(src);
         let size = rbuf.read(dest)?;
 
-        // we're done when we've consumed the entire input
+        // We're done when we've consumed the entire input
         if size == src.len() && end {
             return Ok(RecvStatus::Complete(
                 ClientFinished {
@@ -1635,14 +1635,14 @@ impl ClientResponseBody {
             ));
         }
 
-        // nothing to read?
+        // Nothing to read?
         if src.is_empty() {
             assert_eq!(size, 0);
 
             return Ok(RecvStatus::NeedBytes(self));
         }
 
-        // there was something to read. however, whether anything actually
+        // There was something to read. However, whether anything actually
         // got read depends on the length of dest
 
         Ok(RecvStatus::Read(self, size, size))
@@ -1701,7 +1701,7 @@ impl ClientResponseBody {
 
             state.chunk_left = Some(chunk_left);
 
-            // nothing to read?
+            // Nothing to read?
             if src.is_empty() {
                 assert_eq!(size, 0);
 
@@ -1709,7 +1709,7 @@ impl ClientResponseBody {
                     return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                 }
 
-                // if pos advanced we need to return it
+                // If pos advanced we need to return it
                 if pos > 0 {
                     return Ok(RecvStatus::Read(self, pos, 0));
                 }
@@ -1717,19 +1717,19 @@ impl ClientResponseBody {
                 return Ok(RecvStatus::NeedBytes(self));
             }
 
-            // there was something to read. however, whether anything actually
+            // There was something to read. However, whether anything actually
             // got read depends on the length of dest
 
             return Ok(RecvStatus::Read(self, pos, size));
         }
 
-        // done with content bytes. now to read the footer
+        // Done with content bytes. Now to read the footer
 
-        // final chunk?
+        // Final chunk?
         if state.chunk_size == 0 {
             let src = &src[pos..];
 
-            // trailing headers
+            // Trailing headers
             let scratch = unsafe { scratch.assume_init_mut() };
             match httparse::parse_headers(src, scratch) {
                 Ok(httparse::Status::Complete((x, _))) => {
@@ -1750,7 +1750,7 @@ impl ClientResponseBody {
                         return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                     }
 
-                    // if pos advanced we need to return it
+                    // If pos advanced we need to return it
                     if pos > 0 {
                         return Ok(RecvStatus::Read(self, pos, 0));
                     }
@@ -1761,7 +1761,7 @@ impl ClientResponseBody {
             }
         }
 
-        // for chunks of non-zero size, pos for header/content will have
+        // For chunks of non-zero size, pos for header/content will have
         // already been returned by previous calls
         assert_eq!(pos, 0);
 
@@ -2051,34 +2051,34 @@ mod tests {
 
     #[test]
     fn test_parse_as_int() {
-        // invalid utf8
+        // Invalid utf8
         assert!(parse_as_int(b"\xa0\xa1").is_err());
 
-        // not an integer
+        // Not an integer
         assert!(parse_as_int(b"bogus").is_err());
 
-        // not a non-negative integer
+        // Not a non-negative integer
         assert!(parse_as_int(b"-123").is_err());
 
-        // success
+        // Success
         assert_eq!(parse_as_int(b"0").unwrap(), 0);
         assert_eq!(parse_as_int(b"123").unwrap(), 123);
     }
 
     #[test]
     fn test_header_contains_param() {
-        // param invalid utf8
+        // Param invalid utf8
         assert_eq!(header_contains_param(b"", b"\xa0\xa1", false), false);
 
-        // skip invalid utf8 part
+        // Skip invalid utf8 part
         assert_eq!(header_contains_param(b"\xa0\xa1,a", b"a", false), true);
 
-        // not found
+        // Not found
         assert_eq!(header_contains_param(b"", b"a", false), false);
         assert_eq!(header_contains_param(b"a", b"b", false), false);
         assert_eq!(header_contains_param(b"a,b", b"c", false), false);
 
-        // success
+        // Success
         assert_eq!(header_contains_param(b"a", b"a", false), true);
         assert_eq!(header_contains_param(b"a,b", b"a", false), true);
         assert_eq!(header_contains_param(b"a,b", b"b", false), true);
