@@ -36,9 +36,8 @@
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-// this class offers fast access to the routes file. the table is maintained
-//   by a background thread so that file access doesn't cause blocking.
-
+/// Offers fast access to the routes file. The table is maintained
+/// by a background thread so that file access doesn't cause blocking.
 class DomainMap
 {
 public:
@@ -89,7 +88,7 @@ public:
 
 		bool operator==(const ZhttpRoute &other) const
 		{
-			// only compare spec
+			// Only compare spec
 			return (baseSpec == other.baseSpec);
 		}
 	};
@@ -108,14 +107,14 @@ public:
 		QString connectHost;
 		int connectPort;
 		ZhttpRoute zhttpRoute;
-		bool ssl; // use https
-		bool trusted; // bypass zurl access policies
-		bool trustConnectHost; // verify cert against target host
-		bool insecure; // ignore server certificate validity
-		QString host; // override input host
-		QStringList subscriptions; // implicit subscriptions
-		bool overHttp; // use websocket-over-http protocol
-		bool oneEvent; // send one event at a time with overHttp
+		bool ssl; // Use https
+		bool trusted; // Bypass zurl access policies
+		bool trustConnectHost; // Verify cert against target host
+		bool insecure; // Ignore server certificate validity
+		QString host; // Override input host
+		QStringList subscriptions; // Implicit subscriptions
+		bool overHttp; // Use websocket-over-http protocol
+		bool oneEvent; // Send one event at a time with overHttp
 		QString clientCert;
 		QString clientKey;
 		QString backendData; // heavenly backend configuration JSON
@@ -167,7 +166,7 @@ public:
 			if(separateStats)
 				return id;
 			else
-				return QByteArray(); // global stats
+				return QByteArray(); // Global stats
 		}
 
 		Entry() :
@@ -187,8 +186,8 @@ public:
 	DomainMap(const QString &fileName);
 	~DomainMap();
 
-	// shouldn't really ever need to call this, but it's here in case the
-	//   underlying file watching doesn't work
+	// Shouldn't really ever need to call this, but it's here in case the
+	// underlying file watching doesn't work
 	void reload();
 
 	bool isIdShared(const QString &id) const;

@@ -41,12 +41,12 @@ Settings::Settings(const QString &fileName) :
 	{
 		if(QFile::exists("src/bin/pushpin.rs"))
 		{
-			// running in tree
+			// Running in tree
 			libdir_ = QFileInfo("src").absoluteFilePath();
 		}
 		else
 		{
-			// use compiled value
+			// Use compiled value
 			libdir_ = Config::get().libDir;
 		}
 	}
@@ -54,7 +54,7 @@ Settings::Settings(const QString &fileName) :
 	rundir_ = valueRaw("global/rundir").toString();
 	if(rundir_.isEmpty())
 	{
-		// fallback to runner section (deprecated)
+		// Fallback to runner section (deprecated)
 		rundir_ = valueRaw("runner/rundir").toString();
 	}
 
@@ -72,7 +72,7 @@ Settings::Settings(const QString &fileName) :
 
 	if(!includeFile.isEmpty())
 	{
-		// if include is a relative path, then use it relative to the config file location
+		// If include is a relative path, then use it relative to the config file location
 		QFileInfo fi(includeFile);
 		if(fi.isRelative())
 			includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
@@ -94,7 +94,7 @@ QString Settings::resolveVars(const QString &in) const
 	out.replace("{rundir}", rundir_);
 	out.replace("{ipc_prefix}", ipcPrefix_);
 
-	// adjust tcp ports
+	// Adjust tcp ports
 	int at = 0;
 	while(true)
 	{

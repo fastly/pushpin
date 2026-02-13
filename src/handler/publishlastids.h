@@ -28,7 +28,7 @@
 #include <QMap>
 #include <QHash>
 
-// cache with LRU expiration
+// Cache with LRU expiration
 class PublishLastIds
 {
 public:

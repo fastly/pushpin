@@ -89,15 +89,15 @@ static void lineTests()
 	TEST_ASSERT(r[0].props.contains("type"));
 	TEST_ASSERT_EQ(r[0].props.value("type"), QString("gala"));
 
-	// unterminated quote
+	// Unterminated quote
 	r = RoutesFile::parseLine("apple,organic,type=\"gala", &ok);
 	TEST_ASSERT(!ok);
 
-	// empty prop name
+	// Empty prop name
 	r = RoutesFile::parseLine("apple,organic,", &ok);
 	TEST_ASSERT(!ok);
 
-	// empty prop name
+	// Empty prop name
 	r = RoutesFile::parseLine("apple,organic,=gala", &ok);
 	TEST_ASSERT(!ok);
 }

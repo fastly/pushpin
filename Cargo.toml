@@ -55,7 +55,7 @@ slab = "0.4"
 socket2 = "0.4"
 stats-emitter = { git = "ssh://git@github.com/fastly/stats-emitter-rs" }
 thiserror = "1.0"
-time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
+time = { version = "=0.3.41", features = ["formatting", "local-offset", "macros"] }
 tokio-util = "0.7"
 url = "2.3"
 zmq = "0.9"
@@ -100,6 +100,10 @@ wiremock = "^0.5.6"
 pkg-config = "0.3"
 time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
 cbindgen = "0.27"
+
+[[bench]]
+name = "memorypool"
+harness = false
 
 [[bench]]
 name = "server"

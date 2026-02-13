@@ -25,13 +25,13 @@ use crate::connmgr::tls::{AsyncTlsStream, IdentityCache, TlsAcceptor, TlsStream,
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket;
 use crate::connmgr::{ListenConfig, ListenSpec};
-use crate::core::arena;
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::fs::{set_group, set_user};
 use crate::core::list;
+use crate::core::memorypool;
 use crate::core::net::{
     set_socket_opts, AsyncTcpStream, AsyncUnixStream, NetListener, NetStream, SocketAddr,
 };
@@ -71,29 +71,29 @@ use std::time::Duration;
 const RESP_SENDER_BOUND: usize = 1;
 const HANDLE_ACCEPT_BOUND: usize = 100;
 
-// we read and process each response message one at a time, wrapping it in an
-// rc, and sending it to connections via channels. on the other side of each
-// channel, the message is received and processed immediately. this means the
+// We read and process each response message one at a time, wrapping it in an
+// rc, and sending it to connections via channels. On the other side of each
+// channel, the message is received and processed immediately. This means the
 // max number of messages retained per connection is the channel bound per
 // connection
 pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = RESP_SENDER_BOUND;
 
-// the max number of messages retained outside of connections is one per
+// The max number of messages retained outside of connections is one per
 // handle we read from (req and stream), in preparation for sending to any
 // connections
 pub const MSG_RETAINED_PER_WORKER_MAX: usize = 2;
 
-// run x1
+// Run x1
 // accept_task x2
 // req_handle_task x1
 // stream_handle_task x1
 // keep_alives_task x1
 const WORKER_NON_CONNECTION_TASKS_MAX: usize = 10;
 
-// note: individual tasks are not (and must not be) capped to this number.
+// Note: individual tasks are not (and must not be) capped to this number.
 // this is because accept_task makes a registration for every connection
 // task, which means each instance of accept_task could end up making
-// thousands of registrations. however, such registrations are associated
+// thousands of registrations. However, such registrations are associated
 // with the spawning of connection_task, so we can still estimate
 // registrations relative to the number of tasks
 const REGISTRATIONS_PER_TASK_MAX: usize = 32;
@@ -214,19 +214,19 @@ enum Stream {
 
 impl Identify for AsyncTcpStream {
     fn set_id(&mut self, _id: &str) {
-        // do nothing
+        // Do nothing
     }
 }
 
 impl Identify for AsyncUnixStream {
     fn set_id(&mut self, _id: &str) {
-        // do nothing
+        // Do nothing
     }
 }
 
 impl Identify for AsyncTlsStream<'_> {
     fn set_id(&mut self, id: &str) {
-        // server generates ids known to always be accepted
+        // Server generates ids known to always be accepted
         self.inner().set_id(id).unwrap();
     }
 }
@@ -267,8 +267,8 @@ struct ConnectionDone {
 struct ConnectionItem {
     id: ArrayString<32>,
     stop: Option<CancellationSender>,
-    zreceiver_sender: channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: Option<arena::Rc<StreamSharedData>>,
+    zreceiver_sender: channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
+    shared: Option<memorypool::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
 }
 
@@ -323,8 +323,8 @@ impl Connections {
         &self,
         worker_id: usize,
         stop: CancellationSender,
-        zreceiver_sender: channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-        shared: Option<arena::Rc<StreamSharedData>>,
+        zreceiver_sender: channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
+        shared: Option<memorypool::Rc<StreamSharedData>>,
     ) -> Result<(usize, ArrayString<32>), ()> {
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
@@ -353,14 +353,14 @@ impl Connections {
     fn remove(
         &self,
         ckey: usize,
-    ) -> channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)> {
+    ) -> channel::LocalSender<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // clear active keep alive
+        // Clear active keep alive
         if let Some(bkey) = ci.batch_key.take() {
             items.batch.remove(bkey);
         }
@@ -379,7 +379,7 @@ impl Connections {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[nkey].value;
 
-        // clear active keep alive
+        // Clear active keep alive
         if let Some(bkey) = ci.batch_key.take() {
             items.batch.remove(bkey);
         }
@@ -405,8 +405,8 @@ impl Connections {
     fn try_send(
         &self,
         ckey: usize,
-        value: (arena::Rc<zhttppacket::OwnedResponse>, usize),
-    ) -> Result<(), mpsc::TrySendError<(arena::Rc<zhttppacket::OwnedResponse>, usize)>> {
+        value: (memorypool::Rc<zhttppacket::OwnedResponse>, usize),
+    ) -> Result<(), mpsc::TrySendError<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>> {
         let nkey = ckey;
 
         let items = &*self.items.borrow();
@@ -479,9 +479,9 @@ impl Connections {
     fn batch_add(&self, ckey: usize) -> Result<(), ()> {
         let items = &mut *self.items.borrow_mut();
         let ci = &mut items.nodes[ckey].value;
-        let cshared = ci.shared.as_ref().unwrap().get();
+        let cshared = ci.shared.as_ref().unwrap();
 
-        // only batch connections with known handler addresses
+        // Only batch connections with known handler addresses
         let addr_ref = cshared.to_addr();
         let addr = match addr_ref.get() {
             Some(addr) => addr,
@@ -508,9 +508,9 @@ impl Connections {
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
-                    let cshared = ci.shared.as_ref().unwrap().get();
+                    let cshared = ci.shared.as_ref().unwrap();
 
-                    // addr could have been removed after adding to the batch
+                    // Addr could have been removed after adding to the batch
                     cshared.to_addr().get()?;
 
                     Some((ci.id.as_bytes(), cshared.out_seq()))
@@ -565,7 +565,7 @@ impl Connections {
 
             for &ckey in batch.last_group_ckeys() {
                 let ci = &mut nodes[ckey].value;
-                let cshared = ci.shared.as_ref().unwrap().get();
+                let cshared = ci.shared.as_ref().unwrap();
 
                 cshared.inc_out_seq();
                 ci.batch_key = None;
@@ -622,7 +622,7 @@ struct ConnectionStreamOpts {
     allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
     sender_stream: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    stream_shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
+    stream_shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
 }
 
 enum ConnectionModeOpts {
@@ -770,10 +770,10 @@ impl Worker {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
-        // large enough to fit anything
+        // Large enough to fit anything
         let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
 
-        // same size as working buffers
+        // Same size as working buffers
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let instance_id = Rc::new(instance_id);
@@ -824,7 +824,7 @@ impl Worker {
             zsockman.client_stream_handle(format!("{}-", id).as_bytes()),
         );
 
-        let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
+        let stream_shared_mem = Rc::new(memorypool::RcMemory::new(stream_maxconn));
 
         let zreceiver_pool = Rc::new(ChannelPool::new(maxconn));
         for _ in 0..maxconn {
@@ -838,7 +838,7 @@ impl Worker {
                 &reactor.local_registration_memory(),
             );
 
-            // bound is 1 per connection, so all connections can indicate done at once
+            // Bound is 1 per connection, so all connections can indicate done at once
             // max_senders is 1 per connection + 1 for the accept task
             let (s_from_conn, r_from_conn) = channel::local_channel(
                 req_conns.max(),
@@ -885,7 +885,7 @@ impl Worker {
                 &reactor.local_registration_memory(),
             );
 
-            // bound is 1 per connection, so all connections can indicate done at once
+            // Bound is 1 per connection, so all connections can indicate done at once
             // max_senders is 1 per connection + 1 for the accept task
             let (s_from_conn, r_from_conn) = channel::local_channel(
                 stream_conns.max(),
@@ -980,26 +980,26 @@ impl Worker {
         ready.send(()).unwrap();
         drop(ready);
 
-        // wait for stop
+        // Wait for stop
         let _ = stop.recv().await;
 
-        // stop keep alives
+        // Stop keep alives
         drop(keep_alives_stop);
         let _ = keep_alives_done.recv().await;
 
-        // stop connections
+        // Stop connections
         drop(req_accept_stop);
         drop(stream_accept_stop);
         let _ = req_accept_done.recv().await;
         let _ = stream_accept_done.recv().await;
 
-        // stop remaining tasks
+        // Stop remaining tasks
         drop(req_handle_stop);
         drop(stream_handle_stop);
         let _ = req_handle_done.recv().await;
         let stream_handle = stream_handle_done.recv().await.unwrap();
 
-        // send cancels
+        // Send cancels
 
         stream_conns.batch_clear();
 
@@ -1017,7 +1017,7 @@ impl Worker {
                 next_cancel_index += 1;
 
                 if stream_conns.is_item_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = stream_conns.batch_add(key);
                 }
             }
@@ -1053,7 +1053,7 @@ impl Worker {
         acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
         spawner: Spawner,
-        zreceiver_pool: Rc<ChannelPool<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
+        zreceiver_pool: Rc<ChannelPool<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>>,
         cdone: AsyncLocalReceiver<ConnectionDone>,
         s_cdone: channel::LocalSender<ConnectionDone>,
         conns: Rc<Connections>,
@@ -1105,7 +1105,7 @@ impl Worker {
                     // acceptor_recv
                     Select3::R3(result) => match result {
                         Ok(ret) => ret,
-                        Err(_) => continue, // ignore errors
+                        Err(_) => continue, // Ignore errors
                     },
                 };
 
@@ -1180,16 +1180,18 @@ impl Worker {
                     let (zstream_receiver_sender, zstream_receiver) =
                         zreceiver_pool.take().unwrap();
 
-                    let shared =
-                        arena::Rc::new(StreamSharedData::new(), &stream_opts.stream_shared_mem)
-                            .unwrap();
+                    let shared = memorypool::Rc::try_new_in(
+                        StreamSharedData::new(),
+                        &stream_opts.stream_shared_mem,
+                    )
+                    .unwrap();
 
                     let (ckey, conn_id) = conns
                         .add(
                             id,
                             cstop,
                             zstream_receiver_sender,
-                            Some(arena::Rc::clone(&shared)),
+                            Some(memorypool::Rc::clone(&shared)),
                         )
                         .unwrap();
 
@@ -1233,7 +1235,7 @@ impl Worker {
                         ))
                         .is_err()
                     {
-                        // this should never happen. we only accept a connection if
+                        // This should never happen. We only accept a connection if
                         // we know we can spawn
                         panic!("failed to spawn req_connection_task");
                     }
@@ -1256,7 +1258,7 @@ impl Worker {
                         ))
                         .is_err()
                     {
-                        // this should never happen. we only accept a connection if
+                        // This should never happen. We only accept a connection if
                         // we know we can spawn
                         panic!("failed to spawn stream_connection_task");
                     }
@@ -1287,8 +1289,8 @@ impl Worker {
     ) {
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * req_maxconn);
 
-        let req_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
-        let req_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+        let req_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let req_resp_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
 
         let resume_waker = task::create_resume_waker();
 
@@ -1325,7 +1327,7 @@ impl Worker {
                 // receiver_recv
                 Select6::R2(result) => match result {
                     Ok(msg) => handle_send.set(Some(req_handle.send(msg))),
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                 },
                 // handle_send
                 Select6::R3(result) => {
@@ -1338,21 +1340,21 @@ impl Worker {
                 // done_recv
                 Select6::R4(result) => match result {
                     Ok(msg) => done_send = Some(s_cdone.send(msg)),
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                 },
-                // done send
+                // done_send
                 Select6::R5(result) => {
                     done_send = None;
 
                     if let Err(mpsc::SendError(_)) = result {
-                        // this can happen if accept ends first
+                        // This can happen if accept ends first
                         break;
                     }
                 }
                 // req_handle.recv
                 Select6::R6(result) => match result {
                     Ok(msg) => {
-                        let scratch = arena::Rc::new(
+                        let scratch = memorypool::Rc::try_new_in(
                             RefCell::new(zhttppacket::ParseScratch::new()),
                             &req_scratch_mem,
                         )
@@ -1366,11 +1368,11 @@ impl Worker {
                             }
                         };
 
-                        let zresp = arena::Rc::new(zresp, &req_resp_mem).unwrap();
+                        let zresp = memorypool::Rc::try_new_in(zresp, &req_resp_mem).unwrap();
 
                         let mut count = 0;
 
-                        for (i, rid) in zresp.get().get().ids.iter().enumerate() {
+                        for (i, rid) in zresp.get().ids.iter().enumerate() {
                             let key = match get_key(rid.id) {
                                 Ok(key) => key,
                                 Err(_) => continue,
@@ -1380,15 +1382,15 @@ impl Worker {
                                 continue;
                             }
 
-                            // this should always succeed, since afterwards we yield
+                            // This should always succeed, since afterwards we yield
                             // to let the connection receive the message
-                            match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
+                            match conns.try_send(key, (memorypool::Rc::clone(&zresp), i)) {
                                 Ok(()) => count += 1,
                                 Err(mpsc::TrySendError::Full(_)) => error!(
                                     "server-worker {}: connection-{} cannot receive message",
                                     id, key
                                 ),
-                                Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
                             }
                         }
 
@@ -1425,8 +1427,8 @@ impl Worker {
     ) {
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * stream_maxconn);
 
-        let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
-        let stream_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+        let stream_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let stream_resp_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
 
         let resume_waker = task::create_resume_waker();
 
@@ -1473,7 +1475,7 @@ impl Worker {
                     // receiver_recv
                     Select8::R2(result) => match result {
                         Ok(msg) => handle_send_to_any.set(Some(stream_handle.send_to_any(msg))),
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
                     // handle_send_to_any
                     Select8::R3(result) => {
@@ -1488,7 +1490,7 @@ impl Worker {
                         Ok((addr, msg)) => {
                             handle_send_to_addr.set(Some(stream_handle.send_to_addr(addr, msg)))
                         }
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
                     // handle_send_to_addr
                     Select8::R5(result) => {
@@ -1501,21 +1503,21 @@ impl Worker {
                     // done_recv
                     Select8::R6(result) => match result {
                         Ok(msg) => done_send = Some(s_cdone.send(msg)),
-                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                        Err(mpsc::RecvError) => break, // This can happen if accept+conns end first
                     },
-                    // done send
+                    // done_send
                     Select8::R7(result) => {
                         done_send = None;
 
                         if let Err(mpsc::SendError(_)) = result {
-                            // this can happen if accept ends first
+                            // This can happen if accept ends first
                             break;
                         }
                     }
                     // stream_handle.recv
                     Select8::R8(result) => match result {
                         Ok((msg, from_router)) => {
-                            let msg_data = &msg.get()[..];
+                            let msg_data = &*msg;
 
                             let offset = if from_router {
                                 0
@@ -1536,7 +1538,7 @@ impl Worker {
                                 offset
                             };
 
-                            let scratch = arena::Rc::new(
+                            let scratch = memorypool::Rc::try_new_in(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
@@ -1551,11 +1553,12 @@ impl Worker {
                                     }
                                 };
 
-                            let zresp = arena::Rc::new(zresp, &stream_resp_mem).unwrap();
+                            let zresp =
+                                memorypool::Rc::try_new_in(zresp, &stream_resp_mem).unwrap();
 
                             let mut count = 0;
 
-                            for (i, rid) in zresp.get().get().ids.iter().enumerate() {
+                            for (i, rid) in zresp.get().ids.iter().enumerate() {
                                 let key = match get_key(rid.id) {
                                     Ok(key) => key,
                                     Err(_) => continue,
@@ -1565,15 +1568,15 @@ impl Worker {
                                     continue;
                                 }
 
-                                // this should always succeed, since afterwards we yield
+                                // This should always succeed, since afterwards we yield
                                 // to let the connection receive the message
-                                match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
+                                match conns.try_send(key, (memorypool::Rc::clone(&zresp), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
                                         "server-worker {}: connection-{} cannot receive message",
                                         id, key
                                     ),
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
                                 }
                             }
 
@@ -1592,7 +1595,7 @@ impl Worker {
             }
         }
 
-        // give the handle back
+        // Give the handle back
         done.send(stream_handle).await.unwrap();
 
         debug!("server-worker {}: task stopped: stream_handle", id);
@@ -1607,7 +1610,7 @@ impl Worker {
         cid: ArrayString<32>,
         stream: Stream,
         peer_addr: SocketAddr,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        zreceiver: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         req_opts: ConnectionReqOpts,
@@ -1700,11 +1703,11 @@ impl Worker {
         cid: ArrayString<32>,
         stream: Stream,
         peer_addr: SocketAddr,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        zreceiver: channel::LocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
-        shared: arena::Rc<StreamSharedData>,
+        shared: memorypool::Rc<StreamSharedData>,
     ) {
         let done = AsyncLocalSender::new(done);
         let zreceiver = AsyncLocalReceiver::new(zreceiver);
@@ -1826,7 +1829,7 @@ impl Worker {
         let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
-            // wait for next keep alive time
+            // Wait for next keep alive time
             match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
@@ -1842,7 +1845,7 @@ impl Worker {
                 next_keep_alive_index += 1;
 
                 if conns.is_item_stream(key) {
-                    // ignore errors
+                    // Ignore errors
                     let _ = conns.batch_add(key);
                 }
             }
@@ -1854,7 +1857,7 @@ impl Worker {
                 next_keep_alive_index = 0;
             }
 
-            // keep steady pace
+            // Keep steady pace
             next_keep_alive_time += KEEP_ALIVE_INTERVAL;
             next_keep_alive_timeout.set_deadline(next_keep_alive_time);
 
@@ -1864,7 +1867,7 @@ impl Worker {
                     Select2::R2(send) => send,
                 };
 
-                // there could be no message if items removed or message construction failed
+                // There could be no message if items removed or message construction failed
                 let (count, addr, msg) =
                     match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
                         Some(ret) => ret,
@@ -1884,7 +1887,7 @@ impl Worker {
             let now = reactor.now();
 
             if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
-                // got really behind somehow. just skip ahead
+                // Got really behind somehow. Just skip ahead
                 next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
                 next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
@@ -1907,7 +1910,7 @@ pub struct Server {
     addrs: Vec<SocketAddr>,
     workers: Vec<Worker>,
 
-    // underscore-prefixed because we never reference after construction
+    // Underscore-prefixed because we never reference after construction
     _req_listener: Listener,
     _stream_listener: Listener,
 }
@@ -1979,7 +1982,7 @@ impl Server {
                     user,
                     group,
                 } => {
-                    // ensure pipe file doesn't exist
+                    // Ensure pipe file doesn't exist
                     match fs::remove_file(path) {
                         Ok(()) => {}
                         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -2045,7 +2048,7 @@ impl Server {
         let mut stream_lsenders = Vec::new();
 
         for i in 0..worker_count {
-            // rendezvous channels
+            // Rendezvous channels
             let (s, req_r) = channel::channel(0);
             req_lsenders.push(s);
             let (s, stream_r) = channel::channel(0);
@@ -2167,9 +2170,10 @@ impl Server {
                 10000,
             ));
 
-            let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
+            let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
 
-            let shared = arena::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
+            let shared =
+                memorypool::Rc::try_new_in(StreamSharedData::new(), &stream_shared_mem).unwrap();
 
             let fut = Worker::stream_connection_task(
                 stop,
@@ -2235,16 +2239,8 @@ impl TestServer {
         let req_maxconn = 100;
         let stream_maxconn = 100;
 
-        let maxconn = req_maxconn + stream_maxconn;
-
-        let mut zsockman = zhttpsocket::ClientSocketManager::new(
-            Arc::clone(&zmq_context),
-            "test",
-            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
-            100,
-            100,
-            100,
-        );
+        let mut zsockman =
+            zhttpsocket::ClientSocketManager::new(Arc::clone(&zmq_context), "test", 100, 100, 100);
 
         zsockman
             .set_client_req_specs(&[SpecInfo {
@@ -2325,7 +2321,7 @@ impl TestServer {
             })
             .unwrap();
 
-        // wait for handler thread to start
+        // Wait for handler thread to start
         started_r.recv().unwrap();
 
         Self {
@@ -2551,7 +2547,7 @@ impl TestServer {
         let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
         out_sock.connect("inproc://server-test-in").unwrap();
 
-        // ensure zsockman is subscribed
+        // Ensure zsockman is subscribed
         let msg = out_sock.recv_msg(0).unwrap();
         assert_eq!(&msg[..], b"\x01test ");
 
@@ -2760,9 +2756,9 @@ impl TestServer {
 
                 let seq = seq.unwrap();
 
-                // as a hack to make the test server stateless, respond to every message
-                //   using the received sequence number. for messages we don't care about,
-                //   respond with keep-alive in order to keep the sequencing going
+                // As a hack to make the test server stateless, respond to every message
+                // using the received sequence number. For messages we don't care about,
+                // respond with keep-alive in order to keep the sequencing going
                 if ptype.is_empty() || ptype == "ping" || ptype == "pong" || ptype == "close" {
                     if ptype == "ping" {
                         ptype = "pong";
@@ -2872,7 +2868,7 @@ pub mod tests {
     fn test_server() {
         let server = TestServer::new(1);
 
-        // req
+        // Req
 
         let mut client = std::net::TcpStream::connect(&server.req_addr()).unwrap();
         client
@@ -2887,7 +2883,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (http)
+        // Stream (http)
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
         client
@@ -2902,7 +2898,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (http) with responses via router
+        // Stream (http) with responses via router
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
         client
@@ -2917,7 +2913,7 @@ pub mod tests {
             "HTTP/1.0 200 OK\r\nResponse-Path: router\r\nContent-Length: 6\r\n\r\nworld\n"
         );
 
-        // stream (ws)
+        // Stream (ws)
 
         let mut client = std::net::TcpStream::connect(&server.stream_addr()).unwrap();
 
@@ -2964,7 +2960,7 @@ pub mod tests {
 
         buf = buf.split_off(resp_end);
 
-        // send message
+        // Send message
 
         let mut data = vec![0; 1024];
         let body = &b"hello"[..];
@@ -2980,7 +2976,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv message
+        // Recv message
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3037,7 +3033,7 @@ pub mod tests {
 
         buf = buf.split_off(resp_end);
 
-        // send binary
+        // Send binary
 
         let mut data = vec![0; 1024];
         let body = &[1, 2, 3][..];
@@ -3053,7 +3049,7 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv binary
+        // Recv binary
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3062,7 +3058,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send ping
+        // Send ping
 
         let mut data = vec![0; 1024];
         let body = &b""[..];
@@ -3077,7 +3073,7 @@ pub mod tests {
         .unwrap();
         client.write(&data[..size]).unwrap();
 
-        // recv pong
+        // Recv pong
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
@@ -3086,7 +3082,7 @@ pub mod tests {
 
         buf.clear();
 
-        // send close
+        // Send close
 
         let mut data = vec![0; 1024];
         let body = &b"\x03\xf0gone"[..];
@@ -3102,14 +3098,14 @@ pub mod tests {
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
-        // recv close
+        // Recv close
 
         let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
         assert_eq!(fin, true);
         assert_eq!(opcode, websocket::OPCODE_CLOSE);
         assert_eq!(&content, &b"\x03\xf0gone"[..]);
 
-        // expect tcp close
+        // Expect tcp close
 
         let mut chunk = [0; 1024];
         let size = client.read(&mut chunk).unwrap();
@@ -3120,11 +3116,11 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit 4c1b0bb177314051405ef5be3cde023e9d1ad635
+        // Sizes in debug mode at commit 4c1b0bb177314051405ef5be3cde023e9d1ad635
         const REQ_TASK_SIZE_BASE: usize = 5824;
         const STREAM_TASK_SIZE_BASE: usize = 7760;
 
-        // cause tests to fail if sizes grow too much
+        // Cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;
         const REQ_TASK_SIZE_MAX: usize = REQ_TASK_SIZE_BASE + GROWTH_LIMIT;
         const STREAM_TASK_SIZE_MAX: usize = STREAM_TASK_SIZE_BASE + GROWTH_LIMIT;

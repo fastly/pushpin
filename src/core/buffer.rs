@@ -112,7 +112,7 @@ pub trait Buffer {
     }
 }
 
-// for reading only
+// For reading only
 impl Buffer for io::Cursor<&mut [u8]> {
     fn len(&self) -> usize {
         Buffer::read_buf(self).len()
@@ -162,9 +162,9 @@ pub fn write_vectored_offset<W: Write>(
     let mut start = 0;
 
     while offset >= bufs[start].len() {
-        // on the last buf?
+        // On the last buf?
         if start + 1 >= bufs.len() {
-            // exceeding the last buf is an error
+            // Exceeding the last buf is an error
             if offset > bufs[start].len() {
                 return Err(io::Error::from(io::ErrorKind::InvalidInput));
             }
@@ -213,9 +213,9 @@ impl<'a: 'b, 'b> Drop for LimitBufsGuard<'a, 'b> {
         if let Some(restore) = self.restore.take() {
             // SAFETY: ptr and len were collected earlier from the original
             // memory referred to by the slice at this index and they are
-            // still valid. the only issue with reconstructing the slice is
+            // still valid. The only issue with reconstructing the slice is
             // that we currently have a different slice using the same memory
-            // at this index. however, this is safe because we also replace
+            // at this index. However, this is safe because we also replace
             // the slice at this index and the two slices don't coexist
             unsafe {
                 self.bufs[restore.index] = slice::from_raw_parts(restore.ptr, restore.len);
@@ -242,9 +242,9 @@ impl<'a: 'b, 'b> Drop for LimitBufsMutGuard<'a, 'b> {
         if let Some(restore) = self.restore.take() {
             // SAFETY: ptr and len were collected earlier from the original
             // memory referred to by the slice at this index and they are
-            // still valid. the only issue with reconstructing the slice is
+            // still valid. The only issue with reconstructing the slice is
             // that we currently have a different slice using the same memory
-            // at this index. however, this is safe because we also replace
+            // at this index. However, this is safe because we also replace
             // the slice at this index and the two slices don't coexist
             unsafe {
                 self.bufs[restore.index] = slice::from_raw_parts_mut(restore.ptr, restore.len);
@@ -274,7 +274,7 @@ impl<'a: 'b, 'b> LimitBufs<'a, 'b> for [&'a [u8]] {
                 restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
-                // valid. we just need to be careful about using them again
+                // valid. We just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
                     *item = &slice::from_raw_parts(ptr, len)[..want];
@@ -319,7 +319,7 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
                 restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
-                // valid. we just need to be careful about using them again
+                // valid. We just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
                     *item = &mut slice::from_raw_parts_mut(ptr, len)[skip..];
@@ -356,7 +356,7 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
                 restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
-                // valid. we just need to be careful about using them again
+                // valid. We just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
                     *item = &mut slice::from_raw_parts_mut(ptr, len)[..want];
@@ -441,7 +441,7 @@ impl Buffer for ContiguousBuffer {
 #[cfg(test)]
 impl Read for ContiguousBuffer {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        // fully qualified to work around future method warning
+        // Fully qualified to work around future method warning
         // https://github.com/rust-lang/rust/issues/48919
         let src = Buffer::read_buf(self);
         let size = cmp::min(src.len(), buf.len());
@@ -488,8 +488,8 @@ impl TmpBuffer {
     }
 }
 
-// holds a Vec<u8> but only exposes the portion of it considered to be
-// readable ("filled"). any remaining bytes may be zeroed or uninitialized
+// Holds a Vec<u8> but only exposes the portion of it considered to be
+// readable ("filled"). Any remaining bytes may be zeroed or uninitialized
 // and are not considered to be readable
 pub struct FilledBuf {
     data: Vec<u8>,
@@ -535,7 +535,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
         self.end = 0;
     }
 
-    // return true if the readable bytes have not wrapped
+    // Return true if the readable bytes have not wrapped
     pub fn is_readable_contiguous(&self) -> bool {
         self.end <= self.buf.as_ref().len()
     }
@@ -551,12 +551,12 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
         let size = self.end - self.start;
 
         if self.end <= buf.len() {
-            // if the buffer hasn't wrapped, simply copy down
+            // If the buffer hasn't wrapped, simply copy down
             buf.copy_within(self.start.., 0);
         } else if size <= self.start {
-            // if the buffer has wrapped, but the wrapped part can be copied
-            //   without overlapping, then copy the wrapped part followed by
-            //   initial part
+            // If the buffer has wrapped, but the wrapped part can be copied
+            // without overlapping, then copy the wrapped part followed by
+            // initial part
 
             let left_size = self.end - buf.len();
             let right_size = buf.len() - self.start;
@@ -564,12 +564,12 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
             buf.copy_within(..left_size, right_size);
             buf.copy_within(self.start..(self.start + right_size), 0);
         } else {
-            // if the buffer has wrapped and the wrapped part can't be copied
-            //   without overlapping, then use a temporary buffer to
-            //   facilitate. smaller part is copied to the temp buffer, then
-            //   the larger and small parts (in that order) are copied into
-            //   their intended locations. in the worst case, up to 50% of
-            //   the buffer may be copied twice
+            // If the buffer has wrapped and the wrapped part can't be copied
+            // without overlapping, then use a temporary buffer to
+            // facilitate. Smaller part is copied to the temp buffer, then
+            // the larger and small parts (in that order) are copied into
+            // their intended locations. In the worst case, up to 50% of
+            // the buffer may be copied twice
 
             let left_size = self.end - buf.len();
             let right_size = buf.len() - self.start;
@@ -616,7 +616,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Read for RingBuffer<T> {
         let mut pos = 0;
 
         while pos < buf.len() && self.len() > 0 {
-            // fully qualified to work around future method warning
+            // Fully qualified to work around future method warning
             // https://github.com/rust-lang/rust/issues/48919
             let src = Buffer::read_buf(self);
             let size = cmp::min(src.len(), buf.len() - pos);
@@ -770,9 +770,9 @@ impl RingBuffer<Vec<u8>> {
         }
     }
 
-    // extract inner buffer, aligning it first if necessary, and replace it
-    // with an empty buffer. this should be cheap if the inner buffer is
-    // already aligned. afterwards, the ringbuffer will have a capacity of
+    // Extract inner buffer, aligning it first if necessary, and replace it
+    // with an empty buffer. This should be cheap if the inner buffer is
+    // already aligned. Afterwards, the ringbuffer will have a capacity of
     // zero and will be essentially unusable until set_inner is called with a
     // non-empty buffer
     pub fn take_inner(&mut self) -> FilledBuf {
@@ -785,7 +785,7 @@ impl RingBuffer<Vec<u8>> {
         FilledBuf::new(data, filled)
     }
 
-    // replace the inner buffer. this should be cheap if the original inner
+    // Replace the inner buffer. This should be cheap if the original inner
     // buffer is empty, which is the case if take_inner was called earlier.
     // panics if the new buffer is larger than the tmp buffer
     pub fn set_inner(&mut self, buf: FilledBuf) {
@@ -875,22 +875,22 @@ mod tests {
             }
         }
 
-        // empty
+        // Empty
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[], 0);
         assert_eq!(r.unwrap(), 0);
 
-        // offset too large
+        // Offset too large
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[b"apple"], 6);
         assert!(r.is_err());
 
-        // offset too large
+        // Offset too large
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[b"apple", b"banana"], 12);
         assert!(r.is_err());
 
-        // nothing to write
+        // Nothing to write
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[b"apple"], 5);
         assert_eq!(r.unwrap(), 0);

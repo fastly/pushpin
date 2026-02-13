@@ -31,7 +31,7 @@
 #include "jwt.h"
 #include "xffrule.h"
 
-// each session can have a bunch of timers:
+// Each session can have a bunch of timers:
 // 2 per incoming zhttprequest/zwebsocket
 // 2 per outgoing zhttprequest/zwebsocket
 // 1 per wsproxysession
@@ -39,10 +39,10 @@
 // 1 per inspect/accept request
 #define TIMERS_PER_SESSION 10
 
-// each zroute has a zhttpmanager, which has up to 8 timers
+// Each zroute has a zhttpmanager, which has up to 8 timers
 #define TIMERS_PER_ZROUTE 10
 
-// each zroute has a zhttpmanager, which has up to 8 socket notifiers
+// Each zroute has a zhttpmanager, which has up to 8 socket notifiers
 #define SOCKETNOTIFIERS_PER_ZROUTE 10
 
 #define PROMETHEUS_CONNECTIONS_MAX 16
@@ -54,6 +54,12 @@ using Connection = boost::signals2::scoped_connection;
 class StatsManager;
 class DomainMap;
 
+/// Orchestrates the core proxy service:
+/// - Accepts incoming HTTP/WebSocket connections
+/// - Routes requests with inspection/accept handlers
+/// - Creates and manages proxy sessions for backend connections
+/// - Processes retry requests
+/// - Coordinates statistics tracking
 class Engine
 {
 public:

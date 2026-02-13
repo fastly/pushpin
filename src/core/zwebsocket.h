@@ -36,7 +36,7 @@ class ZhttpManager;
 class ZWebSocket : public WebSocket
 {
 public:
-	// pair of sender + request id
+	// Pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
 	~ZWebSocket();
@@ -44,7 +44,7 @@ public:
 	Rid rid() const;
 	void setIsTls(bool on);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 

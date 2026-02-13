@@ -34,6 +34,7 @@ class ZrpcRequestPacket;
 class ZrpcResponsePacket;
 class ZrpcRequest;
 
+/// Manages RPC communication over ZeroMQ between Pushpin processes
 class ZrpcManager
 {
 public:

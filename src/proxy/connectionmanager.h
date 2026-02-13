@@ -29,16 +29,18 @@
 class WebSocket;
 class WsProxySession;
 
+/// Manages mapping between WebSocket connections and their connection IDs
+/// and tracks which proxy session owns each connection
 class ConnectionManager
 {
 public:
 	ConnectionManager();
 	~ConnectionManager();
 
-	// returns cid
+	// Returns cid
 	QByteArray addConnection(WebSocket *sock);
 
-	// returns cid or empty
+	// Returns cid or empty
 	QByteArray getConnection(WebSocket *sock) const;
 
 	void removeConnection(WebSocket *sock);

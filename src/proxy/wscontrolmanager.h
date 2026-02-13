@@ -29,6 +29,8 @@
 
 class WsControlSession;
 
+/// Creates and tracks WebSocket control sessions and manages the shared ZMQ init and stream channel
+/// sockets used for handler communication
 class WsControlManager
 {
 public:

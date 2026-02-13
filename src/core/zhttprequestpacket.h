@@ -99,7 +99,7 @@ public:
 	CowString clientKey;
 	bool followRedirects;
 	QString backendData;
-	QVariant passthrough; // if valid, may contain pushpin-specific passthrough info
+	QVariant passthrough; // If valid, may contain pushpin-specific passthrough info
 	bool multi;
 	bool quiet;
 

@@ -126,7 +126,7 @@ pub enum ParseError {
     InvalidData,
 
     #[error("wrong type {0}, expected {1}")]
-    WrongType(FrameType, FrameType), // got, expected
+    WrongType(FrameType, FrameType), // Got, expected
 
     #[error("map key must be a utf-8 string")]
     InvalidKey,
@@ -186,7 +186,7 @@ impl Op<'_> {
     }
 }
 
-// calculate the length of the first op and any dependants
+// Calculate the length of the first op and any dependants
 // return the number of ops processed
 fn calc_len(ops: &[Op], lens: &mut [usize]) -> usize {
     assert!(!ops.is_empty());
@@ -358,7 +358,7 @@ pub struct Frame<'a> {
 pub fn parse_frame(src: &[u8]) -> Result<(Frame<'_>, usize), ParseError> {
     let mut size_end: Option<usize> = None;
 
-    // find ':'
+    // Find ':'
     for (i, &c) in src.iter().enumerate() {
         if c == b':' {
             size_end = Some(i);
@@ -541,7 +541,7 @@ impl<'a> Iterator for SequenceIterator<'a> {
                 }))
             }
             Err(e) => {
-                // make this the last iteration
+                // Make this the last iteration
                 self.pos = self.src.len();
 
                 Some(Err(e))
@@ -589,7 +589,7 @@ impl<'a> Iterator for MapIterator<'a> {
         let (kframe, kend) = match parse_frame(&self.src[self.pos..]) {
             Ok(frame) => frame,
             Err(e) => {
-                // make this the last iteration
+                // Make this the last iteration
                 self.pos = self.src.len();
 
                 return Some(Err(e));
@@ -599,7 +599,7 @@ impl<'a> Iterator for MapIterator<'a> {
         let kdata = match kframe.ftype {
             FrameType::String => kframe.data,
             _ => {
-                // make this the last iteration
+                // Make this the last iteration
                 self.pos = self.src.len();
 
                 return Some(Err(ParseError::InvalidKey));
@@ -609,7 +609,7 @@ impl<'a> Iterator for MapIterator<'a> {
         let kstr = match str::from_utf8(kdata) {
             Ok(s) => s,
             Err(_) => {
-                // make this the last iteration
+                // Make this the last iteration
                 self.pos = self.src.len();
 
                 return Some(Err(ParseError::InvalidKey));
@@ -621,7 +621,7 @@ impl<'a> Iterator for MapIterator<'a> {
         let (vframe, vend) = match parse_frame(&self.src[vpos..]) {
             Ok(frame) => frame,
             Err(e) => {
-                // make this the last iteration
+                // Make this the last iteration
                 self.pos = self.src.len();
 
                 return Some(Err(e));
@@ -665,7 +665,7 @@ impl fmt::Display for Frame<'_> {
                         Err(_) => return Ok(()),
                     };
 
-                    // can't fail
+                    // Can't fail
                     let (frame, _) = parse_frame(mi.data).unwrap();
 
                     if i > 0 {
@@ -688,7 +688,7 @@ impl fmt::Display for Frame<'_> {
                         Err(_) => return Ok(()),
                     };
 
-                    // can't fail
+                    // Can't fail
                     let (frame, _) = parse_frame(si.data).unwrap();
 
                     if i > 0 {
@@ -1049,7 +1049,7 @@ mod tests {
         w.write_string(b"apple").unwrap();
         w.write_string(b"banana").unwrap();
 
-        // won't fit
+        // Won't fit
         let e = w.flush().unwrap_err();
 
         assert_eq!(e.kind(), io::ErrorKind::WriteZero);
@@ -1074,7 +1074,7 @@ mod tests {
             w.write_string(b"foo").unwrap();
         }
 
-        // won't fit
+        // Won't fit
         let e = w.write_string(b"foo").unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::WriteZero);
     }

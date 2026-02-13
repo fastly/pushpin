@@ -27,6 +27,7 @@
 #include "zhttpmanager.h"
 #include "domainmap.h"
 
+/// Manages the initialization, storage, and lookup mapping of the ZhttpManager instance for each route
 class ZRoutes
 {
 public:

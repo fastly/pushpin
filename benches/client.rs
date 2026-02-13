@@ -110,62 +110,40 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut stream_listener = Some(TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap());
     let _reactor = Reactor::new(REQS_PER_ITER * 10);
 
-    {
-        let client = Rc::new(TestClient::new(1));
+    for worker_count in [1, 2] {
+        let client = Rc::new(TestClient::new(worker_count));
 
-        c.bench_function("req_client workers=1", |b| {
-            b.iter(|| {
-                let c1 = Rc::clone(&client);
-                let c2 = Rc::clone(&client);
+        c.bench_function(
+            &format!("client-req-{worker_count}w-x{REQS_PER_ITER}"),
+            |b| {
+                b.iter(|| {
+                    let c1 = Rc::clone(&client);
+                    let c2 = Rc::clone(&client);
 
-                req_listener = Some(req(
-                    req_listener.take().unwrap(),
-                    move |addr| c1.do_req(addr),
-                    move || c2.wait_req(),
-                ))
-            })
-        });
-        c.bench_function("stream_client workers=1", |b| {
-            b.iter(|| {
-                let c1 = Rc::clone(&client);
-                let c2 = Rc::clone(&client);
+                    req_listener = Some(req(
+                        req_listener.take().unwrap(),
+                        move |addr| c1.do_req(addr),
+                        move || c2.wait_req(),
+                    ))
+                })
+            },
+        );
 
-                stream_listener = Some(req(
-                    stream_listener.take().unwrap(),
-                    move |addr| c1.do_stream_http(addr),
-                    move || c2.wait_stream(),
-                ))
-            })
-        });
-    }
+        c.bench_function(
+            &format!("client-stream-{worker_count}w-x{REQS_PER_ITER}"),
+            |b| {
+                b.iter(|| {
+                    let c1 = Rc::clone(&client);
+                    let c2 = Rc::clone(&client);
 
-    {
-        let client = Rc::new(TestClient::new(2));
-
-        c.bench_function("req_client workers=2", |b| {
-            b.iter(|| {
-                let c1 = Rc::clone(&client);
-                let c2 = Rc::clone(&client);
-
-                req_listener = Some(req(
-                    req_listener.take().unwrap(),
-                    move |addr| c1.do_req(addr),
-                    move || c2.wait_req(),
-                ))
-            })
-        });
-        c.bench_function("stream_client workers=2", |b| {
-            b.iter(|| {
-                let c1 = Rc::clone(&client);
-                let c2 = Rc::clone(&client);
-
-                stream_listener = Some(req(
-                    stream_listener.take().unwrap(),
-                    move |addr| c1.do_stream_http(addr),
-                    move || c2.wait_stream(),
-                ))
-            })
-        });
+                    stream_listener = Some(req(
+                        stream_listener.take().unwrap(),
+                        move |addr| c1.do_stream_http(addr),
+                        move || c2.wait_stream(),
+                    ))
+                })
+            },
+        );
     }
 }
 

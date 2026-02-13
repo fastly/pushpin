@@ -179,7 +179,7 @@ QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const Enc
 
 	if(ffi::jwt_encode((int)alg, (const char *)claim.data(), key.raw(), &token) != 0)
 	{
-		// error
+		// Error
 		return QByteArray();
 	}
 
@@ -195,7 +195,7 @@ QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const Dec
 
 	if(ffi::jwt_decode((int)alg, (const char *)token.data(), key.raw(), &claim) != 0)
 	{
-		// error
+		// Error
 		return QByteArray();
 	}
 

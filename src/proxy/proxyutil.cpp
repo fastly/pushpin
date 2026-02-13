@@ -56,7 +56,7 @@ static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 
 namespace ProxyUtil {
 
-// check if the request is coming from a grip proxy already
+// Check if the request is coming from a grip proxy already
 bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const Jwt::DecodingKey &defaultUpstreamKey)
 {
 	if(!defaultUpstreamKey.isNull())
@@ -81,9 +81,9 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 	if(!trustedClient && entry.origHeaders)
 	{
-		// copy headers to include magic prefix, so that the original
-		//   headers may be recovered later. if the client is trusted,
-		//   then we assume this has been done already.
+		// Copy headers to include magic prefix, so that the original
+		// headers may be recovered later. If the client is trusted,
+		// then we assume this has been done already.
 
 		HttpHeaders origHeaders;
 		for(int n = 0; n < requestData->headers.count(); ++n)
@@ -92,16 +92,16 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 			if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
 			{
-				// if it's already marked, take it
+				// If it's already marked, take it
 				origHeaders += h;
 
-				// remove where it lives now. we'll put it back later
+				// Remove where it lives now. We'll put it back later
 				requestData->headers.removeAt(n);
-				--n; // adjust position
+				--n; // Adjust position
 			}
 			else
 			{
-				// see if we require it to be marked already
+				// See if we require it to be marked already
 				bool found = false;
 				foreach(const QByteArray &i, origHeadersNeedMark)
 				{
@@ -112,20 +112,20 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 					}
 				}
 
-				// if not, then add as marked
+				// If not, then add as marked
 				if(!found)
 					origHeaders += HttpHeader("eb9bf0f5-" + h.first, h.second);
 			}
 		}
 
-		// now append all the orig headers to the end
+		// Now append all the orig headers to the end
 		foreach(const HttpHeader &h, origHeaders)
 			requestData->headers += h;
 	}
 	else if(!entry.origHeaders)
 	{
-		// if we don't want original headers, then filter them out
-		//   before proxying
+		// If we don't want original headers, then filter them out
+		// before proxying
 		for(int n = 0; n < requestData->headers.count(); ++n)
 		{
 			const HttpHeader &h = requestData->headers[n];
@@ -133,13 +133,13 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 			if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
 			{
 				requestData->headers.removeAt(n);
-				--n; // adjust position
+				--n; // Adjust position
 			}
 		}
 	}
 
-	// don't relay these headers. their meaning is handled by
-	//   mongrel2 and they only apply to the incoming hop.
+	// Don't relay these headers. Their meaning is handled by
+	// mongrel2 and they only apply to the incoming hop.
 	requestData->headers.removeAll("Connection");
 	requestData->headers.removeAll("Keep-Alive");
 	requestData->headers.removeAll("Accept-Encoding");
@@ -160,13 +160,13 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 	if(!trustedClient && !intReq)
 	{
-		// remove all Grip- headers
+		// Remove all Grip- headers
 		for(int n = 0; n < requestData->headers.count(); ++n)
 		{
 			if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
 			{
 				requestData->headers.removeAt(n);
-				--n; // adjust position
+				--n; // Adjust position
 			}
 		}
 	}

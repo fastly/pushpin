@@ -43,6 +43,7 @@ class RequestSession;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
+/// Proxies HTTP requests to backends with GRIP streaming and request sharing
 class ProxySession
 {
 public:
@@ -61,10 +62,10 @@ public:
 
 	void setInspectData(const InspectData &idata);
 
-	// takes ownership
+	// Takes ownership
 	void add(RequestSession *rs);
 
-	Signal addNotAllowed; // no more sharing, for whatever reason
+	Signal addNotAllowed; // No more sharing, for whatever reason
 	Signal finished;
 	boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
 

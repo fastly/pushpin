@@ -38,7 +38,7 @@ public:
 		int logLevel,
 		const QList<int> &ports);
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;

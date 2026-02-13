@@ -58,6 +58,8 @@ HEADERS += \
 	$$PWD/callback.h \
 	$$PWD/config.h \
 	$$PWD/timerwheel.h \
+	$$PWD/reactor.h \
+	$$PWD/executor.h \
 	$$PWD/jwt.h \
 	$$PWD/encrypt.h \
 	$$PWD/timer.h \
@@ -92,6 +94,8 @@ HEADERS += \
 SOURCES += \
 	$$PWD/config.cpp \
 	$$PWD/timerwheel.cpp \
+	$$PWD/reactor.cpp \
+	$$PWD/executor.cpp \
 	$$PWD/jwt.cpp \
 	$$PWD/encrypt.cpp \
 	$$PWD/timer.cpp \

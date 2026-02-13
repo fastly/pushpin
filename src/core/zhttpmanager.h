@@ -66,7 +66,7 @@ public:
 	ZWebSocket *createSocket();
 	ZWebSocket *takeNextSocket();
 
-	// for server mode, jump directly to responding state
+	// For server mode, jump directly to responding state
 	ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
 	static int estimateRequestHeaderBytes(const QString &method, const QUrl &uri, const HttpHeaders &headers);

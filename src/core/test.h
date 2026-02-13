@@ -52,7 +52,7 @@ inline void test_assert(bool cond, const char *condStr, const char *file, int li
         throw TestException(file, line, std::string("assertion failed: ") + condStr);
 }
 
-// uses QtTest to stringify values
+// Uses QtTest to stringify values
 template <typename T>
 inline std::string test_value_to_string(const T &value)
 {
@@ -76,7 +76,7 @@ inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, in
     }
 }
 
-// if cond is false, throws an exception with similar message as rust's assert macro
+// If cond is false, throws an exception with similar message as rust's assert macro
 #define TEST_ASSERT(cond) \
 do {\
     test_assert(static_cast<bool>(cond), #cond, __FILE__, __LINE__);\
@@ -91,7 +91,7 @@ do {\
 // for running a test and catching an exception if any. expects local variable ffi::TestException* out_ex to exist
 #define TEST_CATCH(statement) try { statement; } catch(const TestException &ex) { ex.toFfi(out_ex); return 1; }
 
-// expects a test function that takes a wait function as an argument. the wait
+// Expects a test function that takes a wait function as an argument. The wait
 // function can be used by the test to wait for a number of milliseconds while
 // the event loop runs.
 void test_with_event_loop(std::function<void (std::function<void (int)>)> f);

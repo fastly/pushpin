@@ -155,7 +155,7 @@ fn parent_dir(path: &Path) -> Result<&Path, io::Error> {
     match path.parent() {
         Some(p) => {
             if p.as_os_str().is_empty() {
-                Ok(Path::new(".")) // empty parent, assume current dir
+                Ok(Path::new(".")) // Empty parent, assume current dir
             } else {
                 Ok(p)
             }
@@ -191,7 +191,7 @@ pub enum FileWatcherError {
 
 impl FileWatcher {
     // `file_path` must be a path to a file, not a directory, and the file's
-    // parent directory must exist
+    // Parent directory must exist
     pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, FileWatcherError> {
         let file = file_path.as_ref();
 
@@ -206,7 +206,7 @@ impl FileWatcher {
         assert_eq!(ret, 0);
 
         for fd in &fds {
-            // should never fail on a descriptor we own
+            // Should never fail on a descriptor we own
             set_fd_nonblocking(*fd).unwrap();
         }
 
@@ -230,7 +230,7 @@ impl FileWatcher {
                 };
 
                 if !event.paths.into_iter().any(|p| p == data.file) {
-                    // skip unrelated events
+                    // Skip unrelated events
                     return;
                 }
 
@@ -238,7 +238,7 @@ impl FileWatcher {
                     notify::EventKind::Create(_)
                     | notify::EventKind::Modify(_)
                     | notify::EventKind::Remove(_) => {}
-                    _ => return, // skip non-change events
+                    _ => return, // Skip non-change events
                 }
 
                 let mut state = data
@@ -250,7 +250,7 @@ impl FileWatcher {
                     if !state.changed {
                         state.changed = true;
 
-                        // non-blocking write to wake up the other side
+                        // Non-blocking write to wake up the other side
 
                         let buf: [u8; 1] = [0; 1];
 
@@ -276,7 +276,7 @@ impl FileWatcher {
                 changed: false,
             });
 
-            // watch the dir instead of the file, so we can detect file creates
+            // Watch the dir instead of the file, so we can detect file creates
             state
                 .watcher
                 .watch(dir, notify::RecursiveMode::NonRecursive)?;
@@ -295,7 +295,7 @@ impl FileWatcher {
             .expect("failed to lock during check for changes");
 
         if let Some(state) = &mut *state {
-            // non-blocking read to clear
+            // Non-blocking read to clear
 
             let mut buf = [0u8; 128];
 
@@ -330,9 +330,9 @@ impl Drop for FileWatcher {
 }
 
 impl AsRawFd for FileWatcher {
-    // for monitoring for changes. the returned file descriptor can be
-    // registered in a poller for readability events. no I/O should be
-    // performed on the returned file descriptor. after a readability event
+    // For monitoring for changes. The returned file descriptor can be
+    // registered in a poller for readability events. No I/O should be
+    // performed on the returned file descriptor. After a readability event
     // is received, call file_changed() to check for a change.
     fn as_raw_fd(&self) -> RawFd {
         self.data.read_fd
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(event.token(), token);
         assert_eq!(event.is_readable(), true);
 
-        // wait for potentially multiple events to get processed for the file
+        // Wait for potentially multiple events to get processed for the file
         // operation, so that file_changed() returns true only once
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -427,24 +427,24 @@ mod tests {
             )
             .unwrap();
 
-        // no change yet
+        // No change yet
         poller.poll(Some(Duration::from_millis(0))).unwrap();
         assert_eq!(poller.iter_events().next(), None);
         assert!(!watcher.file_changed());
 
-        // detect create
+        // Detect create
         fs::write(&file, "hello").unwrap();
         wait_readable(&mut poller, token);
         assert!(watcher.file_changed());
         assert!(!watcher.file_changed());
 
-        // detect modify
+        // Detect modify
         fs::write(&file, "world").unwrap();
         wait_readable(&mut poller, token);
         assert!(watcher.file_changed());
         assert!(!watcher.file_changed());
 
-        // detect remove
+        // Detect remove
         fs::remove_file(&file).unwrap();
         wait_readable(&mut poller, token);
         assert!(watcher.file_changed());

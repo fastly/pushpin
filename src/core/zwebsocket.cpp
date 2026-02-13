@@ -73,7 +73,7 @@ public:
 	int responseCode;
 	QByteArray responseReason;
 	HttpHeaders responseHeaders;
-	QByteArray responseBody; // for rejections only
+	QByteArray responseBody; // For rejections only
 	bool inClosed;
 	bool outClosed;
 	int closeCode;
@@ -175,7 +175,7 @@ public:
 			return false;
 		}
 
-		inSeq = 1; // next expected seq
+		inSeq = 1; // Next expected seq
 
 		if(packet.credits != -1)
 			outCredits = packet.credits;
@@ -218,8 +218,8 @@ public:
 		{
 			if(keepAliveTimer->isActive())
 			{
-				// need to flush the current keepalive, since the
-				//   manager registration may extend the timeout
+				// Need to flush the current keepalive, since the
+				// manager registration may extend the timeout
 				keepAlive_timeout();
 
 				keepAliveTimer->stop();
@@ -323,14 +323,14 @@ public:
 
 			if(state == ConnectedPeerClosed)
 			{
-				// if peer was already closed, then we're done!
+				// If peer was already closed, then we're done!
 				state = Idle;
 				cleanup();
 				deferCall.defer([=] { doClosed(); });
 			}
 			else
 			{
-				// if peer was not closed, then we wait around
+				// If peer was not closed, then we wait around
 				state = ClosedPeerConnected;
 			}
 		}
@@ -363,7 +363,7 @@ public:
 					break;
 				}
 
-				// if we have data to send, and the credits to do so, then send data.
+				// If we have data to send, and the credits to do so, then send data.
 				// also send credits if we need to.
 
 				Frame f = nextFrame;
@@ -414,7 +414,7 @@ public:
 
 				if(state == ConnectedPeerClosed)
 				{
-					// if peer was already closed, then we're done!
+					// If peer was already closed, then we're done!
 					state = Idle;
 					cleanup();
 					q->closed();
@@ -422,13 +422,13 @@ public:
 				}
 				else
 				{
-					// if peer was not closed, then we wait around
+					// If peer was not closed, then we wait around
 					state = ClosedPeerConnected;
 				}
 			}
 		}
 
-		// if we didn't send credits in a data packet, then do them now
+		// If we didn't send credits in a data packet, then do them now
 		if(state != ConnectedPeerClosed && pendingInCredits > 0)
 		{
 			int credits = pendingInCredits;
@@ -503,9 +503,9 @@ public:
 
 		if(!multi && packet.multi)
 		{
-			// switch on multi support
+			// Switch on multi support
 			multi = true;
-			startKeepAlive(); // re-setup keep alive
+			startKeepAlive(); // Re-setup keep alive
 		}
 
 		refreshTimeout();
@@ -554,7 +554,7 @@ public:
 		}
 		else if(packet.type == ZhttpRequestPacket::KeepAlive)
 		{
-			// nothing to do
+			// Nothing to do
 		}
 		else
 		{
@@ -608,15 +608,15 @@ public:
 		}
 
 		if(!toAddress.isEmpty())
-			startKeepAlive(); // only starts if wasn't started already
+			startKeepAlive(); // Only starts if wasn't started already
 
 		++inSeq;
 
 		if(!multi && packet.multi)
 		{
-			// switch on multi support
+			// Switch on multi support
 			multi = true;
-			startKeepAlive(); // re-setup keep alive
+			startKeepAlive(); // Re-setup keep alive
 		}
 
 		refreshTimeout();
@@ -648,7 +648,7 @@ public:
 		{
 			if(state == Connecting)
 			{
-				// this is assured earlier
+				// This is assured earlier
 				assert(packet.type == ZhttpResponsePacket::Data);
 
 				responseCode = packet.code;
@@ -707,7 +707,7 @@ public:
 		}
 		else if(packet.type == ZhttpResponsePacket::KeepAlive)
 		{
-			// nothing to do
+			// Nothing to do
 		}
 		else
 		{
@@ -775,7 +775,7 @@ public:
 
 	void writeFrameInternal(const Frame &frame, int credits = -1)
 	{
-		// for content frames, set the type
+		// For content frames, set the type
 		QByteArray contentType;
 		if(frame.type == Frame::Binary || frame.type == Frame::Text || frame.type == Frame::Continuation)
 		{
@@ -917,7 +917,7 @@ public:
 		{
 			state = Idle;
 
-			// can't send cancel in client mode without address
+			// Can't send cancel in client mode without address
 			if(!server && toAddress.isEmpty())
 				return;
 
@@ -927,21 +927,21 @@ public:
 
 	void tryRespondCancel(const ZhttpRequestPacket &packet)
 	{
-		// if this was not an error packet, send cancel
+		// If this was not an error packet, send cancel
 		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
 			writeCancel();
 	}
 
 	void tryRespondCancel(const ZhttpResponsePacket &packet)
 	{
-		// if this was not an error packet, send cancel
+		// If this was not an error packet, send cancel
 		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel && !toAddress.isEmpty())
 			writeCancel();
 	}
 
 	static ErrorCondition convertError(const QByteArray &cond)
 	{
-		// zws conditions:
+		// Zws conditions:
 		//  remote-connection-failed
 		//  connection-timeout
 		//  tls-error
@@ -961,7 +961,7 @@ public:
 			return ErrorConnectTimeout;
 		else if(cond == "rejected")
 			return ErrorRejected;
-		else // lump the rest as generic
+		else // Lump the rest as generic
 			return ErrorGeneric;
 	}
 

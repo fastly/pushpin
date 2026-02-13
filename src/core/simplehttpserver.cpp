@@ -197,7 +197,7 @@ private:
 			if(end == -1)
 				continue;
 
-			// skip first space
+			// Skip first space
 			at = end + 1;
 			if(at < line.length() && line[at] == ' ')
 				++at;
@@ -229,7 +229,7 @@ private:
 		state = Closed;
 	}
 
-	// return false if more I/O needed to make progress
+	// Return false if more I/O needed to make progress
 	bool step()
 	{
 		if(state == ReadHeader)
@@ -254,7 +254,7 @@ private:
 
 			inBuf += buf;
 
-			// look for double newline
+			// Look for double newline
 			int at = -1;
 			int next = 0;
 			for(int n = 0; n < inBuf.size(); ++n)
@@ -338,7 +338,7 @@ private:
 		}
 		else if(state == ReadBody)
 		{
-			// write 100 continue
+			// Write 100 continue
 			if(!outBuf.isEmpty())
 			{
 				int ret = stream->write(outBuf);
@@ -633,7 +633,7 @@ public:
 		if(del)
 			delete req;
 
-		// try to accept more
+		// Try to accept more
 		listener_streamsReady();
 	}
 };

@@ -45,10 +45,10 @@ public:
 	void start();
 	void stop();
 
-	// initialization is thread local
+	// Initialization is thread local
 	static void init(int capacity);
 
-	// only call if there are no active timers
+	// Only call if there are no active timers
 	static void deinit();
 
 	Signal timeout;

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::core::future::SizedFuture;
 use crate::core::list;
 use crate::core::waker;
 use log::debug;
@@ -60,7 +61,7 @@ impl waker::RcWake for TaskResumeWaker {
 }
 
 fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
-    // convert from Pin<Box> to Pin<&mut>
+    // Convert from Pin<Box> to Pin<&mut>
     let fut: Pin<&mut dyn Future<Output = ()>> = fut.as_mut();
 
     let mut cx = Context::from_waker(&waker);
@@ -69,7 +70,7 @@ fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
 }
 
 struct Task {
-    fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    fut: Option<BoxFuture>,
     wakeable: bool,
     low: bool,
 }
@@ -124,10 +125,12 @@ impl Tasks {
         !self.data.borrow().next.is_empty() || !self.data.borrow().next_low.is_empty()
     }
 
-    fn add<F>(&self, fut: F) -> Result<(), ()>
+    fn add<T>(&self, get_fut: T, size: usize) -> Result<(), ()>
     where
-        F: Future<Output = ()> + 'static,
+        T: FnOnce() -> BoxFuture,
     {
+        debug!("spawning future with size {size}");
+
         let data = &mut *self.data.borrow_mut();
 
         if data.nodes.len() == data.nodes.capacity() {
@@ -138,7 +141,7 @@ impl Tasks {
         let nkey = entry.key();
 
         let task = Task {
-            fut: Some(Box::pin(fut)),
+            fut: Some(get_fut()),
             wakeable: false,
             low: false,
         };
@@ -157,10 +160,10 @@ impl Tasks {
 
         let task = &mut data.nodes[nkey].value;
 
-        // drop the future. this should cause it to drop any owned wakers
+        // Drop the future. This should cause it to drop any owned wakers
         task.fut = None;
 
-        // at this point, we should be the only remaining owner
+        // At this point, we should be the only remaining owner
         assert_eq!(Rc::strong_count(&data.wakers[nkey]), 1);
 
         if task.low {
@@ -203,7 +206,7 @@ impl Tasks {
 
         let task = &mut data.nodes[nkey].value;
 
-        // both of these are cheap
+        // Both of these are cheap
         let fut = task.fut.take().unwrap();
         let waker = waker::into_std(data.wakers[nkey].clone());
 
@@ -225,8 +228,8 @@ impl Tasks {
             self.set_current_task(None);
 
             // take_task() took the future out of the task, so we
-            // could poll it without having to maintain a borrow of
-            // the tasks set. we'll put it back now
+            // Could poll it without having to maintain a borrow of
+            // the tasks set. We'll put it back now
             self.set_fut(task_id, fut);
 
             if done {
@@ -259,8 +262,8 @@ impl Tasks {
         task.wakeable = false;
 
         if data.current_task == Some(task_id) || resume {
-            // if a task triggers its own waker, queue with low priority in
-            // order to achieve a yielding effect. do the same when waking
+            // If a task triggers its own waker, queue with low priority in
+            // order to achieve a yielding effect. Do the same when waking
             // with resume mode, to achieve a yielding effect even when the
             // wake occurs during events processing
 
@@ -277,7 +280,7 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        // tasks other than the current task may be in a temporary list
+        // Tasks other than the current task may be in a temporary list
         // during task processing, in which case removal to prevent wakes is
         // not possible
         assert_eq!(
@@ -340,9 +343,15 @@ impl Executor {
     where
         F: Future<Output = ()> + 'static,
     {
-        debug!("spawning future with size {}", mem::size_of::<F>());
+        self.tasks.add(move || Box::pin(fut), mem::size_of::<F>())
+    }
 
-        self.tasks.add(fut)
+    #[allow(clippy::result_unit_err)]
+    pub fn spawn_boxed(&self, fut: Pin<Box<dyn SizedFuture<Output = ()>>>) -> Result<(), ()> {
+        let size = (*fut).size();
+        let fut = fut.into_future();
+
+        self.tasks.add(move || fut, size)
     }
 
     pub fn set_pre_poll<F>(&self, pre_poll_fn: F)
@@ -368,7 +377,7 @@ impl Executor {
         F: FnMut(Option<Duration>) -> Result<(), io::Error>,
     {
         loop {
-            // run normal priority only
+            // Run normal priority only
             self.tasks.process_next(false);
 
             if !self.have_tasks() {
@@ -376,9 +385,9 @@ impl Executor {
             }
 
             let timeout = if self.tasks.have_next() {
-                // some tasks trigger their own waker and return Pending in
-                // order to achieve a yielding effect. in that case they will
-                // already be queued up for processing again. use a timeout
+                // Some tasks trigger their own waker and return Pending in
+                // order to achieve a yielding effect. In that case they will
+                // already be queued up for processing again. Use a timeout
                 // of 0 when parking so we can quickly resume them
 
                 let timeout = Duration::from_millis(0);
@@ -390,10 +399,10 @@ impl Executor {
 
             park(timeout)?;
 
-            // run normal priority again, in case the park triggered wakers
+            // Run normal priority again, in case the park triggered wakers
             self.tasks.process_next(false);
 
-            // finally, run low priority (mainly yielding tasks)
+            // Finally, run low priority (mainly yielding tasks)
             self.tasks.process_next(true);
         }
 
@@ -468,6 +477,74 @@ impl Spawner {
         let ex = Executor { tasks };
 
         ex.spawn(fut)
+    }
+}
+
+mod ffi {
+    use super::*;
+    use crate::core::future::ffi::UnitFuture;
+    use std::ffi::c_int;
+
+    #[no_mangle]
+    pub extern "C" fn executor_create(tasks_max: libc::size_t) -> *mut Executor {
+        Box::into_raw(Box::new(Executor::new(tasks_max)))
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_destroy(ex: *mut Executor) {
+        if !ex.is_null() {
+            drop(Box::from_raw(ex));
+        }
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_run(
+        ex: *mut Executor,
+        park_fn: unsafe extern "C" fn(*mut libc::c_void, c_int) -> c_int,
+        park_ctx: *mut libc::c_void,
+    ) -> c_int {
+        let ex = unsafe { ex.as_ref().unwrap() };
+
+        let park = |d: Option<Duration>| {
+            let ms = match d {
+                Some(d) => d.as_millis() as c_int,
+                None => -1,
+            };
+
+            if park_fn(park_ctx, ms) != 0 {
+                return Err(io::Error::from(io::ErrorKind::Other));
+            }
+
+            Ok(())
+        };
+
+        if ex.run(park).is_err() {
+            return -1;
+        }
+
+        0
+    }
+
+    /// Spawns `fut` on the executor in the current thread. Returns 0 on
+    /// success or non-zero on error. An error can occur if there is no
+    /// executor in the current thread or if the executor is at capacity.
+    /// This function takes ownership of `fut` regardless of whether spawning
+    /// is successful.
+    ///
+    /// SAFETY: `fut` must point to a valid `UnitFuture`.
+    #[no_mangle]
+    pub unsafe extern "C" fn executor_current_spawn(fut: *mut UnitFuture) -> c_int {
+        let Some(executor) = Executor::current() else {
+            return -1;
+        };
+
+        let fut = Box::from_raw(fut).0;
+
+        if executor.spawn_boxed(fut).is_err() {
+            return -1;
+        }
+
+        0
     }
 }
 
@@ -598,13 +675,13 @@ mod tests {
                 .unwrap();
         }
 
-        // not started yet, no progress
+        // Not started yet, no progress
         assert_eq!(executor.have_tasks(), true);
         assert_eq!(started.get(), false);
 
         executor.run_until_stalled();
 
-        // started, but fut1 not ready
+        // Started, but fut1 not ready
         assert_eq!(executor.have_tasks(), true);
         assert_eq!(started.get(), true);
         assert_eq!(fut1_done.get(), false);
@@ -612,7 +689,7 @@ mod tests {
         handle1.set_ready();
         executor.run_until_stalled();
 
-        // fut1 finished
+        // Fut1 finished
         assert_eq!(executor.have_tasks(), true);
         assert_eq!(fut1_done.get(), true);
         assert_eq!(finishing.get(), false);
@@ -620,7 +697,7 @@ mod tests {
         handle2.set_ready();
         executor.run_until_stalled();
 
-        // fut2 finished, and thus the task finished
+        // Fut2 finished, and thus the task finished
         assert_eq!(finishing.get(), true);
         assert_eq!(executor.have_tasks(), false);
     }
@@ -781,7 +858,7 @@ mod tests {
     fn test_executor_ignore_resume_wakes() {
         let executor = Executor::new(1);
 
-        // can't create a resume waker or ignore wakes outside of task
+        // Can't create a resume waker or ignore wakes outside of task
         assert!(executor.create_resume_waker_for_current_task().is_err());
         assert!(executor.ignore_wakes_for_current_task().is_err());
 

@@ -63,7 +63,7 @@ ConnmgrService::ConnmgrService(
 
 	if(!ports.isEmpty())
 	{
-		// server mode
+		// Server mode
 
 		bool usingSsl = false;
 
@@ -111,7 +111,7 @@ ConnmgrService::ConnmgrService(
 
 	if(enableClient)
 	{
-		// client mode
+		// Client mode
 
 		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr-client";
 

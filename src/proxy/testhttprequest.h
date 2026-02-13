@@ -25,16 +25,17 @@
 
 #include "httprequest.h"
 
+/// HTTP request instance for testing that simulates HTTP behavior
 class TestHttpRequest : public HttpRequest
 {
 public:
-	// pair of sender + request id
+	// Pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
 	TestHttpRequest();
 	~TestHttpRequest();
 
-	// reimplemented
+	// Reimplemented
 
 	virtual QHostAddress peerAddress() const;
 
