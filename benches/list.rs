@@ -15,8 +15,8 @@
  */
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use pushpin::core::arena;
 use pushpin::core::list;
+use pushpin::core::memorypool;
 use slab::Slab;
 use std::rc::Rc;
 
@@ -83,9 +83,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the nodes memory
-        let nodes_memory = Rc::new(arena::RcMemory::new(NODE_COUNT));
+        let nodes_memory = Rc::new(memorypool::RcMemory::new(NODE_COUNT));
 
-        c.bench_function(&format!("arena rc list push pop {NODE_COUNT}"), |b| {
+        c.bench_function(&format!("mp rc list push pop {NODE_COUNT}"), |b| {
             b.iter(|| {
                 let mut b = list::RcBackend::default();
                 let mut l = list::GenericList::default();
@@ -132,7 +132,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the nodes
-        let nodes_memory = Rc::new(arena::RcMemory::new(NODE_COUNT));
+        let nodes_memory = Rc::new(memorypool::RcMemory::new(NODE_COUNT));
         let mut nodes = Vec::new();
         let mut next_value: [u64; 32] = [0; 32];
         while nodes_memory.len() < nodes_memory.capacity() {
@@ -142,7 +142,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         }
 
         c.bench_function(
-            &format!("arena rc list push pop {NODE_COUNT} (preallocated nodes)"),
+            &format!("mp rc list push pop {NODE_COUNT} (preallocated nodes)"),
             |b| {
                 b.iter(|| {
                     let mut b = list::RcBackend::default();

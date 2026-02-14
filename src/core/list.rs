@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::arena;
+use crate::core::memorypool;
 use slab::Slab;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::fmt;
@@ -527,12 +527,9 @@ pub struct NodeData<T> {
     pub value: RefCell<T>,
 }
 
-pub type NodeMemory<T> = arena::RcMemory<NodeData<T>>;
+pub type NodeMemory<T> = memorypool::RcMemory<NodeData<T>>;
 
-pub enum RcNode<T> {
-    Arena(arena::Rc<NodeData<T>>),
-    Std(Rc<NodeData<T>>),
-}
+pub struct RcNode<T>(memorypool::Rc<NodeData<T>>);
 
 impl<T> RcNode<T> {
     pub fn new(value: T, memory: Option<&Rc<NodeMemory<T>>>) -> Self {
@@ -542,59 +539,38 @@ impl<T> RcNode<T> {
             value: RefCell::new(value),
         };
 
-        if let Some(memory) = memory {
-            match arena::Rc::new(data, memory) {
-                Ok(r) => Self::Arena(r),
-                Err(arena::InsertError(data)) => Self::Std(Rc::new(data)),
-            }
-        } else {
-            Self::Std(Rc::new(data))
-        }
+        let inner = match memory {
+            Some(m) if m.len() < m.capacity() => memorypool::Rc::try_new_in(data, m).unwrap(),
+            _ => memorypool::Rc::new(data),
+        };
+
+        Self(inner)
     }
 
     pub fn prev(&self) -> &Cell<Option<RcNode<T>>> {
-        match self {
-            Self::Arena(r) => &r.get().prev,
-            Self::Std(r) => &r.prev,
-        }
+        &self.0.prev
     }
 
     pub fn next(&self) -> &Cell<Option<RcNode<T>>> {
-        match self {
-            Self::Arena(r) => &r.get().next,
-            Self::Std(r) => &r.next,
-        }
+        &self.0.next
     }
 
     pub fn value(&self) -> Ref<'_, T> {
-        match self {
-            Self::Arena(r) => r.get().value.borrow(),
-            Self::Std(r) => r.value.borrow(),
-        }
+        self.0.value.borrow()
     }
 
     pub fn value_mut(&self) -> RefMut<'_, T> {
-        match self {
-            Self::Arena(r) => r.get().value.borrow_mut(),
-            Self::Std(r) => r.value.borrow_mut(),
-        }
+        self.0.value.borrow_mut()
     }
 
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
-        match (this, other) {
-            (Self::Arena(this), Self::Arena(other)) => arena::Rc::ptr_eq(this, other),
-            (Self::Std(this), Self::Std(other)) => Rc::ptr_eq(this, other),
-            _ => false,
-        }
+        memorypool::Rc::ptr_eq(&this.0, &other.0)
     }
 }
 
 impl<T> Clone for RcNode<T> {
     fn clone(&self) -> Self {
-        match self {
-            Self::Arena(r) => Self::Arena(arena::Rc::clone(r)),
-            Self::Std(r) => Self::Std(Rc::clone(r)),
-        }
+        Self(memorypool::Rc::clone(&self.0))
     }
 }
 
