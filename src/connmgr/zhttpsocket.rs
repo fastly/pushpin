@@ -55,8 +55,8 @@ pub const REQ_ID_MAX: usize = 64;
 
 const HANDLES_MAX: usize = 1_024;
 const STREAM_OUT_STREAM_DELAY: Duration = Duration::from_millis(50);
-const LOG_METADATA_MAX: usize = 1_000;
-const LOG_CONTENT_MAX: usize = 1_000;
+const LOG_METADATA_MAX: usize = 100_000;
+const LOG_CONTENT_MAX: usize = 100_000;
 const EXECUTOR_TASKS_MAX: usize = 1;
 
 struct Packet<'a> {

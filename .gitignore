@@ -10,6 +10,8 @@ moc_*
 .qmake.stash
 target_wrapper.sh
 /target
+/pushpin-healthcheck/target
+/pushpin-log/target
 **/*.rs.bk
 vendor
 .vscode

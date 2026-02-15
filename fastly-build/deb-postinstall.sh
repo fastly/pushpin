@@ -5,16 +5,19 @@ set -x -e
 groupadd fetchly-sock || true
 groupadd pushpin || true
 groupadd pushpin-listener || true
+groupadd pushpin-debug || true
 groupadd pub-events || true
 groupadd powderhorn || true
 groupadd origind || true
 useradd -r -g pushpin pushpin || true
 useradd -r -g powderhorn powderhorn || true
-usermod -a -G pushpin-listener,pub-events,fetchly-sock,origind pushpin || true
+usermod -a -G pushpin-listener,pushpin-debug,pub-events,fetchly-sock,origind pushpin || true
 mkdir -p /var/lib/pushpin
 chown pushpin:pushpin /var/lib/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
 chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
+chown pushpin:pushpin-debug /opt/fst-pushpin/bin/pushpin-log
+chmod g+s /opt/fst-pushpin/bin/pushpin-log
 
 SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem pushpin-sig-key.pem pushpin-fanout-internal-api-key fanout-message-key-a fanout-staging-message-key-a"
 
