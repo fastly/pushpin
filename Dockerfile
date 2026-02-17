@@ -1,4 +1,4 @@
-FROM container-registry.secretcdn.net/fastly/base-noble:latest
+FROM artifacts.secretcdn.net/fastly-docker/fastly/base-noble:latest
 
 ARG DESTDIR=/build
 ARG SSH_AUTH_SOCK
