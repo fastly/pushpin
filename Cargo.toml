@@ -113,6 +113,10 @@ harness = false
 name = "client"
 harness = false
 
+[[bench]]
+name = "http"
+harness = false
+
 [[bin]]
 name = "pushpin-connmgr"
 test = false
