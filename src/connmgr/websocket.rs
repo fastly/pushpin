@@ -20,7 +20,7 @@ use crate::core::buffer::{
 };
 use crate::core::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
-use log::{log_enabled, trace};
+use log::{log_enabled, trace, warn};
 use miniz_oxide::deflate;
 use miniz_oxide::inflate::stream::{inflate, InflateState};
 use miniz_oxide::{DataFormat, MZError, MZFlush, MZStatus};
@@ -487,6 +487,12 @@ impl DeflateEncoder {
         // Once end=true has been processed, the caller must stop providing
         // data in src and must continue to set end until end is returned
         if self.end && (!src.is_empty() || !end) {
+            warn!(
+                "deflate error: encode_step end mismatch self.end={} src.is_empty={} end={}",
+                self.end,
+                src.is_empty(),
+                end
+            );
             return Err(io::Error::from(io::ErrorKind::Other));
         }
 
@@ -525,7 +531,13 @@ impl DeflateEncoder {
                     match result.status {
                         Ok(MZStatus::Ok) => {}
                         Err(MZError::Buf) => {}
-                        _ => return Err(io::Error::from(io::ErrorKind::Other)),
+                        s => {
+                            warn!(
+                                "deflate error: encode_step encoder unexpected status: {:?}",
+                                s
+                            );
+                            return Err(io::Error::from(io::ErrorKind::Other));
+                        }
                     }
 
                     assert!(result.bytes_consumed <= src.len());
@@ -573,7 +585,13 @@ impl DeflateEncoder {
                     match result.status {
                         Ok(MZStatus::Ok) => {}
                         Err(MZError::Buf) => {}
-                        _ => return Err(io::Error::from(io::ErrorKind::Other)),
+                        s => {
+                            warn!(
+                            "deflate error: encode_step small-dest encoder unexpected status: {:?}",
+                            s
+                        );
+                            return Err(io::Error::from(io::ErrorKind::Other));
+                        }
                     }
 
                     assert!(result.bytes_consumed <= src.len());
@@ -626,6 +644,7 @@ impl DeflateEncoder {
             && !maybe_more
         {
             if next_buf.as_ref() != DEFLATE_SUFFIX {
+                warn!("deflate error: encode_step unexpected suffix");
                 return Err(io::Error::from(io::ErrorKind::Other));
             }
 
