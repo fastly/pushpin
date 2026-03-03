@@ -20,7 +20,7 @@ use crate::core::buffer::{
 };
 use crate::core::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
-use log::{log_enabled, trace};
+use log::{debug, log_enabled, trace, warn};
 use miniz_oxide::deflate;
 use miniz_oxide::inflate::stream::{inflate, InflateState};
 use miniz_oxide::{DataFormat, MZError, MZFlush, MZStatus};
@@ -31,6 +31,7 @@ use std::fmt;
 use std::io;
 use std::io::Write;
 use std::mem::{self, MaybeUninit};
+use thiserror::Error;
 
 pub const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -52,8 +53,13 @@ pub const OPCODE_PONG: u8 = 10;
 pub const CONTROL_FRAME_PAYLOAD_MAX: usize = 125;
 
 const DEFAULT_MAX_WINDOW_BITS: u8 = 15;
-const DEFLATE_SUFFIX: [u8; 4] = [0x00, 0x00, 0xff, 0xff];
-const ENC_NEXT_BUF_SIZE: usize = DEFLATE_SUFFIX.len();
+const SYNC_MARKER: [u8; 4] = [0x00, 0x00, 0xff, 0xff];
+
+// Zlib docs say the output length should be "greater than 6" when flushing
+const ENC_MIN_OUTPUT_SIZE: usize = 7;
+
+// Enough to buffer the marker and accept output
+const ENC_NEXT_BUF_SIZE: usize = SYNC_MARKER.len() + ENC_MIN_OUTPUT_SIZE;
 
 struct Bufs<'a> {
     data: &'a [&'a [u8]],
@@ -407,10 +413,70 @@ impl<T: Copy, const N: usize> ArrayVecExt<T> for ArrayVec<T, N> {
     }
 }
 
+struct DeflateStatus {
+    consumed: usize,
+    written: usize,
+}
+
+#[derive(Debug, Error)]
+enum DeflateError {
+    #[error("unexpected status: {0:?}")]
+    UnexpectedStatus(Result<MZStatus, MZError>),
+
+    #[error("no progress during sync")]
+    NoProgressDuringSync,
+}
+
+// Wrapper around deflate library function that is slightly more ergonomic.
+// The length of `output` must be at least ENC_MIN_OUTPUT_SIZE. To sync
+// flush, start passing sync=true to every call until SYNC_MARKER appears in
+// the output to indicate completion. With miniz_oxide, there is no other way
+// to know when a sync is complete.
+fn deflate_helper(
+    compressor: &mut deflate::core::CompressorOxide,
+    input: &[u8],
+    output: &mut [u8],
+    sync: bool,
+) -> Result<DeflateStatus, DeflateError> {
+    assert!(output.len() >= ENC_MIN_OUTPUT_SIZE);
+
+    let flush = if sync { MZFlush::Sync } else { MZFlush::None };
+
+    let result = deflate::stream::deflate(compressor, input, output, flush);
+
+    debug!(
+        "deflate input.len={} output.len={} flush={:?} input.avail={} output.avail={} result={:?}",
+        input.len(),
+        output.len(),
+        flush,
+        input.len() - result.bytes_consumed,
+        output.len() - result.bytes_written,
+        result,
+    );
+
+    match result.status {
+        Ok(MZStatus::Ok) => {}
+        Err(MZError::Buf) => {} // Need more input/output
+        status => return Err(DeflateError::UnexpectedStatus(status)),
+    }
+
+    assert!(result.bytes_consumed <= input.len());
+    assert!(result.bytes_written <= output.len());
+
+    if flush == MZFlush::Sync && result.bytes_written == 0 {
+        return Err(DeflateError::NoProgressDuringSync);
+    }
+
+    Ok(DeflateStatus {
+        consumed: result.bytes_consumed,
+        written: result.bytes_written,
+    })
+}
+
 pub struct DeflateEncoder {
     enc: Box<deflate::core::CompressorOxide>,
     next_buf: ArrayVec<u8, ENC_NEXT_BUF_SIZE>,
-    end: bool,
+    flushing: bool,
 }
 
 #[allow(clippy::new_without_default)]
@@ -426,7 +492,7 @@ impl DeflateEncoder {
         Self {
             enc,
             next_buf: ArrayVec::new(),
-            end: false,
+            flushing: false,
         }
     }
 
@@ -486,151 +552,118 @@ impl DeflateEncoder {
     ) -> Result<(usize, usize, bool), io::Error> {
         // Once end=true has been processed, the caller must stop providing
         // data in src and must continue to set end until end is returned
-        if self.end && (!src.is_empty() || !end) {
-            return Err(io::Error::from(io::ErrorKind::Other));
+        if self.flushing && (!src.is_empty() || !end) {
+            warn!(
+                "deflate error: encode_step end mismatch flushing={} src.is_empty={} end={}",
+                self.flushing,
+                src.is_empty(),
+                end
+            );
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        }
+
+        // If there is no more input, begin flushing
+        if src.is_empty() && end {
+            self.flushing = true;
         }
 
         let next_buf = &mut self.next_buf;
 
-        // We want to flush exactly once per message. To ensure this, we
-        // flush only when there is no more input (to avoid a situation of
-        // input not being accepted at the time of flush) and if we have not
-        // flushed yet for the current message
-        let flush = if src.is_empty() && end && !self.end {
-            self.end = true;
+        // With miniz_oxide, this is the only way to know if all output has
+        // been produced
+        let output_finished = self.flushing && next_buf.ends_with(&SYNC_MARKER);
 
-            MZFlush::Sync
+        // If the caller passes a large enough dest, then we'll be able to
+        // encode directly into it. Otherwise, we'll either have to encode
+        // into next_buf or not encode at all.
+        let dest_large_enough = dest.len() >= next_buf.len() + ENC_MIN_OUTPUT_SIZE;
+
+        // Calculate how many bytes to move from next_buf into dest
+        let (take_size, encode_into_dest) = if !output_finished && dest_large_enough {
+            // If there is potentially more output available, and dest can
+            // fit both next_buf and the minimum output, then plan to move
+            // all of next_buf info dest. After that, we can encode directly
+            // into dest.
+            (next_buf.len(), true)
         } else {
-            MZFlush::None
+            // If there is no more output available, or if dest isn't large
+            // enough to allow encoding directly into it, then plan to move
+            // what we can out of next_buf into dest. After that, if there is
+            // potentially more output available and next_buf has enough
+            // space, we can encode into next_buf.
+            (
+                cmp::min(next_buf.len().saturating_sub(SYNC_MARKER.len()), dest.len()),
+                false,
+            )
         };
 
-        let (consumed, written, maybe_more) =
-            if dest.len() > next_buf.len() && dest.len() >= next_buf.remaining_capacity() {
-                // if there's enough room in dest to hold all of next_buf plus at
-                // Least one more byte, and there's at least as much room in dest
-                // as in next_buf, then encode directly into dest
+        let mut written = 0;
 
-                // move next_buf into dest
-                let offset = next_buf.len();
-                dest[..offset].copy_from_slice(next_buf.as_ref());
-                next_buf.clear();
+        // Move from next_buf into dest
+        dest[..take_size].copy_from_slice(&next_buf[..take_size]);
+        next_buf.shift_left(take_size);
+        written += take_size;
 
-                // Encode into the remaining space
-                let (result, maybe_more) = {
-                    let dest = &mut dest[offset..];
-                    assert!(!dest.is_empty());
+        let dest = &mut dest[take_size..];
 
-                    let result = deflate::stream::deflate(&mut self.enc, src, dest, flush);
+        let can_encode = encode_into_dest
+            || (!output_finished && next_buf.remaining_capacity() >= ENC_MIN_OUTPUT_SIZE);
 
-                    match result.status {
-                        Ok(MZStatus::Ok) => {}
-                        Err(MZError::Buf) => {}
-                        _ => return Err(io::Error::from(io::ErrorKind::Other)),
-                    }
+        let consumed = if can_encode {
+            let orig_next_buf_len = next_buf.len();
 
-                    assert!(result.bytes_consumed <= src.len());
-                    assert!(result.bytes_written <= dest.len());
-
-                    (result, result.bytes_written == dest.len())
-                };
-
-                let dest = &mut dest[..(offset + result.bytes_written)];
-
-                // keep back the ending bytes in next_buf
-                assert!(next_buf.is_empty());
-                let keep = cmp::min(ENC_NEXT_BUF_SIZE, dest.len());
-                next_buf.write_all(&dest[(dest.len() - keep)..]).unwrap();
-
-                let written = dest.len() - keep;
-
-                (result.bytes_consumed, written, maybe_more)
+            let output = if encode_into_dest {
+                &mut dest[..]
             } else {
-                // if next_buf can't fit into dest with room to spare, or if
-                // there's more room in next_buf than in dest, then encode into a
-                // Temporary buffer and move the bytes into place afterwards.
-                // note that the temporary buffer will be small
+                next_buf.resize(next_buf.capacity(), 0);
 
-                // dest.len() is either less than or equal to next_buf.len()
-                // or less than next_buf.remaining_capacity(). in either case
-                // this will not exceed next_buf's capacity
-                assert!(dest.len() <= ENC_NEXT_BUF_SIZE);
-
-                // Stating the obvious
-                assert!(next_buf.remaining_capacity() <= ENC_NEXT_BUF_SIZE);
-
-                let tmp_size = dest.len() + next_buf.remaining_capacity();
-
-                // Based on above asserts
-                assert!(tmp_size <= ENC_NEXT_BUF_SIZE * 2);
-
-                let mut tmp: ArrayVec<u8, { ENC_NEXT_BUF_SIZE * 2 }> = ArrayVec::new();
-                tmp.resize(tmp_size, 0);
-
-                // Encode into tmp
-                let (result, maybe_more) = {
-                    let result = deflate::stream::deflate(&mut self.enc, src, tmp.as_mut(), flush);
-
-                    match result.status {
-                        Ok(MZStatus::Ok) => {}
-                        Err(MZError::Buf) => {}
-                        _ => return Err(io::Error::from(io::ErrorKind::Other)),
-                    }
-
-                    assert!(result.bytes_consumed <= src.len());
-                    assert!(result.bytes_written <= tmp.len());
-
-                    (result, result.bytes_written == tmp.len())
-                };
-
-                tmp.truncate(result.bytes_written);
-
-                let mut written = 0;
-
-                // if the encoded bytes don't fit in next_buf, then we can
-                // Move some bytes to dest
-                if tmp.len() > next_buf.remaining_capacity() {
-                    let to_write = tmp.len() - next_buf.remaining_capacity();
-
-                    // move the starting bytes of next_buf to the front of dest
-                    let size = cmp::min(to_write, next_buf.len());
-                    dest[..size].copy_from_slice(&next_buf[..size]);
-                    next_buf.shift_left(size);
-
-                    written += size;
-
-                    // If dest still has room, move from tmp
-                    if written < to_write {
-                        assert!(next_buf.is_empty());
-
-                        let size = to_write - written;
-                        assert!(size <= tmp.len());
-
-                        dest[written..(written + size)].copy_from_slice(&tmp[..size]);
-                        tmp.shift_left(size);
-
-                        written += size;
-                    }
-                }
-
-                // append tmp to next_buf
-                next_buf.write_all(tmp.as_ref()).unwrap();
-
-                (result.bytes_consumed, written, maybe_more)
+                &mut next_buf[orig_next_buf_len..]
             };
+
+            assert!(output.len() >= ENC_MIN_OUTPUT_SIZE);
+
+            let status = match deflate_helper(&mut self.enc, src, output, self.flushing) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("deflate error: encode_step encode error: {:?}", e);
+                    return Err(io::Error::from(io::ErrorKind::Other));
+                }
+            };
+
+            if encode_into_dest {
+                let dest = &mut dest[..status.written];
+                written += status.written;
+
+                // Keep back the ending bytes in next_buf
+                assert!(next_buf.is_empty());
+                let keep = cmp::min(SYNC_MARKER.len(), dest.len());
+                next_buf.write_all(&dest[(dest.len() - keep)..]).unwrap();
+                written -= keep;
+            } else {
+                next_buf.truncate(orig_next_buf_len + status.written);
+
+                // Move what we can into dest, keeping the ending bytes in next_buf
+                let size = cmp::min(next_buf.len().saturating_sub(SYNC_MARKER.len()), dest.len());
+                dest[..size].copy_from_slice(&next_buf[..size]);
+                next_buf.shift_left(size);
+                written += size;
+            }
+
+            status.consumed
+        } else {
+            0
+        };
+
+        // Recheck for completion
+        let output_finished = self.flushing && next_buf.ends_with(&SYNC_MARKER);
 
         let mut end_ack = false;
 
-        if self.end
-            && consumed == src.len()
-            && next_buf.len() == DEFLATE_SUFFIX.len()
-            && !maybe_more
-        {
-            if next_buf.as_ref() != DEFLATE_SUFFIX {
-                return Err(io::Error::from(io::ErrorKind::Other));
-            }
+        if output_finished && next_buf.len() == SYNC_MARKER.len() {
+            assert_eq!(next_buf.as_ref(), &SYNC_MARKER);
 
-            self.next_buf.clear();
-            self.end = false;
+            next_buf.clear();
+            self.flushing = false;
             end_ack = true;
         }
 
@@ -640,7 +673,7 @@ impl DeflateEncoder {
 
 pub struct DeflateDecoder {
     dec: Box<InflateState>,
-    suffix_pos: Option<usize>,
+    marker_pos: Option<usize>,
 }
 
 #[allow(clippy::new_without_default)]
@@ -648,7 +681,7 @@ impl DeflateDecoder {
     pub fn new() -> Self {
         Self {
             dec: InflateState::new_boxed(DataFormat::Raw),
-            suffix_pos: None,
+            marker_pos: None,
         }
     }
 }
@@ -669,7 +702,7 @@ impl Decoder for DeflateDecoder {
         end: bool,
         dest: &mut [u8],
     ) -> Result<(usize, usize, bool), io::Error> {
-        let (consumed, mut written) = if self.suffix_pos.is_none() {
+        let (consumed, mut written) = if self.marker_pos.is_none() {
             let result = inflate(&mut self.dec, src, dest, MZFlush::None);
 
             match result.status {
@@ -682,7 +715,7 @@ impl Decoder for DeflateDecoder {
             assert!(result.bytes_written <= dest.len());
 
             if result.bytes_consumed == src.len() && end {
-                self.suffix_pos = Some(0);
+                self.marker_pos = Some(0);
             }
 
             if result.bytes_written == dest.len() {
@@ -696,7 +729,7 @@ impl Decoder for DeflateDecoder {
 
         let mut end_ack = false;
 
-        if let Some(pos) = &mut self.suffix_pos {
+        if let Some(pos) = &mut self.marker_pos {
             // If the input is fully consumed when end is set, then the
             // caller must continue to set end until end is returned
             if !end {
@@ -705,10 +738,10 @@ impl Decoder for DeflateDecoder {
 
             let dest = &mut dest[written..];
 
-            let suffix = DEFLATE_SUFFIX;
-            let suffix_left = &suffix[*pos..];
+            let marker = SYNC_MARKER;
+            let marker_left = &marker[*pos..];
 
-            let result = inflate(&mut self.dec, suffix_left, dest, MZFlush::None);
+            let result = inflate(&mut self.dec, marker_left, dest, MZFlush::None);
 
             match result.status {
                 Ok(MZStatus::Ok) => {}
@@ -716,7 +749,7 @@ impl Decoder for DeflateDecoder {
                 _ => return Err(io::Error::from(io::ErrorKind::Other)),
             }
 
-            assert!(result.bytes_consumed <= suffix_left.len());
+            assert!(result.bytes_consumed <= marker_left.len());
             assert!(result.bytes_written <= dest.len());
 
             *pos += result.bytes_consumed;
@@ -724,8 +757,8 @@ impl Decoder for DeflateDecoder {
             // We are done when the entire input is consumed and there is
             // space left in the output buffer. If there is no space left in
             // the output buffer then there might be more to write
-            if *pos == suffix.len() && result.bytes_written < dest.len() {
-                self.suffix_pos = None;
+            if *pos == marker.len() && result.bytes_written < dest.len() {
+                self.marker_pos = None;
                 end_ack = true;
             }
 
@@ -1634,6 +1667,7 @@ mod tests {
     use crate::core::buffer::{TmpBuffer, VecRingBuffer};
     use std::collections::VecDeque;
     use std::rc::Rc;
+    use test_log::test;
 
     struct MyWriter {
         data: Vec<u8>,
@@ -1764,91 +1798,150 @@ mod tests {
 
     #[test]
     fn test_deflate_bulk() {
-        {
-            let mut enc = DeflateEncoder::new();
-            let mut dec = DeflateDecoder::new();
-            let data = b"Hello";
+        let mut enc = DeflateEncoder::new();
+        let mut dec = DeflateDecoder::new();
+        let data = b"Hello";
 
-            let mut compressed = [0; 1024];
-            let (read, written, end) = enc.encode(data, true, &mut compressed).unwrap();
-            assert_eq!(read, 5);
-            assert_eq!(end, true);
-            let compressed = &compressed[..written];
-            let expected = [0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00];
-            assert_eq!(compressed, &expected);
+        let mut compressed = [0; 1024];
+        let (read, written, end) = enc.encode(data, true, &mut compressed).unwrap();
+        assert_eq!(read, 5);
+        assert_eq!(end, true);
+        let compressed = &compressed[..written];
+        let expected = [0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00];
+        assert_eq!(compressed, &expected);
 
-            let mut uncompressed = [0; 1024];
-            let (read, written, end) = dec.decode(&compressed, true, &mut uncompressed).unwrap();
-            assert_eq!(read, compressed.len());
-            assert_eq!(end, true);
-            let uncompressed = &uncompressed[..written];
-            assert_eq!(uncompressed, data);
-        }
+        let mut uncompressed = [0; 1024];
+        let (read, written, end) = dec.decode(&compressed, true, &mut uncompressed).unwrap();
+        assert_eq!(read, compressed.len());
+        assert_eq!(end, true);
+        let uncompressed = &uncompressed[..written];
+        assert_eq!(uncompressed, data);
     }
 
     #[test]
     fn test_deflate_by_byte() {
-        {
-            let mut enc = DeflateEncoder::new();
-            let mut dec = DeflateDecoder::new();
-            let data = b"Hello";
+        let mut enc = DeflateEncoder::new();
+        let mut dec = DeflateDecoder::new();
+        let data = b"Hello";
 
-            let mut compressed = [0; 1024];
-            assert_eq!(
-                enc.encode(&[], false, &mut compressed).unwrap(),
-                (0, 0, false)
-            );
+        let mut compressed = [0; 1024];
+        assert_eq!(
+            enc.encode(&[], false, &mut compressed).unwrap(),
+            (0, 0, false)
+        );
 
-            let mut read_pos = 0;
-            let mut write_pos = 0;
-            loop {
-                let (read, written, end) = enc
-                    .encode(
-                        &data[read_pos..],
-                        true,
-                        &mut compressed[write_pos..(write_pos + 1)],
-                    )
-                    .unwrap();
-                // There must always be progress
-                assert!(read > 0 || written > 0 || end);
-                read_pos += read;
-                write_pos += written;
-                if end {
-                    break;
-                }
+        let mut read_pos = 0;
+        let mut write_pos = 0;
+        loop {
+            let (read, written, end) = enc
+                .encode(
+                    &data[read_pos..],
+                    true,
+                    &mut compressed[write_pos..(write_pos + 1)],
+                )
+                .unwrap();
+            // There must always be progress
+            assert!(read > 0 || written > 0 || end);
+            read_pos += read;
+            write_pos += written;
+            if end {
+                break;
+            }
+        }
+
+        let compressed = &compressed[..write_pos];
+        let expected = [0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00];
+        assert_eq!(compressed, &expected);
+
+        let mut uncompressed = [0; 1024];
+        assert_eq!(
+            dec.decode(&[], false, &mut uncompressed).unwrap(),
+            (0, 0, false)
+        );
+
+        let mut read_pos = 0;
+        let mut write_pos = 0;
+        loop {
+            let (read, written, end) = dec
+                .decode(
+                    &compressed[read_pos..],
+                    true,
+                    &mut uncompressed[write_pos..(write_pos + 1)],
+                )
+                .unwrap();
+            // There must always be progress
+            assert!(read > 0 || written > 0 || end);
+            read_pos += read;
+            write_pos += written;
+            if end {
+                break;
+            }
+        }
+        assert_eq!(read_pos, compressed.len());
+        let uncompressed = &uncompressed[..write_pos];
+        assert_eq!(uncompressed, data);
+    }
+
+    #[test]
+    fn test_deflate_flush() {
+        use crate::core::shuffle::random;
+
+        let mut enc = DeflateEncoder::new();
+
+        // Stuff the encoder's buffer
+        loop {
+            let mut data = [0; 1024];
+            for b in data.iter_mut() {
+                *b = (random() % 256) as u8;
             }
 
-            let compressed = &compressed[..write_pos];
-            let expected = [0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00];
-            assert_eq!(compressed, &expected);
+            let (read, written, end) = enc.encode(&data, false, &mut []).unwrap();
+            assert_eq!(written, 0);
+            assert!(!end);
 
-            let mut uncompressed = [0; 1024];
-            assert_eq!(
-                dec.decode(&[], false, &mut uncompressed).unwrap(),
-                (0, 0, false)
-            );
-
-            let mut read_pos = 0;
-            let mut write_pos = 0;
-            loop {
-                let (read, written, end) = dec
-                    .decode(
-                        &compressed[read_pos..],
-                        true,
-                        &mut uncompressed[write_pos..(write_pos + 1)],
-                    )
-                    .unwrap();
-                // There must always be progress
-                assert!(read > 0 || written > 0 || end);
-                read_pos += read;
-                write_pos += written;
-                if end {
-                    break;
-                }
+            if read == 0 {
+                break;
             }
-            assert_eq!(read_pos, compressed.len());
-            let uncompressed = &uncompressed[..write_pos];
-            assert_eq!(uncompressed, data);
+        }
+
+        // Read everything out
+        loop {
+            let mut out = [0; 1024];
+            let (read, written, end) = enc.encode(&[], true, &mut out).unwrap();
+            assert_eq!(read, 0);
+            assert!(written > 0);
+
+            if end {
+                break;
+            }
+        }
+
+        // Stuff the encoder's buffer
+        loop {
+            let mut data = [0; 1024];
+            for b in data.iter_mut() {
+                *b = (random() % 256) as u8;
+            }
+
+            let (read, written, end) = enc.encode(&data, false, &mut []).unwrap();
+            assert_eq!(written, 0);
+            assert!(!end);
+
+            if read == 0 {
+                break;
+            }
+        }
+
+        // Read everything out using a small output buffer
+        loop {
+            let mut out = [0; 1];
+            let (read, written, end) = enc.encode(&[], true, &mut out).unwrap();
+            assert_eq!(read, 0);
+            assert!(written > 0);
+
+            if end {
+                break;
+            }
         }
     }
 
@@ -2271,7 +2364,7 @@ mod tests {
                 .unwrap();
             assert_eq!(output_end, true);
 
-            state.enc_buf.write(&DEFLATE_SUFFIX).unwrap();
+            state.enc_buf.write(&SYNC_MARKER).unwrap();
         }
 
         // Send flushed data as first frame
