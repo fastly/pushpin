@@ -268,7 +268,7 @@ impl<T> LocalChannel<T> {
         let senders = &mut *self.senders.borrow_mut();
 
         // Add if not already present
-        if senders.nodes[key].prev.is_none() && senders.waiting.head != Some(key) {
+        if senders.nodes[key].prev.is_none() && senders.waiting.head() != Some(key) {
             senders.waiting.push_back(&mut senders.nodes, key);
         }
     }
