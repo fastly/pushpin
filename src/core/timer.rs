@@ -256,7 +256,7 @@ impl TimerWheel {
 
         self.curtime = curtime;
 
-        while let Some(key) = l.head {
+        while let Some(key) = l.head() {
             l.remove(&mut self.nodes, key);
 
             let n = &mut self.nodes[key];
@@ -489,12 +489,12 @@ mod tests {
         // Wheel 3 slot 63
         let t6 = w.add(0b1_000000_000000_000000_000000, 1).unwrap();
 
-        assert_eq!(w.expired.head, Some(t1));
-        assert_eq!(w.wheel[0][8].head, Some(t2));
-        assert_eq!(w.wheel[0][63].head, Some(t3));
-        assert_eq!(w.wheel[0][0].head, Some(t4));
-        assert_eq!(w.wheel[1][0].head, Some(t5));
-        assert_eq!(w.wheel[3][63].head, Some(t6));
+        assert_eq!(w.expired.head(), Some(t1));
+        assert_eq!(w.wheel[0][8].head(), Some(t2));
+        assert_eq!(w.wheel[0][63].head(), Some(t3));
+        assert_eq!(w.wheel[0][0].head(), Some(t4));
+        assert_eq!(w.wheel[1][0].head(), Some(t5));
+        assert_eq!(w.wheel[3][63].head(), Some(t6));
     }
 
     #[test]

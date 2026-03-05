@@ -316,7 +316,7 @@ impl Connections {
         let items = &mut *self.items.borrow_mut();
         let cinner = &*self.inner.borrow_mut();
 
-        let mut next = cinner.active.head;
+        let mut next = cinner.active.head();
         while let Some(nkey) = next {
             let n = &mut items.nodes[nkey];
             let ci = &mut n.value;

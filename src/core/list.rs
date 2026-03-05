@@ -34,13 +34,21 @@ impl<T> Node<T> {
 
 #[derive(Default, Clone, Copy)]
 pub struct List {
-    pub head: Option<usize>,
-    pub tail: Option<usize>,
+    head: Option<usize>,
+    tail: Option<usize>,
 }
 
 impl List {
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
+    }
+
+    pub fn head(&self) -> Option<usize> {
+        self.head
+    }
+
+    pub fn tail(&self) -> Option<usize> {
+        self.tail
     }
 
     pub fn insert<T, S>(&mut self, nodes: &mut S, after: Option<usize>, key: usize)
@@ -217,21 +225,21 @@ mod tests {
 
         let mut l = List::default();
         assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head, None);
-        assert_eq!(l.tail, None);
+        assert_eq!(l.head(), None);
+        assert_eq!(l.tail(), None);
         assert_eq!(l.pop_front(&mut nodes), None);
 
         l.push_back(&mut nodes, n1);
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n1));
-        assert_eq!(l.tail, Some(n1));
+        assert_eq!(l.head(), Some(n1));
+        assert_eq!(l.tail(), Some(n1));
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, None);
 
         l.push_back(&mut nodes, n2);
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n1));
-        assert_eq!(l.tail, Some(n2));
+        assert_eq!(l.head(), Some(n1));
+        assert_eq!(l.tail(), Some(n2));
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, Some(n2));
         assert_eq!(nodes[n2].prev, Some(n1));
@@ -239,8 +247,8 @@ mod tests {
 
         l.push_back(&mut nodes, n3);
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n1));
-        assert_eq!(l.tail, Some(n3));
+        assert_eq!(l.head(), Some(n1));
+        assert_eq!(l.tail(), Some(n3));
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, Some(n2));
         assert_eq!(nodes[n2].prev, Some(n1));
@@ -251,8 +259,8 @@ mod tests {
         let key = l.pop_front(&mut nodes);
         assert_eq!(key, Some(n1));
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n2));
-        assert_eq!(l.tail, Some(n3));
+        assert_eq!(l.head(), Some(n2));
+        assert_eq!(l.tail(), Some(n3));
         assert_eq!(nodes[n2].prev, None);
         assert_eq!(nodes[n2].next, Some(n3));
         assert_eq!(nodes[n3].prev, Some(n2));
@@ -261,16 +269,16 @@ mod tests {
         let key = l.pop_front(&mut nodes);
         assert_eq!(key, Some(n2));
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n3));
-        assert_eq!(l.tail, Some(n3));
+        assert_eq!(l.head(), Some(n3));
+        assert_eq!(l.tail(), Some(n3));
         assert_eq!(nodes[n3].prev, None);
         assert_eq!(nodes[n3].next, None);
 
         let key = l.pop_front(&mut nodes);
         assert_eq!(key, Some(n3));
         assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head, None);
-        assert_eq!(l.tail, None);
+        assert_eq!(l.head(), None);
+        assert_eq!(l.tail(), None);
 
         assert_eq!(l.pop_front(&mut nodes), None);
     }
@@ -285,28 +293,28 @@ mod tests {
 
         let mut l = List::default();
         assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head, None);
-        assert_eq!(l.tail, None);
+        assert_eq!(l.head(), None);
+        assert_eq!(l.tail(), None);
 
         l.push_back(&mut nodes, n1);
         assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head, Some(n1));
-        assert_eq!(l.tail, Some(n1));
+        assert_eq!(l.head(), Some(n1));
+        assert_eq!(l.tail(), Some(n1));
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, None);
 
         l.remove(&mut nodes, n1);
         assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head, None);
-        assert_eq!(l.tail, None);
+        assert_eq!(l.head(), None);
+        assert_eq!(l.tail(), None);
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, None);
 
         // Already removed
         l.remove(&mut nodes, n1);
         assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head, None);
-        assert_eq!(l.tail, None);
+        assert_eq!(l.head(), None);
+        assert_eq!(l.tail(), None);
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, None);
     }
@@ -322,22 +330,22 @@ mod tests {
 
         a.concat(&mut nodes, &mut b);
         assert_eq!(a.is_empty(), true);
-        assert_eq!(a.head, None);
-        assert_eq!(a.tail, None);
+        assert_eq!(a.head(), None);
+        assert_eq!(a.tail(), None);
         assert_eq!(b.is_empty(), true);
-        assert_eq!(b.head, None);
-        assert_eq!(b.tail, None);
+        assert_eq!(b.head(), None);
+        assert_eq!(b.tail(), None);
 
         a.push_back(&mut nodes, n1);
         b.push_back(&mut nodes, n2);
 
         a.concat(&mut nodes, &mut b);
         assert_eq!(a.is_empty(), false);
-        assert_eq!(a.head, Some(n1));
-        assert_eq!(a.tail, Some(n2));
+        assert_eq!(a.head(), Some(n1));
+        assert_eq!(a.tail(), Some(n2));
         assert_eq!(b.is_empty(), true);
-        assert_eq!(b.head, None);
-        assert_eq!(b.tail, None);
+        assert_eq!(b.head(), None);
+        assert_eq!(b.tail(), None);
         assert_eq!(nodes[n1].prev, None);
         assert_eq!(nodes[n1].next, Some(n2));
         assert_eq!(nodes[n2].prev, Some(n1));
