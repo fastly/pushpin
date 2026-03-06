@@ -2230,6 +2230,11 @@ impl TestServer {
     pub fn new(workers: usize) -> Self {
         let zmq_context = Arc::new(zmq::Context::new());
 
+        // Unique ID for this TestServer
+        let instance_id = Arc::as_ptr(&zmq_context) as usize;
+
+        let spec_base = format!("inproc://server-test-{instance_id}");
+
         let req_maxconn = 100;
         let stream_maxconn = 100;
 
@@ -2238,7 +2243,7 @@ impl TestServer {
 
         zsockman
             .set_client_req_specs(&[SpecInfo {
-                spec: String::from("inproc://server-test"),
+                spec: spec_base.clone(),
                 bind: true,
                 ipc_file_mode: 0,
             }])
@@ -2247,17 +2252,17 @@ impl TestServer {
         zsockman
             .set_client_stream_specs(
                 &[SpecInfo {
-                    spec: String::from("inproc://server-test-out"),
+                    spec: format!("{spec_base}-out"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
                 &[SpecInfo {
-                    spec: String::from("inproc://server-test-out-stream"),
+                    spec: format!("{spec_base}-out-stream"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
                 &[SpecInfo {
-                    spec: String::from("inproc://server-test-in"),
+                    spec: format!("{spec_base}-in"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
@@ -2310,7 +2315,7 @@ impl TestServer {
         let thread = thread::Builder::new()
             .name("test-server".to_string())
             .spawn(move || {
-                Self::run(started_s, stop_r, zmq_context);
+                Self::run(started_s, stop_r, zmq_context, &spec_base);
             })
             .unwrap();
 
@@ -2524,21 +2529,22 @@ impl TestServer {
         started: channel::Sender<()>,
         stop: channel::Receiver<()>,
         zmq_context: Arc<zmq::Context>,
+        spec_base: &str,
     ) {
         let rep_sock = zmq_context.socket(zmq::REP).unwrap();
-        rep_sock.connect("inproc://server-test").unwrap();
+        rep_sock.connect(spec_base).unwrap();
 
         let in_sock = zmq_context.socket(zmq::PULL).unwrap();
-        in_sock.connect("inproc://server-test-out").unwrap();
+        in_sock.connect(&format!("{spec_base}-out")).unwrap();
 
         let in_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
         in_stream_sock.set_identity(b"handler").unwrap();
         in_stream_sock
-            .connect("inproc://server-test-out-stream")
+            .connect(&format!("{spec_base}-out-stream"))
             .unwrap();
 
         let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
-        out_sock.connect("inproc://server-test-in").unwrap();
+        out_sock.connect(&format!("{spec_base}-in")).unwrap();
 
         // Ensure zsockman is subscribed
         let msg = out_sock.recv_msg(0).unwrap();
