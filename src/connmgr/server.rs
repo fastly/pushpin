@@ -2277,8 +2277,8 @@ impl TestServer {
             stream_maxconn * 2,
             2,
             10,
-            Duration::from_secs(5),
-            Duration::from_secs(5),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
             &[
                 ListenConfig {
                     spec: ListenSpec::Tcp {
