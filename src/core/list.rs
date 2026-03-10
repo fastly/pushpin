@@ -268,21 +268,21 @@ pub trait Backend {
     ) -> Self::BorrowMut<'a>;
 }
 
-/// A linked list using arbitrary storage for nodes. Instances are are
-/// generic over a provided `Backend` which supplies node management
-/// behavior. The API is designed to allow for storing nodes in a single
-/// `Slab` (using `usize` for node references) or for storing nodes in
-/// individual `Rc` instances.
+/// A linked list with arbitrary node storage. Instances are generic over a
+/// provided `Backend` which supplies node management behavior. The API is
+/// designed to allow for storing nodes in a single `Slab` (using `usize` for
+/// node references) or for storing nodes in individual ref-counted
+/// instances.
 ///
 /// For storing nodes in a single `Slab`, `Backend` is implemented on `Slab`,
 /// so a `Slab` can be used as a backend directly, providing both the node
 /// management behavior as well as the storage. Notably, this backend allows
 /// the list to be `Send`.
 ///
-/// For storing nodes in individual `Rc` instances, there's `RcBackend` which
-/// is a zero-sized type providing the node management behavior. It doesn't
-/// need to provide storage since the nodes themselves provide their own
-/// storage.
+/// For storing nodes in individual ref-counted instances, there's
+/// `RcBackend` which is a zero-sized type providing the node management
+/// behavior based on `Rc`. It doesn't need to provide storage since the
+/// nodes themselves provide their own storage.
 pub struct GenericList<B: Backend> {
     head: Option<B::Index>,
     tail: Option<B::Index>,
