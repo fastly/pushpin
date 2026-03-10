@@ -92,17 +92,17 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut b = list::RcBackend::default();
                 let mut l = list::GenericList::default();
 
-                let mut next_value: [u64; 32] = [0; 32];
-                while next_value[0] < node_count as u64 {
+                let mut next_value: u64 = 0;
+                while next_value < node_count as u64 {
                     let n = list::RcNode::new(next_value, Some(&nodes_memory));
                     l.push_back(&mut b, n);
-                    next_value[0] += 1;
+                    next_value += 1;
                 }
 
                 let mut expected_value = 0;
                 while expected_value < node_count as u64 {
                     let n = l.pop_front(&mut b).unwrap();
-                    assert_eq!(n.value()[0], expected_value);
+                    assert_eq!(*n.value(), expected_value);
                     expected_value += 1;
                 }
             })
@@ -117,17 +117,17 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut b = list::RcBackend::default();
                 let mut l = list::GenericList::default();
 
-                let mut next_value: [u64; 32] = [0; 32];
-                while next_value[0] < node_count as u64 {
+                let mut next_value: u64 = 0;
+                while next_value < node_count as u64 {
                     let n = list::RcNode::new(next_value, None);
                     l.push_back(&mut b, n);
-                    next_value[0] += 1;
+                    next_value += 1;
                 }
 
                 let mut expected_value = 0;
                 while expected_value < node_count as u64 {
                     let n = l.pop_front(&mut b).unwrap();
-                    assert_eq!(n.value()[0], expected_value);
+                    assert_eq!(*n.value(), expected_value);
                     expected_value += 1;
                 }
             })
@@ -140,11 +140,11 @@ fn criterion_benchmark(c: &mut Criterion) {
         // Preallocate the nodes
         let nodes_memory = Rc::new(memorypool::RcMemory::new(node_count));
         let mut nodes = Vec::new();
-        let mut next_value: [u64; 32] = [0; 32];
+        let mut next_value: u64 = 0;
         while nodes_memory.len() < nodes_memory.capacity() {
             let n = list::RcNode::new(next_value, Some(&nodes_memory));
             nodes.push(n);
-            next_value[0] += 1;
+            next_value += 1;
         }
 
         c.bench_function(&format!("pre-mp-push-pop-x{NODE_KCOUNT}k"), |b| {
@@ -159,7 +159,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut expected_value = 0;
                 while expected_value < node_count as u64 {
                     let n = l.pop_front(&mut b).unwrap();
-                    assert_eq!(n.value()[0], expected_value);
+                    assert_eq!(*n.value(), expected_value);
                     expected_value += 1;
                 }
             })
@@ -171,11 +171,11 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         // Preallocate the nodes
         let mut nodes = Vec::new();
-        let mut next_value: [u64; 32] = [0; 32];
-        while next_value[0] < node_count as u64 {
+        let mut next_value: u64 = 0;
+        while next_value < node_count as u64 {
             let n = list::RcNode::new(next_value, None);
             nodes.push(n);
-            next_value[0] += 1;
+            next_value += 1;
         }
 
         c.bench_function(&format!("pre-sys-push-pop-x{NODE_KCOUNT}k"), |b| {
@@ -190,7 +190,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 let mut expected_value = 0;
                 while expected_value < node_count as u64 {
                     let n = l.pop_front(&mut b).unwrap();
-                    assert_eq!(n.value()[0], expected_value);
+                    assert_eq!(*n.value(), expected_value);
                     expected_value += 1;
                 }
             })
