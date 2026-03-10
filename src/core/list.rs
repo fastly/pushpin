@@ -682,7 +682,7 @@ impl<T> Backend for RcBackend<T> {
 
 pub type SlabList<T> = GenericList<Slab<SlabNode<T>>>;
 
-/*#[derive(Default)]
+#[derive(Default)]
 pub struct RcList<T> {
     inner: GenericList<RcBackend<T>>,
     backend: RcBackend<T>,
@@ -693,32 +693,28 @@ impl<T> RcList<T> {
         self.inner.is_empty()
     }
 
-    pub fn head(&self) -> Option<<RcBackend<T>::Index as Index>::Ref<'_>> {
+    pub fn head(&self) -> Option<&RcNode<T>> {
         self.inner.head()
     }
 
-    pub fn tail(&self) -> Option<<RcBackend<T>::Index as Index>::Ref<'_>> {
+    pub fn tail(&self) -> Option<&RcNode<T>> {
         self.inner.tail()
     }
 
-    pub fn insert(
-        &mut self,
-        index: RcBackend<T>::Index,
-        after: Option<<RcBackend<T>::Index as Index>::Ref<'_>>,
-    ) {
+    pub fn insert(&mut self, index: RcNode<T>, after: Option<&RcNode<T>>) {
         self.inner.insert(&mut self.backend, index, after)
     }
 
     #[track_caller]
-    pub fn remove(&mut self, index: <RcBackend<T>::Index as Index>::Ref<'_>) {
+    pub fn remove(&mut self, index: &RcNode<T>) {
         self.inner.remove(&mut self.backend, index)
     }
 
-    pub fn pop_front(&mut self) -> Option<RcBackend<T>::Index> {
+    pub fn pop_front(&mut self) -> Option<RcNode<T>> {
         self.inner.pop_front(&mut self.backend)
     }
 
-    pub fn push_back(&mut self, index: RcBackend<T>::Index) {
+    pub fn push_back(&mut self, index: RcNode<T>) {
         self.inner.push_back(&mut self.backend, index)
     }
 
@@ -729,7 +725,7 @@ impl<T> RcList<T> {
     pub fn iter(&self) -> GenericListIterator<'_, RcBackend<T>> {
         self.inner.iter(&self.backend)
     }
-}*/
+}
 
 #[cfg(test)]
 mod tests {
