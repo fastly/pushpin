@@ -94,6 +94,7 @@ impl List {
         }
     }
 
+    #[track_caller]
     pub fn remove<T, S>(&mut self, nodes: &mut S, key: usize)
     where
         S: IndexMut<usize, Output = Node<T>>,
@@ -252,6 +253,7 @@ pub trait Backend {
         value: Option<Self::Index>,
     );
 
+    #[track_caller]
     fn take_link(
         &mut self,
         index: <Self::Index as Index>::Ref<'_>,
@@ -321,6 +323,7 @@ impl<B: Backend> GenericList<B> {
         }
     }
 
+    #[track_caller]
     pub fn remove(&mut self, backend: &mut B, index: <B::Index as Index>::Ref<'_>) {
         let prev = backend.take_link(index, Relation::Prev);
         let next = backend.take_link(index, Relation::Next);
@@ -706,6 +709,7 @@ impl<T> RcList<T> {
         self.inner.insert(&mut self.backend, index, after)
     }
 
+    #[track_caller]
     pub fn remove(&mut self, index: <RcBackend<T>::Index as Index>::Ref<'_>) {
         self.inner.remove(&mut self.backend, index)
     }
