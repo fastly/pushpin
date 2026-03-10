@@ -10,11 +10,7 @@ COPY . .
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUST_BACKTRACE=1
 
-# set up debug packages repo
-RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
-RUN printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
-
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev libqt6core6t64-dbgsym libqt6network6t64-dbgsym fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN mkdir -p ~/.ssh && \
   ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -44,7 +40,6 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-connmgr
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-log
-RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
