@@ -268,6 +268,21 @@ pub trait Backend {
     ) -> Self::BorrowMut<'a>;
 }
 
+/// A linked list using arbitrary storage for nodes. Instances are are
+/// generic over a provided `Backend` which supplies node management
+/// behavior. The API is designed to allow for storing nodes in a single
+/// `Slab` (using `usize` for node references) or for storing nodes in
+/// individual `Rc` instances.
+///
+/// For storing nodes in a single `Slab`, `Backend` is implemented on `Slab`,
+/// so a `Slab` can be used as a backend directly, providing both the node
+/// management behavior as well as the storage. Notably, this backend allows
+/// the list to be `Send`.
+///
+/// For storing nodes in individual `Rc` instances, there's `RcBackend` which
+/// is a zero-sized type providing the node management behavior. It doesn't
+/// need to provide storage since the nodes themselves provide their own
+/// storage.
 pub struct GenericList<B: Backend> {
     head: Option<B::Index>,
     tail: Option<B::Index>,
@@ -431,6 +446,61 @@ impl<B: Backend> Iterator for GenericListIterator<'_, B> {
     }
 }
 
+/// Convenience wrapper around `GenericList` and a backend, obviating the
+/// need to pass the backend to every method call.
+pub struct BoundGenericList<B: Backend> {
+    inner: GenericList<B>,
+    backend: B,
+}
+
+impl<B: Backend> BoundGenericList<B> {
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn head(&self) -> Option<<B::Index as Index>::Ref<'_>> {
+        self.inner.head()
+    }
+
+    pub fn tail(&self) -> Option<<B::Index as Index>::Ref<'_>> {
+        self.inner.tail()
+    }
+
+    pub fn insert(&mut self, index: B::Index, after: Option<<B::Index as Index>::Ref<'_>>) {
+        self.inner.insert(&mut self.backend, index, after)
+    }
+
+    #[track_caller]
+    pub fn remove(&mut self, index: <B::Index as Index>::Ref<'_>) {
+        self.inner.remove(&mut self.backend, index)
+    }
+
+    pub fn pop_front(&mut self) -> Option<B::Index> {
+        self.inner.pop_front(&mut self.backend)
+    }
+
+    pub fn push_back(&mut self, index: B::Index) {
+        self.inner.push_back(&mut self.backend, index)
+    }
+
+    pub fn concat(&mut self, other: &mut Self) {
+        self.inner.concat(&mut self.backend, &mut other.inner)
+    }
+
+    pub fn iter(&self) -> GenericListIterator<'_, B> {
+        self.inner.iter(&self.backend)
+    }
+}
+
+impl<B: Backend + Default> Default for BoundGenericList<B> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            backend: B::default(),
+        }
+    }
+}
+
 pub struct SlabNode<T> {
     pub prev: Option<usize>,
     pub next: Option<usize>,
@@ -523,6 +593,8 @@ impl<T> Backend for Slab<SlabNode<T>> {
         &mut self[index].value
     }
 }
+
+pub type SlabList<T> = GenericList<Slab<SlabNode<T>>>;
 
 pub struct NodeData<T> {
     pub prev: Cell<Option<RcNode<T>>>,
@@ -680,52 +752,7 @@ impl<T> Backend for RcBackend<T> {
     }
 }
 
-pub type SlabList<T> = GenericList<Slab<SlabNode<T>>>;
-
-#[derive(Default)]
-pub struct RcList<T> {
-    inner: GenericList<RcBackend<T>>,
-    backend: RcBackend<T>,
-}
-
-impl<T> RcList<T> {
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    pub fn head(&self) -> Option<&RcNode<T>> {
-        self.inner.head()
-    }
-
-    pub fn tail(&self) -> Option<&RcNode<T>> {
-        self.inner.tail()
-    }
-
-    pub fn insert(&mut self, index: RcNode<T>, after: Option<&RcNode<T>>) {
-        self.inner.insert(&mut self.backend, index, after)
-    }
-
-    #[track_caller]
-    pub fn remove(&mut self, index: &RcNode<T>) {
-        self.inner.remove(&mut self.backend, index)
-    }
-
-    pub fn pop_front(&mut self) -> Option<RcNode<T>> {
-        self.inner.pop_front(&mut self.backend)
-    }
-
-    pub fn push_back(&mut self, index: RcNode<T>) {
-        self.inner.push_back(&mut self.backend, index)
-    }
-
-    pub fn concat(&mut self, other: &mut Self) {
-        self.inner.concat(&mut self.backend, &mut other.inner)
-    }
-
-    pub fn iter(&self) -> GenericListIterator<'_, RcBackend<T>> {
-        self.inner.iter(&self.backend)
-    }
-}
+pub type RcList<T> = BoundGenericList<RcBackend<T>>;
 
 #[cfg(test)]
 mod tests {
