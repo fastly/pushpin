@@ -226,14 +226,6 @@ pub trait Index {
 pub trait Backend {
     type Value;
     type Index: Index + Clone + PartialEq + fmt::Debug;
-    type Borrow<'a>
-    where
-        Self::Value: 'a,
-        Self: 'a;
-    type BorrowMut<'a>
-    where
-        Self::Value: 'a,
-        Self: 'a;
 
     fn index_eq(
         this: <Self::Index as Index>::Ref<'_>,
@@ -260,12 +252,13 @@ pub trait Backend {
         rel: Relation,
     ) -> Option<Self::Index>;
 
-    fn borrow<'a, 'b: 'a>(&'b self, index: <Self::Index as Index>::Ref<'a>) -> Self::Borrow<'a>;
+    fn with_borrow<F, R>(&self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a Self::Value) -> R;
 
-    fn borrow_mut<'a, 'b: 'a>(
-        &'b mut self,
-        index: <Self::Index as Index>::Ref<'a>,
-    ) -> Self::BorrowMut<'a>;
+    fn with_borrow_mut<F, R>(&mut self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a mut Self::Value) -> R;
 }
 
 /// A linked list with arbitrary node storage. Instances are generic over a
@@ -532,14 +525,6 @@ impl Index for usize {
 impl<T> Backend for Slab<SlabNode<T>> {
     type Value = T;
     type Index = usize;
-    type Borrow<'a>
-        = &'a Self::Value
-    where
-        Self::Value: 'a;
-    type BorrowMut<'a>
-        = &'a mut Self::Value
-    where
-        Self::Value: 'a;
 
     fn index_eq(
         this: <Self::Index as Index>::Ref<'_>,
@@ -582,15 +567,18 @@ impl<T> Backend for Slab<SlabNode<T>> {
         }
     }
 
-    fn borrow<'a, 'b: 'a>(&'b self, index: <Self::Index as Index>::Ref<'a>) -> Self::Borrow<'a> {
-        &self[index].value
+    fn with_borrow<F, R>(&self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a Self::Value) -> R,
+    {
+        f(&self[index].value)
     }
 
-    fn borrow_mut<'a, 'b: 'a>(
-        &'b mut self,
-        index: <Self::Index as Index>::Ref<'a>,
-    ) -> Self::BorrowMut<'a> {
-        &mut self[index].value
+    fn with_borrow_mut<F, R>(&mut self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a mut Self::Value) -> R,
+    {
+        f(&mut self[index].value)
     }
 }
 
@@ -690,14 +678,6 @@ pub struct RcBackend<T>(PhantomData<T>);
 impl<T> Backend for RcBackend<T> {
     type Value = T;
     type Index = RcNode<Self::Value>;
-    type Borrow<'a>
-        = Ref<'a, Self::Value>
-    where
-        Self::Value: 'a;
-    type BorrowMut<'a>
-        = RefMut<'a, Self::Value>
-    where
-        Self::Value: 'a;
 
     fn index_eq(
         this: <Self::Index as Index>::Ref<'_>,
@@ -740,15 +720,18 @@ impl<T> Backend for RcBackend<T> {
         }
     }
 
-    fn borrow<'a, 'b: 'a>(&'b self, index: <Self::Index as Index>::Ref<'a>) -> Self::Borrow<'a> {
-        index.value()
+    fn with_borrow<F, R>(&self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a Self::Value) -> R,
+    {
+        f(&index.value())
     }
 
-    fn borrow_mut<'a, 'b: 'a>(
-        &'b mut self,
-        index: <Self::Index as Index>::Ref<'a>,
-    ) -> Self::BorrowMut<'a> {
-        index.value_mut()
+    fn with_borrow_mut<F, R>(&mut self, index: <Self::Index as Index>::Ref<'_>, f: F) -> R
+    where
+        F: for<'a> FnOnce(&'a mut Self::Value) -> R,
+    {
+        f(&mut index.value_mut())
     }
 }
 
