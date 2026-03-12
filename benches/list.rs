@@ -54,7 +54,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the nodes memory
-        let mut nodes_slab = Some(Slab::with_capacity(NODE_KCOUNT));
+        let mut nodes_slab = Some(Slab::with_capacity(NODE_KCOUNT * 1000));
 
         c.bench_function(&format!("gen-slab-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
