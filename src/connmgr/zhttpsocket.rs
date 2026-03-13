@@ -586,7 +586,7 @@ impl ReqHandles {
 
         let (mut tasks, slice_scratch) = scratch.get();
 
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -620,7 +620,7 @@ impl ReqHandles {
     }
 
     async fn send(&self, msg: &Arc<zmq::Message>, ids: &[Id<'_>]) {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -660,7 +660,7 @@ impl ReqHandles {
     where
         F: Fn(&ReqPipe),
     {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &mut self.nodes[nkey];
@@ -721,7 +721,7 @@ impl StreamHandles {
 
         let (mut tasks, slice_scratch) = scratch.get();
 
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -760,7 +760,7 @@ impl StreamHandles {
 
         let (mut tasks, slice_scratch) = scratch.get();
 
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -794,7 +794,7 @@ impl StreamHandles {
     }
 
     async fn send(&self, msg: &Arc<zmq::Message>, ids: &[Id<'_>], from_router: bool) {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -834,7 +834,7 @@ impl StreamHandles {
     where
         F: Fn(&StreamPipe),
     {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &mut self.nodes[nkey];
@@ -898,7 +898,7 @@ impl ServerReqHandles {
 
         let (mut tasks, slice_scratch) = scratch.get();
 
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -1035,7 +1035,7 @@ impl ServerReqHandles {
     where
         F: Fn(&ServerReqPipe),
     {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &mut self.nodes[nkey];
@@ -1108,7 +1108,7 @@ impl ServerStreamHandles {
 
         let (mut tasks, slice_scratch) = scratch.get();
 
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
@@ -1313,7 +1313,7 @@ impl ServerStreamHandles {
     where
         F: Fn(&ServerStreamPipe),
     {
-        let mut next = self.list.head;
+        let mut next = self.list.head();
 
         while let Some(nkey) = next {
             let n = &mut self.nodes[nkey];

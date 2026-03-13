@@ -422,7 +422,7 @@ impl Connections {
         let items = &mut *self.items.borrow_mut();
         let cinner = &*self.inner.borrow_mut();
 
-        let mut next = cinner.active.head;
+        let mut next = cinner.active.head();
         while let Some(nkey) = next {
             let n = &mut items.nodes[nkey];
             let ci = &mut n.value;
@@ -2283,8 +2283,8 @@ impl TestServer {
             stream_maxconn * 2,
             2,
             10,
-            Duration::from_secs(5),
-            Duration::from_secs(5),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
             &[
                 ListenConfig {
                     spec: ListenSpec::Tcp {

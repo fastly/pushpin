@@ -198,7 +198,7 @@ impl Tasks {
     }
 
     fn take_task(&self, l: &mut list::List) -> Option<(usize, BoxFuture, Waker)> {
-        let nkey = l.head?;
+        let nkey = l.head()?;
 
         let data = &mut *self.data.borrow_mut();
 
