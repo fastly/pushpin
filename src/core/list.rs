@@ -690,13 +690,13 @@ impl<T> Default for RcBackend<T> {
     }
 }
 
+impl<T> Copy for RcBackend<T> {}
+
 impl<T> Clone for RcBackend<T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        *self
     }
 }
-
-impl<T> Copy for RcBackend<T> {}
 
 impl<T> Backend for RcBackend<T> {
     type Value = T;
