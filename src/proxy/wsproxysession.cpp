@@ -349,10 +349,8 @@ public:
 		cleanupKeepAliveTimer();
 
 		cleanupInSock();
+		cleanupOutSock();
 		
-		outWSConnection = WSConnections();
-		outSock.reset();
-
 		wsProxyConnectionMap.erase(wsControl);
 		delete wsControl;
 		wsControl = 0;
@@ -371,6 +369,19 @@ public:
 			connectionManager->removeConnection(inSock.get());
 			inWSConnection = InWSConnections();
 			inSock.reset();
+		}
+	}
+
+	void cleanupOutSock()
+	{
+		if(outSock)
+		{
+			// Ensure the socket has an updated Grip-Sig to use during its
+			// destruction process
+			updateGripSig();
+
+			outWSConnection = WSConnections();
+			outSock.reset();
 		}
 	}
 
@@ -555,7 +566,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh.get()));
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this));
 				outSock = std::move(woh);
 			}
 			else
@@ -811,6 +822,17 @@ public:
 			setupKeepAlive();
 	}
 
+	void updateGripSig()
+	{
+		WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(outSock.get());
+		if(!woh)
+			return;
+
+		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
+
+		woh->setHeaders(requestData.headers);
+	}
+
 	void incCounter(Stats::Counter c, int count = 1)
 	{
 		if(statsManager)
@@ -853,9 +875,7 @@ public:
 			{
 				if(outSock->state() == WebSocket::Connecting)
 				{
-					outWSConnection = WSConnections();
-					outSock.reset();
-
+					cleanupOutSock();
 					inSock->close();
 				}
 				else if(outSock->state() == WebSocket::Connected)
@@ -894,10 +914,7 @@ public:
 		cleanupInSock();
 
 		if(!detached)
-		{
-			outWSConnection = WSConnections();
-			outSock.reset();
-		}
+			cleanupOutSock();
 
 		tryFinish();
 	}
@@ -995,8 +1012,7 @@ public:
 		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
 		LogUtil::logForRoute(routeInfo, "outbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
 
-		outWSConnection = WSConnections();
-		outSock.reset();
+		cleanupOutSock();
 
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close(code, reason);
@@ -1016,9 +1032,7 @@ public:
 
 		if(detached)
 		{
-			outWSConnection = WSConnections();
-			outSock.reset();
-
+			cleanupOutSock();
 			tryFinish();
 			return;
 		}
@@ -1043,8 +1057,7 @@ public:
 					break;
 			}
 
-			outWSConnection = WSConnections();
-			outSock.reset();
+			cleanupOutSock();
 
 			if(tryAgain)
 				tryNextTarget();
@@ -1052,22 +1065,17 @@ public:
 		else
 		{
 			cleanupInSock();
-
-			outWSConnection = WSConnections();
-			outSock.reset();
+			cleanupOutSock();
 
 			tryFinish();
 		}
 	}
 
-	void out_aboutToSendRequest(WebSocketOverHttp *woh)
+	void out_aboutToSendRequest()
 	{
-		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
-
-		woh->setHeaders(requestData.headers);
+		updateGripSig();
 	}
 
-private:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// This method accepts a full message, which must be typed
@@ -1161,13 +1169,8 @@ private:
 
 	void wsControl_cancelEventReceived()
 	{
-		if(outSock)
-		{
-			outWSConnection = WSConnections();
-			outSock.reset();
-		}
-
 		cleanupInSock();
+		cleanupOutSock();
 
 		tryFinish();
 	}
