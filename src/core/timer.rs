@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +17,7 @@
 
 // adapted from http://25thandclement.com/~william/projects/timeout.c.html (MIT licensed)
 
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use slab::Slab;
 use std::array;
 use std::cmp;
@@ -133,9 +134,9 @@ struct Timer {
 }
 
 pub struct TimerWheel {
-    nodes: Slab<list::SlabNode<Timer>>,
-    wheel: [[list::SlabList<Timer>; WHEEL_LEN]; WHEEL_NUM],
-    expired: list::SlabList<Timer>,
+    nodes: Slab<SlabNode<Timer>>,
+    wheel: [[SlabList<Timer>; WHEEL_LEN]; WHEEL_NUM],
+    expired: SlabList<Timer>,
     pending: [u64; WHEEL_NUM],
     curtime: u64,
 }
@@ -144,8 +145,8 @@ impl TimerWheel {
     pub fn new(capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            wheel: array::from_fn(|_| array::from_fn(|_| list::SlabList::default())),
-            expired: list::SlabList::default(),
+            wheel: array::from_fn(|_| array::from_fn(|_| SlabList::default())),
+            expired: SlabList::default(),
             pending: [0; WHEEL_NUM],
             curtime: 0,
         }
@@ -163,7 +164,7 @@ impl TimerWheel {
             user_data,
         };
 
-        let key = self.nodes.insert(list::SlabNode::new(t));
+        let key = self.nodes.insert(SlabNode::new(t));
 
         self.sched(key);
 
@@ -241,7 +242,7 @@ impl TimerWheel {
 
         let need = need_resched(self.curtime, curtime);
 
-        let mut l = list::SlabList::default();
+        let mut l = SlabList::default();
 
         for (wheel, &pending) in need.iter().enumerate() {
             // Loop as long as we still have slots to process

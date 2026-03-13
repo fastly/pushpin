@@ -30,7 +30,7 @@ use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncRece
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::fs::{set_group, set_user};
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::net::{
     set_socket_opts, AsyncTcpStream, AsyncUnixStream, NetListener, NetStream, SocketAddr,
@@ -297,7 +297,7 @@ struct ConnectionItem {
 }
 
 struct ConnectionItems {
-    nodes: Slab<list::Node<ConnectionItem>>,
+    nodes: Slab<SlabNode<ConnectionItem>>,
     next_cid: u32,
     batch: Batch,
 }
@@ -313,7 +313,7 @@ impl ConnectionItems {
 }
 
 struct ConnectionsInner {
-    active: list::List,
+    active: SlabList<ConnectionItem>,
     count: usize,
     max: usize,
 }
@@ -328,7 +328,7 @@ impl Connections {
         Self {
             items,
             inner: RefCell::new(ConnectionsInner {
-                active: list::List::default(),
+                active: SlabList::default(),
                 count: 0,
                 max,
             }),
@@ -357,7 +357,7 @@ impl Connections {
             return Err(());
         }
 
-        let nkey = items.nodes.insert(list::Node::new(ConnectionItem {
+        let nkey = items.nodes.insert(SlabNode::new(ConnectionItem {
             id: ArrayString::new(),
             stop: Some(stop),
             zreceiver_sender,

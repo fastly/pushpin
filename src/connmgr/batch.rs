@@ -17,7 +17,7 @@
 
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::FROM_MAX;
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use arrayvec::ArrayVec;
 use slab::Slab;
@@ -81,11 +81,11 @@ impl<'a, 'b> BatchGroupWithIds<'a, 'b> {
 struct AddrItem {
     addr: ArrayVec<u8, FROM_MAX>,
     use_router: bool,
-    keys: list::List,
+    keys: SlabList<usize>,
 }
 
 pub struct Batch {
-    nodes: Slab<list::Node<usize>>,
+    nodes: Slab<SlabNode<usize>>,
     addrs: Vec<AddrItem>,
     addr_index: usize,
     group_ids: memorypool::ReusableVec,
@@ -152,7 +152,7 @@ impl Batch {
             self.addrs.push(AddrItem {
                 addr,
                 use_router,
-                keys: list::List::default(),
+                keys: SlabList::default(),
             });
         } else {
             // adding not allowed if take_group() has already moved past the index
@@ -161,7 +161,7 @@ impl Batch {
             }
         }
 
-        let nkey = self.nodes.insert(list::Node::new(ckey));
+        let nkey = self.nodes.insert(SlabNode::new(ckey));
         self.addrs[pos].keys.push_back(&mut self.nodes, nkey);
 
         Ok(BatchKey {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 Fastly, Inc.
+ * Copyright (C) 2025-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 
 use crate::core::event::{self, ReadinessExt};
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::reactor;
 use crate::core::waker;
 use slab::Slab;
@@ -71,8 +71,8 @@ struct Registration<C> {
 }
 
 struct RegistrationsData<C> {
-    nodes: Slab<list::Node<Registration<C>>>,
-    activated: list::List,
+    nodes: Slab<SlabNode<Registration<C>>>,
+    activated: SlabList<Registration<C>>,
     waker: Option<Waker>,
 }
 
@@ -88,7 +88,7 @@ impl<C: Callback> Registrations<C> {
         Self {
             data: RefCell::new(RegistrationsData {
                 nodes: Slab::with_capacity(capacity),
-                activated: list::List::default(),
+                activated: SlabList::default(),
                 waker: None,
             }),
         }
@@ -123,7 +123,7 @@ impl<C: Callback> Registrations<C> {
             callback: Some(callback),
         };
 
-        entry.insert(list::Node::new(reg));
+        entry.insert(SlabNode::new(reg));
 
         Ok(nkey)
     }
