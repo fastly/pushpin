@@ -276,6 +276,7 @@ pub trait Backend {
 /// `RcBackend` which is a zero-sized type providing the node management
 /// behavior based on `Rc`. It doesn't need to provide storage since the
 /// nodes themselves provide their own storage.
+#[derive(Clone)]
 pub struct GenericList<B: Backend> {
     head: Option<B::Index>,
     tail: Option<B::Index>,
@@ -494,6 +495,15 @@ impl<B: Backend + Default> Default for BoundGenericList<B> {
     }
 }
 
+impl<B: Backend + Clone> Clone for BoundGenericList<B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            backend: self.backend.clone(),
+        }
+    }
+}
+
 pub struct SlabNode<T> {
     pub prev: Option<usize>,
     pub next: Option<usize>,
@@ -672,8 +682,21 @@ fn cell_get_cloned<T: Clone + Default>(c: &Cell<T>) -> T {
     out
 }
 
-#[derive(Default)]
 pub struct RcBackend<T>(PhantomData<T>);
+
+impl<T> Default for RcBackend<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T> Clone for RcBackend<T> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl<T> Copy for RcBackend<T> {}
 
 impl<T> Backend for RcBackend<T> {
     type Value = T;
