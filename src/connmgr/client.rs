@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
- * Copyright (C) 2023-2025 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::connmgr::batch::{Batch, BatchKey};
+use crate::connmgr::batch::{Batch, BatchGroupWithIds, BatchKey};
 use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, make_zhttp_response, ConnectionPool,
     StreamSharedData,
@@ -116,6 +116,7 @@ fn async_local_channel<T>(
     (s, r)
 }
 
+#[derive(Copy, Clone)]
 enum BatchType {
     KeepAlive,
     Cancel,
@@ -143,6 +144,29 @@ impl<T> ChannelPool<T> {
 
         p.push_back(pair);
     }
+}
+
+fn make_batch_response(
+    from: &str,
+    btype: BatchType,
+    group: &BatchGroupWithIds,
+) -> Result<(Option<ArrayVec<u8, 64>>, zmq::Message), io::Error> {
+    assert!(group.ids().len() <= zhttppacket::IDS_MAX);
+
+    let zresp = zhttppacket::Response {
+        from: from.as_bytes(),
+        ids: group.ids(),
+        multi: true,
+        ptype: match btype {
+            BatchType::KeepAlive => zhttppacket::ResponsePacket::KeepAlive,
+            BatchType::Cancel => zhttppacket::ResponsePacket::Cancel,
+        },
+        ptype_str: "",
+    };
+
+    let mut scratch = [0; BULK_PACKET_SIZE_MAX];
+
+    make_zhttp_response(group.addr(), group.use_router(), zresp, &mut scratch)
 }
 
 struct ConnectionDone {
@@ -399,7 +423,8 @@ impl Connections {
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
 
-        while !batch.is_empty() {
+        loop {
+            // Wrap in a block to avoid lifetime extension
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
@@ -418,50 +443,36 @@ impl Connections {
 
                 match group {
                     Some(group) => group,
-                    None => continue,
+                    None => break,
                 }
             };
 
             let count = group.ids().len();
+            let mut to_send = None;
 
-            assert!(count <= zhttppacket::IDS_MAX);
-
-            let zresp = zhttppacket::Response {
-                from: from.as_bytes(),
-                ids: group.ids(),
-                multi: true,
-                ptype: match btype {
-                    BatchType::KeepAlive => zhttppacket::ResponsePacket::KeepAlive,
-                    BatchType::Cancel => zhttppacket::ResponsePacket::Cancel,
-                },
-                ptype_str: "",
-            };
-
-            let mut scratch = [0; BULK_PACKET_SIZE_MAX];
-
-            let (addr, msg) =
-                match make_zhttp_response(group.addr(), group.use_router(), zresp, &mut scratch) {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        error!(
-                            "failed to serialize keep-alive packet with {} ids: {}",
-                            count, e
-                        );
-                        continue;
-                    }
-                };
-
-            drop(group);
-
-            for &ckey in batch.last_group_ckeys() {
-                let ci = &mut nodes[ckey].value;
-                let cshared = ci.shared.as_ref().unwrap();
-
-                cshared.inc_out_seq();
-                ci.batch_key = None;
+            if count > 0 {
+                match make_batch_response(from, btype, &group) {
+                    Ok(ret) => to_send = Some(ret),
+                    Err(e) => error!("failed to serialize batched packet with {count} ids: {e}"),
+                }
             }
 
-            return Some((count, addr, msg));
+            let group = group.discard_ids();
+
+            for &(ckey, included) in group.removed() {
+                let ci = &mut nodes[ckey].value;
+
+                ci.batch_key = None;
+
+                if included {
+                    let cshared = ci.shared.as_ref().unwrap();
+                    cshared.inc_out_seq();
+                }
+            }
+
+            if let Some((addr, msg)) = to_send {
+                return Some((count, addr, msg));
+            }
         }
 
         None
