@@ -1489,7 +1489,7 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     let mut websocket = false;
 
     for h in req.headers.iter() {
-        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value.eq_ignore_ascii_case(b"websocket") {
             websocket = true;
             break;
         }
@@ -3270,7 +3270,7 @@ fn server_stream_process_req_header(
     let mut ws_deflate_config = None;
 
     for h in req.headers.iter() {
-        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value.eq_ignore_ascii_case(b"websocket") {
             websocket = true;
         }
 
