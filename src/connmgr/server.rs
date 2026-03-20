@@ -565,6 +565,10 @@ impl Connections {
                 ci.batch_key = None;
             }
 
+            let Some(msg) = msg else {
+                continue;
+            };
+
             let mut addr = ArrayVec::<u8, 64>::new();
             if addr.try_extend_from_slice(group.addr()).is_err() {
                 error!("failed to prepare addr");
@@ -577,9 +581,7 @@ impl Connections {
                 cshared.inc_out_seq();
             }
 
-            if let Some(msg) = msg {
-                return Some((count, addr, msg));
-            }
+            return Some((count, addr, msg));
         }
 
         None

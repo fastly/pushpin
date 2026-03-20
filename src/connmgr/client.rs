@@ -459,20 +459,23 @@ impl Connections {
 
             let group = group.discard_ids();
 
-            for &(ckey, included) in group.removed() {
+            // Before we do anything that might fail, let's clear the batch keys
+            for &(ckey, _) in group.removed() {
                 let ci = &mut nodes[ckey].value;
-
                 ci.batch_key = None;
-
-                if included {
-                    let cshared = ci.shared.as_ref().unwrap();
-                    cshared.inc_out_seq();
-                }
             }
 
-            if let Some((addr, msg)) = to_send {
-                return Some((count, addr, msg));
+            let Some((addr, msg)) = to_send else {
+                continue;
+            };
+
+            for &(ckey, _) in group.removed().iter().filter(|(_, included)| *included) {
+                let ci = &mut nodes[ckey].value;
+                let cshared = ci.shared.as_ref().unwrap();
+                cshared.inc_out_seq();
             }
+
+            return Some((count, addr, msg));
         }
 
         None
