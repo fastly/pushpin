@@ -425,6 +425,24 @@ pub async fn start_loader(
             )
         })?;
 
+    // Wait for the routes file to be written
+    let start = tokio::time::Instant::now();
+    loop {
+        if std::fs::read_to_string(&routes_path)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            break;
+        }
+        if tokio::time::Instant::now().duration_since(start) > Duration::from_secs(5) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Timed out waiting for routes file to be written",
+            ));
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+
     Ok((routes_path, logs))
 }
 
