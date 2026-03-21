@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,6 +22,8 @@
  */
 
 use crate::core::tnetstring;
+use rustls::crypto::{ring, CryptoProvider};
+use rustls::pki_types::CertificateDer;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
@@ -239,15 +242,14 @@ impl TlsStream {
         let mut root_store = rustls::RootCertStore::empty();
 
         for cert in rustls_native_certs::load_native_certs()? {
-            root_store.add(&rustls::Certificate(cert.0)).unwrap();
+            root_store.add(CertificateDer::from_slice(&cert.0)).unwrap();
         }
 
         let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let server_name = host.try_into()?;
+        let server_name = host.to_string().try_into()?;
 
         let client = rustls::ClientConnection::new(Arc::new(config), server_name)?;
 
@@ -462,6 +464,8 @@ pub struct Config {
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
+    CryptoProvider::install_default(ring::default_provider()).unwrap();
+
     let mut formats = HashMap::new();
 
     match &config.action {
