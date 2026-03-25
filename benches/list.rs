@@ -15,7 +15,7 @@
  */
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use pushpin::core::list::{List, Node, RcList, RcNode, SlabList, SlabNode};
+use pushpin::core::list::{RcList, RcNode, SlabList, SlabNode};
 use pushpin::core::memorypool;
 use slab::Slab;
 use std::rc::Rc;
@@ -28,35 +28,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut nodes_slab = Some(Slab::with_capacity(NODE_KCOUNT * 1000));
 
         c.bench_function(&format!("slab-push-pop-x{NODE_KCOUNT}k"), |b| {
-            b.iter(|| {
-                let mut nodes = nodes_slab.take().unwrap();
-                let mut l = List::default();
-
-                let mut next_value: u64 = 0;
-                while nodes.len() < nodes.capacity() {
-                    let n = nodes.insert(Node::new(next_value));
-                    l.push_back(&mut nodes, n);
-                    next_value += 1;
-                }
-
-                let mut expected_value = 0;
-                while !nodes.is_empty() {
-                    let n = l.pop_front(&mut nodes).unwrap();
-                    assert_eq!(nodes[n].value, expected_value);
-                    nodes.remove(n);
-                    expected_value += 1;
-                }
-
-                nodes_slab = Some(nodes);
-            })
-        });
-    }
-
-    {
-        // Preallocate the nodes memory
-        let mut nodes_slab = Some(Slab::with_capacity(NODE_KCOUNT * 1000));
-
-        c.bench_function(&format!("gen-slab-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
                 let mut nodes = nodes_slab.take().unwrap();
                 let mut l = SlabList::default();
