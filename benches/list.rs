@@ -15,7 +15,7 @@
  */
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use pushpin::core::list;
+use pushpin::core::list::{List, Node, RcList, RcNode, SlabList, SlabNode};
 use pushpin::core::memorypool;
 use slab::Slab;
 use std::rc::Rc;
@@ -30,11 +30,11 @@ fn criterion_benchmark(c: &mut Criterion) {
         c.bench_function(&format!("slab-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
                 let mut nodes = nodes_slab.take().unwrap();
-                let mut l = list::List::default();
+                let mut l = List::default();
 
                 let mut next_value: u64 = 0;
                 while nodes.len() < nodes.capacity() {
-                    let n = nodes.insert(list::Node::new(next_value));
+                    let n = nodes.insert(Node::new(next_value));
                     l.push_back(&mut nodes, n);
                     next_value += 1;
                 }
@@ -59,11 +59,11 @@ fn criterion_benchmark(c: &mut Criterion) {
         c.bench_function(&format!("gen-slab-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
                 let mut nodes = nodes_slab.take().unwrap();
-                let mut l = list::SlabList::default();
+                let mut l = SlabList::default();
 
                 let mut next_value: u64 = 0;
                 while nodes.len() < nodes.capacity() {
-                    let n = nodes.insert(list::SlabNode::new(next_value));
+                    let n = nodes.insert(SlabNode::new(next_value));
                     l.push_back(&mut nodes, n);
                     next_value += 1;
                 }
@@ -89,11 +89,11 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         c.bench_function(&format!("mp-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
-                let mut l = list::RcList::default();
+                let mut l = RcList::default();
 
                 let mut next_value: u64 = 0;
                 while next_value < node_count as u64 {
-                    let n = list::RcNode::new(next_value, Some(&nodes_memory));
+                    let n = RcNode::new(next_value, Some(&nodes_memory));
                     l.push_back(n);
                     next_value += 1;
                 }
@@ -113,11 +113,11 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         c.bench_function(&format!("sys-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
-                let mut l = list::RcList::default();
+                let mut l = RcList::default();
 
                 let mut next_value: u64 = 0;
                 while next_value < node_count as u64 {
-                    let n = list::RcNode::new(next_value, None);
+                    let n = RcNode::new(next_value, None);
                     l.push_back(n);
                     next_value += 1;
                 }
@@ -140,14 +140,14 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut nodes = Vec::new();
         let mut next_value: u64 = 0;
         while nodes_memory.len() < nodes_memory.capacity() {
-            let n = list::RcNode::new(next_value, Some(&nodes_memory));
+            let n = RcNode::new(next_value, Some(&nodes_memory));
             nodes.push(n);
             next_value += 1;
         }
 
         c.bench_function(&format!("pre-mp-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
-                let mut l = list::RcList::default();
+                let mut l = RcList::default();
 
                 for n in &nodes {
                     l.push_back(n.clone());
@@ -170,14 +170,14 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut nodes = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < node_count as u64 {
-            let n = list::RcNode::new(next_value, None);
+            let n = RcNode::new(next_value, None);
             nodes.push(n);
             next_value += 1;
         }
 
         c.bench_function(&format!("pre-sys-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
-                let mut l = list::RcList::default();
+                let mut l = RcList::default();
 
                 for n in &nodes {
                     l.push_back(n.clone());

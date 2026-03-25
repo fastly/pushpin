@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::timer::TimerWheel;
 use slab::Slab;
 use std::borrow::Borrow;
@@ -35,8 +36,8 @@ struct PoolItem<K, V> {
 }
 
 pub struct Pool<K, V> {
-    nodes: Slab<list::SlabNode<PoolItem<K, V>>>,
-    by_key: HashMap<K, list::SlabList<PoolItem<K, V>>>,
+    nodes: Slab<SlabNode<PoolItem<K, V>>>,
+    by_key: HashMap<K, SlabList<PoolItem<K, V>>>,
     wheel: TimerWheel,
     start: Instant,
     current_ticks: u64,
@@ -69,7 +70,7 @@ where
 
             let timer_id = self.wheel.add(expires, nkey).unwrap();
 
-            entry.insert(list::SlabNode::new(PoolItem {
+            entry.insert(SlabNode::new(PoolItem {
                 key: key.clone(),
                 value,
                 timer_id,

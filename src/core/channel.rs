@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 
 use crate::core::event;
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::reactor::CustomEvented;
 use crate::core::task::get_reactor;
@@ -220,8 +221,8 @@ struct LocalSenderData {
 }
 
 struct LocalSenders {
-    nodes: Slab<list::Node<LocalSenderData>>,
-    waiting: list::List,
+    nodes: Slab<SlabNode<LocalSenderData>>,
+    waiting: SlabList<LocalSenderData>,
 }
 
 struct LocalChannel<T> {
@@ -242,7 +243,7 @@ impl<T> LocalChannel<T> {
             return Err(());
         }
 
-        let key = senders.nodes.insert(list::Node::new(LocalSenderData {
+        let key = senders.nodes.insert(SlabNode::new(LocalSenderData {
             notified: false,
             write_set_readiness: write_sr,
         }));
@@ -468,7 +469,7 @@ pub fn local_channel<T>(
         queue: RefCell::new(VecDeque::with_capacity(bound)),
         senders: RefCell::new(LocalSenders {
             nodes: Slab::with_capacity(max_senders),
-            waiting: list::List::default(),
+            waiting: SlabList::default(),
         }),
         read_set_readiness: RefCell::new(Some(read_sr)),
     });

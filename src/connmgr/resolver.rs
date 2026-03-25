@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2022 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 
 use crate::core::event;
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::reactor::CustomEvented;
 use crate::core::task::get_reactor;
 use arrayvec::{ArrayString, ArrayVec};
@@ -54,8 +55,8 @@ struct QueryItem {
 
 struct QueriesInner {
     stop: bool,
-    nodes: Slab<list::Node<QueryItem>>,
-    next: list::List,
+    nodes: Slab<SlabNode<QueryItem>>,
+    next: SlabList<QueryItem>,
     registrations: VecDeque<(event::Registration, event::SetReadiness)>,
     invalidated_count: u32,
 }
@@ -76,7 +77,7 @@ impl Queries {
         let inner = QueriesInner {
             stop: false,
             nodes: Slab::with_capacity(queries_max),
-            next: list::List::default(),
+            next: SlabList::default(),
             registrations,
             invalidated_count: 0,
         };
@@ -108,7 +109,7 @@ impl Queries {
 
         let nkey = match Hostname::from(host) {
             Ok(host) => {
-                let nkey = queries.nodes.insert(list::Node::new(QueryItem {
+                let nkey = queries.nodes.insert(SlabNode::new(QueryItem {
                     host,
                     result: None,
                     set_readiness: sr,
@@ -124,7 +125,7 @@ impl Queries {
             Err(_) => {
                 sr.set_readiness(Interest::READABLE).unwrap();
 
-                queries.nodes.insert(list::Node::new(QueryItem {
+                queries.nodes.insert(SlabNode::new(QueryItem {
                     host: Hostname::new(),
                     result: Some(Err(io::Error::from(io::ErrorKind::InvalidInput))),
                     set_readiness: sr,

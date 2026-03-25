@@ -29,7 +29,7 @@ use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
@@ -183,7 +183,7 @@ struct ConnectionItem {
 }
 
 struct ConnectionItems {
-    nodes: Slab<list::Node<ConnectionItem>>,
+    nodes: Slab<SlabNode<ConnectionItem>>,
     nodes_by_id: HashMap<SessionKey, usize>,
     batch: Batch,
 }
@@ -199,7 +199,7 @@ impl ConnectionItems {
 }
 
 struct ConnectionsInner {
-    active: list::List,
+    active: SlabList<ConnectionItem>,
     count: usize,
     max: usize,
 }
@@ -214,7 +214,7 @@ impl Connections {
         Self {
             items,
             inner: RefCell::new(ConnectionsInner {
-                active: list::List::default(),
+                active: SlabList::default(),
                 count: 0,
                 max,
             }),
@@ -244,7 +244,7 @@ impl Connections {
             return Err(());
         }
 
-        let nkey = items.nodes.insert(list::Node::new(ConnectionItem {
+        let nkey = items.nodes.insert(SlabNode::new(ConnectionItem {
             id: None,
             stop: Some(stop),
             zreceiver_sender,
