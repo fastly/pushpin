@@ -126,7 +126,7 @@ fn unlikely_abort() {
 pub struct RcInner<T> {
     refs: Cell<usize>,
     memory: Cell<Option<ManuallyDrop<std::rc::Rc<RcMemory<T>>>>>,
-    value: T,
+    value: ManuallyDrop<T>,
 }
 
 impl<T> RcInner<T> {
@@ -174,7 +174,7 @@ impl<T> Rc<T> {
         let ptr = Box::leak(Box::new(RcInner {
             refs: Cell::new(1),
             memory: Cell::new(None),
-            value: v,
+            value: ManuallyDrop::new(v),
         }));
 
         Self {
@@ -188,7 +188,7 @@ impl<T> Rc<T> {
             .insert(RcInner {
                 refs: Cell::new(1),
                 memory: Cell::new(Some(ManuallyDrop::new(std::rc::Rc::clone(memory)))),
-                value: v,
+                value: ManuallyDrop::new(v),
             })
             .map_err(|_| AllocError)?;
 
@@ -219,6 +219,9 @@ impl<T> Rc<T> {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
+        // Drop the value
+        unsafe { ManuallyDrop::drop(&mut self.ptr.as_mut().value) };
+
         if let Some(memory) = self.inner().memory.take() {
             // Slab allocations contain a std::rc::Rc to the Memory they are
             // contained in, and we need to be careful the Memory is not
@@ -432,6 +435,12 @@ mod tests {
 
         mem::drop(e1a);
         assert_eq!(memory.len(), 0);
+    }
+
+    #[test]
+    fn test_no_needs_drop() {
+        assert!(!mem::needs_drop::<RcInner<usize>>());
+        assert!(!mem::needs_drop::<RcInner<String>>());
     }
 
     #[test]
