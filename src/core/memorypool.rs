@@ -219,7 +219,7 @@ impl<T> Rc<T> {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
-        // Drop the value
+        // SAFETY: This is the only time we drop the value
         unsafe { ManuallyDrop::drop(&mut self.ptr.as_mut().value) };
 
         if let Some(memory) = self.inner().memory.take() {
