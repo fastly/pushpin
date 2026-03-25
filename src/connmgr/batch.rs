@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,13 +28,13 @@ pub struct BatchKey {
     nkey: usize,
 }
 
-pub struct BatchGroup<'a, 'b> {
-    addr: &'b [u8],
+pub struct BatchGroup<'a> {
+    addr: &'a [u8],
     use_router: bool,
-    ids: memorypool::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
+    removed: &'a [(usize, bool)],
 }
 
-impl<'a> BatchGroup<'a, '_> {
+impl BatchGroup<'_> {
     pub fn addr(&self) -> &[u8] {
         self.addr
     }
@@ -43,8 +43,38 @@ impl<'a> BatchGroup<'a, '_> {
         self.use_router
     }
 
-    pub fn ids(&self) -> &[zhttppacket::Id<'a>] {
+    /// Returns slice of (ckey, included).
+    pub fn removed(&self) -> &[(usize, bool)] {
+        self.removed
+    }
+}
+
+pub struct BatchGroupWithIds<'a, 'b> {
+    inner: BatchGroup<'a>,
+    ids: memorypool::ReusableVecHandle<'b, zhttppacket::Id<'b>>,
+}
+
+impl<'a, 'b> BatchGroupWithIds<'a, 'b> {
+    pub fn addr(&self) -> &[u8] {
+        self.inner.addr()
+    }
+
+    pub fn use_router(&self) -> bool {
+        self.inner.use_router()
+    }
+
+    /// Returns slice of (ckey, included).
+    #[cfg(test)]
+    pub fn removed(&self) -> &[(usize, bool)] {
+        &self.inner.removed()
+    }
+
+    pub fn ids(&self) -> &[zhttppacket::Id<'b>] {
         &self.ids
+    }
+
+    pub fn discard_ids(self) -> BatchGroup<'a> {
+        self.inner
     }
 }
 
@@ -59,7 +89,7 @@ pub struct Batch {
     addrs: Vec<AddrItem>,
     addr_index: usize,
     group_ids: memorypool::ReusableVec,
-    last_group_ckeys: Vec<usize>,
+    group_removed: Vec<(usize, bool)>,
 }
 
 impl Batch {
@@ -69,7 +99,7 @@ impl Batch {
             addrs: Vec::with_capacity(capacity),
             addr_index: 0,
             group_ids: memorypool::ReusableVec::new::<zhttppacket::Id>(capacity),
-            last_group_ckeys: Vec::with_capacity(capacity),
+            group_removed: Vec::with_capacity(capacity),
         }
     }
 
@@ -147,12 +177,28 @@ impl Batch {
         self.nodes.remove(key.nkey);
     }
 
-    pub fn take_group<'a, 'b: 'a, F>(&'a mut self, get_id: F) -> Option<BatchGroup<'a, 'b>>
+    /// Returns a set of IDs for connections in the batch that have the same
+    /// peer. The caller can then easily send a single packet addressed to
+    /// all of them. The caller should repeatedly call `take_group` until all
+    /// the connections are drained from the batch. Returns None when there
+    /// are no connections in the batch.
+    ///
+    /// This method works by removing connections from the batch one at a
+    /// time, and calling the `include` function for each one with its ckey.
+    /// If `include` returns Some((ID, seq)), then it is included in the
+    /// returned set of IDs. If it returns None, then the connection is
+    /// excluded from the set.
+    ///
+    /// If the batch has connections and `include` returns None for all of
+    /// them, then this method will return an empty set of IDs.
+    pub fn take_group<'a: 'b, 'b, F>(&'a mut self, include: F) -> Option<BatchGroupWithIds<'a, 'b>>
     where
         F: Fn(usize) -> Option<(&'b [u8], u32)>,
     {
         let addrs = &mut self.addrs;
         let mut ids = self.group_ids.get_as_new();
+
+        self.group_removed.clear();
 
         while ids.is_empty() {
             // Find the next addr with items
@@ -163,13 +209,10 @@ impl Batch {
             // If all are empty, we're done
             if self.addr_index == addrs.len() {
                 assert!(self.nodes.is_empty());
-                return None;
+                break;
             }
 
             let keys = &mut addrs[self.addr_index].keys;
-
-            self.last_group_ckeys.clear();
-            ids.clear();
 
             // Get ids/seqs
             while ids.len() < zhttppacket::IDS_MAX {
@@ -179,26 +222,41 @@ impl Batch {
                 };
 
                 let ckey = self.nodes[nkey].value;
-                self.nodes.remove(nkey);
 
-                if let Some((id, seq)) = get_id(ckey) {
-                    self.last_group_ckeys.push(ckey);
+                let included = if let Some((id, seq)) = include(ckey) {
                     ids.push(zhttppacket::Id { id, seq: Some(seq) });
-                }
+
+                    true
+                } else {
+                    false
+                };
+
+                self.nodes.remove(nkey);
+                self.group_removed.push((ckey, included));
             }
         }
 
-        let ai = &addrs[self.addr_index];
+        if self.group_removed.is_empty() {
+            assert!(ids.is_empty());
+            return None;
+        }
 
-        Some(BatchGroup {
-            addr: &ai.addr,
-            use_router: ai.use_router,
+        let (addr, use_router): (&[u8], bool) = if !ids.is_empty() {
+            let ai = &addrs[self.addr_index];
+
+            (&ai.addr, ai.use_router)
+        } else {
+            (b"", false)
+        };
+
+        Some(BatchGroupWithIds {
+            inner: BatchGroup {
+                addr,
+                use_router,
+                removed: &self.group_removed,
+            },
             ids,
         })
-    }
-
-    pub fn last_group_ckeys(&self) -> &[usize] {
-        &self.last_group_ckeys
     }
 }
 
@@ -213,7 +271,6 @@ mod tests {
 
         assert_eq!(batch.capacity(), 4);
         assert_eq!(batch.len(), 0);
-        assert!(batch.last_group_ckeys().is_empty());
 
         assert!(batch.add(b"addr-a", false, 1).is_ok());
         assert!(batch.add(b"addr-a", false, 2).is_ok());
@@ -235,9 +292,9 @@ mod tests {
         assert_eq!(group.ids()[1].seq, Some(0));
         assert_eq!(group.addr(), b"addr-a");
         assert!(!group.use_router());
+        assert_eq!(group.removed(), &[(1, true), (2, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), false);
-        assert_eq!(batch.last_group_ckeys(), &[1, 2]);
 
         let group = batch
             .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
@@ -247,9 +304,9 @@ mod tests {
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-b");
         assert!(!group.use_router());
+        assert_eq!(group.removed(), &[(3, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), false);
-        assert_eq!(batch.last_group_ckeys(), &[3]);
 
         let group = batch
             .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
@@ -259,14 +316,13 @@ mod tests {
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-b");
         assert!(group.use_router());
+        assert_eq!(group.removed(), &[(4, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), true);
-        assert_eq!(batch.last_group_ckeys(), &[4]);
 
         assert!(batch
             .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .is_none());
-        assert_eq!(batch.last_group_ckeys(), &[4]);
     }
 
     #[test]
@@ -287,6 +343,7 @@ mod tests {
         assert_eq!(group.ids()[0].id, b"id-2");
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-b");
+        assert_eq!(group.removed(), &[(2, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), true);
 
@@ -301,6 +358,7 @@ mod tests {
         assert_eq!(group.ids()[0].id, b"id-3");
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-a");
+        assert_eq!(group.removed(), &[(3, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), true);
     }
@@ -327,6 +385,7 @@ mod tests {
         assert_eq!(group.ids()[0].id, b"id-3");
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-b");
+        assert_eq!(group.removed(), &[(1, false), (2, false), (3, true)]);
         drop(group);
         assert_eq!(batch.is_empty(), true);
     }

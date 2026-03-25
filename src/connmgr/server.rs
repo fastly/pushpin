@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023-2025 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::connmgr::batch::{Batch, BatchKey};
+use crate::connmgr::batch::{Batch, BatchGroupWithIds, BatchKey};
 use crate::connmgr::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
@@ -230,6 +230,7 @@ impl Identify for AsyncTlsStream<'_> {
     }
 }
 
+#[derive(Copy, Clone)]
 enum BatchType {
     KeepAlive,
     Cancel,
@@ -257,6 +258,30 @@ impl<T> ChannelPool<T> {
 
         p.push_back(pair);
     }
+}
+
+fn make_batch_request(
+    from: &str,
+    btype: BatchType,
+    group: &BatchGroupWithIds,
+) -> Result<zmq::Message, io::Error> {
+    let zreq = zhttppacket::Request {
+        from: from.as_bytes(),
+        ids: group.ids(),
+        multi: true,
+        ptype: match btype {
+            BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
+            BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
+        },
+        ptype_str: "",
+    };
+
+    let mut scratch = [0; BULK_PACKET_SIZE_MAX];
+
+    let size = zreq.serialize(&mut scratch)?;
+    let payload = &scratch[..size];
+
+    Ok(zmq::Message::from(payload))
 }
 
 struct ConnectionDone {
@@ -503,7 +528,8 @@ impl Connections {
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
 
-        while !batch.is_empty() {
+        loop {
+            // Wrap in a block to avoid lifetime extension
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
@@ -517,40 +543,31 @@ impl Connections {
 
                 match group {
                     Some(group) => group,
-                    None => continue,
+                    None => break,
                 }
             };
 
             let count = group.ids().len();
+            let mut msg = None;
 
-            assert!(count <= zhttppacket::IDS_MAX);
-
-            let zreq = zhttppacket::Request {
-                from: from.as_bytes(),
-                ids: group.ids(),
-                multi: true,
-                ptype: match btype {
-                    BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
-                    BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
-                },
-                ptype_str: "",
-            };
-
-            let mut data = [0; BULK_PACKET_SIZE_MAX];
-
-            let size = match zreq.serialize(&mut data) {
-                Ok(size) => size,
-                Err(e) => {
-                    error!(
-                        "failed to serialize keep-alive packet with {} ids: {}",
-                        zreq.ids.len(),
-                        e
-                    );
-                    continue;
+            if count > 0 {
+                match make_batch_request(from, btype, &group) {
+                    Ok(ret) => msg = Some(ret),
+                    Err(e) => error!("failed to serialize batched packet with {count} ids: {e}"),
                 }
-            };
+            }
 
-            let data = &data[..size];
+            let group = group.discard_ids();
+
+            // Before we do anything that might fail, let's clear the batch keys
+            for &(ckey, _) in group.removed() {
+                let ci = &mut nodes[ckey].value;
+                ci.batch_key = None;
+            }
+
+            let Some(msg) = msg else {
+                continue;
+            };
 
             let mut addr = ArrayVec::<u8, 64>::new();
             if addr.try_extend_from_slice(group.addr()).is_err() {
@@ -558,16 +575,10 @@ impl Connections {
                 continue;
             }
 
-            let msg = zmq::Message::from(data);
-
-            drop(group);
-
-            for &ckey in batch.last_group_ckeys() {
+            for &(ckey, _) in group.removed().iter().filter(|(_, included)| *included) {
                 let ci = &mut nodes[ckey].value;
                 let cshared = ci.shared.as_ref().unwrap();
-
                 cshared.inc_out_seq();
-                ci.batch_key = None;
             }
 
             return Some((count, addr, msg));
