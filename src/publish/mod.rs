@@ -309,9 +309,15 @@ impl Write for Stream {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum AuthType {
+    Basic,
+    Bearer,
+}
+
 fn publish_http(
     base_url: &str,
-    basic_auth: Option<&str>,
+    auth: Option<(AuthType, &str)>,
     item: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
     let parsed_url = match parse_url(base_url) {
@@ -340,12 +346,17 @@ fn publish_http(
         body.len()
     );
 
-    if let Some(s) = basic_auth {
+    if let Some((auth_type, value)) = auth {
         if parsed_url.scheme != "https" {
             return Err("Authentication requires https".into());
         }
 
-        req.push_str(&format!("Authorization: Basic {}\r\n", base64::encode(s)));
+        let header_value = match auth_type {
+            AuthType::Basic => format!("Basic {}", base64::encode(value)),
+            AuthType::Bearer => format!("Bearer {value}"),
+        };
+
+        req.push_str(&format!("Authorization: {header_value}\r\n"));
     }
 
     req += "\r\n";
@@ -391,7 +402,7 @@ fn publish_http(
 
             let pos = match rest.find(' ') {
                 Some(pos) => pos,
-                None => return Err(io::Error::from(io::ErrorKind::InvalidData).into()),
+                None => rest.len(),
             };
 
             let code = &rest[..pos];
@@ -451,7 +462,7 @@ pub enum Action {
 
 pub struct Config {
     pub spec: String,
-    pub basic_auth: Option<String>,
+    pub auth: Option<(AuthType, String)>,
     pub channel: String,
     pub id: String,
     pub prev_id: String,
@@ -609,9 +620,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     if config.spec.starts_with("https:") || config.spec.starts_with("http:") {
         let item = tnet_to_json(&item)?;
 
-        let basic_auth = config.basic_auth.as_deref();
+        let auth = config.auth.as_ref().map(|(t, v)| (*t, v.as_str()));
 
-        publish_http(&config.spec, basic_auth, &item)?;
+        publish_http(&config.spec, auth, &item)?;
     } else {
         publish_zmq(&config.spec, &item)?;
     }

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,7 +23,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use pushpin::core::version;
-use pushpin::publish::{run, Action, Config, Content, Message};
+use pushpin::publish::{run, Action, AuthType, Config, Content, Message};
 use std::env;
 use std::error::Error;
 use std::process;
@@ -45,7 +46,7 @@ struct Args {
     no_seq: bool,
     no_eol: bool,
     spec: String,
-    user: Option<String>,
+    auth: Option<(AuthType, String)>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -112,7 +113,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 
     let config = Config {
         spec: args.spec,
-        basic_auth: args.user,
+        auth: args.auth,
         channel: args.channel,
         id: args.id,
         prev_id: args.prev_id,
@@ -242,6 +243,14 @@ fn main() {
                 .value_name("user:pass")
                 .help("Authenticate using basic auth"),
         )
+        .arg(
+            Arg::new("bearer")
+                .short('B')
+                .long("bearer")
+                .num_args(1)
+                .value_name("token")
+                .help("Authenticate using bearer auth"),
+        )
         .get_matches();
 
     let channel = matches.get_one::<String>("channel").unwrap().clone();
@@ -289,6 +298,17 @@ fn main() {
     let spec = matches.get_one::<String>("spec").unwrap().clone();
 
     let user = matches.get_one::<String>("user").cloned();
+    let bearer = matches.get_one::<String>("bearer").cloned();
+
+    let auth = match (user, bearer) {
+        (Some(_), Some(_)) => {
+            eprintln!("Error: only one authentication method can be specified");
+            process::exit(1);
+        }
+        (Some(user), None) => Some((AuthType::Basic, user)),
+        (None, Some(bearer)) => Some((AuthType::Bearer, bearer)),
+        (None, None) => None,
+    };
 
     let args = Args {
         channel,
@@ -305,7 +325,7 @@ fn main() {
         no_seq,
         no_eol,
         spec,
-        user,
+        auth,
     };
 
     if let Err(e) = process_args_and_run(args) {
