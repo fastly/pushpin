@@ -22,7 +22,7 @@ use crate::core::channel::{
 };
 use crate::core::event;
 use crate::core::executor::Executor;
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_10, select_option, select_slice, Select10};
@@ -548,8 +548,8 @@ impl<T> CheckSendScratch<T> {
 }
 
 struct ReqHandles {
-    nodes: Slab<list::Node<ReqPipe>>,
-    list: list::List,
+    nodes: Slab<SlabNode<ReqPipe>>,
+    list: SlabList<ReqPipe>,
     recv_scratch: RefCell<RecvScratch<zmq::Message>>,
     need_cleanup: Cell<bool>,
 }
@@ -558,7 +558,7 @@ impl ReqHandles {
     fn new(capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            list: list::List::default(),
+            list: SlabList::default(),
             recv_scratch: RefCell::new(RecvScratch::new(capacity)),
             need_cleanup: Cell::new(false),
         }
@@ -571,7 +571,7 @@ impl ReqHandles {
     fn add(&mut self, pe: AsyncReqPipeEnd, filter: ArrayString<8>) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
-        let key = self.nodes.insert(list::Node::new(ReqPipe {
+        let key = self.nodes.insert(SlabNode::new(ReqPipe {
             pe,
             filter,
             valid: Cell::new(true),
@@ -681,8 +681,8 @@ impl ReqHandles {
 }
 
 struct StreamHandles {
-    nodes: Slab<list::Node<StreamPipe>>,
-    list: list::List,
+    nodes: Slab<SlabNode<StreamPipe>>,
+    list: SlabList<StreamPipe>,
     recv_any_scratch: RefCell<RecvScratch<zmq::Message>>,
     recv_addr_scratch: RefCell<RecvScratch<(ArrayVec<u8, 64>, zmq::Message)>>,
     need_cleanup: Cell<bool>,
@@ -692,7 +692,7 @@ impl StreamHandles {
     fn new(capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            list: list::List::default(),
+            list: SlabList::default(),
             recv_any_scratch: RefCell::new(RecvScratch::new(capacity)),
             recv_addr_scratch: RefCell::new(RecvScratch::new(capacity)),
             need_cleanup: Cell::new(false),
@@ -706,7 +706,7 @@ impl StreamHandles {
     fn add(&mut self, pe: AsyncStreamPipeEnd, filter: ArrayString<8>) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
-        let key = self.nodes.insert(list::Node::new(StreamPipe {
+        let key = self.nodes.insert(SlabNode::new(StreamPipe {
             pe,
             filter,
             valid: Cell::new(true),
@@ -857,8 +857,8 @@ impl StreamHandles {
 struct ReqHandlesSendError(MultipartHeader);
 
 struct ServerReqHandles {
-    nodes: Slab<list::Node<ServerReqPipe>>,
-    list: list::List,
+    nodes: Slab<SlabNode<ServerReqPipe>>,
+    list: SlabList<ServerReqPipe>,
     recv_scratch: RefCell<RecvScratch<(MultipartHeader, zmq::Message)>>,
     check_send_scratch: RefCell<CheckSendScratch<(MultipartHeader, Arc<zmq::Message>)>>,
     need_cleanup: Cell<bool>,
@@ -869,7 +869,7 @@ impl ServerReqHandles {
     fn new(capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            list: list::List::default(),
+            list: SlabList::default(),
             recv_scratch: RefCell::new(RecvScratch::new(capacity)),
             check_send_scratch: RefCell::new(CheckSendScratch::new(capacity)),
             need_cleanup: Cell::new(false),
@@ -884,7 +884,7 @@ impl ServerReqHandles {
     fn add(&mut self, pe: AsyncServerReqPipeEnd) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
-        let key = self.nodes.insert(list::Node::new(ServerReqPipe {
+        let key = self.nodes.insert(SlabNode::new(ServerReqPipe {
             pe,
             valid: Cell::new(true),
         }));
@@ -937,7 +937,9 @@ impl ServerReqHandles {
         let mut any_valid = false;
         let mut any_writable = false;
 
-        for (_, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() {
                 any_valid = true;
 
@@ -963,7 +965,9 @@ impl ServerReqHandles {
         let mut scratch = self.check_send_scratch.borrow_mut();
         let (mut tasks, slice_scratch) = scratch.get();
 
-        for (_, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() {
                 assert!(tasks.len() < tasks.capacity());
 
@@ -989,7 +993,9 @@ impl ServerReqHandles {
 
         // Select the nth ready node, else the latest ready node
         let mut selected = None;
-        for (nkey, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() && p.pe.sender.is_writable() {
                 selected = Some(nkey);
             }
@@ -1063,8 +1069,8 @@ enum StreamHandlesSendError {
 }
 
 struct ServerStreamHandles {
-    nodes: Slab<list::Node<ServerStreamPipe>>,
-    list: list::List,
+    nodes: Slab<SlabNode<ServerStreamPipe>>,
+    list: SlabList<ServerStreamPipe>,
     recv_scratch: RefCell<RecvScratch<(Option<ArrayVec<u8, 64>>, zmq::Message)>>,
     check_send_any_scratch: RefCell<CheckSendScratch<(Arc<zmq::Message>, Session)>>,
     send_direct_scratch: RefCell<Vec<bool>>,
@@ -1077,7 +1083,7 @@ impl ServerStreamHandles {
     fn new(capacity: usize, sessions_capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
-            list: list::List::default(),
+            list: SlabList::default(),
             recv_scratch: RefCell::new(RecvScratch::new(capacity)),
             check_send_any_scratch: RefCell::new(CheckSendScratch::new(capacity)),
             send_direct_scratch: RefCell::new(Vec::with_capacity(capacity)),
@@ -1094,7 +1100,7 @@ impl ServerStreamHandles {
     fn add(&mut self, pe: AsyncServerStreamPipeEnd) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
-        let key = self.nodes.insert(list::Node::new(ServerStreamPipe {
+        let key = self.nodes.insert(SlabNode::new(ServerStreamPipe {
             pe,
             valid: Cell::new(true),
         }));
@@ -1147,7 +1153,9 @@ impl ServerStreamHandles {
         let mut any_valid = false;
         let mut any_writable = false;
 
-        for (_, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() {
                 any_valid = true;
 
@@ -1173,7 +1181,9 @@ impl ServerStreamHandles {
         let mut scratch = self.check_send_any_scratch.borrow_mut();
         let (mut tasks, slice_scratch) = scratch.get();
 
-        for (_, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() {
                 assert!(tasks.len() < tasks.capacity());
 
@@ -1204,7 +1214,9 @@ impl ServerStreamHandles {
 
         // Select the nth ready node, else the latest ready node
         let mut selected = None;
-        for (nkey, p) in self.list.iter(&self.nodes) {
+        for nkey in self.list.iter(&self.nodes) {
+            let p = &self.nodes[nkey].value;
+
             if p.valid.get() && p.pe.sender_any.is_writable() {
                 selected = Some(nkey);
             }

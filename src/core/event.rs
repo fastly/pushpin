@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
@@ -68,8 +69,8 @@ struct SourceItem {
 }
 
 struct RegisteredSources {
-    nodes: Slab<list::Node<SourceItem>>,
-    ready: list::List,
+    nodes: Slab<SlabNode<SourceItem>>,
+    ready: SlabList<SourceItem>,
 }
 
 struct LocalSources {
@@ -81,7 +82,7 @@ impl LocalSources {
         Self {
             registered_sources: RefCell::new(RegisteredSources {
                 nodes: Slab::with_capacity(max_sources),
-                ready: list::List::default(),
+                ready: SlabList::default(),
             }),
         }
     }
@@ -93,7 +94,7 @@ impl LocalSources {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
         }
 
-        Ok(sources.nodes.insert(list::Node::new(SourceItem {
+        Ok(sources.nodes.insert(SlabNode::new(SourceItem {
             subtoken,
             interests,
             readiness: None,
@@ -171,7 +172,7 @@ impl SyncSources {
         Self {
             registered_sources: Mutex::new(RegisteredSources {
                 nodes: Slab::with_capacity(max_sources),
-                ready: list::List::default(),
+                ready: SlabList::default(),
             }),
             waker,
         }
@@ -184,7 +185,7 @@ impl SyncSources {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
         }
 
-        Ok(sources.nodes.insert(list::Node::new(SourceItem {
+        Ok(sources.nodes.insert(SlabNode::new(SourceItem {
             subtoken,
             interests,
             readiness: None,

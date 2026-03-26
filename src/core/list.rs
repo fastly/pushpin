@@ -20,194 +20,7 @@ use slab::Slab;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::IndexMut;
 use std::rc::Rc;
-
-pub struct Node<T> {
-    pub prev: Option<usize>,
-    pub next: Option<usize>,
-    pub value: T,
-}
-
-impl<T> Node<T> {
-    pub fn new(value: T) -> Self {
-        Self {
-            prev: None,
-            next: None,
-            value,
-        }
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-pub struct List {
-    head: Option<usize>,
-    tail: Option<usize>,
-}
-
-impl List {
-    pub fn is_empty(&self) -> bool {
-        self.head.is_none()
-    }
-
-    pub fn head(&self) -> Option<usize> {
-        self.head
-    }
-
-    pub fn tail(&self) -> Option<usize> {
-        self.tail
-    }
-
-    pub fn insert<T, S>(&mut self, nodes: &mut S, after: Option<usize>, key: usize)
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        let next = if let Some(pkey) = after {
-            let pn = &mut nodes[pkey];
-
-            let next = pn.next;
-            pn.next = Some(key);
-
-            let n = &mut nodes[key];
-            n.prev = Some(pkey);
-
-            next
-        } else {
-            let next = self.head;
-            self.head = Some(key);
-
-            let n = &mut nodes[key];
-            n.prev = None;
-
-            next
-        };
-
-        let n = &mut nodes[key];
-        n.next = next;
-
-        if let Some(nkey) = next {
-            let nn = &mut nodes[nkey];
-
-            nn.prev = Some(key);
-        } else {
-            self.tail = Some(key);
-        }
-    }
-
-    #[track_caller]
-    pub fn remove<T, S>(&mut self, nodes: &mut S, key: usize)
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        let n = &mut nodes[key];
-
-        let prev = n.prev.take();
-        let next = n.next.take();
-
-        if let Some(pkey) = prev {
-            let pn = &mut nodes[pkey];
-            pn.next = next;
-        }
-
-        if let Some(nkey) = next {
-            let nn = &mut nodes[nkey];
-            nn.prev = prev;
-        }
-
-        if let Some(hkey) = self.head {
-            if hkey == key {
-                self.head = next;
-            }
-        }
-
-        if let Some(tkey) = self.tail {
-            if tkey == key {
-                self.tail = prev;
-            }
-        }
-    }
-
-    pub fn pop_front<T, S>(&mut self, nodes: &mut S) -> Option<usize>
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        match self.head {
-            Some(key) => {
-                self.remove(nodes, key);
-
-                Some(key)
-            }
-            None => None,
-        }
-    }
-
-    pub fn push_back<T, S>(&mut self, nodes: &mut S, key: usize)
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        self.insert(nodes, self.tail, key);
-    }
-
-    pub fn concat<T, S>(&mut self, nodes: &mut S, other: &mut Self)
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        if other.is_empty() {
-            // Nothing to do
-            return;
-        }
-
-        // Other is non-empty so this is guaranteed to succeed
-        let hkey = other.head.unwrap();
-
-        let next = nodes[hkey].next;
-
-        // Since we're inserting after the tail, this will set next=None
-        self.insert(nodes, self.tail, hkey);
-
-        // Restore the node's next key
-        nodes[hkey].next = next;
-
-        self.tail = other.tail;
-
-        other.head = None;
-        other.tail = None;
-    }
-
-    pub fn iter<'a, T, S>(&self, nodes: &'a S) -> ListIterator<'a, S>
-    where
-        S: IndexMut<usize, Output = Node<T>>,
-    {
-        ListIterator {
-            nodes,
-            next: self.head,
-        }
-    }
-}
-
-pub struct ListIterator<'a, S> {
-    nodes: &'a S,
-    next: Option<usize>,
-}
-
-impl<'a, T, S> Iterator for ListIterator<'a, S>
-where
-    T: 'a,
-    S: IndexMut<usize, Output = Node<T>>,
-{
-    type Item = (usize, &'a T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(nkey) = self.next.take() {
-            let n = &self.nodes[nkey];
-            self.next = n.next;
-
-            Some((nkey, &n.value))
-        } else {
-            None
-        }
-    }
-}
 
 pub enum Relation {
     Prev,
@@ -277,12 +90,12 @@ pub trait Backend {
 /// behavior based on `Rc`. It doesn't need to provide storage since the
 /// nodes themselves provide their own storage.
 #[derive(Clone)]
-pub struct GenericList<B: Backend> {
+pub struct List<B: Backend> {
     head: Option<B::Index>,
     tail: Option<B::Index>,
 }
 
-impl<B: Backend> GenericList<B> {
+impl<B: Backend> List<B> {
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
     }
@@ -406,15 +219,15 @@ impl<B: Backend> GenericList<B> {
         self.tail = other.tail.take();
     }
 
-    pub fn iter<'a>(&self, backend: &'a B) -> GenericListIterator<'a, B> {
-        GenericListIterator {
+    pub fn iter<'a>(&self, backend: &'a B) -> ListIterator<'a, B> {
+        ListIterator {
             backend,
             next: self.head.clone(),
         }
     }
 }
 
-impl<B: Backend> Default for GenericList<B> {
+impl<B: Backend> Default for List<B> {
     fn default() -> Self {
         Self {
             head: None,
@@ -423,12 +236,12 @@ impl<B: Backend> Default for GenericList<B> {
     }
 }
 
-pub struct GenericListIterator<'a, B: Backend> {
+pub struct ListIterator<'a, B: Backend> {
     backend: &'a B,
     next: Option<B::Index>,
 }
 
-impl<B: Backend> Iterator for GenericListIterator<'_, B> {
+impl<B: Backend> Iterator for ListIterator<'_, B> {
     type Item = B::Index;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -440,14 +253,14 @@ impl<B: Backend> Iterator for GenericListIterator<'_, B> {
     }
 }
 
-/// Convenience wrapper around `GenericList` and a backend, obviating the
-/// need to pass the backend to every method call.
-pub struct BoundGenericList<B: Backend> {
-    inner: GenericList<B>,
+/// Convenience wrapper around `List` and a backend, obviating the need to
+/// pass the backend to every method call.
+pub struct BoundList<B: Backend> {
+    inner: List<B>,
     backend: B,
 }
 
-impl<B: Backend> BoundGenericList<B> {
+impl<B: Backend> BoundList<B> {
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -481,12 +294,12 @@ impl<B: Backend> BoundGenericList<B> {
         self.inner.concat(&mut self.backend, &mut other.inner)
     }
 
-    pub fn iter(&self) -> GenericListIterator<'_, B> {
+    pub fn iter(&self) -> ListIterator<'_, B> {
         self.inner.iter(&self.backend)
     }
 }
 
-impl<B: Backend + Default> Default for BoundGenericList<B> {
+impl<B: Backend + Default> Default for BoundList<B> {
     fn default() -> Self {
         Self {
             inner: Default::default(),
@@ -495,7 +308,7 @@ impl<B: Backend + Default> Default for BoundGenericList<B> {
     }
 }
 
-impl<B: Backend + Clone> Clone for BoundGenericList<B> {
+impl<B: Backend + Clone> Clone for BoundList<B> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -592,7 +405,7 @@ impl<T> Backend for Slab<SlabNode<T>> {
     }
 }
 
-pub type SlabList<T> = GenericList<Slab<SlabNode<T>>>;
+pub type SlabList<T> = List<Slab<SlabNode<T>>>;
 
 pub struct NodeData<T> {
     pub prev: Cell<Option<RcNode<T>>>,
@@ -758,178 +571,13 @@ impl<T> Backend for RcBackend<T> {
     }
 }
 
-pub type RcList<T> = BoundGenericList<RcBackend<T>>;
+pub type RcList<T> = BoundList<RcBackend<T>>;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_list_push_pop() {
-        let mut nodes = Slab::new();
-        let n1 = nodes.insert(Node::new("n1"));
-        let n2 = nodes.insert(Node::new("n2"));
-        let n3 = nodes.insert(Node::new("n3"));
-
-        // Prevent unused warning on data field
-        assert_eq!(nodes[n1].value, "n1");
-
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-        assert_eq!(nodes[n2].prev, None);
-        assert_eq!(nodes[n2].next, None);
-        assert_eq!(nodes[n3].prev, None);
-        assert_eq!(nodes[n3].next, None);
-
-        let mut l = List::default();
-        assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head(), None);
-        assert_eq!(l.tail(), None);
-        assert_eq!(l.pop_front(&mut nodes), None);
-
-        l.push_back(&mut nodes, n1);
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n1));
-        assert_eq!(l.tail(), Some(n1));
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-
-        l.push_back(&mut nodes, n2);
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n1));
-        assert_eq!(l.tail(), Some(n2));
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, Some(n2));
-        assert_eq!(nodes[n2].prev, Some(n1));
-        assert_eq!(nodes[n2].next, None);
-
-        l.push_back(&mut nodes, n3);
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n1));
-        assert_eq!(l.tail(), Some(n3));
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, Some(n2));
-        assert_eq!(nodes[n2].prev, Some(n1));
-        assert_eq!(nodes[n2].next, Some(n3));
-        assert_eq!(nodes[n3].prev, Some(n2));
-        assert_eq!(nodes[n3].next, None);
-
-        let key = l.pop_front(&mut nodes);
-        assert_eq!(key, Some(n1));
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n2));
-        assert_eq!(l.tail(), Some(n3));
-        assert_eq!(nodes[n2].prev, None);
-        assert_eq!(nodes[n2].next, Some(n3));
-        assert_eq!(nodes[n3].prev, Some(n2));
-        assert_eq!(nodes[n3].next, None);
-
-        let key = l.pop_front(&mut nodes);
-        assert_eq!(key, Some(n2));
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n3));
-        assert_eq!(l.tail(), Some(n3));
-        assert_eq!(nodes[n3].prev, None);
-        assert_eq!(nodes[n3].next, None);
-
-        let key = l.pop_front(&mut nodes);
-        assert_eq!(key, Some(n3));
-        assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head(), None);
-        assert_eq!(l.tail(), None);
-
-        assert_eq!(l.pop_front(&mut nodes), None);
-    }
-
-    #[test]
-    fn test_list_remove() {
-        let mut nodes = Slab::new();
-        let n1 = nodes.insert(Node::new("n1"));
-
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-
-        let mut l = List::default();
-        assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head(), None);
-        assert_eq!(l.tail(), None);
-
-        l.push_back(&mut nodes, n1);
-        assert_eq!(l.is_empty(), false);
-        assert_eq!(l.head(), Some(n1));
-        assert_eq!(l.tail(), Some(n1));
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-
-        l.remove(&mut nodes, n1);
-        assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head(), None);
-        assert_eq!(l.tail(), None);
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-
-        // Already removed
-        l.remove(&mut nodes, n1);
-        assert_eq!(l.is_empty(), true);
-        assert_eq!(l.head(), None);
-        assert_eq!(l.tail(), None);
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, None);
-    }
-
-    #[test]
-    fn test_list_concat() {
-        let mut nodes = Slab::new();
-        let n1 = nodes.insert(Node::new("n1"));
-        let n2 = nodes.insert(Node::new("n2"));
-
-        let mut a = List::default();
-        let mut b = List::default();
-
-        a.concat(&mut nodes, &mut b);
-        assert_eq!(a.is_empty(), true);
-        assert_eq!(a.head(), None);
-        assert_eq!(a.tail(), None);
-        assert_eq!(b.is_empty(), true);
-        assert_eq!(b.head(), None);
-        assert_eq!(b.tail(), None);
-
-        a.push_back(&mut nodes, n1);
-        b.push_back(&mut nodes, n2);
-
-        a.concat(&mut nodes, &mut b);
-        assert_eq!(a.is_empty(), false);
-        assert_eq!(a.head(), Some(n1));
-        assert_eq!(a.tail(), Some(n2));
-        assert_eq!(b.is_empty(), true);
-        assert_eq!(b.head(), None);
-        assert_eq!(b.tail(), None);
-        assert_eq!(nodes[n1].prev, None);
-        assert_eq!(nodes[n1].next, Some(n2));
-        assert_eq!(nodes[n2].prev, Some(n1));
-        assert_eq!(nodes[n2].next, None);
-    }
-
-    #[test]
-    fn test_list_iter() {
-        let mut nodes = Slab::new();
-        let n1 = nodes.insert(Node::new("n1"));
-        let n2 = nodes.insert(Node::new("n2"));
-        let n3 = nodes.insert(Node::new("n3"));
-
-        let mut l = List::default();
-        l.push_back(&mut nodes, n1);
-        l.push_back(&mut nodes, n2);
-        l.push_back(&mut nodes, n3);
-
-        let mut it = l.iter(&nodes);
-        assert_eq!(it.next(), Some((n1, &"n1")));
-        assert_eq!(it.next(), Some((n2, &"n2")));
-        assert_eq!(it.next(), Some((n3, &"n3")));
-        assert_eq!(it.next(), None);
-    }
-
-    fn generic_push_pop<B, A>(mut b: B, mut l: GenericList<B>, add: A)
+    fn generic_push_pop<B, A>(mut b: B, mut l: List<B>, add: A)
     where
         B: Backend<Value = &'static str>,
         A: Fn(&mut B, &'static str) -> B::Index,
@@ -1004,7 +652,7 @@ mod tests {
         assert_eq!(l.pop_front(&mut b), None);
     }
 
-    fn generic_remove<B, A>(mut b: B, mut l: GenericList<B>, add: A)
+    fn generic_remove<B, A>(mut b: B, mut l: List<B>, add: A)
     where
         B: Backend<Value = &'static str>,
         A: Fn(&mut B, &'static str) -> B::Index,
@@ -1041,7 +689,7 @@ mod tests {
         assert_eq!(b.clone_link(n1.to_ref(), Relation::Next), None);
     }
 
-    fn generic_concat<B, A>(mut be: B, mut a: GenericList<B>, mut b: GenericList<B>, add: A)
+    fn generic_concat<B, A>(mut be: B, mut a: List<B>, mut b: List<B>, add: A)
     where
         B: Backend<Value = &'static str>,
         A: Fn(&mut B, &'static str) -> B::Index,
@@ -1073,7 +721,7 @@ mod tests {
         assert_eq!(be.clone_link(n2.to_ref(), Relation::Next), None);
     }
 
-    fn generic_iter<B, A>(mut b: B, mut l: GenericList<B>, add: A)
+    fn generic_iter<B, A>(mut b: B, mut l: List<B>, add: A)
     where
         B: Backend<Value = &'static str>,
         A: Fn(&mut B, &'static str) -> B::Index,
@@ -1096,58 +744,58 @@ mod tests {
     #[test]
     fn test_slab_push_pop() {
         let nodes = Slab::new();
-        let l = GenericList::default();
+        let l = List::default();
         generic_push_pop(nodes, l, |nodes, v| nodes.insert(SlabNode::new(v)));
     }
 
     #[test]
     fn test_slab_remove() {
         let nodes = Slab::new();
-        let l = GenericList::default();
+        let l = List::default();
         generic_remove(nodes, l, |nodes, v| nodes.insert(SlabNode::new(v)));
     }
 
     #[test]
     fn test_slab_concat() {
         let nodes = Slab::new();
-        let a = GenericList::default();
-        let b = GenericList::default();
+        let a = List::default();
+        let b = List::default();
         generic_concat(nodes, a, b, |nodes, v| nodes.insert(SlabNode::new(v)));
     }
 
     #[test]
     fn test_slab_iter() {
         let nodes = Slab::new();
-        let l = GenericList::default();
+        let l = List::default();
         generic_iter(nodes, l, |nodes, v| nodes.insert(SlabNode::new(v)));
     }
 
     #[test]
     fn test_rc_push_pop() {
         let b = RcBackend::default();
-        let l = GenericList::default();
+        let l = List::default();
         generic_push_pop(b, l, move |_, v| RcNode::new(v, None));
     }
 
     #[test]
     fn test_rc_remove() {
         let b = RcBackend::default();
-        let l = GenericList::default();
+        let l = List::default();
         generic_remove(b, l, move |_, v| RcNode::new(v, None));
     }
 
     #[test]
     fn test_rc_concat() {
         let be = RcBackend::default();
-        let a = GenericList::default();
-        let b = GenericList::default();
+        let a = List::default();
+        let b = List::default();
         generic_concat(be, a, b, move |_, v| RcNode::new(v, None));
     }
 
     #[test]
     fn test_rc_iter() {
         let b = RcBackend::default();
-        let l = GenericList::default();
+        let l = List::default();
         generic_iter(b, l, move |_, v| RcNode::new(v, None));
     }
 }

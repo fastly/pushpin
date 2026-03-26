@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,6 +22,8 @@
  */
 
 use crate::core::tnetstring;
+use rustls::crypto::{ring, CryptoProvider};
+use rustls::pki_types::CertificateDer;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
@@ -239,15 +242,14 @@ impl TlsStream {
         let mut root_store = rustls::RootCertStore::empty();
 
         for cert in rustls_native_certs::load_native_certs()? {
-            root_store.add(&rustls::Certificate(cert.0)).unwrap();
+            root_store.add(CertificateDer::from_slice(&cert.0)).unwrap();
         }
 
         let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let server_name = host.try_into()?;
+        let server_name = host.to_string().try_into()?;
 
         let client = rustls::ClientConnection::new(Arc::new(config), server_name)?;
 
@@ -307,9 +309,15 @@ impl Write for Stream {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum AuthType {
+    Basic,
+    Bearer,
+}
+
 fn publish_http(
     base_url: &str,
-    basic_auth: Option<&str>,
+    auth: Option<(AuthType, &str)>,
     item: &serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
     let parsed_url = match parse_url(base_url) {
@@ -338,12 +346,17 @@ fn publish_http(
         body.len()
     );
 
-    if let Some(s) = basic_auth {
+    if let Some((auth_type, value)) = auth {
         if parsed_url.scheme != "https" {
             return Err("Authentication requires https".into());
         }
 
-        req.push_str(&format!("Authorization: Basic {}\r\n", base64::encode(s)));
+        let header_value = match auth_type {
+            AuthType::Basic => format!("Basic {}", base64::encode(value)),
+            AuthType::Bearer => format!("Bearer {value}"),
+        };
+
+        req.push_str(&format!("Authorization: {header_value}\r\n"));
     }
 
     req += "\r\n";
@@ -389,7 +402,7 @@ fn publish_http(
 
             let pos = match rest.find(' ') {
                 Some(pos) => pos,
-                None => return Err(io::Error::from(io::ErrorKind::InvalidData).into()),
+                None => rest.len(),
             };
 
             let code = &rest[..pos];
@@ -449,7 +462,7 @@ pub enum Action {
 
 pub struct Config {
     pub spec: String,
-    pub basic_auth: Option<String>,
+    pub auth: Option<(AuthType, String)>,
     pub channel: String,
     pub id: String,
     pub prev_id: String,
@@ -462,6 +475,8 @@ pub struct Config {
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
+    CryptoProvider::install_default(ring::default_provider()).unwrap();
+
     let mut formats = HashMap::new();
 
     match &config.action {
@@ -605,9 +620,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     if config.spec.starts_with("https:") || config.spec.starts_with("http:") {
         let item = tnet_to_json(&item)?;
 
-        let basic_auth = config.basic_auth.as_deref();
+        let auth = config.auth.as_ref().map(|(t, v)| (*t, v.as_str()));
 
-        publish_http(&config.spec, basic_auth, &item)?;
+        publish_http(&config.spec, auth, &item)?;
     } else {
         publish_zmq(&config.spec, &item)?;
     }

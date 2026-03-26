@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
- * Copyright (C) 2023-2025 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::connmgr::batch::{Batch, BatchKey};
+use crate::connmgr::batch::{Batch, BatchGroupWithIds, BatchKey};
 use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, make_zhttp_response, ConnectionPool,
     StreamSharedData,
@@ -30,7 +30,7 @@ use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
@@ -120,6 +120,7 @@ fn async_local_channel<T>(
     (s, r)
 }
 
+#[derive(Copy, Clone)]
 enum BatchType {
     KeepAlive,
     Cancel,
@@ -236,6 +237,29 @@ fn flag_whenever_polled<F: Future>(
     }
 }
 
+fn make_batch_response(
+    from: &str,
+    btype: BatchType,
+    group: &BatchGroupWithIds,
+) -> Result<(Option<ArrayVec<u8, 64>>, zmq::Message), io::Error> {
+    assert!(group.ids().len() <= zhttppacket::IDS_MAX);
+
+    let zresp = zhttppacket::Response {
+        from: from.as_bytes(),
+        ids: group.ids(),
+        multi: true,
+        ptype: match btype {
+            BatchType::KeepAlive => zhttppacket::ResponsePacket::KeepAlive,
+            BatchType::Cancel => zhttppacket::ResponsePacket::Cancel,
+        },
+        ptype_str: "",
+    };
+
+    let mut scratch = [0; BULK_PACKET_SIZE_MAX];
+
+    make_zhttp_response(group.addr(), group.use_router(), zresp, &mut scratch)
+}
+
 struct ConnectionDone {
     ckey: usize,
 }
@@ -251,7 +275,7 @@ struct ConnectionItem {
 }
 
 struct ConnectionItems {
-    nodes: Slab<list::Node<ConnectionItem>>,
+    nodes: Slab<SlabNode<ConnectionItem>>,
     nodes_by_id: HashMap<SessionKey, usize>,
     batch: Batch,
 }
@@ -267,7 +291,7 @@ impl ConnectionItems {
 }
 
 struct ConnectionsInner {
-    active: list::List,
+    active: SlabList<ConnectionItem>,
     count: usize,
     max: usize,
 }
@@ -282,7 +306,7 @@ impl Connections {
         Self {
             items,
             inner: RefCell::new(ConnectionsInner {
-                active: list::List::default(),
+                active: SlabList::default(),
                 count: 0,
                 max,
             }),
@@ -313,7 +337,7 @@ impl Connections {
             return Err(());
         }
 
-        let nkey = items.nodes.insert(list::Node::new(ConnectionItem {
+        let nkey = items.nodes.insert(SlabNode::new(ConnectionItem {
             id: None,
             stop: Some(stop),
             zreceiver_sender,
@@ -550,7 +574,8 @@ impl Connections {
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
 
-        while !batch.is_empty() {
+        loop {
+            // Wrap in a block to avoid lifetime extension
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
@@ -569,47 +594,36 @@ impl Connections {
 
                 match group {
                     Some(group) => group,
-                    None => continue,
+                    None => break,
                 }
             };
 
             let count = group.ids().len();
+            let mut to_send = None;
 
-            assert!(count <= zhttppacket::IDS_MAX);
+            if count > 0 {
+                match make_batch_response(from, btype, &group) {
+                    Ok(ret) => to_send = Some(ret),
+                    Err(e) => error!("failed to serialize batched packet with {count} ids: {e}"),
+                }
+            }
 
-            let zresp = zhttppacket::Response {
-                from: from.as_bytes(),
-                ids: group.ids(),
-                multi: true,
-                ptype: match btype {
-                    BatchType::KeepAlive => zhttppacket::ResponsePacket::KeepAlive,
-                    BatchType::Cancel => zhttppacket::ResponsePacket::Cancel,
-                },
-                ptype_str: "",
+            let group = group.discard_ids();
+
+            // Before we do anything that might fail, let's clear the batch keys
+            for &(ckey, _) in group.removed() {
+                let ci = &mut nodes[ckey].value;
+                ci.batch_key = None;
+            }
+
+            let Some((addr, msg)) = to_send else {
+                continue;
             };
 
-            let mut scratch = [0; BULK_PACKET_SIZE_MAX];
-
-            let (addr, msg) =
-                match make_zhttp_response(group.addr(), group.use_router(), zresp, &mut scratch) {
-                    Ok(resp) => resp,
-                    Err(e) => {
-                        error!(
-                            "failed to serialize keep-alive packet with {} ids: {}",
-                            count, e
-                        );
-                        continue;
-                    }
-                };
-
-            drop(group);
-
-            for &ckey in batch.last_group_ckeys() {
+            for &(ckey, _) in group.removed().iter().filter(|(_, included)| *included) {
                 let ci = &mut nodes[ckey].value;
                 let cshared = ci.shared.as_ref().unwrap();
-
                 cshared.inc_out_seq();
-                ci.batch_key = None;
             }
 
             return Some((count, addr, msg));

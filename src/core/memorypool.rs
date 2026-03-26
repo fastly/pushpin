@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
-use crate::core::minislab::MiniSlab;
+use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ops::{Deref, DerefMut};
 use std::process::abort;
 use std::ptr::NonNull;
@@ -39,13 +39,13 @@ impl<T> fmt::Debug for InsertError<T> {
 // Operations are protected by a RefCell, however lookup operations return
 // pointers that can be used without RefCell protection.
 pub struct Memory<T> {
-    entries: RefCell<MiniSlab<T>>,
+    entries: RefCell<Slab<T>>,
 }
 
 impl<T> Memory<T> {
     pub fn new(capacity: usize) -> Self {
         // Allocate the slab with fixed capacity
-        let s = MiniSlab::with_capacity(capacity);
+        let s = Slab::with_capacity(capacity);
 
         Self {
             entries: RefCell::new(s),
@@ -91,14 +91,12 @@ impl<T> Memory<T> {
 
     // SAFETY: `ptr` must be a valid pointer returned by `insert` that has
     // not yet been removed.
-    #[allow(clippy::let_unit_value)]
     unsafe fn remove(&self, ptr: *const T) {
         let mut entries = self.entries.borrow_mut();
 
         let key = entries.key_of(&*ptr);
 
-        // Ensure remove() method doesn't return a value
-        let _: () = entries.remove(key);
+        entries.remove(key);
     }
 
     // Returns a pointer to an entry if it exists.
@@ -127,8 +125,8 @@ fn unlikely_abort() {
 #[repr(C, align(2))]
 pub struct RcInner<T> {
     refs: Cell<usize>,
-    memory: Cell<Option<std::rc::Rc<RcMemory<T>>>>,
-    value: T,
+    memory: Cell<Option<ManuallyDrop<std::rc::Rc<RcMemory<T>>>>>,
+    value: ManuallyDrop<T>,
 }
 
 impl<T> RcInner<T> {
@@ -176,7 +174,7 @@ impl<T> Rc<T> {
         let ptr = Box::leak(Box::new(RcInner {
             refs: Cell::new(1),
             memory: Cell::new(None),
-            value: v,
+            value: ManuallyDrop::new(v),
         }));
 
         Self {
@@ -189,8 +187,8 @@ impl<T> Rc<T> {
         let ptr = memory
             .insert(RcInner {
                 refs: Cell::new(1),
-                memory: Cell::new(Some(std::rc::Rc::clone(memory))),
-                value: v,
+                memory: Cell::new(Some(ManuallyDrop::new(std::rc::Rc::clone(memory)))),
+                value: ManuallyDrop::new(v),
             })
             .map_err(|_| AllocError)?;
 
@@ -221,12 +219,17 @@ impl<T> Rc<T> {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
+        // SAFETY: This is the only time we drop the value
+        unsafe { ManuallyDrop::drop(&mut self.ptr.as_mut().value) };
+
         if let Some(memory) = self.inner().memory.take() {
             // Slab allocations contain a std::rc::Rc to the Memory they are
             // contained in, and we need to be careful the Memory is not
             // dropped while an entry is being removed. To ensure this, the
             // Rc is moved out of the entry above, and it is dropped only
             // after the entry is removed.
+
+            let memory = ManuallyDrop::into_inner(memory);
 
             // SAFETY: While this Rc is alive, ptr is always valid
             unsafe { memory.remove(self.ptr.as_ref()) };
@@ -432,6 +435,12 @@ mod tests {
 
         mem::drop(e1a);
         assert_eq!(memory.len(), 0);
+    }
+
+    #[test]
+    fn test_no_needs_drop() {
+        assert!(!mem::needs_drop::<RcInner<usize>>());
+        assert!(!mem::needs_drop::<RcInner<String>>());
     }
 
     #[test]
