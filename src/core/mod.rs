@@ -29,7 +29,6 @@ pub mod jwt;
 pub mod list;
 pub mod log;
 pub mod memorypool;
-pub mod minislab;
 pub mod net;
 pub mod reactor;
 pub mod select;
