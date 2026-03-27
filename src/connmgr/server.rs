@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023-2025 Fastly, Inc.
+ * Copyright (C) 2023-2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::connmgr::batch::{Batch, BatchKey};
+use crate::connmgr::batch::{Batch, BatchGroupWithIds, BatchKey};
 use crate::connmgr::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
@@ -30,7 +30,7 @@ use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncRece
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::fs::{set_group, set_user};
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::net::{
     set_socket_opts, AsyncTcpStream, AsyncUnixStream, NetListener, NetStream, SocketAddr,
@@ -231,6 +231,7 @@ impl Identify for AsyncTlsStream<'_> {
     }
 }
 
+#[derive(Copy, Clone)]
 enum BatchType {
     KeepAlive,
     Cancel,
@@ -260,6 +261,30 @@ impl<T> ChannelPool<T> {
     }
 }
 
+fn make_batch_request(
+    from: &str,
+    btype: BatchType,
+    group: &BatchGroupWithIds,
+) -> Result<zmq::Message, io::Error> {
+    let zreq = zhttppacket::Request {
+        from: from.as_bytes(),
+        ids: group.ids(),
+        multi: true,
+        ptype: match btype {
+            BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
+            BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
+        },
+        ptype_str: "",
+    };
+
+    let mut scratch = [0; BULK_PACKET_SIZE_MAX];
+
+    let size = zreq.serialize(&mut scratch)?;
+    let payload = &scratch[..size];
+
+    Ok(zmq::Message::from(payload))
+}
+
 struct ConnectionDone {
     ckey: usize,
 }
@@ -273,7 +298,7 @@ struct ConnectionItem {
 }
 
 struct ConnectionItems {
-    nodes: Slab<list::Node<ConnectionItem>>,
+    nodes: Slab<SlabNode<ConnectionItem>>,
     next_cid: u32,
     batch: Batch,
 }
@@ -289,7 +314,7 @@ impl ConnectionItems {
 }
 
 struct ConnectionsInner {
-    active: list::List,
+    active: SlabList<ConnectionItem>,
     count: usize,
     max: usize,
 }
@@ -304,7 +329,7 @@ impl Connections {
         Self {
             items,
             inner: RefCell::new(ConnectionsInner {
-                active: list::List::default(),
+                active: SlabList::default(),
                 count: 0,
                 max,
             }),
@@ -333,7 +358,7 @@ impl Connections {
             return Err(());
         }
 
-        let nkey = items.nodes.insert(list::Node::new(ConnectionItem {
+        let nkey = items.nodes.insert(SlabNode::new(ConnectionItem {
             id: ArrayString::new(),
             stop: Some(stop),
             zreceiver_sender,
@@ -504,7 +529,8 @@ impl Connections {
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
 
-        while !batch.is_empty() {
+        loop {
+            // Wrap in a block to avoid lifetime extension
             let group = {
                 let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
@@ -518,40 +544,31 @@ impl Connections {
 
                 match group {
                     Some(group) => group,
-                    None => continue,
+                    None => break,
                 }
             };
 
             let count = group.ids().len();
+            let mut msg = None;
 
-            assert!(count <= zhttppacket::IDS_MAX);
-
-            let zreq = zhttppacket::Request {
-                from: from.as_bytes(),
-                ids: group.ids(),
-                multi: true,
-                ptype: match btype {
-                    BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
-                    BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
-                },
-                ptype_str: "",
-            };
-
-            let mut data = [0; BULK_PACKET_SIZE_MAX];
-
-            let size = match zreq.serialize(&mut data) {
-                Ok(size) => size,
-                Err(e) => {
-                    error!(
-                        "failed to serialize keep-alive packet with {} ids: {}",
-                        zreq.ids.len(),
-                        e
-                    );
-                    continue;
+            if count > 0 {
+                match make_batch_request(from, btype, &group) {
+                    Ok(ret) => msg = Some(ret),
+                    Err(e) => error!("failed to serialize batched packet with {count} ids: {e}"),
                 }
-            };
+            }
 
-            let data = &data[..size];
+            let group = group.discard_ids();
+
+            // Before we do anything that might fail, let's clear the batch keys
+            for &(ckey, _) in group.removed() {
+                let ci = &mut nodes[ckey].value;
+                ci.batch_key = None;
+            }
+
+            let Some(msg) = msg else {
+                continue;
+            };
 
             let mut addr = ArrayVec::<u8, 64>::new();
             if addr.try_extend_from_slice(group.addr()).is_err() {
@@ -559,16 +576,10 @@ impl Connections {
                 continue;
             }
 
-            let msg = zmq::Message::from(data);
-
-            drop(group);
-
-            for &ckey in batch.last_group_ckeys() {
+            for &(ckey, _) in group.removed().iter().filter(|(_, included)| *included) {
                 let ci = &mut nodes[ckey].value;
                 let cshared = ci.shared.as_ref().unwrap();
-
                 cshared.inc_out_seq();
-                ci.batch_key = None;
             }
 
             return Some((count, addr, msg));

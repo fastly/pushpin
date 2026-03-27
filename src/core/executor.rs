@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 
 use crate::core::future::SizedFuture;
-use crate::core::list;
+use crate::core::list::{SlabList, SlabNode};
 use crate::core::waker;
 use log::debug;
 use slab::Slab;
@@ -76,9 +77,9 @@ struct Task {
 }
 
 struct TasksData {
-    nodes: Slab<list::Node<Task>>,
-    next: list::List,
-    next_low: list::List,
+    nodes: Slab<SlabNode<Task>>,
+    next: SlabList<Task>,
+    next_low: SlabList<Task>,
     wakers: Vec<Rc<TaskWaker>>,
     current_task: Option<usize>,
 }
@@ -92,8 +93,8 @@ impl Tasks {
     fn new(max: usize) -> Rc<Self> {
         let data = TasksData {
             nodes: Slab::with_capacity(max),
-            next: list::List::default(),
-            next_low: list::List::default(),
+            next: SlabList::default(),
+            next_low: SlabList::default(),
             wakers: Vec::with_capacity(max),
             current_task: None,
         };
@@ -146,7 +147,7 @@ impl Tasks {
             low: false,
         };
 
-        entry.insert(list::Node::new(task));
+        entry.insert(SlabNode::new(task));
 
         data.next.push_back(&mut data.nodes, nkey);
 
@@ -183,10 +184,10 @@ impl Tasks {
         self.data.borrow_mut().current_task = task_id;
     }
 
-    fn take_next_list(&self, low: bool) -> list::List {
+    fn take_next_list(&self, low: bool) -> SlabList<Task> {
         let data = &mut *self.data.borrow_mut();
 
-        let mut l = list::List::default();
+        let mut l = SlabList::default();
 
         if low {
             l.concat(&mut data.nodes, &mut data.next_low);
@@ -197,7 +198,7 @@ impl Tasks {
         l
     }
 
-    fn take_task(&self, l: &mut list::List) -> Option<(usize, BoxFuture, Waker)> {
+    fn take_task(&self, l: &mut SlabList<Task>) -> Option<(usize, BoxFuture, Waker)> {
         let nkey = l.head()?;
 
         let data = &mut *self.data.borrow_mut();
