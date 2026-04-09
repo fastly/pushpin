@@ -24,6 +24,7 @@
 #include <assert.h>
 #include "cowbytearray.h"
 #include "qtcompat.h"
+#include "variant.h"
 
 namespace TnetString {
 
@@ -55,7 +56,7 @@ QByteArray fromNull()
 	return QByteArray("0:~");
 }
 
-QByteArray fromVariant(const QVariant &in)
+QByteArray fromVariant(const Variant &in)
 {
 	switch(typeId(in))
 	{
@@ -81,10 +82,10 @@ QByteArray fromVariant(const QVariant &in)
 	}
 }
 
-QByteArray fromHash(const QVariantHash &in)
+QByteArray fromHash(const VariantHash &in)
 {
 	QByteArray val;
-	QHashIterator<QString, QVariant> it(in);
+	QHashIterator<QString, Variant> it(in);
 	while(it.hasNext())
 	{
 		it.next();
@@ -94,10 +95,10 @@ QByteArray fromHash(const QVariantHash &in)
 	return QByteArray::number(val.size()) + ':' + val + '}';
 }
 
-QByteArray fromList(const QVariantList &in)
+QByteArray fromList(const VariantList &in)
 {
 	QByteArray val;
-	foreach(const QVariant &v, in)
+	foreach(const Variant &v, in)
 		val += fromVariant(v);
 	return QByteArray::number(val.size()) + ':' + val + ']';
 }
@@ -198,9 +199,9 @@ void toNull(const QByteArray &in, int offset, int dataOffset, int dataSize, bool
 	*ok = true;
 }
 
-QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize, bool *ok)
+Variant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize, bool *ok)
 {
-	QVariant val;
+	Variant val;
 	bool ok_ = false;
 	switch(type)
 	{
@@ -231,7 +232,7 @@ QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, 
 	{
 		if(ok)
 			*ok = false;
-		return QVariant();
+		return Variant();
 	}
 
 	if(ok)
@@ -239,7 +240,7 @@ QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, 
 	return val;
 }
 
-QVariant toVariant(const QByteArray &in, int offset, bool *ok)
+Variant toVariant(const QByteArray &in, int offset, bool *ok)
 {
 	Type type;
 	int dataOffset;
@@ -248,22 +249,22 @@ QVariant toVariant(const QByteArray &in, int offset, bool *ok)
 	{
 		if(ok)
 			*ok = false;
-		return QVariant();
+		return Variant();
 	}
 
 	return toVariant(in, offset, type, dataOffset, dataSize, ok);
 }
 
-QVariant toVariant(const CowByteArray &in, int offset, bool *ok)
+Variant toVariant(const CowByteArray &in, int offset, bool *ok)
 {
 	return toVariant(in.asQByteArray(), offset, ok);
 }
 
-QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
+VariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
 {
 	Q_UNUSED(offset);
 
-	QVariantHash out;
+	VariantHash out;
 
 	int at = dataOffset;
 	while(at < dataSize + dataOffset)
@@ -275,14 +276,14 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 		{
 			if(ok)
 				*ok = false;
-			return QVariantHash();
+			return VariantHash();
 		}
 
 		if(itype != ByteArray)
 		{
 			if(ok)
 				*ok = false;
-			return QVariantHash();
+			return VariantHash();
 		}
 
 		bool ok_;
@@ -291,7 +292,7 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 		{
 			if(ok)
 				*ok = false;
-			return QVariantHash();
+			return VariantHash();
 		}
 
 		at = ioffset + isize + 1; // Position to value
@@ -300,15 +301,15 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 		{
 			if(ok)
 				*ok = false;
-			return QVariantHash();
+			return VariantHash();
 		}
 
-		QVariant val = toVariant(in, at, itype, ioffset, isize, &ok_);
+		Variant val = toVariant(in, at, itype, ioffset, isize, &ok_);
 		if(!ok_)
 		{
 			if(ok)
 				*ok = false;
-			return QVariantHash();
+			return VariantHash();
 		}
 
 		out[QString::fromUtf8(key)] = val;
@@ -320,11 +321,11 @@ QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSi
 	return out;
 }
 
-QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
+VariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok)
 {
 	Q_UNUSED(offset);
 
-	QVariantList out;
+	VariantList out;
 
 	int at = dataOffset;
 	while(at < dataOffset + dataSize)
@@ -336,16 +337,16 @@ QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSi
 		{
 			if(ok)
 				*ok = false;
-			return QVariantList();
+			return VariantList();
 		}
 
 		bool ok_;
-		QVariant val = toVariant(in, at, itype, ioffset, isize, &ok_);
+		Variant val = toVariant(in, at, itype, ioffset, isize, &ok_);
 		if(!ok_)
 		{
 			if(ok)
 				*ok = false;
-			return QVariantList();
+			return VariantList();
 		}
 
 		out += val;
@@ -377,14 +378,14 @@ QString byteArrayToEscapedString(const QByteArray &in)
 	return out;
 }
 
-QString variantToString(const QVariant &in, int indent)
+QString variantToString(const Variant &in, int indent)
 {
 	QString out;
 
 	QMetaType::Type type = typeId(in);
 	if(type == QMetaType::QVariantHash)
 	{
-		QVariantHash hash = in.toHash();
+		VariantHash hash = in.toHash();
 
 		out += '{';
 		if(indent >= 0)
@@ -392,7 +393,7 @@ QString variantToString(const QVariant &in, int indent)
 		else
 			out += ' ';
 
-		QHashIterator<QString, QVariant> it(hash);
+		QHashIterator<QString, Variant> it(hash);
 		while(it.hasNext())
 		{
 			it.next();
@@ -416,7 +417,7 @@ QString variantToString(const QVariant &in, int indent)
 	}
 	else if(type == QMetaType::QVariantList)
 	{
-		QVariantList list = in.toList();
+		VariantList list = in.toList();
 
 		out += '[';
 		if(indent >= 0)

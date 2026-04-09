@@ -26,18 +26,19 @@
 #include <assert.h>
 #include <QStringList>
 #include "qtcompat.h"
+#include "variant.h"
 
 JsonPointer::JsonPointer() :
 	isNull_(true)
 {
 }
 
-QVariant *JsonPointer::root()
+Variant *JsonPointer::root()
 {
 	return root_;
 }
 
-JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, ConstFunc func, void *data) const
+JsonPointer::ExecStatus JsonPointer::execute(const Variant *i, int refIndex, ConstFunc func, void *data) const
 {
 	// If there are more refs after current ref, step into current
 	if(refIndex + 1 < refs_.count())
@@ -50,7 +51,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 		{
 			if(typeId(*i) == QMetaType::QVariantHash)
 			{
-				QVariantHash h = i->toHash();
+				VariantHash h = i->toHash();
 				if(!h.contains(ref.name))
 					return ExecError;
 
@@ -58,7 +59,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 			}
 			else // Map
 			{
-				QVariantMap m = i->toMap();
+				VariantMap m = i->toMap();
 				if(!m.contains(ref.name))
 					return ExecError;
 
@@ -67,7 +68,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 		}
 		else // Array
 		{
-			QVariantList l = i->toList();
+			VariantList l = i->toList();
 			if(ref.index < 0 || ref.index >= l.count())
 				return ExecError;
 
@@ -86,7 +87,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, Co
 	return ExecContinue;
 }
 
-JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func func, void *data)
+JsonPointer::ExecStatus JsonPointer::execute(Variant *i, int refIndex, Func func, void *data)
 {
 	// If there are more refs after current ref, step into current
 	if(refIndex + 1 < refs_.count())
@@ -96,7 +97,7 @@ JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func fun
 		{
 			if(typeId(*i) == QMetaType::QVariantHash)
 			{
-				QVariantHash h = i->toHash();
+				VariantHash h = i->toHash();
 				if(!h.contains(ref.name))
 					return ExecError;
 
@@ -107,7 +108,7 @@ JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func fun
 			}
 			else // Map
 			{
-				QVariantMap m = i->toMap();
+				VariantMap m = i->toMap();
 				if(!m.contains(ref.name))
 					return ExecError;
 
@@ -119,7 +120,7 @@ JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func fun
 		}
 		else if(ref.type == Ref::Array)
 		{
-			QVariantList l = i->toList();
+			VariantList l = i->toList();
 			if(ref.index < 0 || ref.index >= l.count())
 				return ExecError;
 
@@ -169,9 +170,9 @@ bool JsonPointer::execute(Func func, void *data)
 	}
 }
 
-static void existsFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data)
+static void existsFunc(const Variant *v, const JsonPointer::Ref &ref, void *data)
 {
-	QVariant &ret = *((QVariant *)data);
+	Variant &ret = *((Variant *)data);
 
 	if(ref.type == JsonPointer::Ref::Self)
 	{
@@ -186,23 +187,23 @@ static void existsFunc(const QVariant *v, const JsonPointer::Ref &ref, void *dat
 	}
 	else // Array
 	{
-		QVariantList l = v->toList();
+		VariantList l = v->toList();
 		ret = (ref.index >= 0 && ref.index < l.count());
 	}
 }
 
 bool JsonPointer::exists() const
 {
-	QVariant ret;
+	Variant ret;
 	if(execute(existsFunc, &ret))
 		return ret.toBool();
 	else
 		return false;
 }
 
-static void valueFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data)
+static void valueFunc(const Variant *v, const JsonPointer::Ref &ref, void *data)
 {
-	QVariant &ret = *((QVariant *)data);
+	Variant &ret = *((Variant *)data);
 
 	if(ref.type == JsonPointer::Ref::Self)
 	{
@@ -217,24 +218,24 @@ static void valueFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data
 	}
 	else // Array
 	{
-		QVariantList l = v->toList();
+		VariantList l = v->toList();
 		if(ref.index >= 0 && ref.index < l.count())
 			ret = l[ref.index];
 	}
 }
 
-QVariant JsonPointer::value() const
+Variant JsonPointer::value() const
 {
-	QVariant ret;
+	Variant ret;
 	if(execute(valueFunc, &ret))
 		return ret;
 	else
-		return QVariant();
+		return Variant();
 }
 
-static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
+static bool removeFunc(Variant *v, const JsonPointer::Ref &ref, void *data)
 {
-	QVariant &ret = *((QVariant *)data);
+	Variant &ret = *((Variant *)data);
 
 	if(ref.type == JsonPointer::Ref::Self)
 	{
@@ -245,7 +246,7 @@ static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	{
 		if(typeId(*v) == QMetaType::QVariantHash)
 		{
-			QVariantHash h = v->toHash();
+			VariantHash h = v->toHash();
 			if(h.contains(ref.name))
 			{
 				ret = true;
@@ -258,7 +259,7 @@ static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 		}
 		else // Map
 		{
-			QVariantMap m = v->toMap();
+			VariantMap m = v->toMap();
 			if(m.contains(ref.name))
 			{
 				ret = true;
@@ -272,7 +273,7 @@ static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	}
 	else // Array
 	{
-		QVariantList l = v->toList();
+		VariantList l = v->toList();
 		if(ref.index >= 0 && ref.index < l.count())
 		{
 			ret = true;
@@ -287,16 +288,16 @@ static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 
 bool JsonPointer::remove()
 {
-	QVariant ret;
+	Variant ret;
 	if(execute(removeFunc, &ret))
 		return ret.toBool();
 	else
 		return false;
 }
 
-static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
+static bool takeFunc(Variant *v, const JsonPointer::Ref &ref, void *data)
 {
-	QVariant &ret = *((QVariant *)data);
+	Variant &ret = *((Variant *)data);
 
 	if(ref.type == JsonPointer::Ref::Self)
 	{
@@ -307,7 +308,7 @@ static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	{
 		if(typeId(*v) == QMetaType::QVariantHash)
 		{
-			QVariantHash h = v->toHash();
+			VariantHash h = v->toHash();
 			if(h.contains(ref.name))
 			{
 				ret = h.value(ref.name);
@@ -320,7 +321,7 @@ static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 		}
 		else // Map
 		{
-			QVariantMap m = v->toMap();
+			VariantMap m = v->toMap();
 			if(m.contains(ref.name))
 			{
 				ret = m.value(ref.name);
@@ -334,7 +335,7 @@ static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	}
 	else // Array
 	{
-		QVariantList l = v->toList();
+		VariantList l = v->toList();
 		if(ref.index >= 0 && ref.index < l.count())
 		{
 			ret = l[ref.index];
@@ -347,18 +348,18 @@ static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
 	}
 }
 
-QVariant JsonPointer::take()
+Variant JsonPointer::take()
 {
-	QVariant ret;
+	Variant ret;
 	if(execute(takeFunc, &ret))
 		return ret;
 	else
-		return QVariant();
+		return Variant();
 }
 
-static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
+static bool setValueFunc(Variant *v, const JsonPointer::Ref &ref, void *_data)
 {
-	QPair<QVariant, QVariant> &data = *((QPair<QVariant, QVariant> *)_data);
+	QPair<Variant, Variant> &data = *((QPair<Variant, Variant> *)_data);
 
 	if(ref.type == JsonPointer::Ref::Self)
 	{
@@ -370,7 +371,7 @@ static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
 	{
 		if(typeId(*v) == QMetaType::QVariantHash)
 		{
-			QVariantHash h = v->toHash();
+			VariantHash h = v->toHash();
 			h[ref.name] = data.first;
 			*v = h;
 			data.second = true;
@@ -378,7 +379,7 @@ static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
 		}
 		else // Map
 		{
-			QVariantMap m = v->toMap();
+			VariantMap m = v->toMap();
 			m[ref.name] = data.first;
 			*v = m;
 			data.second = true;
@@ -387,7 +388,7 @@ static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
 	}
 	else // Array
 	{
-		QVariantList l = v->toList();
+		VariantList l = v->toList();
 		if(ref.index == -1)
 		{
 			// Append
@@ -408,9 +409,9 @@ static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
 	}
 }
 
-bool JsonPointer::setValue(const QVariant &value)
+bool JsonPointer::setValue(const Variant &value)
 {
-	QPair<QVariant, QVariant> data;
+	QPair<Variant, Variant> data;
 	data.first = value;
 	if(execute(setValueFunc, &data))
 		return data.second.toBool();
@@ -438,7 +439,7 @@ bool JsonPointer::isWithin(const QString &bPointerStr, const QString &aPointerSt
 	return true;
 }
 
-JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QString *errorMessage)
+JsonPointer JsonPointer::resolve(Variant *data, const QString &pointerStr, QString *errorMessage)
 {
 	if(!pointerStr.startsWith('/'))
 	{
@@ -455,7 +456,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 	if(pointerStr.length() == 1)
 		return ptr;
 
-	QVariant i = *ptr.root_;
+	Variant i = *ptr.root_;
 	QStringList parts = pointerStr.split('/').mid(1);
 	foreach(const QString &part, parts)
 	{
@@ -481,7 +482,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 
 				if(typeId(i) == QMetaType::QVariantHash)
 				{
-					QVariantHash h = i.toHash();
+					VariantHash h = i.toHash();
 					if(!h.contains(prevRef.name))
 					{
 						if(errorMessage)
@@ -493,7 +494,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 				}
 				else // Map
 				{
-					QVariantMap m = i.toMap();
+					VariantMap m = i.toMap();
 					if(!m.contains(prevRef.name))
 					{
 						if(errorMessage)
@@ -506,7 +507,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 			}
 			else // Array
 			{
-				QVariantList l = i.toList();
+				VariantList l = i.toList();
 				if(prevRef.index < 0 || prevRef.index >= l.count())
 				{
 					if(errorMessage)
@@ -524,7 +525,7 @@ JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QStr
 		}
 		else if(typeId(i) == QMetaType::QVariantList)
 		{
-			QVariantList l = i.toList();
+			VariantList l = i.toList();
 			if(p == "-")
 			{
 				ptr.refs_ += Ref(-1);

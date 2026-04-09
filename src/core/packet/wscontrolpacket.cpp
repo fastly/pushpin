@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include "qtcompat.h"
+#include "variant.h"
 
 // FIXME: rewrite packet class using this code?
 /*class WsControlPacket
@@ -50,7 +51,7 @@ public:
 	QString channelPrefix;
 	QList<Message> messages;
 
-	static WsControlPacket fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
+	static WsControlPacket fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0)
 	{
 		QString pn = "wscontrol packet";
 
@@ -63,7 +64,7 @@ public:
 		pn = "wscontrol object";
 
 		bool ok_;
-		QVariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
+		VariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
 		if(!ok_)
 		{
 			if(ok)
@@ -73,7 +74,7 @@ public:
 
 		WsControlPacket out;
 
-		foreach(const QVariant &vitem, vitems)
+		foreach(const Variant &vitem, vitems)
 		{
 			Message msg;
 
@@ -133,8 +134,8 @@ public:
 					return WsControlPacket();
 				}
 
-				QVariant vmessage = keyedObjectGetValue(vitem, "message");
-				if(vmessage.type() != QVariant::ByteArray)
+				Variant vmessage = keyedObjectGetValue(vitem, "message");
+				if(vmessage.type() != Variant::ByteArray)
 				{
 					setError(ok, errorMessage, QString("'%1' contains 'message' with wrong type").arg(pn));
 					return WsControlPacket();
@@ -151,16 +152,16 @@ public:
 	}
 };*/
 
-QVariant WsControlPacket::toVariant() const
+Variant WsControlPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	obj["from"] = from;
 
-	QVariantList vitems;
+	VariantList vitems;
 	foreach(const Item &item, items)
 	{
-		QVariantHash vitem;
+		VariantHash vitem;
 
 		vitem["cid"] = item.cid;
 
@@ -243,12 +244,12 @@ QVariant WsControlPacket::toVariant() const
 	return obj;
 }
 
-bool WsControlPacket::fromVariant(const QVariant &in)
+bool WsControlPacket::fromVariant(const Variant &in)
 {
 	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(!obj.contains("from") || typeId(obj["from"]) != QMetaType::QByteArray)
 		return false;
@@ -258,15 +259,15 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 	if(!obj.contains("items") || typeId(obj["items"]) != QMetaType::QVariantList)
 		return false;
 
-	QVariantList vitems = obj["items"].toList();
+	VariantList vitems = obj["items"].toList();
 
 	items.clear();
-	foreach(const QVariant &v, vitems)
+	foreach(const Variant &v, vitems)
 	{
 		if(typeId(v) != QMetaType::QVariantHash)
 			return false;
 
-		QVariantHash vitem = v.toHash();
+		VariantHash vitem = v.toHash();
 
 		Item item;
 

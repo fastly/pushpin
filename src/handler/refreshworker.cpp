@@ -28,13 +28,14 @@
 #include "controlrequest.h"
 #include "statsmanager.h"
 #include "wssession.h"
+#include "variant.h"
 
 RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel) :
 	ignoreErrors_(false),
 	proxyControlClient_(proxyControlClient),
 	req_(req)
 {
-	QVariantHash args = req_->args();
+	VariantHash args = req_->args();
 
 	if(args.contains("cid"))
 	{

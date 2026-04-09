@@ -24,19 +24,20 @@
 #include "acceptrequest.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 #include "acceptdata.h"
 
-static QVariant acceptDataToVariant(const AcceptData &adata)
+static Variant acceptDataToVariant(const AcceptData &adata)
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	{
-		QVariantList vrequests;
+		VariantList vrequests;
 		foreach(const AcceptData::Request &r, adata.requests)
 		{
-			QVariantHash vrequest;
+			VariantHash vrequest;
 
-			QVariantHash vrid;
+			VariantHash vrid;
 			vrid["sender"] = r.rid.first;
 			vrid["id"] = r.rid.second;
 
@@ -92,18 +93,18 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	{
 		const HttpRequestData &requestData = adata.requestData;
-		QVariantHash vrequestData;
+		VariantHash vrequestData;
 
 		vrequestData["method"] = requestData.method.toLatin1();
 		vrequestData["uri"] = requestData.uri.toEncoded();
 
-		QVariantList vheaders;
+		VariantList vheaders;
 		foreach(const HttpHeader &h, requestData.headers)
 		{
-			QVariantList vheader;
+			VariantList vheader;
 			vheader += h.first.asQByteArray();
 			vheader += h.second.asQByteArray();
-			vheaders += QVariant(vheader);
+			vheaders += Variant(vheader);
 		}
 
 		vrequestData["headers"] = vheaders;
@@ -115,18 +116,18 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	{
 		const HttpRequestData &requestData = adata.origRequestData;
-		QVariantHash vrequestData;
+		VariantHash vrequestData;
 
 		vrequestData["method"] = requestData.method.toLatin1();
 		vrequestData["uri"] = requestData.uri.toEncoded();
 
-		QVariantList vheaders;
+		VariantList vheaders;
 		foreach(const HttpHeader &h, requestData.headers)
 		{
-			QVariantList vheader;
+			VariantList vheader;
 			vheader += h.first.asQByteArray();
 			vheader += h.second.asQByteArray();
-			vheaders += QVariant(vheader);
+			vheaders += Variant(vheader);
 		}
 
 		vrequestData["headers"] = vheaders;
@@ -138,7 +139,7 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(adata.haveInspectData)
 	{
-		QVariantHash vinspect;
+		VariantHash vinspect;
 
 		vinspect["no-proxy"] = !adata.inspectData.doProxy;
 
@@ -150,7 +151,7 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 		if(!adata.inspectData.lastIds.isEmpty())
 		{
-			QVariantHash vlastIds;
+			VariantHash vlastIds;
 			QHashIterator<QByteArray, QByteArray> it(adata.inspectData.lastIds);
 			while(it.hasNext())
 			{
@@ -169,18 +170,18 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(adata.haveResponse)
 	{
-		QVariantHash vresponse;
+		VariantHash vresponse;
 
 		vresponse["code"] = adata.response.code;
 		vresponse["reason"] = adata.response.reason;
 
-		QVariantList vheaders;
+		VariantList vheaders;
 		foreach(const HttpHeader &h, adata.response.headers)
 		{
-			QVariantList vheader;
+			VariantList vheader;
 			vheader += h.first.asQByteArray();
 			vheader += h.second.asQByteArray();
-			vheaders += QVariant(vheader);
+			vheaders += Variant(vheader);
 		}
 		vresponse["headers"] = vheaders;
 
@@ -203,7 +204,7 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(!adata.channels.isEmpty())
 	{
-		QVariantList vchannels;
+		VariantList vchannels;
 		foreach(const QByteArray &channel, adata.channels)
 			vchannels += channel;
 		obj["channels"] = vchannels;
@@ -224,7 +225,7 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	return obj;
 }
 
-static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
+static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 {
 	AcceptRequest::ResponseData out;
 
@@ -234,7 +235,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 		return AcceptRequest::ResponseData();
 	}
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(obj.contains("accepted"))
 	{
@@ -255,7 +256,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 			return AcceptRequest::ResponseData();
 		}
 
-		QVariantHash vresponse = obj["response"].toHash();
+		VariantHash vresponse = obj["response"].toHash();
 
 		if(vresponse.contains("code"))
 		{
@@ -287,9 +288,9 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 				return AcceptRequest::ResponseData();
 			}
 
-			foreach(const QVariant &i, vresponse["headers"].toList())
+			foreach(const Variant &i, vresponse["headers"].toList())
 			{
-				QVariantList list = i.toList();
+				VariantList list = i.toList();
 				if(list.count() != 2)
 				{
 					*ok = false;

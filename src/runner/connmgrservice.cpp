@@ -23,7 +23,6 @@
 #include "connmgrservice.h"
 
 #include <QDir>
-#include <QVariantList>
 #include <QProcess>
 #include <QUrl>
 #include "log.h"

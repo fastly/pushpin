@@ -20,6 +20,9 @@
  * $FANOUT_END_LICENSE$
  */
 
+#ifndef QTCOMPAT_H
+#define QTCOMPAT_H
+
 #include <QMetaType>
 #include <QVariant>
 
@@ -40,3 +43,5 @@ inline bool canConvert(const QVariant &v, QMetaType::Type type)
     return v.canConvert(type);
 #endif
 }
+
+#endif

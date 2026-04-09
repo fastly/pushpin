@@ -25,7 +25,7 @@
 #define STATSPACKET_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 #include <QHostAddress>
 
 class StatsPacket
@@ -121,8 +121,8 @@ public:
 	{
 	}
 
-	QVariant toVariant() const;
-	bool fromVariant(const QByteArray &type, const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const QByteArray &type, const Variant &in);
 };
 
 #endif

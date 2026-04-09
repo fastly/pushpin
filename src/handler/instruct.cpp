@@ -23,10 +23,10 @@
 
 #include "instruct.h"
 
-#include <QVariant>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qtcompat.h"
+#include "variant.h"
 #include "variantutil.h"
 #include "statusreasons.h"
 #include "filter.h"
@@ -395,7 +395,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			return Instruct();
 		}
 
-		QVariantMap minstruct = doc.object().toVariantMap();
+		VariantMap minstruct = doc.object().toVariantMap();
 
 		bool ok_;
 
@@ -409,7 +409,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			QString pn = "hold";
 
-			QVariant vhold = minstruct["hold"];
+			Variant vhold = minstruct["hold"];
 
 			QString modeStr = getString(vhold, pn, "mode", false, &ok_, errorMessage);
 			if(!ok_)
@@ -440,7 +440,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				holdMode = ResponseHold;
 			}
 
-			QVariantList vchannels = getList(vhold, pn, "channels", true, &ok_, errorMessage);
+			VariantList vchannels = getList(vhold, pn, "channels", true, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -448,7 +448,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				return Instruct();
 			}
 
-			foreach(const QVariant &vchannel, vchannels)
+			foreach(const Variant &vchannel, vchannels)
 			{
 				QString cpn = "channel";
 				Channel c;
@@ -469,7 +469,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					return Instruct();
 				}
 
-				QVariantList vfilters = getList(vchannel, cpn, "filters", false, &ok_, errorMessage);
+				VariantList vfilters = getList(vchannel, cpn, "filters", false, &ok_, errorMessage);
 				if(!ok_)
 				{
 					if(ok)
@@ -477,7 +477,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					return Instruct();
 				}
 
-				foreach(const QVariant &vfilter, vfilters)
+				foreach(const Variant &vfilter, vfilters)
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -494,7 +494,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			if(keyedObjectContains(vhold, "timeout"))
 			{
-				QVariant vtimeout = keyedObjectGetValue(vhold, "timeout");
+				Variant vtimeout = keyedObjectGetValue(vhold, "timeout");
 				if(!canConvert(vtimeout, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
@@ -510,7 +510,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 			}
 
-			QVariant vka = getKeyedObject(vhold, pn, "keep-alive", false, &ok_, errorMessage);
+			Variant vka = getKeyedObject(vhold, pn, "keep-alive", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -536,7 +536,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 				else if(keyedObjectContains(vka, "content"))
 				{
-					QVariant vcontent = keyedObjectGetValue(vka, "content");
+					Variant vcontent = keyedObjectGetValue(vka, "content");
 					if(typeId(vcontent) == QMetaType::QByteArray)
 						keepAliveData = vcontent.toByteArray();
 					else if(typeId(vcontent) == QMetaType::QString)
@@ -550,7 +550,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 				if(keyedObjectContains(vka, "timeout"))
 				{
-					QVariant vtimeout = keyedObjectGetValue(vka, "timeout");
+					Variant vtimeout = keyedObjectGetValue(vka, "timeout");
 					if(!canConvert(vtimeout, QMetaType::Int))
 					{
 						setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(kpn));
@@ -571,7 +571,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 			}
 
-			QVariant vmeta = getKeyedObject(vhold, pn, "meta", false, &ok_, errorMessage);
+			Variant vmeta = getKeyedObject(vhold, pn, "meta", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -583,14 +583,14 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			{
 				if(typeId(vmeta) == QMetaType::QVariantHash)
 				{
-					QVariantHash hmeta = vmeta.toHash();
+					VariantHash hmeta = vmeta.toHash();
 
-					QHashIterator<QString, QVariant> it(hmeta);
+					QHashIterator<QString, Variant> it(hmeta);
 					while(it.hasNext())
 					{
 						it.next();
 						const QString &key = it.key();
-						const QVariant &vval = it.value();
+						const Variant &vval = it.value();
 
 						QString val = getString(vval, &ok_);
 						if(!ok_)
@@ -604,14 +604,14 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 				else // Map
 				{
-					QVariantMap mmeta = vmeta.toMap();
+					VariantMap mmeta = vmeta.toMap();
 
-					QMapIterator<QString, QVariant> it(mmeta);
+					QMapIterator<QString, Variant> it(mmeta);
 					while(it.hasNext())
 					{
 						it.next();
 						const QString &key = it.key();
-						const QVariant &vval = it.value();
+						const Variant &vval = it.value();
 
 						QString val = getString(vval, &ok_);
 						if(!ok_)
@@ -638,13 +638,13 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				return Instruct();
 			}
 
-			QVariant in = minstruct["response"];
+			Variant in = minstruct["response"];
 
 			QString pn = "response";
 
 			if(keyedObjectContains(in, "code"))
 			{
-				QVariant vcode = keyedObjectGetValue(in, "code");
+				Variant vcode = keyedObjectGetValue(in, "code");
 				if(!canConvert(vcode, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
@@ -677,10 +677,10 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			if(keyedObjectContains(in, "headers"))
 			{
-				QVariant vheaders = keyedObjectGetValue(in, "headers");
+				Variant vheaders = keyedObjectGetValue(in, "headers");
 				if(typeId(vheaders) == QMetaType::QVariantList)
 				{
-					foreach(const QVariant &vheader, vheaders.toList())
+					foreach(const Variant &vheader, vheaders.toList())
 					{
 						if(typeId(vheader) != QMetaType::QVariantList)
 						{
@@ -688,7 +688,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 							return Instruct();
 						}
 
-						QVariantList lheader = vheader.toList();
+						VariantList lheader = vheader.toList();
 						if(lheader.count() != 2)
 						{
 							setError(ok, errorMessage, "headers contains list with wrong number of elements");
@@ -716,14 +716,14 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				{
 					if(typeId(vheaders) == QMetaType::QVariantHash)
 					{
-						QVariantHash hheaders = vheaders.toHash();
+						VariantHash hheaders = vheaders.toHash();
 
-						QHashIterator<QString, QVariant> it(hheaders);
+						QHashIterator<QString, Variant> it(hheaders);
 						while(it.hasNext())
 						{
 							it.next();
 							const QString &key = it.key();
-							const QVariant &vval = it.value();
+							const Variant &vval = it.value();
 
 							QString val = getString(vval, &ok_);
 							if(!ok_)
@@ -737,14 +737,14 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					}
 					else // Map
 					{
-						QVariantMap mheaders = vheaders.toMap();
+						VariantMap mheaders = vheaders.toMap();
 
-						QMapIterator<QString, QVariant> it(mheaders);
+						QMapIterator<QString, Variant> it(mheaders);
 						while(it.hasNext())
 						{
 							it.next();
 							const QString &key = it.key();
-							const QVariant &vval = it.value();
+							const Variant &vval = it.value();
 
 							QString val = getString(vval, &ok_);
 							if(!ok_)
@@ -778,7 +778,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			}
 			else if(keyedObjectContains(in, "body"))
 			{
-				QVariant vcontent = keyedObjectGetValue(in, "body");
+				Variant vcontent = keyedObjectGetValue(in, "body");
 				if(typeId(vcontent) == QMetaType::QByteArray)
 					newResponse.body = vcontent.toByteArray();
 				else if(typeId(vcontent) == QMetaType::QString)

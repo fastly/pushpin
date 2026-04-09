@@ -24,10 +24,11 @@
 #include "zrpcrequestpacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-QVariant ZrpcRequestPacket::toVariant() const
+Variant ZrpcRequestPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	if(!from.isEmpty())
 		obj["from"] = from;
@@ -43,12 +44,12 @@ QVariant ZrpcRequestPacket::toVariant() const
 	return obj;
 }
 
-bool ZrpcRequestPacket::fromVariant(const QVariant &in)
+bool ZrpcRequestPacket::fromVariant(const Variant &in)
 {
 	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(obj.contains("from"))
 	{

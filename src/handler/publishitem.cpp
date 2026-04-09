@@ -24,11 +24,12 @@
 #include "publishitem.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 #include "variantutil.h"
 
 using namespace VariantUtil;
 
-PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &channel, bool *ok, QString *errorMessage)
+PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channel, bool *ok, QString *errorMessage)
 {
 	QString pn = "publish item object";
 
@@ -72,7 +73,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 		return PublishItem();
 	}
 
-	QVariant vformats = getKeyedObject(vitem, pn, "formats", false, &ok_, errorMessage);
+	Variant vformats = getKeyedObject(vitem, pn, "formats", false, &ok_, errorMessage);
 	if(!ok_)
 	{
 		if(ok)
@@ -84,7 +85,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 	{
 		vformats = createSameKeyedObject(vitem);
 
-		QVariant v = keyedObjectGetValue(vitem, "http-response");
+		Variant v = keyedObjectGetValue(vitem, "http-response");
 		if(v.isValid())
 			keyedObjectInsert(&vformats, "http-response", v);
 
@@ -142,7 +143,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 		item.formats.insert(f.type, f);
 	}
 
-	QVariant vmeta = getKeyedObject(vitem, pn, "meta", false, &ok_, errorMessage);
+	Variant vmeta = getKeyedObject(vitem, pn, "meta", false, &ok_, errorMessage);
 	if(!ok_)
 	{
 		if(ok)
@@ -154,14 +155,14 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 	{
 		if(typeId(vmeta) == QMetaType::QVariantHash)
 		{
-			QVariantHash hmeta = vmeta.toHash();
+			VariantHash hmeta = vmeta.toHash();
 
-			QHashIterator<QString, QVariant> it(hmeta);
+			QHashIterator<QString, Variant> it(hmeta);
 			while(it.hasNext())
 			{
 				it.next();
 				const QString &key = it.key();
-				const QVariant &vval = it.value();
+				const Variant &vval = it.value();
 
 				QString val = getString(vval, &ok_);
 				if(!ok_)
@@ -175,14 +176,14 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 		}
 		else // Map
 		{
-			QVariantMap mmeta = vmeta.toMap();
+			VariantMap mmeta = vmeta.toMap();
 
-			QMapIterator<QString, QVariant> it(mmeta);
+			QMapIterator<QString, Variant> it(mmeta);
 			while(it.hasNext())
 			{
 				it.next();
 				const QString &key = it.key();
-				const QVariant &vval = it.value();
+				const Variant &vval = it.value();
 
 				QString val = getString(vval, &ok_);
 				if(!ok_)
@@ -198,7 +199,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 
 	if(keyedObjectContains(vitem, "size"))
 	{
-		QVariant vsize = keyedObjectGetValue(vitem, "size");
+		Variant vsize = keyedObjectGetValue(vitem, "size");
 		if(!canConvert(vsize, QMetaType::Int))
 		{
 			setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
@@ -216,7 +217,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 
 	if(keyedObjectContains(vitem, "no-seq"))
 	{
-		QVariant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
+		Variant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
 		if(typeId(vnoSeq) != QMetaType::Bool)
 		{
 			setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));

@@ -24,8 +24,9 @@
 #include "statspacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-static bool tryGetInt(const QVariantHash &obj, const QString &name, int *result)
+static bool tryGetInt(const VariantHash &obj, const QString &name, int *result)
 {
 	if(obj.contains(name))
 	{
@@ -38,9 +39,9 @@ static bool tryGetInt(const QVariantHash &obj, const QString &name, int *result)
 	return true;
 }
 
-QVariant StatsPacket::toVariant() const
+Variant StatsPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	if(!from.isEmpty())
 		obj["from"] = from;
@@ -174,12 +175,12 @@ QVariant StatsPacket::toVariant() const
 	return obj;
 }
 
-bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
+bool StatsPacket::fromVariant(const QByteArray &_type, const Variant &in)
 {
 	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(obj.contains("from"))
 	{

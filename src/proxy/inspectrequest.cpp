@@ -25,9 +25,10 @@
 
 #include "packet/httprequestdata.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "inspectdata.h"
 
-static InspectData resultToData(const QVariant &in, bool *ok)
+static InspectData resultToData(const Variant &in, bool *ok)
 {
 	InspectData out;
 
@@ -37,7 +38,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 		return InspectData();
 	}
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != QMetaType::Bool)
 	{
@@ -79,8 +80,8 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 			return InspectData();
 		}
 
-		QVariantHash vlastIds = obj["last-ids"].toHash();
-		QHashIterator<QString, QVariant> it(vlastIds);
+		VariantHash vlastIds = obj["last-ids"].toHash();
+		QHashIterator<QString, Variant> it(vlastIds);
 		while(it.hasNext())
 		{
 			it.next();
@@ -133,18 +134,18 @@ InspectData InspectRequest::result() const
 
 void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession, bool autoShare)
 {
-	QVariantHash args;
+	VariantHash args;
 
 	args["method"] = hdata.method.toLatin1();
 	args["uri"] = hdata.uri.toEncoded();
 
-	QVariantList vheaders;
+	VariantList vheaders;
 	foreach(const HttpHeader &h, hdata.headers)
 	{
-		QVariantList vheader;
+		VariantList vheader;
 		vheader += h.first.asQByteArray();
 		vheader += h.second.asQByteArray();
-		vheaders += QVariant(vheader);
+		vheaders += Variant(vheader);
 	}
 
 	args["headers"] = vheaders;

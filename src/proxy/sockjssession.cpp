@@ -29,6 +29,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
@@ -294,7 +295,7 @@ public:
 		state = Connecting;
 	}
 
-	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
+	void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
 		manager->respondOk(req, data, prefix, jsonpCallback);
 	}
@@ -325,7 +326,7 @@ public:
 		{
 			if(req)
 			{
-				QVariantList out;
+				VariantList out;
 				out += 2010;
 				out += QString("Another connection still open");
 
@@ -336,7 +337,7 @@ public:
 
 			if(peerClosed)
 			{
-				QVariantList out;
+				VariantList out;
 				out += 3000;
 				out += QString("Client already closed connection");
 
@@ -402,11 +403,11 @@ public:
 				return;
 			}
 
-			QVariantList messages = doc.array().toVariantList();
+			VariantList messages = doc.array().toVariantList();
 
 			QList<Frame> frames;
 			int bytes = 0;
-			foreach(const QVariant &vmessage, messages)
+			foreach(const Variant &vmessage, messages)
 			{
 				if(typeId(vmessage) != QMetaType::QString)
 				{
@@ -463,7 +464,7 @@ public:
 
 			ri->type = RequestItem::Accept;
 			ri->responded = true;
-			respondOk(req, QVariant(), "o", ri->jsonpCallback);
+			respondOk(req, Variant(), "o", ri->jsonpCallback);
 		}
 		else
 		{
@@ -545,7 +546,7 @@ public:
 			}
 			else // WebSocketFramed
 			{
-				QVariantList messages;
+				VariantList messages;
 				messages += QString::fromUtf8(frame.data);
 
 				QByteArray arrayJson = QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact);
@@ -611,7 +612,7 @@ public:
 		if(ri->responded)
 			return;
 
-		QVariantList messages;
+		VariantList messages;
 
 		int frames = 0;
 		int bytes = 0;
@@ -666,7 +667,7 @@ public:
 		else if(state == Closing)
 		{
 			closeSent = true;
-			QVariant closeValue = applyLinger();
+			Variant closeValue = applyLinger();
 
 			ri->type = RequestItem::ReceiveClose;
 			ri->responded = true;
@@ -788,11 +789,11 @@ public:
 					break;
 				}
 
-				QVariantList messages = doc.array().toVariantList();
+				VariantList messages = doc.array().toVariantList();
 
 				QList<Frame> frames;
 				int bytes = 0;
-				foreach(const QVariant &vmessage, messages)
+				foreach(const Variant &vmessage, messages)
 				{
 					if(typeId(vmessage) != QMetaType::QString)
 					{
@@ -880,9 +881,9 @@ public:
 		q->framesWritten(count, contentBytes);
 	}
 
-	QVariant applyLinger()
+	Variant applyLinger()
 	{
-		QVariantList closeValue;
+		VariantList closeValue;
 
 		if(closeCode != -1)
 			closeValue += closeCode;
@@ -1088,7 +1089,7 @@ public:
 				assert(ri && !ri->responded);
 
 				ri->responded = true;
-				respondOk(req, QVariant(), "h", ri->jsonpCallback);
+				respondOk(req, Variant(), "h", ri->jsonpCallback);
 			}
 			else
 			{

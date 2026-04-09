@@ -25,7 +25,7 @@
 #define REQUESTSTATE_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 #include <QHostAddress>
 #include "zhttprequest.h"
 
@@ -47,7 +47,7 @@ public:
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
 	int unreportedTime;
-	QVariant userData;
+	Variant userData;
 
 	RequestState() :
 		responseCode(-1),
@@ -64,7 +64,7 @@ public:
 	{
 	}
 
-	static RequestState fromVariant(const QVariant &in);
+	static RequestState fromVariant(const Variant &in);
 };
 
 #endif

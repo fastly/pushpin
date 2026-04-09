@@ -35,6 +35,7 @@
 #include "zmqreqmessage.h"
 #include "log.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httprequestdata.h"
@@ -201,7 +202,7 @@ private:
 	void processClientIn(const CowByteArray &message)
 	{
 		log_debug("client in");
-		QVariant v = TnetString::toVariant(message);
+		Variant v = TnetString::toVariant(message);
 		ZhttpResponsePacket zresp;
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
@@ -266,7 +267,7 @@ private:
 	void zhttpServerIn_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server in");
-		QVariant v = TnetString::toVariant(message[0].mid(1));
+		Variant v = TnetString::toVariant(message[0].mid(1));
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
 
@@ -282,7 +283,7 @@ private:
 	void zhttpServerInStream_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server stream in");
-		QVariant v = TnetString::toVariant(message[2].mid(1));
+		Variant v = TnetString::toVariant(message[2].mid(1));
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
 
@@ -471,20 +472,20 @@ private:
 	void handlerInspect_readyRead(const CowByteArrayList &_message)
 	{
 		ZmqReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0]);
+		Variant v = TnetString::toVariant(message.content()[0]);
 		log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		inspected = true;
 
 		if(inspectEnabled)
 		{
-			QVariantHash vreq = v.toHash();
-			QVariantHash args = vreq["args"].toHash();
-			QVariantHash respValue;
+			VariantHash vreq = v.toHash();
+			VariantHash args = vreq["args"].toHash();
+			VariantHash respValue;
 			respValue["no-proxy"] = false;
 			if(!sharingKey.isEmpty())
 				respValue["sharing-key"] = sharingKey;
-			QVariantHash vresp;
+			VariantHash vresp;
 			vresp["id"] = vreq["id"];
 			vresp["success"] = true;
 			vresp["value"] = respValue;
@@ -496,27 +497,27 @@ private:
 	void handlerAccept_readyRead(const CowByteArrayList &_message)
 	{
 		ZmqReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0]);
+		Variant v = TnetString::toVariant(message.content()[0]);
 		log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
 
-		QVariantHash vreq = v.toHash();
+		VariantHash vreq = v.toHash();
 
 		if(vreq["method"].toString() != "accept")
 			return;
 
-		QVariantHash vaccept = vreq["args"].toHash();
-		QVariantHash vresponse = vaccept["response"].toHash();
+		VariantHash vaccept = vreq["args"].toHash();
+		VariantHash vresponse = vaccept["response"].toHash();
 
 		acceptHeaders.clear();
-		foreach(const QVariant &vheader, vresponse["headers"].toList())
+		foreach(const Variant &vheader, vresponse["headers"].toList())
 		{
-			QVariantList h = vheader.toList();
+			VariantList h = vheader.toList();
 			acceptHeaders += HttpHeader(h[0].toByteArray(), h[1].toByteArray());
 		}
 
 		acceptIn = vresponse["body"].toByteArray();
 
-		QVariantMap jsonInstruct;
+		VariantMap jsonInstruct;
 		QByteArray hold;
 
 		if(acceptHeaders.get("Content-Type") == "application/grip-instruct")
@@ -536,10 +537,10 @@ private:
 			hold = acceptHeaders.get("Grip-Hold").asQByteArray();
 		}
 
-		QVariantList vheaders = vresponse["headers"].toList();
+		VariantList vheaders = vresponse["headers"].toList();
 		for(int n = 0; n < vheaders.count(); ++n)
 		{
-			QVariantList h = vheaders[n].toList();
+			VariantList h = vheaders[n].toList();
 			if(h[0].toByteArray().startsWith("Grip-"))
 			{
 				vheaders.removeAt(n);
@@ -548,10 +549,10 @@ private:
 		}
 		vresponse["headers"] = vheaders;
 
-		QVariantHash vresp;
+		VariantHash vresp;
 		vresp["id"] = vreq["id"];
 		vresp["success"] = true;
-		QVariantHash respValue;
+		VariantHash respValue;
 		if(!hold.isEmpty())
 			respValue["accepted"] = true;
 		else if(!vaccept.value("response-sent").toBool())
@@ -566,7 +567,7 @@ private:
 			if(jsonInstruct.contains("hold") && jsonInstruct["hold"].toMap()["channels"].toList()[0].toMap().contains("prev-id"))
 			{
 				retried = true;
-				QVariantHash vretry;
+				VariantHash vretry;
 				vretry["requests"] = vaccept["requests"];
 				vretry["request-data"] = vaccept["request-data"];
 				QByteArray buf = TnetString::fromVariant(vretry);
@@ -772,7 +773,7 @@ static void passthroughJsonp(TestState &state, std::function<void (int)> loop_wa
 	TEST_ASSERT(e.error == QJsonParseError::NoError);
 	TEST_ASSERT(doc.isObject());
 
-	QVariantMap data = doc.object().toVariantMap();
+	VariantMap data = doc.object().toVariantMap();
 
 	TEST_ASSERT_EQ(data["code"].toInt(), 200);
 	TEST_ASSERT_EQ(data["body"].toByteArray(), QByteArray("{\"hello\": \"world\"}"));

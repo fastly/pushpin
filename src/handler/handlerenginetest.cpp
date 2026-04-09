@@ -32,6 +32,7 @@
 #include "qtcompat.h"
 #include "log.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
@@ -60,7 +61,7 @@ public:
 
 	QDir workDir;
 	bool acceptSuccess;
-	QVariantHash acceptValue;
+	VariantHash acceptValue;
 	bool finished;
 	QHash<QByteArray, HttpResponseData> responses;
 	int serverReqs;
@@ -162,7 +163,7 @@ public:
 	{
 		log_debug("client in");
 
-		QVariant v = TnetString::toVariant(message);
+		Variant v = TnetString::toVariant(message);
 		ZhttpResponsePacket zresp;
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
@@ -205,7 +206,7 @@ public:
 	{
 		++serverReqs;
 		log_debug("server in");
-		QVariant v = TnetString::toVariant(message[0].mid(1));
+		Variant v = TnetString::toVariant(message[0].mid(1));
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
 
@@ -215,7 +216,7 @@ public:
 	void zhttpServerInStream_readyRead(const CowByteArrayList &message)
 	{
 		log_debug("server stream in");
-		QVariant v = TnetString::toVariant(message[2].mid(1));
+		Variant v = TnetString::toVariant(message[2].mid(1));
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
 
@@ -273,10 +274,10 @@ public:
 	void proxyAccept_readyRead(const CowByteArrayList &_message)
 	{
 		ZmqReqMessage message(_message);
-		QVariant v = TnetString::toVariant(message.content()[0]);
+		Variant v = TnetString::toVariant(message.content()[0]);
 
 		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);
-		QVariantHash vresp = v.toHash();
+		VariantHash vresp = v.toHash();
 
 		TEST_ASSERT(vresp.value("success").toBool());
 
@@ -367,39 +368,39 @@ static void acceptNoHold(Wrapper *wrapper, std::function<void (int)> loop_wait)
 
 	QByteArray id = "1";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("hello world\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -419,40 +420,40 @@ static void acceptNoHoldResponseSent(Wrapper *wrapper, std::function<void (int)>
 
 	QByteArray id = "2";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("hello world\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 	args["response-sent"] = true;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -472,40 +473,40 @@ static void acceptNoHoldNext(Wrapper *wrapper, std::function<void (int)> loop_wa
 
 	QByteArray id = "3";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Link") << QByteArray("</next>; rel=next"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Link") << QByteArray("</next>; rel=next"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("hello world\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -530,11 +531,11 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (i
 
 	QByteArray id = "4";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
@@ -542,30 +543,30 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void (i
 	reqState["router-resp"] = true;
 	reqState["response-code"] = 200;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Link") << QByteArray("</next>; rel=next"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Link") << QByteArray("</next>; rel=next"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("hello world\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 	args["response-sent"] = true;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -590,41 +591,41 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 
 	QByteArray id = "5";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Hold") << QByteArray("response"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Hold") << QByteArray("response"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("timeout\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -636,10 +637,10 @@ static void publishResponse(Wrapper *wrapper, std::function<void (int)> loop_wai
 
 	data.clear();
 
-	QVariantHash hr;
+	VariantHash hr;
 	hr["body"] = QByteArray("hello world\n");
 
-	QVariantHash formats;
+	VariantHash formats;
 	formats["http-response"] = hr;
 
 	data["channel"] = QByteArray("apple");
@@ -660,41 +661,41 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 
 	QByteArray id = "6";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Hold") << QByteArray("stream"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Hold") << QByteArray("stream"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("stream open\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -707,10 +708,10 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["content"] = QByteArray("hello world\n");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -723,10 +724,10 @@ static void publishStream(Wrapper *wrapper, std::function<void (int)> loop_wait)
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["action"] = QByteArray("close");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -749,41 +750,41 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 
 	QByteArray id = "7";
 
-	QVariantHash rid;
+	VariantHash rid;
 	rid["sender"] = QByteArray("test-client");
 	rid["id"] = id;
 
-	QVariantHash reqState;
+	VariantHash reqState;
 	reqState["rid"] = rid;
 	reqState["in-seq"] = 1;
 	reqState["out-seq"] = 1;
 	reqState["out-credits"] = 1000;
 	reqState["router-resp"] = true;
 
-	QVariantHash req;
+	VariantHash req;
 	req["method"] = QByteArray("GET");
 	req["uri"] = QByteArray("http://example.com/path");
-	QVariantList reqHeaders;
+	VariantList reqHeaders;
 	req["headers"] = reqHeaders;
 	req["body"] = QByteArray();
 
-	QVariantHash resp;
+	VariantHash resp;
 	resp["code"] = 200;
 	resp["reason"] = QByteArray("OK");
-	QVariantList respHeaders;
-	respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Hold") << QByteArray("stream"));
-	respHeaders += QVariant(QVariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
+	VariantList respHeaders;
+	respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Hold") << QByteArray("stream"));
+	respHeaders += Variant(VariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
 	resp["headers"] = respHeaders;
 	resp["body"] = QByteArray("stream open\n");
 
-	QVariantHash args;
-	args["requests"] = QVariantList() << reqState;
+	VariantHash args;
+	args["requests"] = VariantList() << reqState;
 	args["request-data"] = req;
 	args["orig-request-data"] = req;
 	args["response"] = resp;
 
-	QVariantHash data;
+	VariantHash data;
 	data["id"] = id;
 	data["method"] = QByteArray("accept");
 	data["args"] = args;
@@ -796,10 +797,10 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["content"] = QByteArray("one\n");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -813,10 +814,10 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["action"] = QByteArray("close");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -831,10 +832,10 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["content"] = QByteArray("four\n");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -849,10 +850,10 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["content"] = QByteArray("three\n");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");
@@ -867,10 +868,10 @@ static void publishStreamReorder(Wrapper *wrapper, std::function<void (int)> loo
 	data.clear();
 
 	{
-		QVariantHash hs;
+		VariantHash hs;
 		hs["content"] = QByteArray("two\n");
 
-		QVariantHash formats;
+		VariantHash formats;
 		formats["http-stream"] = hs;
 
 		data["channel"] = QByteArray("apple");

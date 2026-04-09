@@ -23,10 +23,10 @@
 #include "m2adapterservice.h"
 
 #include <QDir>
-#include <QVariantList>
 #include <QProcess>
 #include "log.h"
 #include "template.h"
+#include "variant.h"
 
 M2AdapterService::M2AdapterService(
 	const QString &binFile,
@@ -72,11 +72,11 @@ bool M2AdapterService::acceptSighup() const
 
 bool M2AdapterService::preStart()
 {
-	QVariantList portStrs;
+	VariantList portStrs;
 	foreach(int port, ports_)
 		portStrs += QString::number(port);
 
-	QVariantMap context;
+	VariantMap context;
 	context["ports"] = portStrs;
 	context["rundir"] = runDir_;
 	context["ipc_prefix"] = ipcPrefix_;

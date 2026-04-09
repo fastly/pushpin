@@ -32,6 +32,7 @@
 #include <QCryptographicHash>
 #include <QRandomGenerator>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "timer.h"
@@ -63,7 +64,7 @@ const char *iframeHtmlTemplate =
 
 static QByteArray serializeJsonString(const QString &s)
 {
-	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s)).toJson(QJsonDocument::Compact);
 
 	assert(tmp.length() >= 4);
 	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -98,7 +99,7 @@ public:
 		bool pending;
 		SockJsSession *ext;
 		std::unique_ptr<Timer> timer;
-		QVariant closeValue;
+		Variant closeValue;
 		Connection timerConnection;
 
 		Session(Private *_owner) :
@@ -206,7 +207,7 @@ public:
 			removeSession(s);
 	}
 
-	void setLinger(SockJsSession *ext, const QVariant &closeValue)
+	void setLinger(SockJsSession *ext, const Variant &closeValue)
 	{
 		Session *s = sessionsByExt.value(ext);
 		assert(s);
@@ -317,7 +318,7 @@ public:
 		respond(req, 204, "No Content", headers, QByteArray());
 	}
 
-	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
+	void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
 		HttpHeaders headers;
 		if(!jsonpCallback.isEmpty())
@@ -422,9 +423,9 @@ public:
 		{
 			uint32_t x = QRandomGenerator::global()->generate();
 
-			QVariantMap out;
+			VariantMap out;
 			out["websocket"] = true;
-			out["origins"] = QVariantList() << QString("*:*");
+			out["origins"] = VariantList() << QString("*:*");
 			out["cookie_needed"] = false;
 			out["entropy"] = x;
 			respondOk(s->req, out);
@@ -477,7 +478,7 @@ public:
 						}
 						else
 						{
-							QVariantList out;
+							VariantList out;
 							out += 2010;
 							out += QString("Another connection still open");
 							respondOk(s->req, out, "c", s->jsonpCallback);
@@ -711,12 +712,12 @@ void SockJsManager::unlink(SockJsSession *sess)
 	d->unlink(sess);
 }
 
-void SockJsManager::setLinger(SockJsSession *ext, const QVariant &closeValue)
+void SockJsManager::setLinger(SockJsSession *ext, const Variant &closeValue)
 {
 	d->setLinger(ext, closeValue);
 }
 
-void SockJsManager::respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
+void SockJsManager::respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
 {
 	d->respondOk(req, data, prefix, jsonpCallback);
 }

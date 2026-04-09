@@ -29,6 +29,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "timer.h"
+#include "variant.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
@@ -75,7 +76,7 @@ public:
 	QString clientCert;
 	QString clientKey;
 	bool sendBodyAfterAck;
-	QVariant passthrough;
+	Variant passthrough;
 	QString requestMethod;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -91,7 +92,7 @@ public:
 	QByteArray responseReason;
 	HttpHeaders responseHeaders;
 	BufferList responseBodyBuf;
-	QVariant userData;
+	Variant userData;
 	bool pausing;
 	bool paused;
 	bool pendingUpdate;
@@ -1199,7 +1200,7 @@ ZhttpRequest::Rid ZhttpRequest::rid() const
 	return d->rid;
 }
 
-QVariant ZhttpRequest::passthroughData() const
+Variant ZhttpRequest::passthroughData() const
 {
 	return d->passthrough;
 }
@@ -1255,7 +1256,7 @@ void ZhttpRequest::setSendBodyAfterAcknowledgement(bool on)
 	d->sendBodyAfterAck = on;
 }
 
-void ZhttpRequest::setPassthroughData(const QVariant &data)
+void ZhttpRequest::setPassthroughData(const Variant &data)
 {
 	d->passthrough = data;
 }

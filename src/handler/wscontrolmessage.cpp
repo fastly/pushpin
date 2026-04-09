@@ -23,13 +23,13 @@
 
 #include "wscontrolmessage.h"
 
-#include <QVariant>
 #include "qtcompat.h"
+#include "variant.h"
 #include "variantutil.h"
 
 using namespace VariantUtil;
 
-WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QString *errorMessage)
+WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QString *errorMessage)
 {
 	QString pn = "grip control packet";
 
@@ -92,7 +92,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 
 		if(out.type == Subscribe)
 		{
-			QVariantList vfilters = getList(in, pn, "filters", false, &ok_, errorMessage);
+			VariantList vfilters = getList(in, pn, "filters", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -100,7 +100,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 				return WsControlMessage();
 			}
 
-			foreach(const QVariant &vfilter, vfilters)
+			foreach(const Variant &vfilter, vfilters)
 			{
 				QString filter = getString(vfilter, &ok_);
 				if(!ok_)
@@ -181,7 +181,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 
 		if(keyedObjectContains(in, "content-bin"))
 		{
-			QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+			Variant vcontentBin = keyedObjectGetValue(in, "content-bin");
 
 			if(typeId(in) == QMetaType::QVariantMap) // JSON input
 			{
@@ -209,7 +209,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		}
 		else if(keyedObjectContains(in, "content"))
 		{
-			QVariant vcontent = keyedObjectGetValue(in, "content");
+			Variant vcontent = keyedObjectGetValue(in, "content");
 			if(typeId(vcontent) == QMetaType::QByteArray)
 				out.content = vcontent.toByteArray();
 			else if(typeId(vcontent) == QMetaType::QString)
@@ -228,7 +228,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		{
 			if(keyedObjectContains(in, "timeout"))
 			{
-				QVariant vtimeout = keyedObjectGetValue(in, "timeout");
+				Variant vtimeout = keyedObjectGetValue(in, "timeout");
 				if(!canConvert(vtimeout, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));

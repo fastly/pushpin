@@ -25,7 +25,7 @@
 #define ZRPCREQUESTPACKET_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 
 class ZrpcRequestPacket
 {
@@ -33,10 +33,10 @@ public:
 	QByteArray from;
 	QByteArray id;
 	QString method;
-	QVariantHash args;
+	VariantHash args;
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif

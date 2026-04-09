@@ -28,6 +28,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "variant.h"
 
 namespace Jwt {
 
@@ -205,7 +206,7 @@ QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const Dec
 	return out;
 }
 
-QByteArray encode(const QVariant &claim, const EncodingKey &key)
+QByteArray encode(const Variant &claim, const EncodingKey &key)
 {
 	Algorithm alg;
 	switch(key.type())
@@ -223,7 +224,7 @@ QByteArray encode(const QVariant &claim, const EncodingKey &key)
 	return encodeWithAlgorithm(alg, claimJson, key);
 }
 
-QVariant decode(const QByteArray &token, const DecodingKey &key)
+Variant decode(const QByteArray &token, const DecodingKey &key)
 {
 	Algorithm alg;
 	switch(key.type())
@@ -231,17 +232,17 @@ QVariant decode(const QByteArray &token, const DecodingKey &key)
 		case Jwt::KeyType::Secret: alg = Jwt::HS256; break;
 		case Jwt::KeyType::Ec: alg = Jwt::ES256; break;
 		case Jwt::KeyType::Rsa: alg = Jwt::RS256; break;
-		default: return QVariant();
+		default: return Variant();
 	}
 
 	QByteArray claimJson = decodeWithAlgorithm(alg, token, key);
 	if(claimJson.isEmpty())
-		return QVariant();
+		return Variant();
 
 	QJsonParseError error;
 	QJsonDocument doc = QJsonDocument::fromJson(claimJson, &error);
 	if(error.error != QJsonParseError::NoError || !doc.isObject())
-		return QVariant();
+		return Variant();
 
 	return doc.object().toVariantMap();
 }

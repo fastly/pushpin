@@ -24,20 +24,21 @@
 #include "test.h"
 #include "publishformat.h"
 #include "publishitem.h"
+#include "variant.h"
 
 static void parseItem()
 {
-	QVariantHash meta;
+	VariantHash meta;
 	meta["foo"] = QByteArray("bar");
 	meta["bar"] = QByteArray("baz");
 
-	QVariantHash hs;
+	VariantHash hs;
 	hs["content"] = QByteArray("hello world");
 
-	QVariantHash formats;
+	VariantHash formats;
 	formats["http-stream"] = hs;
 
-	QVariantHash data;
+	VariantHash data;
 	data["channel"] = QByteArray("apple");
 	data["id"] = QByteArray("item1");
 	data["prev-id"] = QByteArray("item0");
@@ -59,17 +60,17 @@ static void parseItem()
 
 static void parseItemJsonStyle()
 {
-	QVariantMap meta;
+	VariantMap meta;
 	meta["foo"] = QString("bar");
 	meta["bar"] = QString("baz");
 
-	QVariantMap hs;
+	VariantMap hs;
 	hs["content"] = QString("hello world");
 
-	QVariantMap formats;
+	VariantMap formats;
 	formats["http-stream"] = hs;
 
-	QVariantMap data;
+	VariantMap data;
 	data["channel"] = QString("apple");
 	data["id"] = QString("item1");
 	data["prev-id"] = QString("item0");

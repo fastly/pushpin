@@ -29,6 +29,7 @@
 #include <QJsonArray>
 #include <QRandomGenerator>
 #include "qtcompat.h"
+#include "variant.h"
 #include "timer.h"
 #include "defercall.h"
 #include "log.h"
@@ -55,7 +56,7 @@
 #define UPDATES_PER_ACTION_MAX 100
 #define PUBLISH_QUEUE_MAX 100
 
-static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyPatch)
+static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPatch)
 {
 	QByteArray body;
 
@@ -63,7 +64,7 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 	QJsonDocument doc = QJsonDocument::fromJson(in, &e);
 	if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
 	{
-		QVariant vbody;
+		Variant vbody;
 		if(doc.isObject())
 			vbody = doc.object().toVariantMap();
 		else // IsArray
@@ -908,17 +909,17 @@ private:
 			{
 				if(adata.jsonpExtendedResponse)
 				{
-					QVariantMap result;
+					VariantMap result;
 					result["code"] = code;
 					result["reason"] = QString::fromUtf8(reason);
 
 					// Need to compact headers into a map
-					QVariantMap vheaders;
+					VariantMap vheaders;
 					foreach(const HttpHeader &h, headers)
 					{
 						// Don't add the same header name twice. We'll collect all values for a single header
 						bool found = false;
-						QMapIterator<QString, QVariant> it(vheaders);
+						QMapIterator<QString, Variant> it(vheaders);
 						while(it.hasNext())
 						{
 							it.next();
@@ -1147,7 +1148,7 @@ private:
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
-		QVariantHash passthroughData;
+		VariantHash passthroughData;
 
 		passthroughData["route"] = adata.route.toUtf8();
 

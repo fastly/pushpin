@@ -38,6 +38,7 @@
 #include "zmqsocket.h"
 #include "zmqvalve.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "processquit.h"
 #include "tnetstring.h"
 #include "m2requestpacket.h"
@@ -942,9 +943,9 @@ public:
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void m2_control_write(int index, const QByteArray &cmd, const QVariantHash &args)
+	void m2_control_write(int index, const QByteArray &cmd, const VariantHash &args)
 	{
-		QVariantList vlist;
+		VariantList vlist;
 		vlist += cmd;
 		vlist += args;
 
@@ -960,19 +961,19 @@ public:
 		controlPorts[index].sock->write(message);
 	}
 
-	void m2_writeCtl(M2Connection *conn, const QVariant &args)
+	void m2_writeCtl(M2Connection *conn, const Variant &args)
 	{
 		M2ResponsePacket mresp;
 		mresp.sender = m2_send_idents[conn->identIndex];
 		mresp.id = "X " + conn->id;
-		QVariantList parts;
+		VariantList parts;
 		parts += QByteArray("ctl");
 		parts += args;
 		mresp.data = TnetString::fromVariant(parts);
 		m2_out_write(mresp);
 	}
 
-	void m2_writeCtlMany(const QByteArray &sender, const QList<QByteArray> &connIds, const QVariant &args)
+	void m2_writeCtlMany(const QByteArray &sender, const QList<QByteArray> &connIds, const Variant &args)
 	{
 		assert(!connIds.isEmpty());
 
@@ -981,7 +982,7 @@ public:
 		mresp.id = "X";
 		foreach(const QByteArray &id, connIds)
 			mresp.id += " " + id;
-		QVariantList parts;
+		VariantList parts;
 		parts += QByteArray("ctl");
 		parts += args;
 		mresp.data = TnetString::fromVariant(parts);
@@ -993,9 +994,9 @@ public:
 		M2ResponsePacket mresp;
 		mresp.sender = sender;
 		mresp.id = "X " + id;
-		QVariantHash args;
+		VariantHash args;
 		args["cancel"] = true;
-		QVariantList parts;
+		VariantList parts;
 		parts += QByteArray("ctl");
 		parts += args;
 		mresp.data = TnetString::fromVariant(parts);
@@ -1217,7 +1218,7 @@ public:
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -1233,7 +1234,7 @@ public:
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -1268,7 +1269,7 @@ public:
 		zhttp_out_write(s->mode, out, s->zhttpAddress);
 	}
 
-	void handleControlResponse(int index, const QVariant &data)
+	void handleControlResponse(int index, const Variant &data)
 	{
 #ifdef CONTROL_PORT_DEBUG
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -1278,12 +1279,12 @@ public:
 		if(typeId(data) != QMetaType::QVariantHash)
 			return;
 
-		QVariantHash vhash = data.toHash();
+		VariantHash vhash = data.toHash();
 
 		if(!vhash.contains("rows"))
 			return;
 
-		QVariant rows = vhash["rows"];
+		Variant rows = vhash["rows"];
 
 		// Once we get at least one successful response then we flag the port as working
 		if(!controlPorts[index].works)
@@ -1293,12 +1294,12 @@ public:
 		}
 
 		QSet<QByteArray> ids;
-		foreach(const QVariant &row, rows.toList())
+		foreach(const Variant &row, rows.toList())
 		{
 			if(typeId(row) != QMetaType::QVariantList)
 				break;
 
-			QVariantList vlist = row.toList();
+			VariantList vlist = row.toList();
 			QByteArray id = vlist[0].toByteArray();
 			int bytes_written = vlist[7].toInt();
 
@@ -1462,7 +1463,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(dataRaw.mid(1));
+		Variant data = TnetString::toVariant(dataRaw.mid(1));
 		if(data.isNull())
 		{
 			log_warning("%s: received message with invalid format (tnetstring parse failed), skipping", logprefix);
@@ -1713,7 +1714,7 @@ public:
 			// Data packet may have credits
 			if(zresp.credits > 0)
 			{
-				QVariantHash args;
+				VariantHash args;
 				args["credits"] = zresp.credits;
 				m2_writeCtl(s->conn, args);
 			}
@@ -1931,7 +1932,7 @@ public:
 		{
 			if(zresp.credits > 0)
 			{
-				QVariantHash args;
+				VariantHash args;
 				args["credits"] = zresp.credits;
 				m2_writeCtl(s->conn, args);
 			}
@@ -2024,7 +2025,7 @@ public:
 			// If we're at max, send out now
 			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
 			{
-				QVariantHash args;
+				VariantHash args;
 				args["keep-alive"] = true;
 				m2_writeCtlMany(m2_send_idents[conn->identIndex], connIdList, args);
 
@@ -2057,7 +2058,7 @@ public:
 			// If we're at max, send out now
 			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
 			{
-				QVariantHash args;
+				VariantHash args;
 				args["keep-alive"] = true;
 				m2_writeCtlMany(m2_send_idents[conn->identIndex], connIdList, args);
 
@@ -2076,7 +2077,7 @@ public:
 
 			if(!connIdList.isEmpty())
 			{
-				QVariantHash args;
+				VariantHash args;
 				args["keep-alive"] = true;
 				m2_writeCtlMany(m2_send_idents[index], connIdList, args);
 			}
@@ -2763,7 +2764,7 @@ public:
 				continue;
 			}
 
-			QVariant data = TnetString::toVariant(message[1]);
+			Variant data = TnetString::toVariant(message[1]);
 			if(data.isNull())
 			{
 				log_warning("m2: received control response with invalid format (tnetstring parse failed), skipping");
@@ -2840,7 +2841,7 @@ private slots:
 			if(c.state == ControlPort::Idle || (c.state == ControlPort::ExpectingResponse && c.reqStartTime + CONTROL_REQUEST_EXPIRE <= now))
 			{
 				// Query m2 for connection info (to track bytes written)
-				QVariantHash cmdArgs;
+				VariantHash cmdArgs;
 				cmdArgs["what"] = QByteArray("net");
 				c.state = ControlPort::ExpectingResponse;
 				c.reqStartTime = now;

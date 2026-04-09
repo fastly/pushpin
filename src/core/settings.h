@@ -24,7 +24,7 @@
 #define SETTINGS_H
 
 #include <QString>
-#include <QVariant>
+#include "variant.h"
 
 class QSettings;
 
@@ -36,8 +36,8 @@ public:
 	~Settings();
 
 	bool contains(const QString &key) const;
-	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
-	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+	Variant valueRaw(const QString &key, const Variant &defaultValue = Variant()) const;
+	Variant value(const QString &key, const Variant &defaultValue = Variant()) const;
 	int adjustedPort(const QString &key, int defaultValue = -1) const;
 
 	QString ipcPrefix() const;
