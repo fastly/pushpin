@@ -183,9 +183,9 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 		{
 			Variant vcontentBin = keyedObjectGetValue(in, "content-bin");
 
-			if(typeId(in) == QMetaType::QVariantMap) // JSON input
+			if(typeId(in) == VariantType::Map) // JSON input
 			{
-				if(typeId(vcontentBin) != QMetaType::QString)
+				if(typeId(vcontentBin) != VariantType::String)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -195,7 +195,7 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 			}
 			else
 			{
-				if(typeId(vcontentBin) != QMetaType::QByteArray)
+				if(typeId(vcontentBin) != VariantType::ByteArray)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -210,9 +210,9 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 		else if(keyedObjectContains(in, "content"))
 		{
 			Variant vcontent = keyedObjectGetValue(in, "content");
-			if(typeId(vcontent) == QMetaType::QByteArray)
+			if(typeId(vcontent) == VariantType::ByteArray)
 				out.content = vcontent.toByteArray();
-			else if(typeId(vcontent) == QMetaType::QString)
+			else if(typeId(vcontent) == VariantType::String)
 				out.content = vcontent.toString().toUtf8();
 			else
 			{
@@ -229,7 +229,7 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 			if(keyedObjectContains(in, "timeout"))
 			{
 				Variant vtimeout = keyedObjectGetValue(in, "timeout");
-				if(!canConvert(vtimeout, QMetaType::Int))
+				if(!canConvert(vtimeout, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
 					return WsControlMessage();

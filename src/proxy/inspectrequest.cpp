@@ -32,7 +32,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 {
 	InspectData out;
 
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 	{
 		*ok = false;
 		return InspectData();
@@ -40,7 +40,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 
 	VariantHash obj = in.toHash();
 
-	if(!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != QMetaType::Bool)
+	if(!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != VariantType::Bool)
 	{
 		*ok = false;
 		return InspectData();
@@ -50,7 +50,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 	out.sharingKey.clear();
 	if(obj.contains("sharing-key"))
 	{
-		if(typeId(obj["sharing-key"]) != QMetaType::QByteArray)
+		if(typeId(obj["sharing-key"]) != VariantType::ByteArray)
 		{
 			*ok = false;
 			return InspectData();
@@ -62,7 +62,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 	out.sid.clear();
 	if(obj.contains("sid"))
 	{
-		if(typeId(obj["sid"]) != QMetaType::QByteArray)
+		if(typeId(obj["sid"]) != VariantType::ByteArray)
 		{
 			*ok = false;
 			return InspectData();
@@ -74,7 +74,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 	out.lastIds.clear();
 	if(obj.contains("last-ids"))
 	{
-		if(typeId(obj["last-ids"]) != QMetaType::QVariantHash)
+		if(typeId(obj["last-ids"]) != VariantType::Hash)
 		{
 			*ok = false;
 			return InspectData();
@@ -86,7 +86,7 @@ static InspectData resultToData(const Variant &in, bool *ok)
 		{
 			it.next();
 
-			if(typeId(it.value()) != QMetaType::QByteArray)
+			if(typeId(it.value()) != VariantType::ByteArray)
 			{
 				*ok = false;
 				return InspectData();

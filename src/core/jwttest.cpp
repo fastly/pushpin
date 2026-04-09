@@ -85,7 +85,7 @@ static const char *test_rsa_public_key_pem =
 static void validToken()
 {
 	Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
-	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
+	TEST_ASSERT(typeId(vclaim) == VariantType::Map);
 	VariantMap claim = vclaim.toMap();
 	TEST_ASSERT(claim.value("foo") == "bar");
 }
@@ -98,7 +98,7 @@ static void validTokenBinaryKey()
 	key += 0x80;
 	key += 0xfe;
 	Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
-	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
+	TEST_ASSERT(typeId(vclaim) == VariantType::Map);
 	VariantMap claim = vclaim.toMap();
 	TEST_ASSERT(claim.value("foo") == "bar");
 }

@@ -48,14 +48,14 @@ static void setError(bool *ok, QString *errorMessage, const QString &msg)
 
 static bool isKeyedObject(const Variant &in)
 {
-	return (typeId(in) == QMetaType::QVariantHash || typeId(in) == QMetaType::QVariantMap);
+	return (typeId(in) == VariantType::Hash || typeId(in) == VariantType::Map);
 }
 
 static bool keyedObjectContains(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().contains(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().contains(name);
 	else
 		return false;
@@ -63,9 +63,9 @@ static bool keyedObjectContains(const Variant &in, const QString &name)
 
 static Variant keyedObjectGetValue(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().value(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().value(name);
 	else
 		return Variant();
@@ -83,7 +83,7 @@ static Variant getChild(const Variant &in, const QString &parentName, const QStr
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
 	Variant v;
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 	{
 		VariantHash h = in.toHash();
 
@@ -122,13 +122,13 @@ static Variant getChild(const Variant &in, const QString &parentName, const QStr
 
 static QString getString(const Variant &in, bool *ok = 0)
 {
-	if(typeId(in) == QMetaType::QString)
+	if(typeId(in) == VariantType::String)
 	{
 		if(ok)
 			*ok = true;
 		return in.toString();
 	}
-	else if(typeId(in) == QMetaType::QByteArray)
+	else if(typeId(in) == VariantType::ByteArray)
 	{
 		if(ok)
 			*ok = true;
@@ -180,8 +180,8 @@ static bool convertToJsonStyleInPlace(Variant *in)
 
 	bool changed = false;
 
-	QMetaType::Type type = typeId(*in);
-	if(type == QMetaType::QVariantHash)
+	VariantType::Type type = typeId(*in);
+	if(type == VariantType::Hash)
 	{
 		VariantMap vmap;
 		VariantHash vhash = in->toHash();
@@ -197,7 +197,7 @@ static bool convertToJsonStyleInPlace(Variant *in)
 		*in = vmap;
 		changed = true;
 	}
-	else if(type == QMetaType::QVariantList)
+	else if(type == VariantType::List)
 	{
 		VariantList vlist = in->toList();
 		for(int n = 0; n < vlist.count(); ++n)
@@ -210,7 +210,7 @@ static bool convertToJsonStyleInPlace(Variant *in)
 		*in = vlist;
 		changed = true;
 	}
-	else if(type == QMetaType::QByteArray)
+	else if(type == VariantType::ByteArray)
 	{
 		*in = Variant(QString::fromUtf8(in->toByteArray()));
 		changed = true;
@@ -228,7 +228,7 @@ static Variant convertToJsonStyle(const Variant &in)
 
 static bool _compareJsonValues(const Variant &a, const Variant &b)
 {
-	if(typeId(a) == QMetaType::QVariantMap && typeId(b) == QMetaType::QVariantMap)
+	if(typeId(a) == VariantType::Map && typeId(b) == VariantType::Map)
 	{
 		VariantMap am = a.toMap();
 		VariantMap bm = b.toMap();
@@ -251,7 +251,7 @@ static bool _compareJsonValues(const Variant &a, const Variant &b)
 
 		return true;
 	}
-	else if(typeId(a) == QMetaType::QVariantList && typeId(b) == QMetaType::QVariantList)
+	else if(typeId(a) == VariantType::List && typeId(b) == VariantType::List)
 	{
 		VariantList al = a.toList();
 		VariantList bl = b.toList();
@@ -267,19 +267,19 @@ static bool _compareJsonValues(const Variant &a, const Variant &b)
 
 		return true;
 	}
-	else if(typeId(a) == QMetaType::QString && typeId(b) == QMetaType::QString)
+	else if(typeId(a) == VariantType::String && typeId(b) == VariantType::String)
 	{
 		return (a.toString() == b.toString());
 	}
-	else if(typeId(a) == QMetaType::Bool && typeId(b) == QMetaType::Bool)
+	else if(typeId(a) == VariantType::Bool && typeId(b) == VariantType::Bool)
 	{
 		return (a.toBool() == b.toBool());
 	}
-	else if(typeId(a) == QMetaType::UnknownType && typeId(b) == QMetaType::UnknownType)
+	else if(typeId(a) == VariantType::Invalid && typeId(b) == VariantType::Invalid)
 	{
 		return true;
 	}
-	else if(canConvert(a, QMetaType::Int) && canConvert(b, QMetaType::Int))
+	else if(canConvert(a, VariantType::Int) && canConvert(b, VariantType::Int))
 	{
 		return (a.toInt() == b.toInt());
 	}

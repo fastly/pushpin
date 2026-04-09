@@ -97,7 +97,7 @@ private:
 		if(req->success())
 		{
 			Variant vresult = req->result();
-			if(typeId(vresult) != QMetaType::QVariantList)
+			if(typeId(vresult) != VariantType::List)
 			{
 				setFinished(false);
 				return;
@@ -108,7 +108,7 @@ private:
 			QList<DetectRule> rules;
 			foreach(const Variant &vr, result)
 			{
-				if(typeId(vr) != QMetaType::QVariantHash)
+				if(typeId(vr) != VariantType::Hash)
 				{
 					setFinished(false);
 					return;
@@ -118,7 +118,7 @@ private:
 
 				DetectRule rule;
 
-				if(!r.contains("domain") || typeId(r["domain"]) != QMetaType::QByteArray)
+				if(!r.contains("domain") || typeId(r["domain"]) != VariantType::ByteArray)
 				{
 					setFinished(false);
 					return;
@@ -126,7 +126,7 @@ private:
 
 				rule.domain = QString::fromUtf8(r["domain"].toByteArray());
 
-				if(!r.contains("path-prefix") || typeId(r["path-prefix"]) != QMetaType::QByteArray)
+				if(!r.contains("path-prefix") || typeId(r["path-prefix"]) != VariantType::ByteArray)
 				{
 					setFinished(false);
 					return;
@@ -134,7 +134,7 @@ private:
 
 				rule.pathPrefix = r["path-prefix"].toByteArray();
 
-				if(!r.contains("sid-ptr") || typeId(r["sid-ptr"]) != QMetaType::QByteArray)
+				if(!r.contains("sid-ptr") || typeId(r["sid-ptr"]) != VariantType::ByteArray)
 				{
 					setFinished(false);
 					return;
@@ -144,7 +144,7 @@ private:
 
 				if(r.contains("json-param"))
 				{
-					if(typeId(r["json-param"]) != QMetaType::QByteArray)
+					if(typeId(r["json-param"]) != VariantType::ByteArray)
 					{
 						setFinished(false);
 						return;
@@ -279,7 +279,7 @@ private:
 		if(req->success())
 		{
 			Variant vresult = req->result();
-			if(typeId(vresult) != QMetaType::QVariantHash)
+			if(typeId(vresult) != VariantType::Hash)
 			{
 				setFinished(false);
 				return;
@@ -293,7 +293,7 @@ private:
 			{
 				it.next();
 				const Variant &i = it.value();
-				if(typeId(i) != QMetaType::QByteArray)
+				if(typeId(i) != VariantType::ByteArray)
 				{
 					setFinished(false);
 					return;

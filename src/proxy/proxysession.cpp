@@ -1463,7 +1463,7 @@ public:
 		{
 			// Wake up receivers and reject
 
-			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == QMetaType::QByteArray)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == VariantType::ByteArray)
 			{
 				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest.get())->result().toByteArray());
 				QString msg = "Error while proxying to origin.";

@@ -57,7 +57,7 @@ private:
 		if(req->success())
 		{
 			Variant vresult = req->result();
-			if(typeId(vresult) != QMetaType::QVariantList)
+			if(typeId(vresult) != VariantType::List)
 			{
 				setFinished(false);
 				return;
@@ -68,7 +68,7 @@ private:
 			CidSet out;
 			foreach(const Variant &vcid, result)
 			{
-				if(typeId(vcid) != QMetaType::QByteArray)
+				if(typeId(vcid) != VariantType::ByteArray)
 				{
 					setFinished(false);
 					return;

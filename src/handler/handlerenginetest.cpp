@@ -276,7 +276,7 @@ public:
 		ZmqReqMessage message(_message);
 		Variant v = TnetString::toVariant(message.content()[0]);
 
-		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);
+		TEST_ASSERT(typeId(v) == VariantType::Hash);
 		VariantHash vresp = v.toHash();
 
 		TEST_ASSERT(vresp.value("success").toBool());
@@ -284,7 +284,7 @@ public:
 		acceptSuccess = true;
 
 		v = vresp.value("value");
-		TEST_ASSERT(typeId(v) == QMetaType::QVariantHash);
+		TEST_ASSERT(typeId(v) == VariantType::Hash);
 		acceptValue = v.toHash();
 	}
 };

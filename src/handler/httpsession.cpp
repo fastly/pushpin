@@ -74,10 +74,10 @@ static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPa
 		vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
 		if(vbody.isValid())
 			vbody = VariantUtil::convertToJsonStyle(vbody);
-		if(vbody.isValid() && (typeId(vbody) == QMetaType::QVariantMap || typeId(vbody) == QMetaType::QVariantList))
+		if(vbody.isValid() && (typeId(vbody) == VariantType::Map || typeId(vbody) == VariantType::List))
 		{
 			QJsonDocument doc;
-			if(typeId(vbody) == QMetaType::QVariantMap)
+			if(typeId(vbody) == VariantType::Map)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));

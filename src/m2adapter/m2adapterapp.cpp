@@ -1276,7 +1276,7 @@ public:
 			log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
 #endif
 
-		if(typeId(data) != QMetaType::QVariantHash)
+		if(typeId(data) != VariantType::Hash)
 			return;
 
 		VariantHash vhash = data.toHash();
@@ -1296,7 +1296,7 @@ public:
 		QSet<QByteArray> ids;
 		foreach(const Variant &row, rows.toList())
 		{
-			if(typeId(row) != QMetaType::QVariantList)
+			if(typeId(row) != VariantType::List)
 				break;
 
 			VariantList vlist = row.toList();

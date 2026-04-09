@@ -101,7 +101,7 @@ static void logPacket(int level, const Variant &data, const QString &contentFiel
 	Variant meta;
 	QByteArray content;
 
-	if(typeId(data) == QMetaType::QVariantHash)
+	if(typeId(data) == VariantType::Hash)
 	{
 		// Extract content. Meta is the remaining data
 		VariantHash hdata = data.toHash();

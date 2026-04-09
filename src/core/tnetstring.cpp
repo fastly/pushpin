@@ -60,20 +60,20 @@ QByteArray fromVariant(const Variant &in)
 {
 	switch(typeId(in))
 	{
-		case QMetaType::QByteArray:
+		case VariantType::ByteArray:
 			return fromByteArray(in.toByteArray());
-		case QMetaType::Double:
+		case VariantType::Double:
 			return fromDouble(in.toDouble());
-		case QMetaType::Bool:
+		case VariantType::Bool:
 			return fromBool(in.toBool());
-		case QMetaType::UnknownType:
+		case VariantType::Invalid:
 			return fromNull();
-		case QMetaType::QVariantHash:
+		case VariantType::Hash:
 			return fromHash(in.toHash());
-		case QMetaType::QVariantList:
+		case VariantType::List:
 			return fromList(in.toList());
 		default:
-			if(canConvert(in, QMetaType::LongLong))
+			if(canConvert(in, VariantType::LongLong))
 				return fromInt(in.toLongLong());
 
 			// Unsupported type
@@ -382,8 +382,8 @@ QString variantToString(const Variant &in, int indent)
 {
 	QString out;
 
-	QMetaType::Type type = typeId(in);
-	if(type == QMetaType::QVariantHash)
+	VariantType::Type type = typeId(in);
+	if(type == VariantType::Hash)
 	{
 		VariantHash hash = in.toHash();
 
@@ -415,7 +415,7 @@ QString variantToString(const Variant &in, int indent)
 			out += QString(indent, ' ');
 		out += '}';
 	}
-	else if(type == QMetaType::QVariantList)
+	else if(type == VariantType::List)
 	{
 		VariantList list = in.toList();
 
@@ -444,18 +444,18 @@ QString variantToString(const Variant &in, int indent)
 			out += QString(indent, ' ');
 		out += ']';
 	}
-	else if(type == QMetaType::QByteArray)
+	else if(type == VariantType::ByteArray)
 	{
 		QByteArray val = in.toByteArray();
 		out += '\"' + byteArrayToEscapedString(val) + '\"';
 	}
-	else if(type == QMetaType::Double)
+	else if(type == VariantType::Double)
 		out += QString::number(in.toDouble());
-	else if(type == QMetaType::Bool)
+	else if(type == VariantType::Bool)
 		out += in.toBool() ? "true" : "false";
-	else if(type == QMetaType::UnknownType)
+	else if(type == VariantType::Invalid)
 		out += "null";
-	else if(canConvert(in, QMetaType::LongLong))
+	else if(canConvert(in, VariantType::LongLong))
 		out += QString::number(in.toLongLong());
 	else
 		out += QString("<unknown: %1>").arg((int)type);
