@@ -1,6 +1,7 @@
 HEADERS += \
 	$$PWD/cowbytearray.h \
-	$$PWD/cowstring.h
+	$$PWD/cowstring.h \
+	$$PWD/variant.h
 
 HEADERS += \
 	$$PWD/zmqcontext.h \
