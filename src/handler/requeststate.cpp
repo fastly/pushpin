@@ -24,19 +24,20 @@
 #include "requeststate.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-RequestState RequestState::fromVariant(const QVariant &in)
+RequestState RequestState::fromVariant(const Variant &in)
 {
 	if(typeId(in) != QMetaType::QVariantHash)
 		return RequestState();
 
-	QVariantHash r = in.toHash();
+	VariantHash r = in.toHash();
 	RequestState rs;
 
 	if(!r.contains("rid") || typeId(r["rid"]) != QMetaType::QVariantHash)
 		return RequestState();
 
-	QVariantHash vrid = r["rid"].toHash();
+	VariantHash vrid = r["rid"].toHash();
 
 	if(!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
 		return RequestState();

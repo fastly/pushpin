@@ -31,6 +31,7 @@
 #include "zmqreqmessage.h"
 #include "log.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
 #include "zrpcrequest.h"
@@ -142,7 +143,7 @@ public:
 		ZrpcRequestPacket p = packet;
 		p.from = instanceId;
 
-		QVariant vpacket = p.toVariant();
+		Variant vpacket = p.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -155,7 +156,7 @@ public:
 	{
 		assert(serverSock);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -182,7 +183,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(message[1]);
+		Variant data = TnetString::toVariant(message[1]);
 		if(data.isNull())
 		{
 			log_warning("zrpc client: received message with invalid format (tnetstring parse failed), skipping");
@@ -219,7 +220,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0]);
+		Variant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("zrpc server: received message with invalid format (tnetstring parse failed), skipping");

@@ -27,6 +27,7 @@
 #include <stdarg.h>
 #include "qtcompat.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "log.h"
 
 #define MAX_DATA_LENGTH 1000
@@ -66,7 +67,7 @@ static QString makeLastIdsStr(const HttpHeaders &headers)
 	return out;
 }
 
-static void logPacket(int level, const QString &message, const QVariant &data = QVariant(), int dataMax = -1, const QByteArray &content = QByteArray(), int contentMax = -1)
+static void logPacket(int level, const QString &message, const Variant &data = Variant(), int dataMax = -1, const QByteArray &content = QByteArray(), int contentMax = -1)
 {
 	QString out = message;
 
@@ -79,31 +80,31 @@ static void logPacket(int level, const QString &message, const QVariant &data = 
 	{
 		out += ' ' + QString::number(content.size()) + ' ';
 		QByteArray buf = trim(content, contentMax);
-		out += TnetString::variantToString(QVariant(buf), -1);
+		out += TnetString::variantToString(Variant(buf), -1);
 	}
 
 	log(level, "%s", qPrintable(out));
 }
 
-static void logPacket(int level, const QVariant &data, const char *fmt, va_list ap)
+static void logPacket(int level, const Variant &data, const char *fmt, va_list ap)
 {
 	logPacket(level, QString::vasprintf(fmt, ap), data, MAX_DATA_LENGTH);
 }
 
 static void logPacket(int level, const QByteArray &content, const char *fmt, va_list ap)
 {
-	logPacket(level, QString::vasprintf(fmt, ap), QVariant(), -1, content, MAX_CONTENT_LENGTH);
+	logPacket(level, QString::vasprintf(fmt, ap), Variant(), -1, content, MAX_CONTENT_LENGTH);
 }
 
-static void logPacket(int level, const QVariant &data, const QString &contentField, const char *fmt, va_list ap)
+static void logPacket(int level, const Variant &data, const QString &contentField, const char *fmt, va_list ap)
 {
-	QVariant meta;
+	Variant meta;
 	QByteArray content;
 
 	if(typeId(data) == QMetaType::QVariantHash)
 	{
 		// Extract content. Meta is the remaining data
-		QVariantHash hdata = data.toHash();
+		VariantHash hdata = data.toHash();
 		content = hdata.value(contentField).toByteArray();
 		hdata.remove(contentField);
 		meta = hdata;
@@ -118,7 +119,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 	logPacket(level, QString::vasprintf(fmt, ap), meta, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
 }
 
-void logVariant(int level, const QVariant &data, const char *fmt, ...)
+void logVariant(int level, const Variant &data, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
@@ -134,7 +135,7 @@ void logByteArray(int level, const QByteArray &content, const char *fmt, ...)
 	va_end(ap);
 }
 
-void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...)
+void logVariantWithContent(int level, const Variant &data, const QString &contentField, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);

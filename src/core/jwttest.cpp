@@ -25,6 +25,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qtcompat.h"
+#include "variant.h"
 #include "jwt.h"
 
 static const char *test_ec_private_key_pem =
@@ -83,9 +84,9 @@ static const char *test_rsa_public_key_pem =
 
 static void validToken()
 {
-	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
+	Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
 	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
-	QVariantMap claim = vclaim.toMap();
+	VariantMap claim = vclaim.toMap();
 	TEST_ASSERT(claim.value("foo") == "bar");
 }
 
@@ -96,15 +97,15 @@ static void validTokenBinaryKey()
 	key += 0x61;
 	key += 0x80;
 	key += 0xfe;
-	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
+	Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
 	TEST_ASSERT(typeId(vclaim) == QMetaType::QVariantMap);
-	QVariantMap claim = vclaim.toMap();
+	VariantMap claim = vclaim.toMap();
 	TEST_ASSERT(claim.value("foo") == "bar");
 }
 
 static void invalidKey()
 {
-	QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("wrong"));
+	Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("wrong"));
 	TEST_ASSERT(vclaim.isNull());
 }
 
@@ -118,7 +119,7 @@ static void es256EncodeDecode()
 	TEST_ASSERT(!publicKey.isNull());
 	TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Ec);
 
-	QVariantMap claim;
+	VariantMap claim;
 	claim["iss"] = "nobody";
 
 	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
@@ -135,7 +136,7 @@ static void es256EncodeDecode()
 	TEST_ASSERT(error.error == QJsonParseError::NoError);
 	TEST_ASSERT(doc.isObject());
 
-	QVariantMap result = doc.object().toVariantMap();
+	VariantMap result = doc.object().toVariantMap();
 	TEST_ASSERT_EQ(result["iss"], "nobody");
 }
 
@@ -149,7 +150,7 @@ static void rs256EncodeDecode()
 	TEST_ASSERT(!publicKey.isNull());
 	TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Rsa);
 
-	QVariantMap claim;
+	VariantMap claim;
 	claim["iss"] = "nobody";
 
 	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
@@ -166,7 +167,7 @@ static void rs256EncodeDecode()
 	TEST_ASSERT(error.error == QJsonParseError::NoError);
 	TEST_ASSERT(doc.isObject());
 
-	QVariantMap result = doc.object().toVariantMap();
+	VariantMap result = doc.object().toVariantMap();
 	TEST_ASSERT_EQ(result["iss"], "nobody");
 }
 

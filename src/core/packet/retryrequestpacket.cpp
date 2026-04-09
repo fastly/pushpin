@@ -24,6 +24,7 @@
 #include "retryrequestpacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
 RetryRequestPacket::RetryRequestPacket() :
 	haveInspectInfo(false),
@@ -31,16 +32,16 @@ RetryRequestPacket::RetryRequestPacket() :
 {
 }
 
-QVariant RetryRequestPacket::toVariant() const
+Variant RetryRequestPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
-	QVariantList vrequests;
+	VariantList vrequests;
 	foreach(const Request &r, requests)
 	{
-		QVariantHash vrequest;
+		VariantHash vrequest;
 
-		QVariantHash vrid;
+		VariantHash vrid;
 		vrid["sender"] = r.rid.first;
 		vrid["id"] = r.rid.second;
 
@@ -82,18 +83,18 @@ QVariant RetryRequestPacket::toVariant() const
 
 	obj["requests"] = vrequests;
 
-	QVariantHash vrequestData;
+	VariantHash vrequestData;
 
 	vrequestData["method"] = requestData.method.toLatin1();
 	vrequestData["uri"] = requestData.uri.toEncoded();
 
-	QVariantList vheaders;
+	VariantList vheaders;
 	foreach(const HttpHeader &h, requestData.headers)
 	{
-		QVariantList vheader;
+		VariantList vheader;
 		vheader += h.first.asQByteArray();
 		vheader += h.second.asQByteArray();
-		vheaders += QVariant(vheader);
+		vheaders += Variant(vheader);
 	}
 	vrequestData["headers"] = vheaders;
 
@@ -103,7 +104,7 @@ QVariant RetryRequestPacket::toVariant() const
 
 	if(haveInspectInfo)
 	{
-		QVariantHash vinspect;
+		VariantHash vinspect;
 
 		vinspect["no-proxy"] = !inspectInfo.doProxy;
 
@@ -115,7 +116,7 @@ QVariant RetryRequestPacket::toVariant() const
 
 		if(!inspectInfo.lastIds.isEmpty())
 		{
-			QVariantHash vlastIds;
+			VariantHash vlastIds;
 
 			QHashIterator<QByteArray, QByteArray> it(inspectInfo.lastIds);
 			while(it.hasNext())
@@ -143,30 +144,30 @@ QVariant RetryRequestPacket::toVariant() const
 	return obj;
 }
 
-bool RetryRequestPacket::fromVariant(const QVariant &in)
+bool RetryRequestPacket::fromVariant(const Variant &in)
 {
 	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(!obj.contains("requests") || typeId(obj["requests"]) != QMetaType::QVariantList)
 		return false;
 
 	requests.clear();
-	foreach(const QVariant &i, obj["requests"].toList())
+	foreach(const Variant &i, obj["requests"].toList())
 	{
 		if(typeId(i) != QMetaType::QVariantHash)
 			return false;
 
-		QVariantHash vrequest = i.toHash();
+		VariantHash vrequest = i.toHash();
 
 		Request r;
 
 		if(!vrequest.contains("rid") || typeId(vrequest["rid"]) != QMetaType::QVariantHash)
 			return false;
 
-		QVariantHash vrid = vrequest["rid"].toHash();
+		VariantHash vrid = vrequest["rid"].toHash();
 
 		QByteArray sender, id;
 
@@ -266,7 +267,7 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 
 	if(!obj.contains("request-data") || typeId(obj["request-data"]) != QMetaType::QVariantHash)
 		return false;
-	QVariantHash vrequestData = obj["request-data"].toHash();
+	VariantHash vrequestData = obj["request-data"].toHash();
 
 	if(!vrequestData.contains("method") || typeId(vrequestData["method"]) != QMetaType::QByteArray)
 		return false;
@@ -282,9 +283,9 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 		if(typeId(vrequestData["headers"]) != QMetaType::QVariantList)
 			return false;
 
-		foreach(const QVariant &i, vrequestData["headers"].toList())
+		foreach(const Variant &i, vrequestData["headers"].toList())
 		{
-			QVariantList list = i.toList();
+			VariantList list = i.toList();
 			if(list.count() != 2)
 				return false;
 
@@ -303,7 +304,7 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 	{
 		if(typeId(obj["inspect"]) != QMetaType::QVariantHash)
 			return false;
-		QVariantHash vinspect = obj["inspect"].toHash();
+		VariantHash vinspect = obj["inspect"].toHash();
 
 		if(!vinspect.contains("no-proxy") || typeId(vinspect["no-proxy"]) != QMetaType::Bool)
 			return false;
@@ -331,8 +332,8 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			if(typeId(vinspect["last-ids"]) != QMetaType::QVariantHash)
 				return false;
 
-			QVariantHash vlastIds = vinspect["last-ids"].toHash();
-			QHashIterator<QString, QVariant> it(vlastIds);
+			VariantHash vlastIds = vinspect["last-ids"].toHash();
+			QHashIterator<QString, Variant> it(vlastIds);
 			while(it.hasNext())
 			{
 				it.next();

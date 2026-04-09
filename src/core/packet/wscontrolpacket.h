@@ -26,7 +26,7 @@
 
 #include <QByteArray>
 #include <QList>
-#include <QVariant>
+#include "variant.h"
 #include <QUrl>
 
 class WsControlPacket
@@ -89,8 +89,8 @@ public:
 	QByteArray from;
 	QList<Item> items;
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif

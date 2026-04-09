@@ -24,7 +24,7 @@
 #ifndef DEFERRED_H
 #define DEFERRED_H
 
-#include <QVariant>
+#include "variant.h"
 #include <boost/signals2.hpp>
 #include "defercall.h"
 
@@ -32,14 +32,14 @@ class DeferredResult
 {
 public:
 	bool success;
-	QVariant value;
+	Variant value;
 
 	DeferredResult() :
 		success(false)
 	{
 	}
 
-	DeferredResult(bool _success, const QVariant &_value = QVariant()) :
+	DeferredResult(bool _success, const Variant &_value = Variant()) :
 		success(_success),
 		value(_value)
 	{
@@ -58,7 +58,7 @@ public:
 protected:
 	Deferred();
 
-	void setFinished(bool ok, const QVariant &value = QVariant());
+	void setFinished(bool ok, const Variant &value = Variant());
 
 private:
 	DeferredResult result_;

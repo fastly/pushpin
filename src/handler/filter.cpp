@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "log.h"
+#include "variant.h"
 #include "format.h"
 #include "idformat.h"
 #include "zhttpmanager.h"
@@ -365,7 +366,7 @@ public:
 	{
 	}
 
-	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content, int _responseSizeMax)
+	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const Variant &passthroughData, const QByteArray &content, int _responseSizeMax)
 	{
 		uri = _uri;
 		headers = _headers;
@@ -547,7 +548,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 	int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 	int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
-	QVariantHash passthroughData;
+	VariantHash passthroughData;
 
 	passthroughData["route"] = context.route.toUtf8();
 
@@ -571,7 +572,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 	HttpHeaders headers;
 
 	{
-		QVariantMap vmap;
+		VariantMap vmap;
 		QHashIterator<QString, QString> it(context.subscriptionMeta);
 		while(it.hasNext())
 		{
@@ -584,7 +585,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 	}
 
 	{
-		QVariantMap vmap;
+		VariantMap vmap;
 		QHashIterator<QString, QString> it(context.publishMeta);
 		while(it.hasNext())
 		{

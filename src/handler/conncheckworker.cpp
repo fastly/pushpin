@@ -27,11 +27,12 @@
 #include "zrpcrequest.h"
 #include "controlrequest.h"
 #include "statsmanager.h"
+#include "variant.h"
 
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
 	req_(req)
 {
-	QVariantHash args = req_->args();
+	VariantHash args = req_->args();
 
 	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
 	{
@@ -39,9 +40,9 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 		return;
 	}
 
-	QVariantList vids = args["ids"].toList();
+	VariantList vids = args["ids"].toList();
 
-	foreach(const QVariant &vid, vids)
+	foreach(const Variant &vid, vids)
 	{
 		if(typeId(vid) != QMetaType::QByteArray)
 		{
@@ -80,7 +81,7 @@ void ConnCheckWorker::doFinish()
 	foreach(const QString &cid, missing_)
 		cids_.remove(cid);
 
-	QVariantList result;
+	VariantList result;
 	foreach(const QString &cid, cids_)
 		result += cid.toUtf8();
 

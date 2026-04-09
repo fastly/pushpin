@@ -26,6 +26,7 @@
 #include <QProcess>
 #include "log.h"
 #include "template.h"
+#include "variant.h"
 
 ZurlService::ZurlService(
 	const QString &binFile,
@@ -71,7 +72,7 @@ bool ZurlService::acceptSighup() const
 
 bool ZurlService::preStart()
 {
-	QVariantMap context;
+	VariantMap context;
 	context["rundir"] = runDir_;
 	context["ipc_prefix"] = ipcPrefix_;
 

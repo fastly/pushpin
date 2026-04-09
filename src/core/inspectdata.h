@@ -24,7 +24,7 @@
 #define INSPECTDATA_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 
 class InspectData
 {
@@ -33,7 +33,7 @@ public:
 	QByteArray sharingKey;
 	QByteArray sid;
 	QHash<QByteArray, QByteArray> lastIds;
-	QVariant userData;
+	Variant userData;
 
 	InspectData() :
 		doProxy(false)

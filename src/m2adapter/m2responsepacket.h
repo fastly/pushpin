@@ -23,7 +23,7 @@
 #ifndef M2RESPONSEPACKET_H
 #define M2RESPONSEPACKET_H
 
-#include <QVariant>
+#include <QByteArray>
 
 class M2ResponsePacket
 {

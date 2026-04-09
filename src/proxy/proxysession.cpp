@@ -31,6 +31,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "jwt.h"

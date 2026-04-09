@@ -23,7 +23,6 @@
 #ifndef M2REQUESTPACKET_H
 #define M2REQUESTPACKET_H
 
-#include <QVariant>
 #include <QHostAddress>
 #include "httpheaders.h"
 

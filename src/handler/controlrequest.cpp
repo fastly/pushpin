@@ -25,6 +25,7 @@
 
 #include "packet/statspacket.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "deferred.h"
 #include "zrpcrequest.h"
 
@@ -38,11 +39,11 @@ public:
 		req = std::make_unique<ZrpcRequest>(controlClient);
 		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
 
-		QVariantList vcids;
+		VariantList vcids;
 		foreach(const QString &cid, cids)
 			vcids += cid.toUtf8();
 
-		QVariantHash args;
+		VariantHash args;
 		args["ids"] = vcids;
 		req->start("conncheck", args);
 	}
@@ -55,17 +56,17 @@ private:
 	{
 		if(req->success())
 		{
-			QVariant vresult = req->result();
+			Variant vresult = req->result();
 			if(typeId(vresult) != QMetaType::QVariantList)
 			{
 				setFinished(false);
 				return;
 			}
 
-			QVariantList result = vresult.toList();
+			VariantList result = vresult.toList();
 
 			CidSet out;
-			foreach(const QVariant &vcid, result)
+			foreach(const Variant &vcid, result)
 			{
 				if(typeId(vcid) != QMetaType::QByteArray)
 				{
@@ -76,7 +77,7 @@ private:
 				out += QString::fromUtf8(vcid.toByteArray());
 			}
 
-			setFinished(true, QVariant::fromValue<CidSet>(out));
+			setFinished(true, Variant::fromValue<CidSet>(out));
 		}
 		else
 		{
@@ -93,7 +94,7 @@ public:
 		req = std::make_unique<ZrpcRequest>(controlClient);
 		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this));
 
-		QVariantHash args;
+		VariantHash args;
 		args["cid"] = cid;
 		req->start("refresh", args);
 	}

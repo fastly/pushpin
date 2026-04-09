@@ -23,27 +23,28 @@
 
 #include "test.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "jsonpatch.h"
 
 static void patch()
 {
-	QVariantMap data;
+	VariantMap data;
 	data["foo"] = "bar";
 
-	QVariantMap op;
+	VariantMap op;
 	op["op"] = "test";
 	op["path"] = "/foo";
 	op["value"] = "bar";
 	QString msg;
-	QVariant ret = JsonPatch::patch(data, QVariantList() << op, &msg);
+	Variant ret = JsonPatch::patch(data, VariantList() << op, &msg);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 
 	op.clear();
 	op["op"] = "add";
 	op["path"] = "/fruit";
-	op["value"] = QVariantList() << "apple";
-	ret = JsonPatch::patch(data, QVariantList() << op);
+	op["value"] = VariantList() << "apple";
+	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 	TEST_ASSERT_EQ(typeId(data["fruit"]), QMetaType::QVariantList);
@@ -53,7 +54,7 @@ static void patch()
 	op["op"] = "copy";
 	op["from"] = "/foo";
 	op["path"] = "/fruit/-";
-	ret = JsonPatch::patch(data, QVariantList() << op);
+	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 	TEST_ASSERT_EQ(data["fruit"].toList()[1].toString(), QString("bar"));
@@ -61,11 +62,11 @@ static void patch()
 	op.clear();
 	op["op"] = "replace";
 	op["path"] = "/fruit/1";
-	QVariantMap bowl;
+	VariantMap bowl;
 	bowl["cherries"] = true;
 	bowl["grapes"] = 5;
 	op["value"] = bowl;
-	ret = JsonPatch::patch(data, QVariantList() << op);
+	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 	TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), QMetaType::QVariantMap);
@@ -75,7 +76,7 @@ static void patch()
 	op.clear();
 	op["op"] = "remove";
 	op["path"] = "/fruit/1/cherries";
-	ret = JsonPatch::patch(data, QVariantList() << op);
+	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 	TEST_ASSERT(!data["fruit"].toList()[1].toMap().contains("cherries"));
@@ -85,7 +86,7 @@ static void patch()
 	op["op"] = "move";
 	op["from"] = "/fruit/0";
 	op["path"] = "/foo";
-	ret = JsonPatch::patch(data, QVariantList() << op);
+	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
 	TEST_ASSERT_EQ(data["foo"].toString(), QString("apple"));

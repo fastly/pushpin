@@ -28,6 +28,7 @@
 #include "zhttpresponsepacket.h"
 #include "log.h"
 #include "timer.h"
+#include "variant.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
@@ -79,7 +80,7 @@ public:
 	QString closeReason;
 	int peerCloseCode;
 	QString peerCloseReason;
-	QVariant userData;
+	Variant userData;
 	bool pendingUpdate;
 	bool readableChanged;
 	bool writableChanged;

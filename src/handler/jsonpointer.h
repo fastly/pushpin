@@ -24,8 +24,8 @@
 #define JSONPOINTER_H
 
 #include <QString>
-#include <QVariant>
 #include <QVarLengthArray>
+#include "variant.h"
 
 class JsonPointer
 {
@@ -64,26 +64,26 @@ public:
 		}
 	};
 
-	typedef void (*ConstFunc)(const QVariant *v, const Ref &ref, void *data);
+	typedef void (*ConstFunc)(const Variant *v, const Ref &ref, void *data);
 
 	// Return true if data was modified
-	typedef bool (*Func)(QVariant *v, const Ref &ref, void *data);
+	typedef bool (*Func)(Variant *v, const Ref &ref, void *data);
 
 	JsonPointer();
 
 	inline bool isNull() const { return isNull_; }
 
-	QVariant *root();
+	Variant *root();
 	bool execute(ConstFunc func, void *data) const;
 	bool execute(Func func, void *data);
 	bool exists() const;
-	QVariant value() const;
-	QVariant take();
+	Variant value() const;
+	Variant take();
 	bool remove();
-	bool setValue(const QVariant &value);
+	bool setValue(const Variant &value);
 
 	static bool isWithin(const QString &bPointerStr, const QString &aPointerStr);
-	static JsonPointer resolve(QVariant *data, const QString &pointerStr, QString *errorMessage = 0);
+	static JsonPointer resolve(Variant *data, const QString &pointerStr, QString *errorMessage = 0);
 
 private:
 	enum ExecStatus
@@ -94,11 +94,11 @@ private:
 	};
 
 	bool isNull_;
-	QVariant *root_;
+	Variant *root_;
 	QVarLengthArray<Ref, 16> refs_;
 
-	ExecStatus execute(const QVariant *i, int refIndex, ConstFunc func, void *data) const;
-	ExecStatus execute(QVariant *i, int refIndex, Func func, void *data);
+	ExecStatus execute(const Variant *i, int refIndex, ConstFunc func, void *data) const;
+	ExecStatus execute(Variant *i, int refIndex, Func func, void *data);
 };
 
 #endif

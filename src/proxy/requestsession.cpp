@@ -33,6 +33,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "defercall.h"
@@ -114,7 +115,7 @@ static bool validMethod(const QString &in)
 
 static QByteArray serializeJsonString(const QString &s)
 {
-	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s)).toJson(QJsonDocument::Compact);
 
 	assert(tmp.length() >= 4);
 	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -570,7 +571,7 @@ public:
 			if(reasonJson.isNull())
 				return QByteArray();
 
-			QVariantMap vheaders;
+			VariantMap vheaders;
 			foreach(const HttpHeader h, headers)
 			{
 				if(!vheaders.contains(h.first.asQByteArray()))
@@ -686,9 +687,9 @@ public:
 				return false;
 			}
 
-			QVariantMap headersMap = doc.object().toVariantMap();
+			VariantMap headersMap = doc.object().toVariantMap();
 
-			QMapIterator<QString, QVariant> vit(headersMap);
+			QMapIterator<QString, Variant> vit(headersMap);
 			while(vit.hasNext())
 			{
 				vit.next();

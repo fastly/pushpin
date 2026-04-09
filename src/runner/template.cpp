@@ -28,9 +28,9 @@
 
 #include "template.h"
 
-#include <QVariantMap>
 #include <QFile>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 
 namespace Template {
@@ -239,7 +239,7 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 }
 
 // Handles lookup by exact name or dot-notation for children
-static QVariant getVar(const QString &s, const QVariantMap &context)
+static Variant getVar(const QString &s, const VariantMap &context)
 {
 	int at = s.indexOf('.');
 	if(at != -1)
@@ -247,35 +247,35 @@ static QVariant getVar(const QString &s, const QVariantMap &context)
 		QString parent = s.mid(0, at);
 		QString member = s.mid(at + 1);
 		if(parent.isEmpty() || !context.contains(parent))
-			return QVariant();
+			return Variant();
 
-		QVariant subContext = context[parent];
+		Variant subContext = context[parent];
 		if(typeId(subContext) != QMetaType::QVariantMap)
-			return QVariant();
+			return Variant();
 
 		return getVar(member, subContext.toMap());
 	}
 	else
 	{
 		if(!context.contains(s))
-			return QVariant();
+			return Variant();
 
 		return context[s];
 	}
 }
 
-static QString renderExpression(const QString &exp, const QVariantMap &context)
+static QString renderExpression(const QString &exp, const VariantMap &context)
 {
 	// For now all we support is variable lookups. No fancy expressions
 
-	QVariant val = getVar(exp, context);
+	Variant val = getVar(exp, context);
 	if(!val.isValid())
 		return QString();
 
 	return val.toString();
 }
 
-static bool evalCondition(const QString &s, const QVariantMap &context)
+static bool evalCondition(const QString &s, const VariantMap &context)
 {
 	// For now all we support is variable test with optional negation
 
@@ -285,7 +285,7 @@ static bool evalCondition(const QString &s, const QVariantMap &context)
 	}
 	else
 	{
-		QVariant val = getVar(s, context);
+		Variant val = getVar(s, context);
 		if(typeId(val) == QMetaType::QString)
 			return !val.toString().isEmpty();
 		else if(typeId(val) == QMetaType::Bool)
@@ -297,7 +297,7 @@ static bool evalCondition(const QString &s, const QVariantMap &context)
 	}
 }
 
-static QVariantList parseFor(const QString &s, QString *iterVarName, const QVariantMap &context, QString *error)
+static VariantList parseFor(const QString &s, QString *iterVarName, const VariantMap &context, QString *error)
 {
 	// For now all we support is "varname in map"
 
@@ -305,23 +305,23 @@ static QVariantList parseFor(const QString &s, QString *iterVarName, const QVari
 	if(at == -1)
 	{
 		*error = "\"for\" directive must be of the form: \"for variable in container\"";
-		return QVariantList();
+		return VariantList();
 	}
 
 	*iterVarName = s.mid(0, at);
 	QString containerName = s.mid(at + 4);
 
-	QVariant container = getVar(containerName, context);
+	Variant container = getVar(containerName, context);
 	if(typeId(container) != QMetaType::QVariantList)
 	{
 		*error = "\"for\" container must be a list";
-		return QVariantList();
+		return VariantList();
 	}
 
 	return container.toList();
 }
 
-static QString renderInternal(const TemplateItem &item, const QVariantMap &context, QString *error)
+static QString renderInternal(const TemplateItem &item, const VariantMap &context, QString *error)
 {
 	QString out;
 
@@ -357,19 +357,19 @@ static QString renderInternal(const TemplateItem &item, const QVariantMap &conte
 	else if(item.type == TemplateItem::For)
 	{
 		QString iterVarName;
-		QVariantList forItems = parseFor(item.data, &iterVarName, context, error);
+		VariantList forItems = parseFor(item.data, &iterVarName, context, error);
 		if(!error->isEmpty())
 			return QString();
 
 		for(int n = 0; n < forItems.count(); ++n)
 		{
-			const QVariant &forItem = forItems[n];
+			const Variant &forItem = forItems[n];
 
-			QVariantMap loop;
+			VariantMap loop;
 			loop["first"] = (n == 0);
 			loop["last"] = (n == forItems.count() - 1);
 
-			QVariantMap tmp = context;
+			VariantMap tmp = context;
 			tmp[iterVarName] = forItem;
 			tmp["loop"] = loop;
 
@@ -418,7 +418,7 @@ static void dumpItem(const TemplateItem &item, int depth = 0)
 	}
 }
 
-QString render(const QString &content, const QVariantMap &context, QString *error)
+QString render(const QString &content, const VariantMap &context, QString *error)
 {
 	TemplateItem root;
 	root.type = TemplateItem::Root;
@@ -443,7 +443,7 @@ QString render(const QString &content, const QVariantMap &context, QString *erro
 	return result;
 }
 
-bool renderFile(const QString &inFile, const QString &outFile, const QVariantMap &context, QString *error)
+bool renderFile(const QString &inFile, const QString &outFile, const VariantMap &context, QString *error)
 {
 	QFile in(inFile);
 	if(!in.open(QFile::ReadOnly | QFile::Text))

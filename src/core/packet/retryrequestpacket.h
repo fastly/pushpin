@@ -24,7 +24,7 @@
 #ifndef RETRYREQUESTPACKET_H
 #define RETRYREQUESTPACKET_H
 
-#include <QVariant>
+#include "variant.h"
 #include <QHostAddress>
 #include "httprequestdata.h"
 
@@ -50,7 +50,7 @@ public:
 		int outSeq;
 		int outCredits;
 		bool routerResp;
-		QVariant userData;
+		Variant userData;
 
 		Request() :
 			https(false),
@@ -73,7 +73,7 @@ public:
 		QByteArray sharingKey;
 		QByteArray sid;
 		QHash<QByteArray, QByteArray> lastIds;
-		QVariant userData;
+		Variant userData;
 
 		InspectInfo() :
 			doProxy(false)
@@ -92,8 +92,8 @@ public:
 
 	RetryRequestPacket();
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif

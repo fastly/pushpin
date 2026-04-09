@@ -24,7 +24,7 @@
 #ifndef ZHTTPREQUEST_H
 #define ZHTTPREQUEST_H
 
-#include <QVariant>
+#include "variant.h"
 #include "httprequest.h"
 #include <boost/signals2.hpp>
 
@@ -56,7 +56,7 @@ public:
 		int outSeq;
 		int outCredits;
 		bool routerResp;
-		QVariant userData;
+		Variant userData;
 
 		ServerState() :
 			responseCode(-1),
@@ -71,10 +71,10 @@ public:
 	~ZhttpRequest();
 
 	Rid rid() const;
-	QVariant passthroughData() const;
+	Variant passthroughData() const;
 	void setIsTls(bool on); // Updates scheme
 	void setSendBodyAfterAcknowledgement(bool on); // Only works in push/sub mode
-	void setPassthroughData(const QVariant &data);
+	void setPassthroughData(const Variant &data);
 	void setQuiet(bool on);
 
 	// For server requests only

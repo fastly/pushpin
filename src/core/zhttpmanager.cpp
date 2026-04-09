@@ -30,6 +30,7 @@
 #include "zmqsocket.h"
 #include "zmqvalve.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
@@ -368,7 +369,7 @@ public:
 		assert(client_out_sock || client_req_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(client_out_sock)
@@ -392,7 +393,7 @@ public:
 		assert(client_out_stream_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -410,7 +411,7 @@ public:
 		assert(server_out_sock);
 		const char *logprefix = logPrefixForType(type);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 
 		if(routerResp)
 		{
@@ -552,7 +553,7 @@ public:
 				continue;
 			}
 
-			QVariant data = TnetString::toVariant(dataRaw.mid(1));
+			Variant data = TnetString::toVariant(dataRaw.mid(1));
 			if(data.isNull())
 			{
 				log_warning("zhttp/zws client req: received message with invalid format (tnetstring parse failed), skipping");
@@ -601,7 +602,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(msg.mid(1));
+		Variant data = TnetString::toVariant(msg.mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp/zws client: received message with invalid format (tnetstring parse failed), skipping");
@@ -705,7 +706,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(msg[0].mid(1));
+		Variant data = TnetString::toVariant(msg[0].mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp/zws server: received message with invalid format (tnetstring parse failed), skipping");
@@ -819,7 +820,7 @@ public:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(msg[2].mid(1));
+		Variant data = TnetString::toVariant(msg[2].mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp/zws server: received message with invalid format (tnetstring parse failed), skipping");

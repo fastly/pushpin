@@ -23,8 +23,8 @@
 
 #include "sessionrequest.h"
 
-#include <QVariant>
 #include "qtcompat.h"
+#include "variant.h"
 #include "zrpcmanager.h"
 #include "zrpcrequest.h"
 #include "deferred.h"
@@ -40,10 +40,10 @@ public:
 		req = std::make_unique<ZrpcRequest>(stateClient);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this));
 
-		QVariantList rlist;
+		VariantList rlist;
 		foreach(const DetectRule &rule, rules)
 		{
-			QVariantHash i;
+			VariantHash i;
 			i["domain"] = rule.domain.toUtf8();
 			i["path-prefix"] = rule.pathPrefix;
 			i["sid-ptr"] = rule.sidPtr.toUtf8();
@@ -52,7 +52,7 @@ public:
 			rlist += i;
 		}
 
-		QVariantHash args;
+		VariantHash args;
 		args["rules"] = rlist;
 		req->start("session-detect-rules-set", args);
 	}
@@ -82,7 +82,7 @@ public:
 		req = std::make_unique<ZrpcRequest>(stateClient);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this));
 
-		QVariantHash args;
+		VariantHash args;
 		args["domain"] = domain.toUtf8();
 		args["path"] = path;
 		req->start("session-detect-rules-get", args);
@@ -96,17 +96,17 @@ private:
 	{
 		if(req->success())
 		{
-			QVariant vresult = req->result();
+			Variant vresult = req->result();
 			if(typeId(vresult) != QMetaType::QVariantList)
 			{
 				setFinished(false);
 				return;
 			}
 
-			QVariantList result = vresult.toList();
+			VariantList result = vresult.toList();
 
 			QList<DetectRule> rules;
-			foreach(const QVariant &vr, result)
+			foreach(const Variant &vr, result)
 			{
 				if(typeId(vr) != QMetaType::QVariantHash)
 				{
@@ -114,7 +114,7 @@ private:
 					return;
 				}
 
-				QVariantHash r = vr.toHash();
+				VariantHash r = vr.toHash();
 
 				DetectRule rule;
 
@@ -156,7 +156,7 @@ private:
 				rules += rule;
 			}
 
-			setFinished(true, QVariant::fromValue<DetectRuleList>(rules));
+			setFinished(true, Variant::fromValue<DetectRuleList>(rules));
 		}
 		else
 		{
@@ -173,11 +173,11 @@ public:
 		req = std::make_unique<ZrpcRequest>(stateClient);
 		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this));
 
-		QVariantHash args;
+		VariantHash args;
 
 		args["sid"] = sid.toUtf8();
 
-		QVariantHash vlastIds;
+		VariantHash vlastIds;
 		QHashIterator<QString, QString> it(lastIds);
 		while(it.hasNext())
 		{
@@ -214,7 +214,7 @@ public:
 		req = std::make_unique<ZrpcRequest>(stateClient);
 		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this));
 
-		QVariantHash vsidLastIds;
+		VariantHash vsidLastIds;
 
 		QHashIterator<QString, LastIds> it(sidLastIds);
 		while(it.hasNext())
@@ -223,7 +223,7 @@ public:
 			const QString &sid = it.key();
 			const LastIds &lastIds = it.value();
 
-			QVariantHash vlastIds;
+			VariantHash vlastIds;
 
 			QHashIterator<QString, QString> it(lastIds);
 			while(it.hasNext())
@@ -235,7 +235,7 @@ public:
 			vsidLastIds.insert(sid, vlastIds);
 		}
 
-		QVariantHash args;
+		VariantHash args;
 		args["sid-last-ids"] = vsidLastIds;
 		req->start("session-update-many", args);
 	}
@@ -265,7 +265,7 @@ public:
 		req = std::make_unique<ZrpcRequest>(stateClient);
 		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this));
 
-		QVariantHash args;
+		VariantHash args;
 		args["sid"] = sid.toUtf8();
 		req->start("session-get-last-ids", args);
 	}
@@ -278,21 +278,21 @@ private:
 	{
 		if(req->success())
 		{
-			QVariant vresult = req->result();
+			Variant vresult = req->result();
 			if(typeId(vresult) != QMetaType::QVariantHash)
 			{
 				setFinished(false);
 				return;
 			}
 
-			QVariantHash result = vresult.toHash();
+			VariantHash result = vresult.toHash();
 
 			QHash<QString, QString> out;
-			QHashIterator<QString, QVariant> it(result);
+			QHashIterator<QString, Variant> it(result);
 			while(it.hasNext())
 			{
 				it.next();
-				const QVariant &i = it.value();
+				const Variant &i = it.value();
 				if(typeId(i) != QMetaType::QByteArray)
 				{
 					setFinished(false);
@@ -302,7 +302,7 @@ private:
 				out.insert(it.key(), QString::fromUtf8(i.toByteArray()));
 			}
 
-			setFinished(true, QVariant::fromValue<LastIds>(out));
+			setFinished(true, Variant::fromValue<LastIds>(out));
 		}
 		else
 		{

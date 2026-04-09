@@ -23,6 +23,8 @@
 
 #include "deferred.h"
 
+#include "variant.h"
+
 Deferred::Deferred()
 {
 	qRegisterMetaType<DeferredResult>();
@@ -32,7 +34,7 @@ Deferred::~Deferred()
 {
 }
 
-void Deferred::setFinished(bool ok, const QVariant &value)
+void Deferred::setFinished(bool ok, const Variant &value)
 {
 	result_.success = ok;
 	result_.value = value;

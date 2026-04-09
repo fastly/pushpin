@@ -25,7 +25,7 @@
 #define JWT_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 #include <QSharedData>
 #include <QDir>
 #include "rust/bindings.h"
@@ -109,8 +109,8 @@ QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const Enc
 // Returns claim, null on error
 QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
 
-QByteArray encode(const QVariant &claim, const EncodingKey &key);
-QVariant decode(const QByteArray &token, const DecodingKey &key);
+QByteArray encode(const Variant &claim, const EncodingKey &key);
+Variant decode(const QByteArray &token, const DecodingKey &key);
 
 }
 
