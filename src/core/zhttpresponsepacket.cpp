@@ -150,7 +150,7 @@ bool ZhttpResponsePacket::fromVariant(const Variant &in)
 		else if(typeId(obj["id"]) == VariantType::List)
 		{
 			VariantList vl = obj["id"].toList();
-			foreach(const Variant &v, vl)
+			for(const Variant &v : vl)
 			{
 				if(typeId(v) != VariantType::Hash)
 					return false;
@@ -277,7 +277,7 @@ bool ZhttpResponsePacket::fromVariant(const Variant &in)
 		if(typeId(obj["headers"]) != VariantType::List)
 			return false;
 
-		foreach(const Variant &i, obj["headers"].toList())
+		for(const Variant &i : obj["headers"].toList())
 		{
 			VariantList list = i.toList();
 			if(list.count() != 2)

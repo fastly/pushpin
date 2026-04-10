@@ -81,11 +81,8 @@ static InspectData resultToData(const Variant &in, bool *ok)
 		}
 
 		VariantHash vlastIds = obj["last-ids"].toHash();
-		QHashIterator<QString, Variant> it(vlastIds);
-		while(it.hasNext())
+		for(auto it = vlastIds.constBegin(); it != vlastIds.constEnd(); ++it)
 		{
-			it.next();
-
 			if(typeId(it.value()) != VariantType::ByteArray)
 			{
 				*ok = false;

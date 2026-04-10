@@ -919,10 +919,8 @@ private:
 					{
 						// Don't add the same header name twice. We'll collect all values for a single header
 						bool found = false;
-						QMapIterator<QString, Variant> it(vheaders);
-						while(it.hasNext())
+						for(auto it = vheaders.constBegin(); it != vheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &name = it.key();
 
 							QByteArray uname = name.toUtf8();

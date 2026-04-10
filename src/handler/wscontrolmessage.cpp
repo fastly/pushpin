@@ -100,7 +100,7 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 				return WsControlMessage();
 			}
 
-			foreach(const Variant &vfilter, vfilters)
+			for(const Variant &vfilter : vfilters)
 			{
 				QString filter = getString(vfilter, &ok_);
 				if(!ok_)

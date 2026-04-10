@@ -157,10 +157,8 @@ PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channe
 		{
 			VariantHash hmeta = vmeta.toHash();
 
-			QHashIterator<QString, Variant> it(hmeta);
-			while(it.hasNext())
+			for(auto it = hmeta.constBegin(); it != hmeta.constEnd(); ++it)
 			{
-				it.next();
 				const QString &key = it.key();
 				const Variant &vval = it.value();
 
@@ -178,10 +176,8 @@ PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channe
 		{
 			VariantMap mmeta = vmeta.toMap();
 
-			QMapIterator<QString, Variant> it(mmeta);
-			while(it.hasNext())
+			for(auto it = mmeta.constBegin(); it != mmeta.constEnd(); ++it)
 			{
-				it.next();
 				const QString &key = it.key();
 				const Variant &vval = it.value();
 

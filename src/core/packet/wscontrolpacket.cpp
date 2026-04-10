@@ -74,7 +74,7 @@ public:
 
 		WsControlPacket out;
 
-		foreach(const Variant &vitem, vitems)
+		for(const Variant &vitem : vitems)
 		{
 			Message msg;
 
@@ -262,7 +262,7 @@ bool WsControlPacket::fromVariant(const Variant &in)
 	VariantList vitems = obj["items"].toList();
 
 	items.clear();
-	foreach(const Variant &v, vitems)
+	for(const Variant &v : vitems)
 	{
 		if(typeId(v) != VariantType::Hash)
 			return false;

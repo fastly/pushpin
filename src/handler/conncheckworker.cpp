@@ -42,7 +42,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 
 	VariantList vids = args["ids"].toList();
 
-	foreach(const Variant &vid, vids)
+	for(const Variant &vid : vids)
 	{
 		if(typeId(vid) != VariantType::ByteArray)
 		{
@@ -53,7 +53,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 		cids_ += QString::fromUtf8(vid.toByteArray());
 	}
 
-	foreach(const QString &cid, cids_)
+	for(const QString &cid : cids_)
 	{
 		if(!stats->checkConnection(cid.toUtf8()))
 			missing_ += cid;
@@ -82,7 +82,7 @@ void ConnCheckWorker::doFinish()
 		cids_.remove(cid);
 
 	VariantList result;
-	foreach(const QString &cid, cids_)
+	for(const QString &cid : cids_)
 		result += cid.toUtf8();
 
 	req_->respond(result);

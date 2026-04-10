@@ -94,7 +94,7 @@ static QList<PublishItem> parseItems(const VariantList &vitems, bool *ok = 0, QS
 {
 	QList<PublishItem> out;
 
-	foreach(const Variant &vitem, vitems)
+	for(const Variant &vitem : vitems)
 	{
 		bool ok_;
 		PublishItem item = PublishItem::fromVariant(vitem, QString(), &ok_, errorMessage);
@@ -163,7 +163,7 @@ public:
 				return;
 			}
 
-			foreach(const Variant &vheader, args["headers"].toList())
+			for(const Variant &vheader : args["headers"].toList())
 			{
 				if(typeId(vheader) != VariantType::List)
 				{
@@ -488,7 +488,7 @@ public:
 
 			VariantList packets = args["conn-max"].toList();
 
-			foreach(const Variant &data, packets)
+			for(const Variant &data : packets)
 			{
 				StatsPacket p;
 				if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
@@ -557,7 +557,7 @@ public:
 			}
 
 			VariantList vchannels = args["channels"].toList();
-			foreach(const Variant &v, vchannels)
+			for(const Variant &v : vchannels)
 			{
 				if(typeId(v) != VariantType::ByteArray)
 				{
@@ -588,7 +588,7 @@ public:
 			return;
 		}
 
-		foreach(const Variant &vr, args["requests"].toList())
+		for(const Variant &vr : args["requests"].toList())
 		{
 			RequestState rs = RequestState::fromVariant(vr);
 			if(rs.rid.first.isEmpty())
@@ -650,7 +650,7 @@ public:
 			return;
 		}
 
-		foreach(const Variant &vheader, rd["headers"].toList())
+		for(const Variant &vheader : rd["headers"].toList())
 		{
 			if(typeId(vheader) != VariantType::List)
 			{
@@ -726,11 +726,8 @@ public:
 				}
 
 				VariantHash vlastIds = vinspect["last-ids"].toHash();
-				QHashIterator<QString, Variant> it(vlastIds);
-				while(it.hasNext())
+				for(auto it = vlastIds.constBegin(); it != vlastIds.constEnd(); ++it)
 				{
-					it.next();
-
 					if(typeId(it.value()) != VariantType::ByteArray)
 					{
 						respondError("bad-request");
@@ -866,7 +863,7 @@ private:
 		if(!rd.contains("headers") || typeId(rd["headers"]) != VariantType::List)
 			return HttpRequestData();
 
-		foreach(const Variant &vheader, rd["headers"].toList())
+		for(const Variant &vheader : rd["headers"].toList())
 		{
 			if(typeId(vheader) != VariantType::List)
 				return HttpRequestData();
@@ -1939,7 +1936,7 @@ private:
 				{
 					VariantList packets = args["conn-max"].toList();
 
-					foreach(const Variant &data, packets)
+					for(const Variant &data : packets)
 					{
 						StatsPacket p;
 						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)

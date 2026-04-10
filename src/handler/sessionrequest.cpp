@@ -106,7 +106,7 @@ private:
 			VariantList result = vresult.toList();
 
 			QList<DetectRule> rules;
-			foreach(const Variant &vr, result)
+			for(const Variant &vr : result)
 			{
 				if(typeId(vr) != VariantType::Hash)
 				{
@@ -288,10 +288,8 @@ private:
 			VariantHash result = vresult.toHash();
 
 			QHash<QString, QString> out;
-			QHashIterator<QString, Variant> it(result);
-			while(it.hasNext())
+			for(auto it = result.constBegin(); it != result.constEnd(); ++it)
 			{
-				it.next();
 				const Variant &i = it.value();
 				if(typeId(i) != VariantType::ByteArray)
 				{

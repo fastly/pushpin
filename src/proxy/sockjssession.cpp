@@ -407,7 +407,7 @@ public:
 
 			QList<Frame> frames;
 			int bytes = 0;
-			foreach(const Variant &vmessage, messages)
+			for(const Variant &vmessage : messages)
 			{
 				if(typeId(vmessage) != VariantType::String)
 				{
@@ -793,7 +793,7 @@ public:
 
 				QList<Frame> frames;
 				int bytes = 0;
-				foreach(const Variant &vmessage, messages)
+				for(const Variant &vmessage : messages)
 				{
 					if(typeId(vmessage) != VariantType::String)
 					{

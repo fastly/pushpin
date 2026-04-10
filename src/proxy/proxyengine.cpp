@@ -945,7 +945,7 @@ private:
 
 			bool ok = true;
 			QList<QByteArray> ids;
-			foreach(const Variant &vid, vids)
+			for(const Variant &vid : vids)
 			{
 				if(typeId(vid) != VariantType::ByteArray)
 				{

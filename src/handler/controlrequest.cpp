@@ -40,7 +40,7 @@ public:
 		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
 
 		VariantList vcids;
-		foreach(const QString &cid, cids)
+		for(const QString &cid : cids)
 			vcids += cid.toUtf8();
 
 		VariantHash args;
@@ -66,7 +66,7 @@ private:
 			VariantList result = vresult.toList();
 
 			CidSet out;
-			foreach(const Variant &vcid, result)
+			for(const Variant &vcid : result)
 			{
 				if(typeId(vcid) != VariantType::ByteArray)
 				{

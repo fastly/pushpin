@@ -1294,7 +1294,7 @@ public:
 		}
 
 		QSet<QByteArray> ids;
-		foreach(const Variant &row, rows.toList())
+		for(const Variant &row : rows.toList())
 		{
 			if(typeId(row) != VariantType::List)
 				break;

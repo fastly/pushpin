@@ -122,7 +122,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 				Variant vheaders = keyedObjectGetValue(in, "headers");
 				if(typeId(vheaders) == VariantType::List)
 				{
-					foreach(const Variant &vheader, vheaders.toList())
+					for(const Variant &vheader : vheaders.toList())
 					{
 						if(typeId(vheader) != VariantType::List)
 						{
@@ -160,10 +160,8 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 					{
 						VariantHash hheaders = vheaders.toHash();
 
-						QHashIterator<QString, Variant> it(hheaders);
-						while(it.hasNext())
+						for(auto it = hheaders.constBegin(); it != hheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
 							const Variant &vval = it.value();
 
@@ -181,10 +179,8 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 					{
 						VariantMap mheaders = vheaders.toMap();
 
-						QMapIterator<QString, Variant> it(mheaders);
-						while(it.hasNext())
+						for(auto it = mheaders.constBegin(); it != mheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
 							const Variant &vval = it.value();
 
@@ -216,7 +212,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 				}
 
 				QStringList filters;
-				foreach(const Variant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -293,7 +289,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 				}
 
 				QStringList filters;
-				foreach(const Variant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -383,7 +379,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
 				}
 
 				QStringList filters;
-				foreach(const Variant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)

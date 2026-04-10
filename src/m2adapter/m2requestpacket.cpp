@@ -114,13 +114,10 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	if(htype == TnetString::Hash)
 	{
 		VariantMap headersMap = vheaders.toMap();
-		QMapIterator<QString, Variant> vit(headersMap);
-		while(vit.hasNext())
+		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 		{
-			vit.next();
-
-			QString key = vit.key();
-			Variant val = vit.value();
+			const QString &key = vit.key();
+			const Variant &val = vit.value();
 
 			if(typeId(val) == VariantType::ByteArray)
 			{
@@ -146,7 +143,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				{
 					QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					foreach(const Variant &v, vl)
+					for(const Variant &v : vl)
 					{
 						if(typeId(v) != VariantType::ByteArray)
 							return false;
@@ -167,13 +164,10 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 			return false;
 
 		VariantMap headersMap = doc.object().toVariantMap();
-		QMapIterator<QString, Variant> vit(headersMap);
-		while(vit.hasNext())
+		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 		{
-			vit.next();
-
-			QString key = vit.key();
-			Variant val = vit.value();
+			const QString &key = vit.key();
+			const Variant &val = vit.value();
 
 			if(typeId(val) == VariantType::String)
 			{
@@ -199,7 +193,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				{
 					QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					foreach(const Variant &v, vl)
+					for(const Variant &v : vl)
 					{
 						if(typeId(v) != VariantType::String)
 							return false;

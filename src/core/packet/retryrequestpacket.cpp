@@ -155,7 +155,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in)
 		return false;
 
 	requests.clear();
-	foreach(const Variant &i, obj["requests"].toList())
+	for(const Variant &i : obj["requests"].toList())
 	{
 		if(typeId(i) != VariantType::Hash)
 			return false;
@@ -283,7 +283,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in)
 		if(typeId(vrequestData["headers"]) != VariantType::List)
 			return false;
 
-		foreach(const Variant &i, vrequestData["headers"].toList())
+		for(const Variant &i : vrequestData["headers"].toList())
 		{
 			VariantList list = i.toList();
 			if(list.count() != 2)
@@ -333,11 +333,8 @@ bool RetryRequestPacket::fromVariant(const Variant &in)
 				return false;
 
 			VariantHash vlastIds = vinspect["last-ids"].toHash();
-			QHashIterator<QString, Variant> it(vlastIds);
-			while(it.hasNext())
+			for(auto it = vlastIds.constBegin(); it != vlastIds.constEnd(); ++it)
 			{
-				it.next();
-
 				if(typeId(it.value()) != VariantType::ByteArray)
 					return false;
 
