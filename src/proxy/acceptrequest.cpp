@@ -288,7 +288,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 				return AcceptRequest::ResponseData();
 			}
 
-			foreach(const Variant &i, vresponse["headers"].toList())
+			for(const Variant &i : vresponse["headers"].toList())
 			{
 				VariantList list = i.toList();
 				if(list.count() != 2)

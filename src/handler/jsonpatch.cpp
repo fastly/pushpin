@@ -185,10 +185,8 @@ static bool convertToJsonStyleInPlace(Variant *in)
 	{
 		VariantMap vmap;
 		VariantHash vhash = in->toHash();
-		QHashIterator<QString, Variant> it(vhash);
-		while(it.hasNext())
+		for(auto it = vhash.constBegin(); it != vhash.constEnd(); ++it)
 		{
-			it.next();
 			Variant i = it.value();
 			convertToJsonStyleInPlace(&i);
 			vmap[it.key()] = i;
@@ -236,10 +234,8 @@ static bool _compareJsonValues(const Variant &a, const Variant &b)
 		if(am.count() != bm.count())
 			return false;
 
-		QMapIterator<QString, Variant> it(am);
-		while(it.hasNext())
+		for(auto it = am.constBegin(); it != am.constEnd(); ++it)
 		{
-			it.next();
 			const QString &key = it.key();
 			const Variant &val = it.value();
 
@@ -299,7 +295,7 @@ Variant patch(const Variant &data, const VariantList &ops, QString *errorMessage
 {
 	Variant out = data;
 
-	foreach(const Variant &vop, ops)
+	for(const Variant &vop : ops)
 	{
 		if(!isKeyedObject(vop))
 		{

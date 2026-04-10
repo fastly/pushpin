@@ -509,7 +509,7 @@ private:
 		VariantHash vresponse = vaccept["response"].toHash();
 
 		acceptHeaders.clear();
-		foreach(const Variant &vheader, vresponse["headers"].toList())
+		for(const Variant &vheader : vresponse["headers"].toList())
 		{
 			VariantList h = vheader.toList();
 			acceptHeaders += HttpHeader(h[0].toByteArray(), h[1].toByteArray());

@@ -448,7 +448,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				return Instruct();
 			}
 
-			foreach(const Variant &vchannel, vchannels)
+			for(const Variant &vchannel : vchannels)
 			{
 				QString cpn = "channel";
 				Channel c;
@@ -477,7 +477,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					return Instruct();
 				}
 
-				foreach(const Variant &vfilter, vfilters)
+				for(const Variant &vfilter : vfilters)
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -585,10 +585,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				{
 					VariantHash hmeta = vmeta.toHash();
 
-					QHashIterator<QString, Variant> it(hmeta);
-					while(it.hasNext())
+					for(auto it = hmeta.constBegin(); it != hmeta.constEnd(); ++it)
 					{
-						it.next();
 						const QString &key = it.key();
 						const Variant &vval = it.value();
 
@@ -606,10 +604,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				{
 					VariantMap mmeta = vmeta.toMap();
 
-					QMapIterator<QString, Variant> it(mmeta);
-					while(it.hasNext())
+					for(auto it = mmeta.constBegin(); it != mmeta.constEnd(); ++it)
 					{
-						it.next();
 						const QString &key = it.key();
 						const Variant &vval = it.value();
 
@@ -680,7 +676,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				Variant vheaders = keyedObjectGetValue(in, "headers");
 				if(typeId(vheaders) == VariantType::List)
 				{
-					foreach(const Variant &vheader, vheaders.toList())
+					for(const Variant &vheader : vheaders.toList())
 					{
 						if(typeId(vheader) != VariantType::List)
 						{
@@ -718,10 +714,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					{
 						VariantHash hheaders = vheaders.toHash();
 
-						QHashIterator<QString, Variant> it(hheaders);
-						while(it.hasNext())
+						for(auto it = hheaders.constBegin(); it != hheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
 							const Variant &vval = it.value();
 
@@ -739,10 +733,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					{
 						VariantMap mheaders = vheaders.toMap();
 
-						QMapIterator<QString, Variant> it(mheaders);
-						while(it.hasNext())
+						for(auto it = mheaders.constBegin(); it != mheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
 							const Variant &vval = it.value();
 

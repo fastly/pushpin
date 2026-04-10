@@ -85,10 +85,8 @@ QByteArray fromVariant(const Variant &in)
 QByteArray fromHash(const VariantHash &in)
 {
 	QByteArray val;
-	QHashIterator<QString, Variant> it(in);
-	while(it.hasNext())
+	for(auto it = in.constBegin(); it != in.constEnd(); ++it)
 	{
-		it.next();
 		val += fromByteArray(it.key().toUtf8());
 		val += fromVariant(it.value());
 	}
@@ -98,7 +96,7 @@ QByteArray fromHash(const VariantHash &in)
 QByteArray fromList(const VariantList &in)
 {
 	QByteArray val;
-	foreach(const Variant &v, in)
+	for(const Variant &v : in)
 		val += fromVariant(v);
 	return QByteArray::number(val.size()) + ':' + val + ']';
 }
@@ -393,16 +391,15 @@ QString variantToString(const Variant &in, int indent)
 		else
 			out += ' ';
 
-		QHashIterator<QString, Variant> it(hash);
-		while(it.hasNext())
+		for(auto it = hash.constBegin(); it != hash.constEnd(); ++it)
 		{
-			it.next();
-
 			if(indent >= 0)
 				out += QString(indent + 2, ' ');
 
 			out += '\"' + byteArrayToEscapedString(it.key().toUtf8()) + "\": " + variantToString(it.value(), indent >= 0 ? indent + 2 : -1);
-			if(it.hasNext())
+			auto next_it = it;
+			++next_it;
+			if(next_it != hash.constEnd())
 				out += ',';
 
 			if(indent >= 0)

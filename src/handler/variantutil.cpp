@@ -280,10 +280,8 @@ bool convertToJsonStyleInPlace(Variant *in)
 	{
 		VariantMap vmap;
 		VariantHash vhash = in->toHash();
-		QHashIterator<QString, Variant> it(vhash);
-		while(it.hasNext())
+		for(auto it = vhash.constBegin(); it != vhash.constEnd(); ++it)
 		{
-			it.next();
 			Variant i = it.value();
 			convertToJsonStyleInPlace(&i);
 			vmap[it.key()] = i;

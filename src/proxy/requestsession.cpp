@@ -689,11 +689,8 @@ public:
 
 			VariantMap headersMap = doc.object().toVariantMap();
 
-			QMapIterator<QString, Variant> vit(headersMap);
-			while(vit.hasNext())
+			for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 			{
-				vit.next();
-
 				if(typeId(vit.value()) != VariantType::String)
 				{
 					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
