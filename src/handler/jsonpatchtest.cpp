@@ -47,7 +47,7 @@ static void patch()
 	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
-	TEST_ASSERT_EQ(typeId(data["fruit"]), QMetaType::QVariantList);
+	TEST_ASSERT_EQ(typeId(data["fruit"]), VariantType::List);
 	TEST_ASSERT_EQ(data["fruit"].toList()[0].toString(), QString("apple"));
 
 	op.clear();
@@ -69,7 +69,7 @@ static void patch()
 	ret = JsonPatch::patch(data, VariantList() << op);
 	TEST_ASSERT(ret.isValid());
 	data = ret.toMap();
-	TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), QMetaType::QVariantMap);
+	TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), VariantType::Map);
 	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
 	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 

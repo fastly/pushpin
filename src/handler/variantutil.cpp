@@ -46,14 +46,14 @@ void setError(bool *ok, QString *errorMessage, const QString &msg)
 
 bool isKeyedObject(const Variant &in)
 {
-	return (typeId(in) == QMetaType::QVariantHash || typeId(in) == QMetaType::QVariantMap);
+	return (typeId(in) == VariantType::Hash || typeId(in) == VariantType::Map);
 }
 
 Variant createSameKeyedObject(const Variant &in)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return VariantHash();
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return VariantMap();
 	else
 		return Variant();
@@ -61,9 +61,9 @@ Variant createSameKeyedObject(const Variant &in)
 
 bool keyedObjectIsEmpty(const Variant &in)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().isEmpty();
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().isEmpty();
 	else
 		return true;
@@ -71,9 +71,9 @@ bool keyedObjectIsEmpty(const Variant &in)
 
 bool keyedObjectContains(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().contains(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().contains(name);
 	else
 		return false;
@@ -81,9 +81,9 @@ bool keyedObjectContains(const Variant &in, const QString &name)
 
 Variant keyedObjectGetValue(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().value(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().value(name);
 	else
 		return Variant();
@@ -91,13 +91,13 @@ Variant keyedObjectGetValue(const Variant &in, const QString &name)
 
 void keyedObjectInsert(Variant *in, const QString &name, const Variant &value)
 {
-	if(typeId(*in) == QMetaType::QVariantHash)
+	if(typeId(*in) == VariantType::Hash)
 	{
 		VariantHash h = in->toHash();
 		h.insert(name, value);
 		*in = h;
 	}
-	else if(typeId(*in) == QMetaType::QVariantMap)
+	else if(typeId(*in) == VariantType::Map)
 	{
 		VariantMap h = in->toMap();
 		h.insert(name, value);
@@ -117,7 +117,7 @@ Variant getChild(const Variant &in, const QString &parentName, const QString &ch
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
 	Variant v;
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 	{
 		VariantHash h = in.toHash();
 
@@ -202,7 +202,7 @@ VariantList getList(const Variant &in, const QString &parentName, const QString 
 
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
-	if(typeId(v) != QMetaType::QVariantList)
+	if(typeId(v) != VariantType::List)
 	{
 		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return VariantList();
@@ -214,13 +214,13 @@ VariantList getList(const Variant &in, const QString &parentName, const QString 
 
 QString getString(const Variant &in, bool *ok)
 {
-	if(typeId(in) == QMetaType::QString)
+	if(typeId(in) == VariantType::String)
 	{
 		if(ok)
 			*ok = true;
 		return in.toString();
 	}
-	else if(typeId(in) == QMetaType::QByteArray)
+	else if(typeId(in) == VariantType::ByteArray)
 	{
 		QByteArray buf = in.toByteArray();
 		if(ok)
@@ -275,8 +275,8 @@ bool convertToJsonStyleInPlace(Variant *in)
 
 	bool changed = false;
 
-	QMetaType::Type type = typeId(*in);
-	if(type == QMetaType::QVariantHash)
+	VariantType::Type type = typeId(*in);
+	if(type == VariantType::Hash)
 	{
 		VariantMap vmap;
 		VariantHash vhash = in->toHash();
@@ -292,7 +292,7 @@ bool convertToJsonStyleInPlace(Variant *in)
 		*in = vmap;
 		changed = true;
 	}
-	else if(type == QMetaType::QVariantList)
+	else if(type == VariantType::List)
 	{
 		VariantList vlist = in->toList();
 		for(int n = 0; n < vlist.count(); ++n)
@@ -305,7 +305,7 @@ bool convertToJsonStyleInPlace(Variant *in)
 		*in = vlist;
 		changed = true;
 	}
-	else if(type == QMetaType::QByteArray)
+	else if(type == VariantType::ByteArray)
 	{
 		QByteArray buf = in->toByteArray();
 		if(!buf.isNull())

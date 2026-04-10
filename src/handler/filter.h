@@ -27,7 +27,6 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
-#include <QMetaType>
 #include <QUrl>
 #include <boost/signals2.hpp>
 #include "zhttprequest.h"

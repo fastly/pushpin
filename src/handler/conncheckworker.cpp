@@ -34,7 +34,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 {
 	VariantHash args = req_->args();
 
-	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
+	if(!args.contains("ids") || typeId(args["ids"]) != VariantType::List)
 	{
 		respondError("bad-request");
 		return;
@@ -44,7 +44,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 
 	foreach(const Variant &vid, vids)
 	{
-		if(typeId(vid) != QMetaType::QByteArray)
+		if(typeId(vid) != VariantType::ByteArray)
 		{
 			respondError("bad-request");
 			return;

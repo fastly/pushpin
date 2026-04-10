@@ -250,7 +250,7 @@ static Variant getVar(const QString &s, const VariantMap &context)
 			return Variant();
 
 		Variant subContext = context[parent];
-		if(typeId(subContext) != QMetaType::QVariantMap)
+		if(typeId(subContext) != VariantType::Map)
 			return Variant();
 
 		return getVar(member, subContext.toMap());
@@ -286,11 +286,11 @@ static bool evalCondition(const QString &s, const VariantMap &context)
 	else
 	{
 		Variant val = getVar(s, context);
-		if(typeId(val) == QMetaType::QString)
+		if(typeId(val) == VariantType::String)
 			return !val.toString().isEmpty();
-		else if(typeId(val) == QMetaType::Bool)
+		else if(typeId(val) == VariantType::Bool)
 			return val.toBool();
-		else if(canConvert(val, QMetaType::Int))
+		else if(canConvert(val, VariantType::Int))
 			return (val.toInt() != 0);
 		else
 			return false;
@@ -312,7 +312,7 @@ static VariantList parseFor(const QString &s, QString *iterVarName, const Varian
 	QString containerName = s.mid(at + 4);
 
 	Variant container = getVar(containerName, context);
-	if(typeId(container) != QMetaType::QVariantList)
+	if(typeId(container) != VariantType::List)
 	{
 		*error = "\"for\" container must be a list";
 		return VariantList();

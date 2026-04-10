@@ -934,7 +934,7 @@ private:
 			}
 
 			VariantHash args = req->args();
-			if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
+			if(!args.contains("ids") || typeId(args["ids"]) != VariantType::List)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -947,7 +947,7 @@ private:
 			QList<QByteArray> ids;
 			foreach(const Variant &vid, vids)
 			{
-				if(typeId(vid) != QMetaType::QByteArray)
+				if(typeId(vid) != VariantType::ByteArray)
 				{
 					ok = false;
 					break;
@@ -974,7 +974,7 @@ private:
 		else if(req->method() == "refresh")
 		{
 			VariantHash args = req->args();
-			if(!args.contains("cid") || typeId(args["cid"]) != QMetaType::QByteArray)
+			if(!args.contains("cid") || typeId(args["cid"]) != VariantType::ByteArray)
 			{
 				req->respondError("bad-format");
 				delete req;

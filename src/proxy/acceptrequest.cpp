@@ -229,7 +229,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 {
 	AcceptRequest::ResponseData out;
 
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 	{
 		*ok = false;
 		return AcceptRequest::ResponseData();
@@ -239,7 +239,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 	if(obj.contains("accepted"))
 	{
-		if(typeId(obj["accepted"]) != QMetaType::Bool)
+		if(typeId(obj["accepted"]) != VariantType::Bool)
 		{
 			*ok = false;
 			return AcceptRequest::ResponseData();
@@ -250,7 +250,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 	if(obj.contains("response"))
 	{
-		if(typeId(obj["response"]) != QMetaType::QVariantHash)
+		if(typeId(obj["response"]) != VariantType::Hash)
 		{
 			*ok = false;
 			return AcceptRequest::ResponseData();
@@ -260,7 +260,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 		if(vresponse.contains("code"))
 		{
-			if(!canConvert(vresponse["code"], QMetaType::Int))
+			if(!canConvert(vresponse["code"], VariantType::Int))
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -271,7 +271,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 		if(vresponse.contains("reason"))
 		{
-			if(typeId(vresponse["reason"]) != QMetaType::QByteArray)
+			if(typeId(vresponse["reason"]) != VariantType::ByteArray)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -282,7 +282,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 		if(vresponse.contains("headers"))
 		{
-			if(typeId(vresponse["headers"]) != QMetaType::QVariantList)
+			if(typeId(vresponse["headers"]) != VariantType::List)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -297,7 +297,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 					return AcceptRequest::ResponseData();
 				}
 
-				if(typeId(list[0]) != QMetaType::QByteArray || typeId(list[1]) != QMetaType::QByteArray)
+				if(typeId(list[0]) != VariantType::ByteArray || typeId(list[1]) != VariantType::ByteArray)
 				{
 					*ok = false;
 					return AcceptRequest::ResponseData();
@@ -309,7 +309,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok)
 
 		if(vresponse.contains("body"))
 		{
-			if(typeId(vresponse["body"]) != QMetaType::QByteArray)
+			if(typeId(vresponse["body"]) != VariantType::ByteArray)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();

@@ -156,11 +156,11 @@ Variant Settings::value(const QString &key, const Variant &defaultValue) const
 	Variant v = valueRaw(key, defaultValue);
 	if(v.isValid())
 	{
-		if(typeId(v) == QMetaType::QString)
+		if(typeId(v) == VariantType::String)
 		{
 			v = resolveVars(v.toString());
 		}
-		else if(typeId(v) == QMetaType::QStringList)
+		else if(typeId(v) == VariantType::List)
 		{
 			QStringList oldList = v.toStringList();
 			QStringList newList;

@@ -153,7 +153,7 @@ PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channe
 
 	if(vmeta.isValid())
 	{
-		if(typeId(vmeta) == QMetaType::QVariantHash)
+		if(typeId(vmeta) == VariantType::Hash)
 		{
 			VariantHash hmeta = vmeta.toHash();
 
@@ -200,7 +200,7 @@ PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channe
 	if(keyedObjectContains(vitem, "size"))
 	{
 		Variant vsize = keyedObjectGetValue(vitem, "size");
-		if(!canConvert(vsize, QMetaType::Int))
+		if(!canConvert(vsize, VariantType::Int))
 		{
 			setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
 			return PublishItem();
@@ -218,7 +218,7 @@ PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channe
 	if(keyedObjectContains(vitem, "no-seq"))
 	{
 		Variant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
-		if(typeId(vnoSeq) != QMetaType::Bool)
+		if(typeId(vnoSeq) != VariantType::Bool)
 		{
 			setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));
 			return PublishItem();

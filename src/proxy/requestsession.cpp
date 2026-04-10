@@ -694,7 +694,7 @@ public:
 			{
 				vit.next();
 
-				if(typeId(vit.value()) != QMetaType::QString)
+				if(typeId(vit.value()) != VariantType::String)
 				{
 					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 					*ok = false;

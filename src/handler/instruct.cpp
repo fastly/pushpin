@@ -401,7 +401,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 		if(minstruct.contains("hold"))
 		{
-			if(typeId(minstruct["hold"]) != QMetaType::QVariantMap)
+			if(typeId(minstruct["hold"]) != VariantType::Map)
 			{
 				setError(ok, errorMessage, "instruct contains 'hold' with wrong type");
 				return Instruct();
@@ -495,7 +495,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(vhold, "timeout"))
 			{
 				Variant vtimeout = keyedObjectGetValue(vhold, "timeout");
-				if(!canConvert(vtimeout, QMetaType::Int))
+				if(!canConvert(vtimeout, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
 					return Instruct();
@@ -537,9 +537,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				else if(keyedObjectContains(vka, "content"))
 				{
 					Variant vcontent = keyedObjectGetValue(vka, "content");
-					if(typeId(vcontent) == QMetaType::QByteArray)
+					if(typeId(vcontent) == VariantType::ByteArray)
 						keepAliveData = vcontent.toByteArray();
-					else if(typeId(vcontent) == QMetaType::QString)
+					else if(typeId(vcontent) == VariantType::String)
 						keepAliveData = vcontent.toString().toUtf8();
 					else
 					{
@@ -551,7 +551,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				if(keyedObjectContains(vka, "timeout"))
 				{
 					Variant vtimeout = keyedObjectGetValue(vka, "timeout");
-					if(!canConvert(vtimeout, QMetaType::Int))
+					if(!canConvert(vtimeout, VariantType::Int))
 					{
 						setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(kpn));
 						return Instruct();
@@ -581,7 +581,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			if(vmeta.isValid())
 			{
-				if(typeId(vmeta) == QMetaType::QVariantHash)
+				if(typeId(vmeta) == VariantType::Hash)
 				{
 					VariantHash hmeta = vmeta.toHash();
 
@@ -631,7 +631,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 		if(minstruct.contains("response"))
 		{
-			if(typeId(minstruct["response"]) != QMetaType::QVariantMap)
+			if(typeId(minstruct["response"]) != VariantType::Map)
 			{
 				if(ok)
 					*ok = false;
@@ -645,7 +645,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(in, "code"))
 			{
 				Variant vcode = keyedObjectGetValue(in, "code");
-				if(!canConvert(vcode, QMetaType::Int))
+				if(!canConvert(vcode, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
 					return Instruct();
@@ -678,11 +678,11 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(in, "headers"))
 			{
 				Variant vheaders = keyedObjectGetValue(in, "headers");
-				if(typeId(vheaders) == QMetaType::QVariantList)
+				if(typeId(vheaders) == VariantType::List)
 				{
 					foreach(const Variant &vheader, vheaders.toList())
 					{
-						if(typeId(vheader) != QMetaType::QVariantList)
+						if(typeId(vheader) != VariantType::List)
 						{
 							setError(ok, errorMessage, "headers contains element with wrong type");
 							return Instruct();
@@ -714,7 +714,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 				else if(isKeyedObject(vheaders))
 				{
-					if(typeId(vheaders) == QMetaType::QVariantHash)
+					if(typeId(vheaders) == VariantType::Hash)
 					{
 						VariantHash hheaders = vheaders.toHash();
 
@@ -779,9 +779,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			else if(keyedObjectContains(in, "body"))
 			{
 				Variant vcontent = keyedObjectGetValue(in, "body");
-				if(typeId(vcontent) == QMetaType::QByteArray)
+				if(typeId(vcontent) == VariantType::ByteArray)
 					newResponse.body = vcontent.toByteArray();
-				else if(typeId(vcontent) == QMetaType::QString)
+				else if(typeId(vcontent) == VariantType::String)
 					newResponse.body = vcontent.toString().toUtf8();
 				else
 				{

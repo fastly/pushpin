@@ -26,21 +26,36 @@
 #include <QMetaType>
 #include <QVariant>
 
-inline QMetaType::Type typeId(const QVariant &v)
+namespace VariantType {
+	enum Type {
+		Invalid = QMetaType::UnknownType,
+		Bool = QMetaType::Bool,
+		Int = QMetaType::Int,
+		Double = QMetaType::Double,
+		LongLong = QMetaType::LongLong,
+		String = QMetaType::QString,
+		ByteArray = QMetaType::QByteArray,
+		Hash = QMetaType::QVariantHash,
+		Map = QMetaType::QVariantMap,
+		List = QMetaType::QVariantList
+	};
+}
+
+inline VariantType::Type typeId(const QVariant &v)
 {
 #if QT_VERSION >= 0x060000
-	return (QMetaType::Type)v.typeId();
+	return (VariantType::Type)v.typeId();
 #else
-	return (QMetaType::Type)v.type();
+	return (VariantType::Type)v.type();
 #endif
 }
 
-inline bool canConvert(const QVariant &v, QMetaType::Type type)
+inline bool canConvert(const QVariant &v, VariantType::Type type)
 {
 #if QT_VERSION >= 0x060000
-    return v.canConvert(QMetaType(type));
+    return v.canConvert(QMetaType((QMetaType::Type)type));
 #else
-    return v.canConvert(type);
+    return v.canConvert((QMetaType::Type)type);
 #endif
 }
 

@@ -330,7 +330,7 @@ public:
 		if(data.isValid())
 		{
 			QJsonDocument doc;
-			if(typeId(data) == QMetaType::QVariantMap)
+			if(typeId(data) == VariantType::Map)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));

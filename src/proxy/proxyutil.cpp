@@ -43,7 +43,7 @@ static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 {
 	Variant claimObj = Jwt::decode(token, key);
-	if(!claimObj.isValid() || typeId(claimObj) != QMetaType::QVariantMap)
+	if(!claimObj.isValid() || typeId(claimObj) != VariantType::Map)
 		return false;
 
 	VariantMap claim = claimObj.toMap();

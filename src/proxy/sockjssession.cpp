@@ -409,7 +409,7 @@ public:
 			int bytes = 0;
 			foreach(const Variant &vmessage, messages)
 			{
-				if(typeId(vmessage) != QMetaType::QString)
+				if(typeId(vmessage) != VariantType::String)
 				{
 					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 					respondError(_req, 400, "Bad Request", "Payload expected");
@@ -795,7 +795,7 @@ public:
 				int bytes = 0;
 				foreach(const Variant &vmessage, messages)
 				{
-					if(typeId(vmessage) != QMetaType::QString)
+					if(typeId(vmessage) != VariantType::String)
 					{
 						error = true;
 						break;

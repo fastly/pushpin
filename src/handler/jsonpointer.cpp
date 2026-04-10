@@ -49,7 +49,7 @@ JsonPointer::ExecStatus JsonPointer::execute(const Variant *i, int refIndex, Con
 
 		if(ref.type == Ref::Object)
 		{
-			if(typeId(*i) == QMetaType::QVariantHash)
+			if(typeId(*i) == VariantType::Hash)
 			{
 				VariantHash h = i->toHash();
 				if(!h.contains(ref.name))
@@ -78,9 +78,9 @@ JsonPointer::ExecStatus JsonPointer::execute(const Variant *i, int refIndex, Con
 
 	// Ensure ref is correct type
 	const Ref &ref = refs_[refIndex];
-	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
+	if(ref.type == Ref::Object && (typeId(*i) != VariantType::Hash && typeId(*i) != VariantType::Map))
 		return ExecError;
-	else if(ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
+	else if(ref.type == Ref::Array && typeId(*i) != VariantType::List)
 		return ExecError;
 
 	func(i, refs_[refIndex], data);
@@ -95,7 +95,7 @@ JsonPointer::ExecStatus JsonPointer::execute(Variant *i, int refIndex, Func func
 		const Ref &ref = refs_[refIndex];
 		if(ref.type == Ref::Object)
 		{
-			if(typeId(*i) == QMetaType::QVariantHash)
+			if(typeId(*i) == VariantType::Hash)
 			{
 				VariantHash h = i->toHash();
 				if(!h.contains(ref.name))
@@ -133,9 +133,9 @@ JsonPointer::ExecStatus JsonPointer::execute(Variant *i, int refIndex, Func func
 
 	// Ensure ref is correct type
 	const Ref &ref = refs_[refIndex];
-	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
+	if(ref.type == Ref::Object && (typeId(*i) != VariantType::Hash && typeId(*i) != VariantType::Map))
 		return ExecError;
-	else if(ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
+	else if(ref.type == Ref::Array && typeId(*i) != VariantType::List)
 		return ExecError;
 
 	if(func(i, refs_[refIndex], data))
@@ -180,7 +180,7 @@ static void existsFunc(const Variant *v, const JsonPointer::Ref &ref, void *data
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
-		if(typeId(*v) == QMetaType::QVariantHash)
+		if(typeId(*v) == VariantType::Hash)
 			ret = v->toHash().contains(ref.name);
 		else // Map
 			ret = v->toMap().contains(ref.name);
@@ -211,7 +211,7 @@ static void valueFunc(const Variant *v, const JsonPointer::Ref &ref, void *data)
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
-		if(typeId(*v) == QMetaType::QVariantHash)
+		if(typeId(*v) == VariantType::Hash)
 			ret = v->toHash().value(ref.name);
 		else // Map
 			ret = v->toMap().value(ref.name);
@@ -244,7 +244,7 @@ static bool removeFunc(Variant *v, const JsonPointer::Ref &ref, void *data)
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
-		if(typeId(*v) == QMetaType::QVariantHash)
+		if(typeId(*v) == VariantType::Hash)
 		{
 			VariantHash h = v->toHash();
 			if(h.contains(ref.name))
@@ -306,7 +306,7 @@ static bool takeFunc(Variant *v, const JsonPointer::Ref &ref, void *data)
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
-		if(typeId(*v) == QMetaType::QVariantHash)
+		if(typeId(*v) == VariantType::Hash)
 		{
 			VariantHash h = v->toHash();
 			if(h.contains(ref.name))
@@ -369,7 +369,7 @@ static bool setValueFunc(Variant *v, const JsonPointer::Ref &ref, void *_data)
 	}
 	else if(ref.type == JsonPointer::Ref::Object)
 	{
-		if(typeId(*v) == QMetaType::QVariantHash)
+		if(typeId(*v) == VariantType::Hash)
 		{
 			VariantHash h = v->toHash();
 			h[ref.name] = data.first;
@@ -478,9 +478,9 @@ JsonPointer JsonPointer::resolve(Variant *data, const QString &pointerStr, QStri
 
 			if(prevRef.type == Ref::Object)
 			{
-				assert(typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap);
+				assert(typeId(i) == VariantType::Hash || typeId(i) == VariantType::Map);
 
-				if(typeId(i) == QMetaType::QVariantHash)
+				if(typeId(i) == VariantType::Hash)
 				{
 					VariantHash h = i.toHash();
 					if(!h.contains(prevRef.name))
@@ -519,11 +519,11 @@ JsonPointer JsonPointer::resolve(Variant *data, const QString &pointerStr, QStri
 			}
 		}
 
-		if(typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap)
+		if(typeId(i) == VariantType::Hash || typeId(i) == VariantType::Map)
 		{
 			ptr.refs_ += Ref(p);
 		}
-		else if(typeId(i) == QMetaType::QVariantList)
+		else if(typeId(i) == VariantType::List)
 		{
 			VariantList l = i.toList();
 			if(p == "-")
