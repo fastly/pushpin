@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <QSet>
-#include <QUrlQuery>
 #include "log.h"
 #include "defercall.h"
 #include "bufferlist.h"
@@ -90,12 +89,20 @@ public:
 
 		QSet<QString> channels;
 
-		QUrlQuery query(request.uri);
-		QList<QPair<QString, QString> > queryItems = query.queryItems();
-		for(int n = 0; n < queryItems.count(); ++n)
+		QString queryStr = request.uri.query();
+		// Parse query parameters
+		foreach(const QString &pair, queryStr.split('&'))
 		{
-			if(queryItems[n].first == "channel")
-				channels += queryItems[n].second;
+			int at = pair.indexOf('=');
+			if(at != -1)
+			{
+				QString key = QByteArray::fromPercentEncoding(pair.left(at).toUtf8());
+				if(key == "channel")
+				{
+					QString value = QByteArray::fromPercentEncoding(pair.mid(at + 1).toUtf8());
+					channels += value;
+				}
+			}
 		}
 
 		if(channels.isEmpty())
@@ -191,7 +198,7 @@ void TestHttpRequest::setClientCert(const QString &cert, const QString &key)
 	Q_UNUSED(key);
 }
 
-void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
+void TestHttpRequest::start(const QString &method, const Url &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);
 
@@ -287,7 +294,7 @@ QString TestHttpRequest::requestMethod() const
 	return d->request.method;
 }
 
-QUrl TestHttpRequest::requestUri() const
+Url TestHttpRequest::requestUri() const
 {
 	return d->request.uri;
 }

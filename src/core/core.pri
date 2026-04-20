@@ -1,7 +1,8 @@
 HEADERS += \
 	$$PWD/cowbytearray.h \
 	$$PWD/cowstring.h \
-	$$PWD/variant.h
+	$$PWD/variant.h \
+	$$PWD/url.h
 
 HEADERS += \
 	$$PWD/zmqcontext.h \
@@ -32,6 +33,7 @@ HEADERS += \
 SOURCES += \
 	$$PWD/test.cpp \
 	$$PWD/tnetstring.cpp \
+	$$PWD/url.cpp \
 	$$PWD/httpheaders.cpp \
 	$$PWD/zhttprequestpacket.cpp \
 	$$PWD/zhttpresponsepacket.cpp \

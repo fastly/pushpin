@@ -24,13 +24,13 @@
 #define HTTPREQUESTDATA_H
 
 #include "../httpheaders.h"
-#include <QUrl>
+#include "../url.h"
 
 class HttpRequestData
 {
 public:
 	QString method;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	QByteArray body;
 };

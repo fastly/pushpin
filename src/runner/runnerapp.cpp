@@ -28,8 +28,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
-#include <QUrl>
-#include <QUrlQuery>
+#include "url.h"
 #include "rust/bindings.h"
 #include "processquit.h"
 #include "log.h"
@@ -80,8 +79,8 @@ static QPair<QHostAddress, int> parsePort(const QString &s)
 
 	// Otherwise, assume it's an address:port combination
 
-	// Parse with QUrl in order to support bracketed IPv6 notation
-	QUrl url{QUrl::fromUserInput(s)};
+	// Parse with Url in order to support bracketed IPv6 notation
+	Url url{s};
 
 	return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
 }
@@ -539,7 +538,7 @@ public:
 
 			foreach(const QString &localPortStr, localPortStrs)
 			{
-				QUrl path = QUrl::fromEncoded(localPortStr.toUtf8());
+				Url path = Url::fromEncoded(localPortStr.toUtf8());
 				if(!path.isValid())
 				{
 					log_error("invalid local port: %s", qPrintable(localPortStr));
@@ -547,12 +546,43 @@ public:
 					return;
 				}
 
-				QUrlQuery query(path.query());
+				QString queryStr = path.query();
+
+				// Parse query parameters manually
+				auto hasQueryParam = [&queryStr](const QString &param) -> bool {
+					foreach(const QString &pair, queryStr.split('&'))
+					{
+						int at = pair.indexOf('=');
+						if(at != -1)
+						{
+							QString key = QByteArray::fromPercentEncoding(pair.left(at).toUtf8());
+							if(key == param)
+								return true;
+						}
+					}
+					return false;
+				};
+
+				auto getQueryParam = [&queryStr](const QString &param) -> QString {
+					foreach(const QString &pair, queryStr.split('&'))
+					{
+						int at = pair.indexOf('=');
+						if(at != -1)
+						{
+							QString key = QByteArray::fromPercentEncoding(pair.left(at).toUtf8());
+							if(key == param)
+							{
+								return QByteArray::fromPercentEncoding(pair.mid(at + 1).toUtf8());
+							}
+						}
+					}
+					return QString();
+				};
 
 				int mode = -1;
-				if(query.hasQueryItem("mode"))
+				if(hasQueryParam("mode"))
 				{
-					QString modeStr = query.queryItemValue("mode");
+					QString modeStr = getQueryParam("mode");
 					bool ok = false;
 					mode = modeStr.toInt(&ok, 8);
 					if(!ok)
@@ -563,8 +593,8 @@ public:
 					}
 				}
 
-				QString user = query.queryItemValue("user");
-				QString group = query.queryItemValue("group");
+				QString user = getQueryParam("user");
+				QString group = getQueryParam("group");
 
 				ports += ListenPort(QHostAddress(), 0, true, path.path(), mode, user, group);
 			}

@@ -561,10 +561,11 @@ public:
 			}
 
 			DomainMap::Target target;
-			QUrl uri = req->requestUri();
+			Url uri = req->requestUri();
 			bool isHttps = (uri.scheme() == "https");
 			target.connectHost = uri.host();
-			target.connectPort = uri.port(isHttps ? 443 : 80);
+			int urlPort = uri.port();
+			target.connectPort = (urlPort > 0) ? urlPort : (isHttps ? 443 : 80);
 			target.ssl = isHttps;
 			target.trusted = data["trusted"].toBool();
 
@@ -619,14 +620,14 @@ public:
 		if(config.acceptXForwardedProto && isXForwardedProtocolTls(sock->requestHeaders()))
 			sock->setIsTls(true);
 
-		QUrl requestUri = sock->requestUri();
+		Url requestUri = sock->requestUri();
 
 		log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(), requestUri.toEncoded().data());
 
 		bool isSecure = (requestUri.scheme() == "wss");
 		QString host = requestUri.host();
 
-		QByteArray encPath = requestUri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
 
 		QString routeId;
 

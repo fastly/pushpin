@@ -24,9 +24,9 @@
 #ifndef WEBSOCKET_H
 #define WEBSOCKET_H
 
-#include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
+#include "url.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -89,13 +89,13 @@ public:
 	virtual void setIgnoreTlsErrors(bool on) = 0;
 	virtual void setClientCert(const QString &cert, const QString &key) = 0;
 
-	virtual void start(const QUrl &uri, const HttpHeaders &headers) = 0;
+	virtual void start(const Url &uri, const HttpHeaders &headers) = 0;
 
 	virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers) = 0;
 	virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body) = 0;
 
 	virtual State state() const = 0;
-	virtual QUrl requestUri() const = 0;
+	virtual Url requestUri() const = 0;
 	virtual HttpHeaders requestHeaders() const = 0;
 	virtual int responseCode() const = 0;
 	virtual QByteArray responseReason() const = 0;

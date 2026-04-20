@@ -38,6 +38,7 @@ pub mod test;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
+pub mod url;
 pub mod waker;
 pub mod zmq;
 
@@ -164,6 +165,11 @@ mod tests {
         unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
 
+    fn url_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::url_test(out_ex) == 0 }
+    }
+
     #[test]
     fn cowbytearray() {
         run_cpp(cowbytearray_test);
@@ -207,5 +213,10 @@ mod tests {
     #[test]
     fn eventloop() {
         run_cpp(eventloop_test);
+    }
+
+    #[test]
+    fn url() {
+        run_cpp(url_test);
     }
 }

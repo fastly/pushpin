@@ -177,9 +177,9 @@ public:
 	int sentOutReqData;
 	int retries;
 	QString errorMessage;
-	QUrl currentUri;
-	QUrl nextUri;
-	QUrl goneUri;
+	Url currentUri;
+	Url nextUri;
+	Url goneUri;
 	bool needUpdate;
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
@@ -1134,7 +1134,7 @@ private:
 		finishedCallback.call({q});
 	}
 
-	void prepareOutReq(const QUrl &destUri, bool autoShare = false)
+	void prepareOutReq(const Url &destUri, bool autoShare = false)
 	{
 		haveOutReqHeaders = false;
 		sentOutReqData = 0;
@@ -1143,8 +1143,12 @@ private:
 		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
 		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
-		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
-		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
+		int currentPort = currentUri.port();
+		if (currentPort == -1)
+			currentPort = currentUri.scheme() == "https" ? 443 : 80;
+		int destPort = destUri.port();
+		if (destPort == -1)
+			destPort = destUri.scheme() == "https" ? 443 : 80;
 
 		VariantHash passthroughData;
 
@@ -1344,7 +1348,7 @@ private:
 		}
 	}
 
-	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
+	void logRequest(const QString &method, const Url &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
 		LogUtil::RequestData rd;
 
@@ -1364,7 +1368,7 @@ private:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
+	void logRequestError(const QString &method, const Url &uri, const HttpHeaders &headers)
 	{
 		LogUtil::RequestData rd;
 
@@ -1697,7 +1701,7 @@ ZhttpRequest::Rid HttpSession::rid() const
 	return d->req->rid();
 }
 
-QUrl HttpSession::requestUri() const
+Url HttpSession::requestUri() const
 {
 	return d->req->requestUri();
 }

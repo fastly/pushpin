@@ -75,13 +75,13 @@ public:
 	virtual void setIgnoreTlsErrors(bool on);
 	virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QUrl &uri, const HttpHeaders &headers);
+	virtual void start(const Url &uri, const HttpHeaders &headers);
 
 	virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
 	virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 
 	virtual State state() const;
-	virtual QUrl requestUri() const;
+	virtual Url requestUri() const;
 	virtual HttpHeaders requestHeaders() const;
 	virtual int responseCode() const;
 	virtual QByteArray responseReason() const;

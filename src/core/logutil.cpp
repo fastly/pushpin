@@ -145,7 +145,7 @@ void logVariantWithContent(int level, const Variant &data, const QString &conten
 
 void logRequest(int level, const RequestData &data, const Config &config)
 {
-	QString msg = QString("%1 %2").arg(data.requestData.method, data.requestData.uri.toString(QUrl::FullyEncoded));
+	QString msg = QString("%1 %2").arg(data.requestData.method, data.requestData.uri.toString(Url::FullyEncoded));
 
 	if(!data.targetStr.isEmpty())
 		msg += QString(" -> %1").arg(data.targetStr);
@@ -156,9 +156,13 @@ void logRequest(int level, const RequestData &data, const Config &config)
 	if(config.fromAddress && !data.fromAddress.isNull())
 		msg += QString(" from=%1").arg(data.fromAddress.toString());
 
-	QUrl ref = QUrl(QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray()));
-	if(!ref.isEmpty())
-		msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+	QString refererString = QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray());
+	if(!refererString.isEmpty())
+	{
+		// Validate the potentially relative referer URL
+		if(Url::isValidRelativeUrl(refererString))
+			msg += QString(" ref=%1").arg(refererString);
+	}
 
 	if(!data.routeId.isEmpty())
 		msg += QString(" route=%1").arg(data.routeId);

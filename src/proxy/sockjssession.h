@@ -24,10 +24,10 @@
 #ifndef SOCKJSSESSION_H
 #define SOCKJSSESSION_H
 
-#include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
 #include "websocket.h"
+#include "url.h"
 #include "domainmap.h"
 #include <boost/signals2.hpp>
 
@@ -58,13 +58,13 @@ public:
 	virtual void setIgnoreTlsErrors(bool on);
 	virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QUrl &uri, const HttpHeaders &headers);
+	virtual void start(const Url &uri, const HttpHeaders &headers);
 
 	virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
 	virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 
 	virtual State state() const;
-	virtual QUrl requestUri() const;
+	virtual Url requestUri() const;
 	virtual HttpHeaders requestHeaders() const;
 	virtual int responseCode() const;
 	virtual QByteArray responseReason() const;
@@ -87,9 +87,9 @@ private:
 
 	friend class SockJsManager;
 	SockJsSession();
-	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
-	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route);
-	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);
+	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
+	void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const DomainMap::Entry &route);
+	void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);
 
 	void startServer();
 	void handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body);

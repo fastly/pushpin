@@ -24,7 +24,6 @@
 #include "testwebsocket.h"
 
 #include <assert.h>
-#include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "defercall.h"
@@ -73,12 +72,20 @@ public:
 
 		QSet<QString> channels;
 
-		QUrlQuery query(request.uri);
-		QList<QPair<QString, QString> > queryItems = query.queryItems();
-		for(int n = 0; n < queryItems.count(); ++n)
+		QString queryStr = request.uri.query();
+		// Parse query parameters
+		foreach(const QString &pair, queryStr.split('&'))
 		{
-			if(queryItems[n].first == "channel")
-				channels += queryItems[n].second;
+			int at = pair.indexOf('=');
+			if(at != -1)
+			{
+				QString key = QByteArray::fromPercentEncoding(pair.left(at).toUtf8());
+				if(key == "channel")
+				{
+					QString value = QByteArray::fromPercentEncoding(pair.mid(at + 1).toUtf8());
+					channels += value;
+				}
+			}
 		}
 
 		if(channels.isEmpty())
@@ -199,7 +206,7 @@ void TestWebSocket::setClientCert(const QString &cert, const QString &key)
 	Q_UNUSED(key);
 }
 
-void TestWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
+void TestWebSocket::start(const Url &uri, const HttpHeaders &headers)
 {
 	d->request.uri = uri;
 	d->request.headers = headers;
@@ -241,7 +248,7 @@ WebSocket::State TestWebSocket::state() const
 		return Closing;
 }
 
-QUrl TestWebSocket::requestUri() const
+Url TestWebSocket::requestUri() const
 {
 	return d->request.uri;
 }

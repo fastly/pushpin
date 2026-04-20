@@ -26,7 +26,8 @@
 
 #define TIMERS_PER_UNIQUE_UPDATE_REGISTRATION 1
 
-class QUrl;
+#include "url.h"
+
 class HttpSession;
 
 class HttpSessionUpdateManager
@@ -36,7 +37,7 @@ public:
 	~HttpSessionUpdateManager();
 
 	// No-op if session already registered and resetTimeout=false
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout = false);
+	void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout = false);
 
 	void unregisterSession(HttpSession *hs);
 

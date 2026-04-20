@@ -27,10 +27,10 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
-#include <QUrl>
 #include <boost/signals2.hpp>
 #include "zhttprequest.h"
 #include "ratelimiter.h"
+#include "url.h"
 
 #define MESSAGEFILTERSTACK_SIZE_MAX 5
 
@@ -65,7 +65,7 @@ public:
 
 		// For network access
 		ZhttpManager *zhttpOut;
-		QUrl currentUri;
+		Url currentUri;
 		QString route;
 		bool trusted;
 		std::shared_ptr<RateLimiter> limiter;

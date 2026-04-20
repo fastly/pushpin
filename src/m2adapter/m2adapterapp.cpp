@@ -48,6 +48,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
+#include "url.h"
 #include "logutil.h"
 #include "config.h"
 
@@ -2519,7 +2520,7 @@ public:
 			}
 
 			QByteArray uriRaw = scheme + "://" + host + mreq.uri;
-			QUrl uri = QUrl::fromEncoded(uriRaw, QUrl::TolerantMode);
+			Url uri = Url::fromEncoded(uriRaw);
 			if(!uri.isValid())
 			{
 				log_warning("m2: invalid constructed uri: [%s]", uriRaw.data());

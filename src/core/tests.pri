@@ -7,4 +7,5 @@ SOURCES += \
 	$$PWD/defercalltest.cpp \
 	$$PWD/tcpstreamtest.cpp \
 	$$PWD/unixstreamtest.cpp \
-	$$PWD/eventlooptest.cpp
+	$$PWD/eventlooptest.cpp \
+	$$PWD/urltest.cpp

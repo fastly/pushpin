@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include <algorithm>
+#include "url.h"
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -150,7 +151,7 @@ public:
 				return;
 			}
 
-			requestData.uri = QUrl(args["uri"].toString(), QUrl::StrictMode);
+			requestData.uri = Url::fromEncoded(args["uri"].toString().toUtf8());
 			if(!requestData.uri.isValid())
 			{
 				respondError("bad-request");
@@ -229,7 +230,7 @@ public:
 			{
 				// Determine session info
 
-				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8()));
+				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(Url::FullyEncoded).toUtf8()));
 
 				// Safe to not track, since d can't outlive this
 				d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, d.get(), boost::placeholders::_1));
@@ -265,7 +266,7 @@ private:
 			// considered is because it may vary per client and Grip-Last
 			// supersedes whatever is in the query
 
-			QUrl uri = requestData.uri;
+			Url uri = requestData.uri;
 			uri.setQuery(QString()); // Remove the query part
 
 			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last").asQByteArrayList();
@@ -856,7 +857,7 @@ private:
 		if(!rd.contains("uri") || typeId(rd["uri"]) != VariantType::ByteArray)
 			return HttpRequestData();
 
-		out.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
+		out.uri = Url::fromEncoded(rd["uri"].toString().toUtf8());
 		if(!out.uri.isValid())
 			return HttpRequestData();
 
@@ -2668,7 +2669,7 @@ private:
 						stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
 						addSub(channel);
 
-						log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+						log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(Url::FullyEncoded)), qPrintable(channel));
 					}
 					else
 					{
@@ -2805,7 +2806,7 @@ private:
 				stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
 				addSub(channel);
 
-				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(Url::FullyEncoded)), qPrintable(channel));
 			}
 			else if(item.type == WsControlPacket::Item::Ack)
 			{
@@ -3098,7 +3099,7 @@ private:
 		stats->addSubscription(modeStr, channel, sessionsByChannel->value(channel).count());
 		addSub(channel);
 
-		QString msg = QString("subscribe %1 channel=%2").arg(hs->requestUri().toString(QUrl::FullyEncoded), channel);
+		QString msg = QString("subscribe %1 channel=%2").arg(hs->requestUri().toString(Url::FullyEncoded), channel);
 		if(hs->isRetry())
 			msg += " retry";
 

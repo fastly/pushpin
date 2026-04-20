@@ -292,9 +292,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		newResponse.reason = reason;
 	}
 
-	QUrl nextLink;
+	QString nextLink;
 	int nextLinkTimeout = -1;
-	QUrl goneLink;
+	QString goneLink;
 	foreach(const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link"))
 	{
 		if(params.count() < 2)
@@ -307,8 +307,11 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			return Instruct();
 		}
 
-		QUrl link = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
-		if(!link.isValid())
+		// Extract the link URL from angle brackets
+		QString linkString = QString::fromUtf8(linkParam.mid(1, linkParam.length() - 2));
+
+		// Validate the potentially relative URL
+		if(!Url::isValidRelativeUrl(linkString))
 		{
 			setError(ok, errorMessage, "Grip-Link contains invalid link");
 			return Instruct();
@@ -317,7 +320,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		QByteArray rel = params.get("rel").asQByteArray();
 		if(rel == "next")
 		{
-			nextLink = link;
+			nextLink = linkString;
 
 			if(params.contains("timeout"))
 			{
@@ -342,7 +345,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 		else if(rel == "gone")
 		{
-			goneLink = link;
+			goneLink = linkString;
 		}
 	}
 

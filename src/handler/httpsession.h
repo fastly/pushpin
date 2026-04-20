@@ -33,6 +33,7 @@
 #include "instruct.h"
 #include "filter.h"
 #include "clientsession.h"
+#include "url.h"
 
 // Each session can have a bunch of timers:
 // incoming request
@@ -97,7 +98,7 @@ public:
 
 	Instruct::HoldMode holdMode() const;
 	ZhttpRequest::Rid rid() const;
-	QUrl requestUri() const;
+	Url requestUri() const;
 	bool isRetry() const;
 	QString statsRoute() const;
 	QString sid() const;

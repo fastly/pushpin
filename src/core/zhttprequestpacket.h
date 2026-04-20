@@ -22,11 +22,11 @@
 #ifndef ZHTTPREQUESTPACKET_H
 #define ZHTTPREQUESTPACKET_H
 
-#include <QUrl>
 #include <QHostAddress>
 #include "cowstring.h"
 #include "cowbytearray.h"
 #include "httpheaders.h"
+#include "url.h"
 #include "variant.h"
 
 class ZhttpRequestPacket
@@ -78,7 +78,7 @@ public:
 	int timeout;
 
 	CowString method;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	CowByteArray body;
 

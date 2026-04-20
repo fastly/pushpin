@@ -350,7 +350,7 @@ class HttpFilterInner
 public:
 	HttpFilter::Mode mode;
 	std::unique_ptr<ZhttpRequest> req;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	QByteArray origContent;
 	bool haveResponseHeader;
@@ -366,7 +366,7 @@ public:
 	{
 	}
 
-	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const Variant &passthroughData, const QByteArray &content, int _responseSizeMax)
+	void setup(ZhttpManager *zhttpOut, const Url &_uri, const HttpHeaders &_headers, const Variant &passthroughData, const QByteArray &content, int _responseSizeMax)
 	{
 		uri = _uri;
 		headers = _headers;
@@ -528,8 +528,8 @@ HttpFilter::HttpFilter(Mode mode)
 
 void HttpFilter::start(const Filter::Context &context, const QByteArray &content)
 {
-	QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
-	if(!url.isValid())
+	QString urlString = context.subscriptionMeta.value("url");
+	if(urlString.isEmpty())
 	{
 		Result r;
 		r.errorMessage = "invalid or missing url value";
@@ -537,16 +537,34 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 		return;
 	}
 
-	QUrl currentUri = context.currentUri;
+	// For relative URLs, we'll resolve them below, so don't require validity here
+	Url url = Url::fromEncoded(urlString.toUtf8());
+
+	Url currentUri = context.currentUri;
 	if(currentUri.scheme() == "wss")
 		currentUri.setScheme("https");
 	else if(currentUri.scheme() == "ws")
 		currentUri.setScheme("http");
 
-	QUrl destUri = currentUri.resolved(url);
+	Url destUri;
+	if (url.isValid()) {
+		// URL is absolute, resolve it normally
+		destUri = currentUri.resolved(url);
+	} else {
+		// URL is likely relative, resolve the string directly
+		destUri = currentUri.resolved(urlString);
+		if (!destUri.isValid()) {
+			Result r;
+			r.errorMessage = "invalid or missing url value";
+			finished(r);
+			return;
+		}
+	}
 
-	int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
-	int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
+	int currentPortRaw = currentUri.port();
+	int currentPort = (currentPortRaw > 0) ? currentPortRaw : (currentUri.scheme() == "https" ? 443 : 80);
+	int destPortRaw = destUri.port();
+	int destPort = (destPortRaw > 0) ? destPortRaw : (destUri.scheme() == "https" ? 443 : 80);
 
 	VariantHash passthroughData;
 

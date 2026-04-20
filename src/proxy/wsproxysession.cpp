@@ -25,7 +25,7 @@
 
 #include <assert.h>
 #include <QDateTime>
-#include <QUrl>
+#include "url.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QHostAddress>
@@ -434,7 +434,7 @@ public:
 		if(!route.asHost.isEmpty())
 			ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-		QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray path = requestData.uri.path(Url::FullyEncoded).toUtf8();
 
 		if(route.pathRemove > 0)
 			path = path.mid(route.pathRemove);
@@ -442,7 +442,7 @@ public:
 		if(!route.pathPrepend.isEmpty())
 			path = route.pathPrepend + path;
 
-		requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
+		requestData.uri.setPath(QString::fromUtf8(path));
 
 		sigIss = defaultSigIss;
 		sigKey = defaultSigKey;
@@ -511,7 +511,7 @@ public:
 
 		target = targets.takeFirst();
 
-		QUrl uri = requestData.uri;
+		Url uri = requestData.uri;
 		if(target.ssl)
 			uri.setScheme("wss");
 		else
@@ -536,7 +536,7 @@ public:
 					--pathRemove;
 
 				if(pathRemove > 0)
-					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+					uri.setPath(uri.path(Url::FullyEncoded).mid(pathRemove));
 			}
 
 			outSock = std::make_unique<TestWebSocket>();

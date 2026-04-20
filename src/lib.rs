@@ -138,6 +138,7 @@ pub mod ffi {
         pub fn tcpstream_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn unixstream_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn eventloop_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn url_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn websocketoverhttp_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn routesfile_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn proxyengine_test(out_ex: *mut TestException) -> libc::c_int;

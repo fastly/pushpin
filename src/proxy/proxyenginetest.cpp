@@ -366,12 +366,30 @@ private:
 		zresp.code = 200;
 		zresp.reason = "OK";
 
-		QByteArray encPath = zreq.uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = zreq.uri.path(Url::FullyEncoded).toUtf8();
 
-		QUrlQuery query(zreq.uri.query());
-		QString hold = query.queryItemValue("hold");
-		bool bodyInstruct = (query.queryItemValue("body-instruct") == "true");
-		bool large = (query.queryItemValue("large") == "true");
+		QString queryStr = zreq.uri.query();
+
+		// Parse query parameters manually
+		auto getQueryParam = [&queryStr](const QString &param) -> QString {
+			foreach(const QString &pair, queryStr.split('&'))
+			{
+				int at = pair.indexOf('=');
+				if(at != -1)
+				{
+					QString key = QByteArray::fromPercentEncoding(pair.left(at).toUtf8());
+					if(key == param)
+					{
+						return QByteArray::fromPercentEncoding(pair.mid(at + 1).toUtf8());
+					}
+				}
+			}
+			return QString();
+		};
+
+		QString hold = getQueryParam("hold");
+		bool bodyInstruct = (getQueryParam("body-instruct") == "true");
+		bool large = (getQueryParam("large") == "true");
 
 		if(!retried && (hold == "response" || hold == "stream"))
 		{

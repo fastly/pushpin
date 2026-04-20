@@ -275,7 +275,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in)
 
 	if(!vrequestData.contains("uri") || typeId(vrequestData["uri"]) != VariantType::ByteArray)
 		return false;
-	requestData.uri = QUrl::fromEncoded(vrequestData["uri"].toByteArray(), QUrl::StrictMode);
+	requestData.uri = Url::fromEncoded(vrequestData["uri"].toByteArray(), Url::StrictMode);
 
 	requestData.headers.clear();
 	if(vrequestData.contains("headers"))

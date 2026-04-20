@@ -109,7 +109,7 @@ public:
 			return;
 		}
 
-		QUrl uri = req->requestUri();
+		Url uri = req->requestUri();
 		HttpHeaders headers = req->requestHeaders();
 		QByteArray body = req->readBody();
 
@@ -282,7 +282,7 @@ static void io(std::function<void (int)> loop_wait)
 		clientError = true;
 	});
 
-	client.start(QUrl("ws://localhost/ws"), HttpHeaders());
+	client.start("ws://localhost/ws", HttpHeaders());
 
 	while(!clientConnected && !clientError)
 		loop_wait(10);
@@ -352,7 +352,7 @@ static void replay(std::function<void (int)> loop_wait)
 		clientError = true;
 	});
 
-	client.start(QUrl("ws://localhost/ws"), HttpHeaders());
+	client.start("ws://localhost/ws", HttpHeaders());
 
 	while(!clientConnected && !clientError)
 		loop_wait(10);
