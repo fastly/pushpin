@@ -92,7 +92,7 @@ public:
 		BufferList reqBody;
 		QByteArray path;
 		QByteArray jsonpCallback;
-		QUrl asUri;
+		Url asUri;
 		DomainMap::Entry route;
 		QByteArray sid;
 		QByteArray lastPart;
@@ -220,9 +220,9 @@ public:
 		Session *s = new Session(this);
 		s->req = req;
 
-		QUrl uri = req->requestUri();
+		Url uri = req->requestUri();
 
-		QByteArray encPath = uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
 
 		QUrlQuery query(uri);
@@ -245,9 +245,9 @@ public:
 		s->asUri = uri;
 		s->asUri.setScheme((s->asUri.scheme() == "https") ? "wss" : "ws");
 		if(!asPath.isEmpty())
-			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(asPath), Url::StrictMode);
 		else
-			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart)), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart)), Url::StrictMode);
 
 		s->route = route;
 
@@ -268,13 +268,13 @@ public:
 		Session *s = new Session(this);
 		s->sock = sock;
 
-		QByteArray encPath = sock->requestUri().path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = sock->requestUri().path(Url::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
 		s->asUri = sock->requestUri();
 		if(!asPath.isEmpty())
-			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(asPath), Url::StrictMode);
 		else
-			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), Url::StrictMode);
 		s->route = route;
 
 		wsConnectionMap[sock] = {

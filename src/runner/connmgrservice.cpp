@@ -24,7 +24,7 @@
 
 #include <QDir>
 #include <QProcess>
-#include <QUrl>
+#include "url.h"
 #include "log.h"
 #include "template.h"
 
@@ -85,7 +85,7 @@ ConnmgrService::ConnmgrService(
 			}
 			else
 			{
-				QUrl url;
+				Url url;
 				url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
 				url.setPort(p.port);
 

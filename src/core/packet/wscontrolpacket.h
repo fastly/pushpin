@@ -27,7 +27,7 @@
 #include <QByteArray>
 #include <QList>
 #include "variant.h"
-#include <QUrl>
+#include "url.h"
 
 class WsControlPacket
 {
@@ -55,7 +55,7 @@ public:
 		QByteArray cid;
 		Type type;
 		QByteArray requestId;
-		QUrl uri;
+		Url uri;
 		QByteArray contentType;
 		QByteArray message;
 		bool queue;

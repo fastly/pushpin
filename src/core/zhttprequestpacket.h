@@ -22,7 +22,7 @@
 #ifndef ZHTTPREQUESTPACKET_H
 #define ZHTTPREQUESTPACKET_H
 
-#include <QUrl>
+#include "url.h"
 #include <QHostAddress>
 #include "cowstring.h"
 #include "cowbytearray.h"
@@ -78,7 +78,7 @@ public:
 	int timeout;
 
 	CowString method;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	CowByteArray body;
 

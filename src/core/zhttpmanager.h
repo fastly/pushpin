@@ -27,6 +27,7 @@
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <boost/signals2.hpp>
+#include "url.h"
 
 using Signal = boost::signals2::signal<void()>;
 
@@ -69,7 +70,7 @@ public:
 	// For server mode, jump directly to responding state
 	ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
-	static int estimateRequestHeaderBytes(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	static int estimateRequestHeaderBytes(const QString &method, const Url &uri, const HttpHeaders &headers);
 	static int estimateResponseHeaderBytes(int code, const QByteArray &reason, const HttpHeaders &headers);
 
 	Signal requestReady;
