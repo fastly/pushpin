@@ -26,3 +26,4 @@ conf.pri
 /config
 /run
 /log
+.ssh

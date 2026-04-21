@@ -5,21 +5,22 @@ ARG SSH_AUTH_SOCK
 ARG PKG_VERSION=0.0.0
 
 WORKDIR /build
-COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUST_BACKTRACE=1
 
-# set up debug packages repo
-RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
-RUN printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
+# install main build dependencies first (does not need ddebs repo)
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev libqt6core6t64-dbgsym libqt6network6t64-dbgsym fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+# set up debug packages repo and install debug symbols (optional, best-effort)
+RUN apt-get -y install ubuntu-dbgsym-keyring && \
+    printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list && \
+    apt-get update && apt-get -y install libqt6core6t64-dbgsym libqt6network6t64-dbgsym || \
+    echo "WARNING: debug symbol packages unavailable (mirror sync?), skipping"
 
 RUN mkdir -p ~/.ssh && \
   ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV LDFLAGS="-Wl,-z,now -Wl,-z,relro"
@@ -30,11 +31,22 @@ ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make && make DESTDIR=/ install
+
+# copy dependency manifests first for cargo fetch caching
 COPY .ssh/id_* /root/.ssh/
-RUN cargo fetch && rm -rf /root/.ssh/id_*
-RUN make RELEASE=1 PREFIX=/opt/fst-pushpin
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src/bin benches && touch src/lib.rs build.rs \
+    && for bin in pushpin-connmgr m2adapter pushpin-proxy pushpin-handler pushpin-legacy pushpin pushpin-publish; do \
+       echo "fn main(){}" > src/bin/${bin}.rs; done \
+    && for bench in server client; do echo "fn main(){}" > benches/${bench}.rs; done \
+    && cargo fetch && rm -rf /root/.ssh/id_*
+
+# now copy the full source — only this and below rebuild on code changes
+COPY . .
+
+RUN make RELEASE=1 PREFIX=/opt/fst-pushpin CARGO_ARGS="--features no-seccomp"
 # RUN env LD_LIBRARY_PATH=/usr/local/lib make RELEASE=1 PREFIX=/opt/fst-pushpin check
-RUN make RELEASE=1 PREFIX=/opt/fst-pushpin install
+RUN make RELEASE=1 PREFIX=/opt/fst-pushpin CARGO_ARGS="--features no-seccomp" install
 RUN cd pushpin-healthcheck && cargo build --release && cp ./target/release/pushpin-healthcheck /opt/fst-pushpin/bin
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-legacy
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin
@@ -47,6 +59,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
+COPY pushpin-devly.conf /opt/fst-pushpin/etc/pushpin/pushpin-devly.conf
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-connmgr-in.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-connmgr-out.service /opt/fst-pushpin/etc

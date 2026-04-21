@@ -13,7 +13,7 @@ endif
 all: postbuild
 
 build: FORCE
-	cargo$(cargo_toolchain) build$(cargo_flags)
+	cargo$(cargo_toolchain) build$(cargo_flags) $(CARGO_ARGS)
 
 cargo-test: FORCE
 	cargo$(cargo_toolchain) test$(cargo_flags) --all-features
