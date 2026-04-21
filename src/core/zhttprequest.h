@@ -27,6 +27,7 @@
 #include "variant.h"
 #include "httprequest.h"
 #include <boost/signals2.hpp>
+#include "url.h"
 
 #define TIMERS_PER_ZHTTPREQUEST 3
 
@@ -48,7 +49,7 @@ public:
 		Rid rid;
 		QHostAddress peerAddress;
 		QString requestMethod;
-		QUrl requestUri;
+		Url requestUri;
 		HttpHeaders requestHeaders;
 		QByteArray requestBody;
 		int responseCode;
@@ -94,7 +95,7 @@ public:
 	virtual void setTimeout(int msecs);
 	virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
 	virtual void writeBody(const QByteArray &body);
@@ -110,7 +111,7 @@ public:
 	virtual ErrorCondition errorCondition() const;
 
 	virtual QString requestMethod() const;
-	virtual QUrl requestUri() const;
+	virtual Url requestUri() const;
 	virtual HttpHeaders requestHeaders() const;
 
 	virtual int responseCode() const;

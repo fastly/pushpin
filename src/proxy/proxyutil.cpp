@@ -236,7 +236,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		requestData->headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
 }
 
-void applyHost(QUrl *url, const QString &host)
+void applyHost(Url *url, const QString &host)
 {
 	int at = host.indexOf(':');
 	if(at != -1)
@@ -251,7 +251,7 @@ void applyHost(QUrl *url, const QString &host)
 	}
 }
 
-void applyHostHeader(HttpHeaders *headers, const QUrl &uri)
+void applyHostHeader(HttpHeaders *headers, const Url &uri)
 {
 	QByteArray hostHeader = uri.host().toUtf8();
 	if(uri.port() != -1)

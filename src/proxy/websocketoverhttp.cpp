@@ -1124,7 +1124,7 @@ void WebSocketOverHttp::setClientCert(const QString &cert, const QString &key)
 	d->clientKey = key;
 }
 
-void WebSocketOverHttp::start(const QUrl &uri, const HttpHeaders &headers)
+void WebSocketOverHttp::start(const Url &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Idle);
 
@@ -1161,7 +1161,7 @@ WebSocket::State WebSocketOverHttp::state() const
 	return d->state;
 }
 
-QUrl WebSocketOverHttp::requestUri() const
+Url WebSocketOverHttp::requestUri() const
 {
 	return d->requestData.uri;
 }

@@ -24,6 +24,7 @@
 #define TESTHTTPREQUEST_H
 
 #include "httprequest.h"
+#include "url.h"
 
 /// HTTP request instance for testing that simulates HTTP behavior
 class TestHttpRequest : public HttpRequest
@@ -47,7 +48,7 @@ public:
 	virtual void setTimeout(int msecs);
 	virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
 	virtual void writeBody(const QByteArray &body);
@@ -63,7 +64,7 @@ public:
 	virtual ErrorCondition errorCondition() const;
 
 	virtual QString requestMethod() const;
-	virtual QUrl requestUri() const;
+	virtual Url requestUri() const;
 	virtual HttpHeaders requestHeaders() const;
 
 	virtual int responseCode() const;

@@ -361,7 +361,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in)
 		if(typeId(obj["uri"]) != VariantType::ByteArray)
 			return false;
 
-		uri = QUrl::fromEncoded(obj["uri"].toByteArray(), QUrl::StrictMode);
+		uri = Url::fromEncoded(obj["uri"].toByteArray(), Url::StrictMode);
 	}
 
 	headers.clear();

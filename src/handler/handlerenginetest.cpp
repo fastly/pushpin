@@ -258,7 +258,7 @@ public:
 		zresp.code = 200;
 		zresp.reason = "OK";
 
-		QByteArray encPath = zreq.uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = zreq.uri.path(Url::FullyEncoded).toUtf8();
 
 		zresp.headers += HttpHeader("Content-Type", "text/plain");
 		zresp.body = "this is what's next\n";

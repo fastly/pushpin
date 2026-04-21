@@ -110,7 +110,7 @@ public:
 				return WsControlPacket();
 			}
 
-			msg.uri = QUrl::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), QUrl::StrictMode);
+			msg.uri = Url::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), Url::StrictMode);
 			if(!ok_)
 			{
 				if(ok)
@@ -321,7 +321,7 @@ bool WsControlPacket::fromVariant(const Variant &in)
 			if(typeId(vitem["uri"]) != VariantType::ByteArray)
 				return false;
 
-			item.uri = QUrl::fromEncoded(vitem["uri"].toByteArray(), QUrl::StrictMode);
+			item.uri = Url::fromEncoded(vitem["uri"].toByteArray(), Url::StrictMode);
 		}
 
 		if(vitem.contains("content-type"))

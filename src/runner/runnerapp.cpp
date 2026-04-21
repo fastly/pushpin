@@ -28,7 +28,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
-#include <QUrl>
+#include "url.h"
 #include <QUrlQuery>
 #include "rust/bindings.h"
 #include "processquit.h"
@@ -80,8 +80,8 @@ static QPair<QHostAddress, int> parsePort(const QString &s)
 
 	// Otherwise, assume it's an address:port combination
 
-	// Parse with QUrl in order to support bracketed IPv6 notation
-	QUrl url{QUrl::fromUserInput(s)};
+	// Parse with Url in order to support bracketed IPv6 notation
+	Url url{Url::fromUserInput(s)};
 
 	return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
 }
@@ -539,7 +539,7 @@ public:
 
 			foreach(const QString &localPortStr, localPortStrs)
 			{
-				QUrl path = QUrl::fromEncoded(localPortStr.toUtf8());
+				Url path = Url::fromEncoded(localPortStr.toUtf8());
 				if(!path.isValid())
 				{
 					log_error("invalid local port: %s", qPrintable(localPortStr));

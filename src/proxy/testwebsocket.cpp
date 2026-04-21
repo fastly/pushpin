@@ -199,7 +199,7 @@ void TestWebSocket::setClientCert(const QString &cert, const QString &key)
 	Q_UNUSED(key);
 }
 
-void TestWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
+void TestWebSocket::start(const Url &uri, const HttpHeaders &headers)
 {
 	d->request.uri = uri;
 	d->request.headers = headers;
@@ -241,7 +241,7 @@ WebSocket::State TestWebSocket::state() const
 		return Closing;
 }
 
-QUrl TestWebSocket::requestUri() const
+Url TestWebSocket::requestUri() const
 {
 	return d->request.uri;
 }

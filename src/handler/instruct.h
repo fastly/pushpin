@@ -28,8 +28,8 @@
 #include <QByteArray>
 #include <QList>
 #include <QHash>
-#include <QUrl>
 #include "packet/httpresponsedata.h"
+#include "url.h"
 
 class Instruct
 {
@@ -65,9 +65,9 @@ public:
 	int keepAliveTimeout;
 	QHash<QString, QString> meta;
 	HttpResponseData response;
-	QUrl nextLink;
+	Url nextLink;
 	int nextLinkTimeout;
-	QUrl goneLink;
+	Url goneLink;
 
 	Instruct() :
 		holdMode(NoHold),

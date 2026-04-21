@@ -350,7 +350,7 @@ class HttpFilterInner
 public:
 	HttpFilter::Mode mode;
 	std::unique_ptr<ZhttpRequest> req;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	QByteArray origContent;
 	bool haveResponseHeader;
@@ -366,7 +366,7 @@ public:
 	{
 	}
 
-	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const Variant &passthroughData, const QByteArray &content, int _responseSizeMax)
+	void setup(ZhttpManager *zhttpOut, const Url &_uri, const HttpHeaders &_headers, const Variant &passthroughData, const QByteArray &content, int _responseSizeMax)
 	{
 		uri = _uri;
 		headers = _headers;
@@ -528,7 +528,7 @@ HttpFilter::HttpFilter(Mode mode)
 
 void HttpFilter::start(const Filter::Context &context, const QByteArray &content)
 {
-	QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
+	Url url = Url(context.subscriptionMeta.value("url"), Url::StrictMode);
 	if(!url.isValid())
 	{
 		Result r;
@@ -537,13 +537,13 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 		return;
 	}
 
-	QUrl currentUri = context.currentUri;
+	Url currentUri = context.currentUri;
 	if(currentUri.scheme() == "wss")
 		currentUri.setScheme("https");
 	else if(currentUri.scheme() == "ws")
 		currentUri.setScheme("http");
 
-	QUrl destUri = currentUri.resolved(url);
+	Url destUri = currentUri.resolved(url);
 
 	int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 	int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);

@@ -380,9 +380,9 @@ public:
 						if(at == -1)
 							continue;
 
-						if(QUrl::fromPercentEncoding(kv.mid(0, at)) == "d")
+						if(Url::fromPercentEncoding(kv.mid(0, at)) == "d")
 						{
-							param = QUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
+							param = Url::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
 							break;
 						}
 					}
@@ -1181,7 +1181,7 @@ void SockJsSession::setClientCert(const QString &cert, const QString &key)
 	assert(0);
 }
 
-void SockJsSession::start(const QUrl &uri, const HttpHeaders &headers)
+void SockJsSession::start(const Url &uri, const HttpHeaders &headers)
 {
 	Q_UNUSED(uri);
 	Q_UNUSED(headers);
@@ -1205,7 +1205,7 @@ WebSocket::State SockJsSession::state() const
 	return d->state;
 }
 
-QUrl SockJsSession::requestUri() const
+Url SockJsSession::requestUri() const
 {
 	return d->requestData.uri;
 }
@@ -1304,7 +1304,7 @@ void SockJsSession::close(int code, const QString &reason)
 	d->close(code, reason);
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
 {
 	d->manager = manager;
 	d->mode = Private::Http;
@@ -1325,7 +1325,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const
 	d->setup();
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const DomainMap::Entry &route)
 {
 	d->manager = manager;
 	d->mode = Private::WebSocketPassthrough;
@@ -1338,7 +1338,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->setup();
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route)
 {
 	Q_UNUSED(lastPart);
 
