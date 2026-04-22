@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, BufferBudget, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
@@ -101,8 +101,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
             self.hbuf.read_commit(size);
         }
 
-        let block_size = self.bbuf.capacity();
-
         Ok(RequestBody {
             inner: RefCell::new(Some(RequestBodyInner {
                 r: RefCell::new(RequestBodyRead {
@@ -114,7 +112,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
                     buf: self.bbuf,
                     req_body: Some(self.req_body),
                     end: self.end,
-                    block_size,
                 }),
             })),
         })
@@ -131,7 +128,6 @@ struct RequestBodyWrite<'a, W: AsyncWrite> {
     buf: &'a mut VecRingBuffer,
     req_body: Option<protocol::ClientRequestBody>,
     end: bool,
-    block_size: usize,
 }
 
 struct RequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
@@ -171,19 +167,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         }
     }
 
-    pub fn expand_write_buffer<F>(&self, blocks_max: usize, reserve: F) -> Result<usize, Error>
-    where
-        F: FnMut() -> bool,
-    {
+    pub fn expand_write_buffer(&self, budget: &mut BufferBudget) -> Result<usize, Error> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
 
-            Ok(resize_write_buffer_if_full(
-                w.buf,
-                w.block_size,
-                blocks_max,
-                reserve,
-            ))
+            Ok(budget.expand_buffer_if_needed(w.buf))
         } else {
             Err(Error::Unusable)
         }

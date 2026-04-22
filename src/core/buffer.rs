@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::core::counter::{Counter, CounterDec};
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
@@ -835,6 +836,103 @@ impl<'a> RingBuffer<&'a mut [u8]> {
 pub type VecRingBuffer = RingBuffer<Vec<u8>>;
 pub type SliceRingBuffer<'a> = RingBuffer<&'a mut [u8]>;
 
+/// Manages buffer expansion budget for a connection.
+///
+/// BufferBudget provides unified memory accounting for buffer expansion across a connection.
+/// It works with any VecRingBuffer, regardless of whether it's used for read or write operations.
+///
+/// # Features
+///
+/// - **Unified memory budget**: Total memory usage is capped by both local and shared limits
+/// - **Block-based expansion**: All buffers grow by fixed block size increments
+/// - **Automatic cleanup**: Memory blocks are automatically returned to the shared counter when dropped
+/// - **Production-safe**: Constructor never panics, even when expansion blocks are exhausted
+///
+/// # Example
+///
+/// ```
+/// use pushpin::core::buffer::{BufferBudget, VecRingBuffer, TmpBuffer};
+/// use pushpin::core::counter::Counter;
+/// use std::rc::Rc;
+/// use std::io::Write;
+///
+/// let counter = Counter::new(100); // Shared counter with 100 excess blocks for expansion
+/// let mut budget = BufferBudget::new(&counter)
+///     .with_blocks_max(3)    // Local limit of 3 expansion blocks
+///     .with_block_size(64);  // 64-byte block size
+/// let tmp = Rc::new(TmpBuffer::new(1024));
+/// let mut read_buf = VecRingBuffer::new(64, &tmp);
+/// let mut write_buf = VecRingBuffer::new(64, &tmp);
+///
+/// // Fill buffers to capacity and expand them
+/// let data = vec![b'x'; 64];
+/// read_buf.write_all(&data).unwrap();
+/// write_buf.write_all(&data).unwrap();
+///
+/// // Expand buffers as needed (works with any number of buffers)
+/// budget.expand_buffer_if_needed(&mut read_buf);
+/// budget.expand_buffer_if_needed(&mut write_buf);
+///
+/// assert_eq!(budget.blocks_used(), 2); // 2 (expansions)
+///
+/// // Or use defaults for simpler cases:
+/// let mut simple_budget = BufferBudget::new(&counter); // No local limit, 1-byte expansion
+/// simple_budget.expand_buffer_if_needed(&mut read_buf); // Expands by 1 byte if needed
+/// // Blocks are automatically returned to shared counter when budget is dropped
+/// ```
+pub struct BufferBudget<'a> {
+    blocks_avail: CounterDec<'a>,
+    blocks_max: Option<usize>,
+    block_size: usize,
+    blocks_used: usize,
+}
+
+impl<'a> BufferBudget<'a> {
+    pub fn new(blocks_avail: &'a Counter) -> Self {
+        // Note: blocks_used starts at 0 and tracks only expansion blocks used, not base buffer
+        // allocations. This ensures the constructor never panics due to exhausted expansion blocks,
+        // allowing connections to start successfully even when the shared pool is empty. The shared
+        // counter should only contain excess blocks available for expansion.
+        Self {
+            blocks_avail: CounterDec::new(blocks_avail),
+            blocks_max: None, // No local limit by default
+            block_size: 1,    // Default to 1-byte expansion
+            blocks_used: 0,   // Start at 0 (tracks expansion blocks only)
+        }
+    }
+
+    pub fn with_blocks_max(mut self, blocks_max: usize) -> Self {
+        self.blocks_max = Some(blocks_max);
+        self
+    }
+
+    pub fn with_block_size(mut self, block_size: usize) -> Self {
+        self.block_size = block_size;
+        self
+    }
+
+    pub fn blocks_used(&self) -> usize {
+        self.blocks_used
+    }
+
+    pub fn blocks_max(&self) -> Option<usize> {
+        self.blocks_max
+    }
+
+    /// Expand buffer if it is full and budget allows
+    pub fn expand_buffer_if_needed(&mut self, buf: &mut VecRingBuffer) -> usize {
+        let local_limit_ok = self.blocks_max.map_or(true, |max| self.blocks_used < max);
+
+        if buf.remaining_capacity() == 0 && local_limit_ok && self.blocks_avail.dec(1).is_ok() {
+            self.blocks_used += 1;
+            buf.resize(buf.capacity() + self.block_size);
+            return self.block_size;
+        }
+
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1178,5 +1276,210 @@ mod tests {
         let size = r.read(&mut buf).unwrap();
         assert_eq!(size, 8);
         assert_eq!(&buf[..size], b"12345678");
+    }
+
+    #[test]
+    fn test_buffer_budget_accounting() {
+        let counter = Counter::new(100); // Start with plenty of blocks available
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(3)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        assert_eq!(budget.blocks_used(), 0);
+        assert_eq!(budget.blocks_max(), Some(3));
+
+        // Test read buffer expansion with block-based strategy
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let data = vec![b'x'; 64];
+        read_buf.write_all(&data).unwrap();
+
+        budget.expand_buffer_if_needed(&mut read_buf); // 1 block (64 → 128)
+
+        // Fill remaining capacity to trigger second expansion
+        let remaining_data = vec![b'y'; 64];
+        read_buf.write_all(&remaining_data).unwrap();
+        budget.expand_buffer_if_needed(&mut read_buf); // 1 more block (128 → 192)
+
+        // Test write buffer expansion (1 expansion)
+        let mut write_buf = VecRingBuffer::new(64, &tmp);
+        write_buf.write_all(&data).unwrap();
+        budget.expand_buffer_if_needed(&mut write_buf); // 1 block
+
+        assert_eq!(budget.blocks_used(), 3); // 1 + 1 + 1 = 3 expansion blocks
+    }
+
+    #[test]
+    fn test_buffer_budget_expansion() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(1)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+        let mut buf = VecRingBuffer::new(64, &tmp);
+
+        // Fill buffer to capacity
+        let data = vec![b'x'; 64];
+        buf.write_all(&data).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Should expand when no capacity and budget available
+        let expanded = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded, 64);
+        assert_eq!(buf.capacity(), 128);
+        assert_eq!(budget.blocks_used(), 1); // 1 (expansion)
+    }
+
+    #[test]
+    fn test_buffer_budget_exhaustion() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(3)
+            .with_block_size(64); // Limit of 3 expansion blocks
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Use up all blocks via expansion
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let mut write_buf = VecRingBuffer::new(32, &tmp); // Start smaller so write buffer can expand
+        let read_data = vec![b'x'; 64];
+        let write_data = vec![b'y'; 32];
+
+        read_buf.write_all(&read_data).unwrap();
+        write_buf.write_all(&write_data).unwrap();
+
+        // Use up budget with expansions
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0); // 1 block (64 → 128)
+        assert!(budget.expand_buffer_if_needed(&mut write_buf) > 0); // 1 block (32 → 96)
+        assert_eq!(budget.blocks_used(), 2); // 2 (expansions)
+
+        // Try one more read expansion - this uses 1 block, should succeed
+        read_buf.write_all(&read_data).unwrap(); // Fill expanded buffer to capacity
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0); // Should succeed
+
+        // Now budget is exhausted (used all 3 expansion blocks) - write expansion should fail
+        let remaining = write_buf.remaining_capacity();
+        let fill_data = vec![b'z'; remaining];
+        write_buf.write_all(&fill_data).unwrap(); // Fill write buffer completely
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0); // Should fail - budget exhausted
+        assert_eq!(budget.blocks_used(), 3); // 3 (expansions)
+
+        // Now budget is exhausted - no more expansions should succeed
+        // Both buffers should fail to expand due to budget exhaustion
+        assert_eq!(budget.expand_buffer_if_needed(&mut read_buf), 0);
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_mixed_types() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(4)
+            .with_block_size(64); // 4 (expansions)
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Can expand across buffer types up to total limit
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let mut write_buf = VecRingBuffer::new(64, &tmp);
+
+        // First read expansion: 64 → 128 bytes (uses 1 block)
+        let data64 = vec![b'x'; 64];
+        read_buf.write_all(&data64).unwrap();
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0);
+
+        // Second read expansion: 128 → 192 bytes (uses 1 more block)
+        // Fill the remaining 64 bytes to make the 128-byte buffer full
+        let remaining_data = vec![b'y'; 64];
+        read_buf.write_all(&remaining_data).unwrap();
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0);
+
+        // Now we've used 1 + 1 = 2 blocks for read expansions
+
+        // Expand write buffer (2 blocks)
+        for _ in 0..2 {
+            write_buf.write_all(&data64).unwrap();
+            assert!(budget.expand_buffer_if_needed(&mut write_buf) > 0);
+        }
+
+        assert_eq!(budget.blocks_used(), 4); // 2 (read) + 2 (write)
+
+        // Should be at limit - no more expansion possible
+        // Fill buffers to capacity to test expansion failure
+        let remaining_read = read_buf.remaining_capacity();
+        if remaining_read > 0 {
+            let fill_data = vec![b'z'; remaining_read];
+            read_buf.write_all(&fill_data).unwrap();
+        }
+        write_buf.write_all(&data64).unwrap();
+        assert_eq!(budget.expand_buffer_if_needed(&mut read_buf), 0);
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_shared_counter_integration() {
+        // Test that BufferBudget properly uses the shared Counter
+        let counter = Counter::new(3); // 3 excess blocks: budget1 uses 2, budget2 uses 1
+        let mut budget1 = BufferBudget::new(&counter)
+            .with_blocks_max(10) // Local limit higher than global
+            .with_block_size(64);
+        let mut budget2 = BufferBudget::new(&counter)
+            .with_blocks_max(10)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // budget1 uses 1 block via read expansion (64 → 128)
+        let mut read_buf1 = VecRingBuffer::new(64, &tmp);
+        let data = vec![b'x'; 64];
+        read_buf1.write_all(&data).unwrap();
+        assert!(budget1.expand_buffer_if_needed(&mut read_buf1) > 0); // Uses 1 block
+
+        // Fill to capacity and expand again (128 → 192) - this uses 1 more block
+        read_buf1.write_all(&data).unwrap(); // Now 128 bytes used, 0 remaining
+        assert!(budget1.expand_buffer_if_needed(&mut read_buf1) > 0); // Uses 1 more block
+
+        // At this point budget1 has used 2 expansion blocks, leaving 1 block available
+
+        // budget2 uses the remaining 1 expansion block
+        let mut write_buf2 = VecRingBuffer::new(64, &tmp);
+        write_buf2.write_all(&data).unwrap();
+        assert!(budget2.expand_buffer_if_needed(&mut write_buf2) > 0); // Uses the last expansion block
+
+        // Now all 3 excess blocks are used - no more expansion should be possible
+
+        // Confirm no more expansion is possible for either budget
+        // Try to fill buffers to capacity for expansion attempt, but write_buf2 is already full
+        let remaining = read_buf1.remaining_capacity();
+        if remaining > 0 {
+            let fill_data = vec![b'y'; remaining];
+            read_buf1.write_all(&fill_data).unwrap();
+        }
+        // write_buf2 is already full, so don't try to write more to it
+        assert_eq!(budget1.expand_buffer_if_needed(&mut read_buf1), 0); // Should fail due to global limit
+        assert_eq!(budget2.expand_buffer_if_needed(&mut write_buf2), 0); // Should fail due to global limit
+    }
+
+    #[test]
+    fn test_buffer_budget_defaults() {
+        let counter = Counter::new(10); // Small counter for testing
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Test that BufferBudget works with just a counter (no builder methods)
+        let mut budget = BufferBudget::new(&counter);
+        assert_eq!(budget.blocks_used(), 0); // Starts with 0 expansion blocks
+        assert_eq!(budget.blocks_max(), None); // No local limit by default
+
+        // Test expansion with default 1-byte block size
+        let mut buf = VecRingBuffer::new(64, &tmp);
+        buf.write_all(&vec![b'x'; 64]).unwrap(); // Fill buffer
+        let expanded = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded, 1); // Should expand by 1 byte (default block_size)
+        assert_eq!(buf.capacity(), 65); // 64 + 1
+        assert_eq!(budget.blocks_used(), 1); // 1 expansion
+
+        // Since blocks_max is None, it can keep expanding (limited only by shared counter)
+        buf.write_all(&[b'y']).unwrap(); // Fill the new byte
+        let expanded2 = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded2, 1); // Should expand by another 1 byte
+        assert_eq!(buf.capacity(), 66); // 65 + 1
+        assert_eq!(budget.blocks_used(), 2); // 2 expansions
     }
 }
