@@ -23,82 +23,61 @@
 #ifndef JSONPOINTER_H
 #define JSONPOINTER_H
 
+#include "variant.h"
 #include <QString>
 #include <QVarLengthArray>
-#include "variant.h"
 
-class JsonPointer
-{
+class JsonPointer {
 public:
-	class Ref
-	{
-	public:
-		enum Type
-		{
-			Self, // Used for root
-			Object,
-			Array
-		};
+    class Ref {
+    public:
+        enum Type {
+            Self, // Used for root
+            Object,
+            Array
+        };
 
-		Type type;
-		QString name;
-		int index;
+        Type type;
+        QString name;
+        int index;
 
-		Ref() :
-			type(Self),
-			index(-1)
-		{
-		}
+        Ref() : type(Self), index(-1) {}
 
-		Ref(const QString &_name) :
-			type(Object),
-			name(_name),
-			index(-1)
-		{
-		}
+        Ref(const QString &_name) : type(Object), name(_name), index(-1) {}
 
-		Ref(int _index) :
-			type(Array),
-			index(_index)
-		{
-		}
-	};
+        Ref(int _index) : type(Array), index(_index) {}
+    };
 
-	typedef void (*ConstFunc)(const Variant *v, const Ref &ref, void *data);
+    typedef void (*ConstFunc)(const Variant *v, const Ref &ref, void *data);
 
-	// Return true if data was modified
-	typedef bool (*Func)(Variant *v, const Ref &ref, void *data);
+    // Return true if data was modified
+    typedef bool (*Func)(Variant *v, const Ref &ref, void *data);
 
-	JsonPointer();
+    JsonPointer();
 
-	inline bool isNull() const { return isNull_; }
+    inline bool isNull() const { return isNull_; }
 
-	Variant *root();
-	bool execute(ConstFunc func, void *data) const;
-	bool execute(Func func, void *data);
-	bool exists() const;
-	Variant value() const;
-	Variant take();
-	bool remove();
-	bool setValue(const Variant &value);
+    Variant *root();
+    bool execute(ConstFunc func, void *data) const;
+    bool execute(Func func, void *data);
+    bool exists() const;
+    Variant value() const;
+    Variant take();
+    bool remove();
+    bool setValue(const Variant &value);
 
-	static bool isWithin(const QString &bPointerStr, const QString &aPointerStr);
-	static JsonPointer resolve(Variant *data, const QString &pointerStr, QString *errorMessage = 0);
+    static bool isWithin(const QString &bPointerStr, const QString &aPointerStr);
+    static JsonPointer resolve(Variant *data, const QString &pointerStr, QString *errorMessage = 0);
 
 private:
-	enum ExecStatus
-	{
-		ExecError,
-		ExecContinue,
-		ExecChanged
-	};
+    enum ExecStatus { ExecError, ExecContinue, ExecChanged };
 
-	bool isNull_;
-	Variant *root_;
-	QVarLengthArray<Ref, 16> refs_;
+    bool isNull_;
+    Variant *root_;
+    QVarLengthArray<Ref, 16> refs_;
 
-	ExecStatus execute(const Variant *i, int refIndex, ConstFunc func, void *data) const;
-	ExecStatus execute(Variant *i, int refIndex, Func func, void *data);
+    ExecStatus execute(const Variant *i, int refIndex, ConstFunc func, void *data) const;
+    ExecStatus execute(Variant *i, int refIndex, Func func, void *data);
 };
 
 #endif

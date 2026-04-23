@@ -23,37 +23,37 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
-#include <QString>
 #include "variant.h"
+#include <QString>
 
 class QSettings;
 
-/// Stores the application settings loaded from the command line arguments and the config file
-class Settings
-{
+/// Stores the application settings loaded from the command line arguments and
+/// the config file
+class Settings {
 public:
-	Settings(const QString &fileName);
-	~Settings();
+    Settings(const QString &fileName);
+    ~Settings();
 
-	bool contains(const QString &key) const;
-	Variant valueRaw(const QString &key, const Variant &defaultValue = Variant()) const;
-	Variant value(const QString &key, const Variant &defaultValue = Variant()) const;
-	int adjustedPort(const QString &key, int defaultValue = -1) const;
+    bool contains(const QString &key) const;
+    Variant valueRaw(const QString &key, const Variant &defaultValue = Variant()) const;
+    Variant value(const QString &key, const Variant &defaultValue = Variant()) const;
+    int adjustedPort(const QString &key, int defaultValue = -1) const;
 
-	QString ipcPrefix() const;
-	int portOffset() const;
-	void setIpcPrefix(const QString &s);
-	void setPortOffset(int x);
+    QString ipcPrefix() const;
+    int portOffset() const;
+    void setIpcPrefix(const QString &s);
+    void setPortOffset(int x);
 
 private:
-	QSettings *main_;
-	QSettings *include_;
-	QString libdir_;
-	QString rundir_;
-	QString ipcPrefix_;
-	int portOffset_;
+    QSettings *main_;
+    QSettings *include_;
+    QString libdir_;
+    QString rundir_;
+    QString ipcPrefix_;
+    int portOffset_;
 
-	QString resolveVars(const QString &in) const;
+    QString resolveVars(const QString &in) const;
 };
 
 #endif

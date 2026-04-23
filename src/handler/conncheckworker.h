@@ -24,34 +24,33 @@
 #ifndef CONNCHECKWORKER_H
 #define CONNCHECKWORKER_H
 
+#include "cidset.h"
+#include "deferred.h"
+#include "zrpcrequest.h"
 #include <QByteArray>
 #include <boost/signals2.hpp>
-#include "zrpcrequest.h"
-#include "deferred.h"
-#include "cidset.h"
 
 using Connection = boost::signals2::scoped_connection;
 
 class ZrpcManager;
 class StatsManager;
 
-class ConnCheckWorker : public Deferred
-{
+class ConnCheckWorker : public Deferred {
 public:
-	ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats);
+    ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats);
 
 private:
-	std::unique_ptr<ZrpcRequest> req_;
-	CidSet cids_;
-	CidSet missing_;
-	std::unique_ptr<Deferred> connCheck_;
-	Connection finishedConnection_;
+    std::unique_ptr<ZrpcRequest> req_;
+    CidSet cids_;
+    CidSet missing_;
+    std::unique_ptr<Deferred> connCheck_;
+    Connection finishedConnection_;
 
-	void respondError(const QByteArray &condition);
-	void doFinish();
+    void respondError(const QByteArray &condition);
+    void doFinish();
 
 private:
-	void proxyConnCheck_finished(const DeferredResult &result);
+    void proxyConnCheck_finished(const DeferredResult &result);
 };
 
 #endif

@@ -23,224 +23,165 @@
 
 #include "zrpcchecker.h"
 
-#include <assert.h>
-#include <QHash>
 #include "timer.h"
 #include "zrpcrequest.h"
+#include <QHash>
+#include <assert.h>
 
 #define CHECK_TIMEOUT 8
 
 using std::map;
 
-class ZrpcChecker::Private
-{
+class ZrpcChecker::Private {
 public:
-	class Item
-	{
-	public:
-		ZrpcRequest *req;
-		bool owned;
+    class Item {
+    public:
+        ZrpcRequest *req;
+        bool owned;
 
-		Item() :
-			req(0),
-			owned(false)
-		{
-		}
+        Item() : req(0), owned(false) {}
 
-		~Item()
-		{
-			if(owned)
-				delete req;
-		}
-	};
+        ~Item() {
+            if (owned)
+                delete req;
+        }
+    };
 
-	struct ZrpcReqConnections{
-		Connection finishedConnection;
-		Connection destroyedConnection;
-	};
+    struct ZrpcReqConnections {
+        Connection finishedConnection;
+        Connection destroyedConnection;
+    };
 
-	ZrpcChecker *q;
-	bool avail;
-	std::unique_ptr<Timer> timer;
-	QHash<ZrpcRequest*, Item*> requestsByReq;
-	map<ZrpcRequest*, ZrpcReqConnections> reqConnectionMap;
-	Connection timerConnection;
+    ZrpcChecker *q;
+    bool avail;
+    std::unique_ptr<Timer> timer;
+    QHash<ZrpcRequest *, Item *> requestsByReq;
+    map<ZrpcRequest *, ZrpcReqConnections> reqConnectionMap;
+    Connection timerConnection;
 
-	Private(ZrpcChecker *_q) :
-		q(_q),
-		avail(true)
-	{
-		timer = std::make_unique<Timer>();
-		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
-		timer->setSingleShot(true);
-	}
+    Private(ZrpcChecker *_q) : q(_q), avail(true) {
+        timer = std::make_unique<Timer>();
+        timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+        timer->setSingleShot(true);
+    }
 
-	~Private()
-	{
-		cleanup();
-	}
+    ~Private() { cleanup(); }
 
-	void cleanup()
-	{
-		if(timer)
-		{
-			timerConnection.disconnect();
-			timer.reset();
-		}
+    void cleanup() {
+        if (timer) {
+            timerConnection.disconnect();
+            timer.reset();
+        }
 
-		QHashIterator<ZrpcRequest*, Item*> it(requestsByReq);
-		while(it.hasNext())
-		{
-			it.next();
-			Item *i = it.value();
-			reqConnectionMap.erase(i->req);
-			delete i;
-		}
+        QHashIterator<ZrpcRequest *, Item *> it(requestsByReq);
+        while (it.hasNext()) {
+            it.next();
+            Item *i = it.value();
+            reqConnectionMap.erase(i->req);
+            delete i;
+        }
 
-		requestsByReq.clear();
-	}
+        requestsByReq.clear();
+    }
 
-	void restartCountdown()
-	{
-		timer->start(CHECK_TIMEOUT * 1000);
-	}
+    void restartCountdown() { timer->start(CHECK_TIMEOUT * 1000); }
 
-	void watch(ZrpcRequest *req)
-	{
-		Item *i = requestsByReq.value(req);
-		if(i)
-			return; // Already watching
+    void watch(ZrpcRequest *req) {
+        Item *i = requestsByReq.value(req);
+        if (i)
+            return; // Already watching
 
-		reqConnectionMap[req] = {
-			req->finished.connect(boost::bind(&Private::req_finished, this, req)),
-			req->destroyed.connect(boost::bind(&Private::req_destroyed, this, req))
-		};
+        reqConnectionMap[req] = {
+            req->finished.connect(boost::bind(&Private::req_finished, this, req)),
+            req->destroyed.connect(boost::bind(&Private::req_destroyed, this, req))};
 
-		i = new Item;
-		i->req = req;
-		i->owned = false;
-		requestsByReq.insert(req, i);
+        i = new Item;
+        i->req = req;
+        i->owned = false;
+        requestsByReq.insert(req, i);
 
-		// Start the clock if we haven't yet
-		if(!timer->isActive())
-			restartCountdown();
-	}
+        // Start the clock if we haven't yet
+        if (!timer->isActive())
+            restartCountdown();
+    }
 
-	void give(ZrpcRequest *req)
-	{
-		Item *i = requestsByReq.value(req);
-		if(i)
-		{
-			// Take over ownership
-			i->owned = true;
-		}
-		else
-		{
-			// If we aren't watching (or were watching, but no
-			// longer watching), then just delete what we were
-			// given
-			reqConnectionMap.erase(req);
-			delete req;
-		}
-	}
+    void give(ZrpcRequest *req) {
+        Item *i = requestsByReq.value(req);
+        if (i) {
+            // Take over ownership
+            i->owned = true;
+        } else {
+            // If we aren't watching (or were watching, but no
+            // longer watching), then just delete what we were
+            // given
+            reqConnectionMap.erase(req);
+            delete req;
+        }
+    }
 
-	void handleSuccess()
-	{
-		avail = true;
+    void handleSuccess() {
+        avail = true;
 
-		// Success means we restart (or stop) the clock
-		if(!requestsByReq.isEmpty())
-			restartCountdown();
-		else
-			timer->stop();
-	}
+        // Success means we restart (or stop) the clock
+        if (!requestsByReq.isEmpty())
+            restartCountdown();
+        else
+            timer->stop();
+    }
 
-	void handleError()
-	{
-		if(!requestsByReq.isEmpty())
-		{
-			// Let the clock keep running
-		}
-		else
-		{
-			// Stop clock and immediately indicate unavailability
-			timer->stop();
-			avail = false;
-		}
-	}
+    void handleError() {
+        if (!requestsByReq.isEmpty()) {
+            // Let the clock keep running
+        } else {
+            // Stop clock and immediately indicate unavailability
+            timer->stop();
+            avail = false;
+        }
+    }
 
-	void req_finished(ZrpcRequest *req)
-	{
-		Item *i = requestsByReq.value(req);
-		assert(i);
+    void req_finished(ZrpcRequest *req) {
+        Item *i = requestsByReq.value(req);
+        assert(i);
 
-		bool success = req->success();
-		ZrpcRequest::ErrorCondition e = req->errorCondition();
+        bool success = req->success();
+        ZrpcRequest::ErrorCondition e = req->errorCondition();
 
-		reqConnectionMap.erase(req);
-		requestsByReq.remove(req);
-		delete i;
+        reqConnectionMap.erase(req);
+        requestsByReq.remove(req);
+        delete i;
 
-		if(success)
-		{
-			handleSuccess();
-		}
-		else
-		{
-			if(e == ZrpcRequest::ErrorTimeout || e == ZrpcRequest::ErrorUnavailable)
-			{
-				handleError();
-			}
-			else
-			{
-				// Any other error is fine, it means the inspector is responding
-				handleSuccess();
-			}
-		}
-	}
+        if (success) {
+            handleSuccess();
+        } else {
+            if (e == ZrpcRequest::ErrorTimeout || e == ZrpcRequest::ErrorUnavailable) {
+                handleError();
+            } else {
+                // Any other error is fine, it means the inspector is responding
+                handleSuccess();
+            }
+        }
+    }
 
-	void req_destroyed(ZrpcRequest *req)
-	{
-		Item *i = requestsByReq.value(req);
-		assert(i);
+    void req_destroyed(ZrpcRequest *req) {
+        Item *i = requestsByReq.value(req);
+        assert(i);
 
-		reqConnectionMap.erase(req);
-		requestsByReq.remove(req);
-		delete i;
-	}
+        reqConnectionMap.erase(req);
+        requestsByReq.remove(req);
+        delete i;
+    }
 
-	void timer_timeout()
-	{
-		avail = false;
-	}
+    void timer_timeout() { avail = false; }
 };
 
-ZrpcChecker::ZrpcChecker()
-{
-	d = new Private(this);
-}
+ZrpcChecker::ZrpcChecker() { d = new Private(this); }
 
-ZrpcChecker::~ZrpcChecker()
-{
-	delete d;
-}
-        
-bool ZrpcChecker::isInterfaceAvailable() const
-{
-	return d->avail;
-}
+ZrpcChecker::~ZrpcChecker() { delete d; }
 
-void ZrpcChecker::setInterfaceAvailable(bool available)
-{
-	d->avail = available;
-}
-        
-void ZrpcChecker::watch(ZrpcRequest *req)
-{
-	d->watch(req);
-}
+bool ZrpcChecker::isInterfaceAvailable() const { return d->avail; }
 
-void ZrpcChecker::give(ZrpcRequest *req)
-{
-	d->give(req);
-}
+void ZrpcChecker::setInterfaceAvailable(bool available) { d->avail = available; }
+
+void ZrpcChecker::watch(ZrpcRequest *req) { d->watch(req); }
+
+void ZrpcChecker::give(ZrpcRequest *req) { d->give(req); }

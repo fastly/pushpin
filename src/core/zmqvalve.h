@@ -25,33 +25,32 @@
 #ifndef ZMQVALVE_H
 #define ZMQVALVE_H
 
-#include <boost/signals2.hpp>
 #include "cowbytearray.h"
+#include <boost/signals2.hpp>
 
-using SignalList = boost::signals2::signal<void(const CowByteArrayList&)>;
+using SignalList = boost::signals2::signal<void(const CowByteArrayList &)>;
 using Connection = boost::signals2::scoped_connection;
 
 class ZmqSocket;
 
-class ZmqValve
-{
+class ZmqValve {
 public:
-	ZmqValve(ZmqSocket *sock);
-	~ZmqValve();
+    ZmqValve(ZmqSocket *sock);
+    ~ZmqValve();
 
-	bool isOpen() const;
+    bool isOpen() const;
 
-	void setMaxReadsPerEvent(int max);
+    void setMaxReadsPerEvent(int max);
 
-	void open();
-	void close();
+    void open();
+    void close();
 
-	SignalList readyRead;
+    SignalList readyRead;
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
 #endif

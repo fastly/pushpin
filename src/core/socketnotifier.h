@@ -22,53 +22,51 @@
 
 class EventLoop;
 
-class SocketNotifier
-{
+class SocketNotifier {
 public:
-	enum Interest
-	{
-		Read = 0x01,
-		Write = 0x02,
-	};
+    enum Interest {
+        Read = 0x01,
+        Write = 0x02,
+    };
 
-	// Initializes notifier with interest and considers the socket ready for
-	// the specified interest. Readiness must be cleared via clearReadiness()
-	// in order for the activated signal to be emitted. The expected way to
-	// use this class is to initialize it, perform I/O until progress can no
-	// longer be made, clear readiness, then await the signal.
-	SocketNotifier(int socket, uint8_t interest);
+    // Initializes notifier with interest and considers the socket ready for
+    // the specified interest. Readiness must be cleared via clearReadiness()
+    // in order for the activated signal to be emitted. The expected way to
+    // use this class is to initialize it, perform I/O until progress can no
+    // longer be made, clear readiness, then await the signal.
+    SocketNotifier(int socket, uint8_t interest);
 
-	~SocketNotifier();
+    ~SocketNotifier();
 
-	bool isReadEnabled() const { return readEnabled_; }
-	bool isWriteEnabled() const { return writeEnabled_; }
-	int socket() const { return socket_; }
+    bool isReadEnabled() const { return readEnabled_; }
+    bool isWriteEnabled() const { return writeEnabled_; }
+    int socket() const { return socket_; }
 
-	void setReadEnabled(bool enable);
-	void setWriteEnabled(bool enable);
+    void setReadEnabled(bool enable);
+    void setWriteEnabled(bool enable);
 
-	uint8_t readiness() const { return readiness_; }
-	void clearReadiness(uint8_t readiness);
+    uint8_t readiness() const { return readiness_; }
+    void clearReadiness(uint8_t readiness);
 
-	boost::signals2::signal<void(int, uint8_t)> activated;
+    boost::signals2::signal<void(int, uint8_t)> activated;
 
 private:
-	int socket_;
-	bool readEnabled_;
-	bool writeEnabled_;
-	QSocketNotifier *readInner_;
-	QSocketNotifier *writeInner_;
-	QMetaObject::Connection readInnerConnection_;
-	QMetaObject::Connection writeInnerConnection_;
-	uint8_t readiness_;
-	EventLoop *loop_;
-	int regId_;
+    int socket_;
+    bool readEnabled_;
+    bool writeEnabled_;
+    QSocketNotifier *readInner_;
+    QSocketNotifier *writeInner_;
+    QMetaObject::Connection readInnerConnection_;
+    QMetaObject::Connection writeInnerConnection_;
+    uint8_t readiness_;
+    EventLoop *loop_;
+    int regId_;
 
-	void innerReadActivated(int socket);
-	void innerWriteActivated(int socket);
-	void apply(uint8_t readiness);
-	static void cb_fd_activated(void *ctx, uint8_t readiness);
-	void fd_activated(uint8_t readiness);
+    void innerReadActivated(int socket);
+    void innerWriteActivated(int socket);
+    void apply(uint8_t readiness);
+    static void cb_fd_activated(void *ctx, uint8_t readiness);
+    void fd_activated(uint8_t readiness);
 };
 
 #endif

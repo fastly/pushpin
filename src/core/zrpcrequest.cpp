@@ -23,270 +23,203 @@
 
 #include "zrpcrequest.h"
 
-#include <assert.h>
-#include <boost/signals2.hpp>
+#include "defercall.h"
+#include "log.h"
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
+#include "timer.h"
+#include "uuidutil.h"
 #include "variant.h"
 #include "zrpcmanager.h"
-#include "uuidutil.h"
-#include "log.h"
-#include "timer.h"
-#include "defercall.h"
+#include <assert.h>
+#include <boost/signals2.hpp>
 
 using Connection = boost::signals2::scoped_connection;
 
-class ZrpcRequest::Private
-{
+class ZrpcRequest::Private {
 public:
-	ZrpcRequest *q;
-	ZrpcManager *manager;
-	QList<QByteArray> reqHeaders;
-	QByteArray from;
-	QByteArray id;
-	QString method;
-	VariantHash args;
-	bool success;
-	Variant result;
-	ErrorCondition condition;
-	QByteArray conditionString;
-	std::unique_ptr<Timer> timer;
-	Connection timerConnection;
-	DeferCall deferCall;
+    ZrpcRequest *q;
+    ZrpcManager *manager;
+    QList<QByteArray> reqHeaders;
+    QByteArray from;
+    QByteArray id;
+    QString method;
+    VariantHash args;
+    bool success;
+    Variant result;
+    ErrorCondition condition;
+    QByteArray conditionString;
+    std::unique_ptr<Timer> timer;
+    Connection timerConnection;
+    DeferCall deferCall;
 
-	Private(ZrpcRequest *_q) :
-		q(_q),
-		manager(0),
-		success(false),
-		condition(ErrorGeneric)
-	{
-	}
+    Private(ZrpcRequest *_q) : q(_q), manager(0), success(false), condition(ErrorGeneric) {}
 
-	~Private()
-	{
-		cleanup();
-	}
+    ~Private() { cleanup(); }
 
-	void cleanup()
-	{
-		if(timer)
-		{
-			timerConnection.disconnect();
-			timer.reset();
-		}
+    void cleanup() {
+        if (timer) {
+            timerConnection.disconnect();
+            timer.reset();
+        }
 
-		if(manager)
-		{
-			manager->unlink(q);
-			manager = 0;
-		}
-	}
+        if (manager) {
+            manager->unlink(q);
+            manager = 0;
+        }
+    }
 
-	void respond(const Variant &value)
-	{
-		ZrpcResponsePacket p;
-		p.id = id;
-		p.success = true;
-		p.value = value;
-		manager->write(reqHeaders, p);
-	}
+    void respond(const Variant &value) {
+        ZrpcResponsePacket p;
+        p.id = id;
+        p.success = true;
+        p.value = value;
+        manager->write(reqHeaders, p);
+    }
 
-	void respondError(const QByteArray &condition, const Variant &value)
-	{
-		ZrpcResponsePacket p;
-		p.id = id;
-		p.success = false;
-		p.condition = condition;
-		p.value = value;
-		manager->write(reqHeaders, p);
-	}
+    void respondError(const QByteArray &condition, const Variant &value) {
+        ZrpcResponsePacket p;
+        p.id = id;
+        p.success = false;
+        p.condition = condition;
+        p.value = value;
+        manager->write(reqHeaders, p);
+    }
 
-	void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet)
-	{
-		reqHeaders = headers;
-		from = packet.from;
-		id = packet.id;
-		method = packet.method;
-		args = packet.args;
-	}
+    void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
+        reqHeaders = headers;
+        from = packet.from;
+        id = packet.id;
+        method = packet.method;
+        args = packet.args;
+    }
 
-	void handle(const ZrpcResponsePacket &packet)
-	{
-		cleanup();
+    void handle(const ZrpcResponsePacket &packet) {
+        cleanup();
 
-		success = packet.success;
-		if(success)
-		{
-			result = packet.value;
-			q->onSuccess();
-		}
-		else
-		{
-			if(packet.condition == "bad-format")
-				condition = ErrorFormat;
-			else
-				condition = ErrorGeneric;
+        success = packet.success;
+        if (success) {
+            result = packet.value;
+            q->onSuccess();
+        } else {
+            if (packet.condition == "bad-format")
+                condition = ErrorFormat;
+            else
+                condition = ErrorGeneric;
 
-			conditionString = packet.condition;
+            conditionString = packet.condition;
 
-			result = packet.value;
-			q->onError();
-		}
+            result = packet.value;
+            q->onError();
+        }
 
-		q->finished();
-	}
+        q->finished();
+    }
 
-	void doStart()
-	{
-		if(!manager->canWriteImmediately())
-		{
-			success = false;
-			condition = ErrorUnavailable;
-			conditionString = "service-unavailable";
-			cleanup();
-			q->finished();
-			return;
-		}
+    void doStart() {
+        if (!manager->canWriteImmediately()) {
+            success = false;
+            condition = ErrorUnavailable;
+            conditionString = "service-unavailable";
+            cleanup();
+            q->finished();
+            return;
+        }
 
-		ZrpcRequestPacket p;
-		p.id = id;
-		p.method = method;
-		p.args = args;
+        ZrpcRequestPacket p;
+        p.id = id;
+        p.method = method;
+        p.args = args;
 
-		if(manager->timeout() >= 0)
-		{
-			timer = std::make_unique<Timer>();
-			timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
-			timer->setSingleShot(true);
-			timer->start(manager->timeout());
-		}
+        if (manager->timeout() >= 0) {
+            timer = std::make_unique<Timer>();
+            timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+            timer->setSingleShot(true);
+            timer->start(manager->timeout());
+        }
 
-		manager->write(p);
-	}
+        manager->write(p);
+    }
 
-	void timer_timeout()
-	{
-		success = false;
-		condition = ErrorTimeout;
-		conditionString = "timeout";
-		cleanup();
-		q->finished();
-	}
+    void timer_timeout() {
+        success = false;
+        condition = ErrorTimeout;
+        conditionString = "timeout";
+        cleanup();
+        q->finished();
+    }
 };
 
-ZrpcRequest::ZrpcRequest()
-{
-	d = new Private(this);
+ZrpcRequest::ZrpcRequest() { d = new Private(this); }
+
+ZrpcRequest::ZrpcRequest(ZrpcManager *manager) {
+    d = new Private(this);
+    setupClient(manager);
 }
 
-ZrpcRequest::ZrpcRequest(ZrpcManager *manager)
-{
-	d = new Private(this);
-	setupClient(manager);
+ZrpcRequest::~ZrpcRequest() {
+    destroyed();
+    delete d;
 }
 
-ZrpcRequest::~ZrpcRequest()
-{
-	destroyed();
-	delete d;
+QByteArray ZrpcRequest::from() const { return d->from; }
+
+QByteArray ZrpcRequest::id() const { return d->id; }
+
+QString ZrpcRequest::method() const { return d->method; }
+
+VariantHash ZrpcRequest::args() const { return d->args; }
+
+bool ZrpcRequest::success() const { return d->success; }
+
+Variant ZrpcRequest::result() const { return d->result; }
+
+ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const { return d->condition; }
+
+QByteArray ZrpcRequest::errorConditionString() const { return d->conditionString; }
+
+void ZrpcRequest::start(const QString &method, const VariantHash &args) {
+    d->method = method;
+    d->args = args;
+    d->deferCall.defer([=] { d->doStart(); });
 }
 
-QByteArray ZrpcRequest::from() const
-{
-	return d->from;
+void ZrpcRequest::respond(const Variant &result) { d->respond(result); }
+
+void ZrpcRequest::respondError(const QByteArray &condition, const Variant &result) {
+    d->respondError(condition, result);
 }
 
-QByteArray ZrpcRequest::id() const
-{
-	return d->id;
+void ZrpcRequest::setError(ErrorCondition condition, const Variant &result) {
+    d->success = false;
+    d->condition = condition;
+    d->result = result;
 }
 
-QString ZrpcRequest::method() const
-{
-	return d->method;
+void ZrpcRequest::onSuccess() {
+    // By default, do nothing
 }
 
-VariantHash ZrpcRequest::args() const
-{
-	return d->args;
+void ZrpcRequest::onError() {
+    // By default, do nothing
 }
 
-bool ZrpcRequest::success() const
-{
-	return d->success;
+void ZrpcRequest::setupClient(ZrpcManager *manager) {
+    d->id = UuidUtil::createUuid();
+    d->manager = manager;
+    d->manager->link(this);
 }
 
-Variant ZrpcRequest::result() const
-{
-	return d->result;
+void ZrpcRequest::setupServer(ZrpcManager *manager) { d->manager = manager; }
+
+void ZrpcRequest::handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
+    assert(d->manager);
+
+    d->handle(headers, packet);
 }
 
-ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const
-{
-	return d->condition;
-}
+void ZrpcRequest::handle(const ZrpcResponsePacket &packet) {
+    assert(d->manager);
 
-QByteArray ZrpcRequest::errorConditionString() const
-{
-	return d->conditionString;
-}
-
-void ZrpcRequest::start(const QString &method, const VariantHash &args)
-{
-	d->method = method;
-	d->args = args;
-	d->deferCall.defer([=] { d->doStart(); });
-}
-
-void ZrpcRequest::respond(const Variant &result)
-{
-	d->respond(result);
-}
-
-void ZrpcRequest::respondError(const QByteArray &condition, const Variant &result)
-{
-	d->respondError(condition, result);
-}
-
-void ZrpcRequest::setError(ErrorCondition condition, const Variant &result)
-{
-	d->success = false;
-	d->condition = condition;
-	d->result = result;
-}
-
-void ZrpcRequest::onSuccess()
-{
-	// By default, do nothing
-}
-
-void ZrpcRequest::onError()
-{
-	// By default, do nothing
-}
-
-void ZrpcRequest::setupClient(ZrpcManager *manager)
-{
-	d->id = UuidUtil::createUuid();
-	d->manager = manager;
-	d->manager->link(this);
-}
-
-void ZrpcRequest::setupServer(ZrpcManager *manager)
-{
-	d->manager = manager;
-}
-
-void ZrpcRequest::handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet)
-{
-	assert(d->manager);
-
-	d->handle(headers, packet);
-}
-
-void ZrpcRequest::handle(const ZrpcResponsePacket &packet)
-{
-	assert(d->manager);
-
-	d->handle(packet);
+    d->handle(packet);
 }

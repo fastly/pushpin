@@ -25,17 +25,17 @@
 #define WSPROXYSESSION_H
 
 #include "callback.h"
-#include "logutil.h"
 #include "domainmap.h"
+#include "logutil.h"
 #include <boost/signals2.hpp>
 
 using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 namespace Jwt {
-	class EncodingKey;
-	class DecodingKey;
-}
+class EncodingKey;
+class DecodingKey;
+} // namespace Jwt
 
 class WebSocket;
 class ZRoutes;
@@ -44,40 +44,42 @@ class StatsManager;
 class ConnectionManager;
 class XffRule;
 
-/// Proxies WebSocket requests to backends with GRIP streaming and request sharing
-class WsProxySession
-{
+/// Proxies WebSocket requests to backends with GRIP streaming and request
+/// sharing
+class WsProxySession {
 public:
-	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, WsControlManager *wsControlManager = 0);
-	~WsProxySession();
+    WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager,
+                   const LogUtil::Config &logConfig, StatsManager *stats = 0,
+                   WsControlManager *wsControlManager = 0);
+    ~WsProxySession();
 
-	QHostAddress logicalClientAddress() const;
-	QByteArray statsRoute() const;
-	QByteArray cid() const;
+    QHostAddress logicalClientAddress() const;
+    QByteArray statsRoute() const;
+    QByteArray cid() const;
 
-	WebSocket *inSocket() const;
-	WebSocket *outSocket() const;
+    WebSocket *inSocket() const;
+    WebSocket *outSocket() const;
 
-	void setDebugEnabled(bool enabled);
-	void setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key);
-	void setDefaultUpstreamKey(const Jwt::DecodingKey &key);
-	void setAcceptXForwardedProtocol(bool enabled);
-	void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
-	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
-	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
-	void setAcceptPushpinRoute(bool enabled);
-	void setCdnLoop(const QByteArray &value);
+    void setDebugEnabled(bool enabled);
+    void setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key);
+    void setDefaultUpstreamKey(const Jwt::DecodingKey &key);
+    void setAcceptXForwardedProtocol(bool enabled);
+    void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
+    void setXffRules(const XffRule &untrusted, const XffRule &trusted);
+    void setOrigHeadersNeedMark(const QList<QByteArray> &names);
+    void setAcceptPushpinRoute(bool enabled);
+    void setCdnLoop(const QByteArray &value);
 
-	// Takes ownership
-	void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);
+    // Takes ownership
+    void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);
 
-	// NOTE: for performance reasons we use callbacks instead of signals/slots
-	Callback<std::tuple<WsProxySession *>> & finishedByPassthroughCallback();
+    // NOTE: for performance reasons we use callbacks instead of signals/slots
+    Callback<std::tuple<WsProxySession *>> &finishedByPassthroughCallback();
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 };
 
 #endif

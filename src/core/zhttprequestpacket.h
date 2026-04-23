@@ -22,108 +22,96 @@
 #ifndef ZHTTPREQUESTPACKET_H
 #define ZHTTPREQUESTPACKET_H
 
-#include "url.h"
-#include <QHostAddress>
-#include "cowstring.h"
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include "httpheaders.h"
+#include "url.h"
 #include "variant.h"
+#include <QHostAddress>
 
-class ZhttpRequestPacket
-{
+class ZhttpRequestPacket {
 public:
-	class Id
-	{
-	public:
-		CowByteArray id;
-		int seq;
+    class Id {
+    public:
+        CowByteArray id;
+        int seq;
 
-		Id() :
-			seq(-1)
-		{
-		}
+        Id() : seq(-1) {}
 
-		Id(const CowByteArray &_id, int _seq = -1) :
-			id(_id),
-			seq(_seq)
-		{
-		}
-	};
+        Id(const CowByteArray &_id, int _seq = -1) : id(_id), seq(_seq) {}
+    };
 
-	enum Type
-	{
-		Data,
-		Error,
-		Credit,
-		KeepAlive,
-		Cancel,
-		HandoffStart,
-		HandoffProceed,
-		Close, // WebSocket
-		Ping, // WebSocket
-		Pong // WebSocket
-	};
+    enum Type {
+        Data,
+        Error,
+        Credit,
+        KeepAlive,
+        Cancel,
+        HandoffStart,
+        HandoffProceed,
+        Close, // WebSocket
+        Ping,  // WebSocket
+        Pong   // WebSocket
+    };
 
-	CowByteArray from;
-	QList<Id> ids;
+    CowByteArray from;
+    QList<Id> ids;
 
-	Type type;
-	CowByteArray condition;
+    Type type;
+    CowByteArray condition;
 
-	int credits;
-	bool more;
-	bool stream;
-	bool routerResp;
-	int maxSize;
-	int timeout;
+    int credits;
+    bool more;
+    bool stream;
+    bool routerResp;
+    int maxSize;
+    int timeout;
 
-	CowString method;
-	Url uri;
-	HttpHeaders headers;
-	CowByteArray body;
+    CowString method;
+    Url uri;
+    HttpHeaders headers;
+    CowByteArray body;
 
-	CowByteArray contentType; // WebSocket
-	int code; // WebSocket
+    CowByteArray contentType; // WebSocket
+    int code;                 // WebSocket
 
-	Variant userData;
+    Variant userData;
 
-	QHostAddress peerAddress;
-	int peerPort;
+    QHostAddress peerAddress;
+    int peerPort;
 
-	CowString connectHost;
-	int connectPort;
-	bool ignorePolicies;
-	bool trustConnectHost;
-	bool ignoreTlsErrors;
-	CowString clientCert;
-	CowString clientKey;
-	bool followRedirects;
-	Variant passthrough; // If valid, may contain pushpin-specific passthrough info
-	bool multi;
-	bool quiet;
+    CowString connectHost;
+    int connectPort;
+    bool ignorePolicies;
+    bool trustConnectHost;
+    bool ignoreTlsErrors;
+    CowString clientCert;
+    CowString clientKey;
+    bool followRedirects;
+    Variant passthrough; // If valid, may contain pushpin-specific passthrough info
+    bool multi;
+    bool quiet;
 
-	ZhttpRequestPacket() :
-		type((Type)-1),
-		credits(-1),
-		more(false),
-		stream(false),
-		routerResp(false),
-		maxSize(-1),
-		timeout(-1),
-		code(-1),
-		peerPort(-1),
-		connectPort(-1),
-		ignorePolicies(false),
-		trustConnectHost(false),
-		ignoreTlsErrors(false),
-		followRedirects(false),
-		multi(false),
-		quiet(false)
-	{
-	}
+    ZhttpRequestPacket()
+        : type((Type)-1),
+          credits(-1),
+          more(false),
+          stream(false),
+          routerResp(false),
+          maxSize(-1),
+          timeout(-1),
+          code(-1),
+          peerPort(-1),
+          connectPort(-1),
+          ignorePolicies(false),
+          trustConnectHost(false),
+          ignoreTlsErrors(false),
+          followRedirects(false),
+          multi(false),
+          quiet(false) {}
 
-	Variant toVariant() const;
-	bool fromVariant(const Variant &in);
+    Variant toVariant() const;
+    bool fromVariant(const Variant &in);
 };
 
 #endif

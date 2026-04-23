@@ -23,267 +23,226 @@
 
 #include "sequencer.h"
 
-#include <QDateTime>
-#include "log.h"
-#include "timer.h"
 #include "defercall.h"
+#include "log.h"
 #include "publishitem.h"
 #include "publishlastids.h"
+#include "timer.h"
+#include <QDateTime>
 
 #define CHANNEL_PENDING_MAX 100
 #define DEFAULT_PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
-class Sequencer::Private
-{
+class Sequencer::Private {
 public:
-	class PendingItem
-	{
-	public:
-		int64_t time;
-		PublishItem item;
-	};
+    class PendingItem {
+    public:
+        int64_t time;
+        PublishItem item;
+    };
 
-	class ChannelPendingItems
-	{
-	public:
-		QHash<QString, PendingItem*> itemsByPrevId;
+    class ChannelPendingItems {
+    public:
+        QHash<QString, PendingItem *> itemsByPrevId;
 
-		~ChannelPendingItems()
-		{
-			qDeleteAll(itemsByPrevId);
-		}
-	};
+        ~ChannelPendingItems() { qDeleteAll(itemsByPrevId); }
+    };
 
-	class CachedId
-	{
-	public:
-		int64_t expireTime;
-		QString channel;
-		QString id;
-	};
+    class CachedId {
+    public:
+        int64_t expireTime;
+        QString channel;
+        QString id;
+    };
 
-	Sequencer *q;
-	PublishLastIds *lastIds;
-	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
-	QMap<QPair<int64_t, PendingItem*>, PendingItem*> pendingItemsByTime;
-	std::unique_ptr<Timer> expireTimer;
-	int pendingExpireMSecs;
-	int idCacheTtl;
-	QHash<QPair<QString, QString>, CachedId*> idCacheById;
-	QMap<QPair<int64_t, CachedId*>, CachedId*> idCacheByExpireTime;
+    Sequencer *q;
+    PublishLastIds *lastIds;
+    QHash<QString, ChannelPendingItems> pendingItemsByChannel;
+    QMap<QPair<int64_t, PendingItem *>, PendingItem *> pendingItemsByTime;
+    std::unique_ptr<Timer> expireTimer;
+    int pendingExpireMSecs;
+    int idCacheTtl;
+    QHash<QPair<QString, QString>, CachedId *> idCacheById;
+    QMap<QPair<int64_t, CachedId *>, CachedId *> idCacheByExpireTime;
 
-	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
-		q(_q),
-		lastIds(_publishLastIds),
-		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
-		idCacheTtl(-1)
-	{
-		expireTimer = std::make_unique<Timer>();
-		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
-	}
+    Private(Sequencer *_q, PublishLastIds *_publishLastIds)
+        : q(_q),
+          lastIds(_publishLastIds),
+          pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
+          idCacheTtl(-1) {
+        expireTimer = std::make_unique<Timer>();
+        expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
+    }
 
-	~Private()
-	{
-		qDeleteAll(idCacheById);
-	}
+    ~Private() { qDeleteAll(idCacheById); }
 
-	void addItem(const PublishItem &item, bool seq)
-	{
-		int64_t now = QDateTime::currentMSecsSinceEpoch();
+    void addItem(const PublishItem &item, bool seq) {
+        int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-		while(!idCacheByExpireTime.isEmpty())
-		{
-			QMap<QPair<int64_t, CachedId*>, CachedId*>::iterator it = idCacheByExpireTime.begin();
-			CachedId *i = it.value();
+        while (!idCacheByExpireTime.isEmpty()) {
+            QMap<QPair<int64_t, CachedId *>, CachedId *>::iterator it = idCacheByExpireTime.begin();
+            CachedId *i = it.value();
 
-			if(i->expireTime > now)
-				break;
+            if (i->expireTime > now)
+                break;
 
-			idCacheById.remove(QPair<QString, QString>(i->channel, i->id));
-			idCacheByExpireTime.erase(it);
-			delete i;
-		}
+            idCacheById.remove(QPair<QString, QString>(i->channel, i->id));
+            idCacheByExpireTime.erase(it);
+            delete i;
+        }
 
-		if(!item.id.isNull() && idCacheTtl > 0)
-		{
-			QPair<QString, QString> idKey(item.channel, item.id);
-			if(idCacheById.contains(idKey))
-			{
-				// We've seen this ID recently, drop the message
-				return;
-			}
+        if (!item.id.isNull() && idCacheTtl > 0) {
+            QPair<QString, QString> idKey(item.channel, item.id);
+            if (idCacheById.contains(idKey)) {
+                // We've seen this ID recently, drop the message
+                return;
+            }
 
-			CachedId *i = new CachedId;
-			i->expireTime = now + (idCacheTtl * 1000);
-			i->channel = item.channel;
-			i->id = item.id;
-			idCacheById.insert(idKey, i);
-			idCacheByExpireTime.insert(QPair<int64_t, CachedId*>(i->expireTime, i), i);
-		}
+            CachedId *i = new CachedId;
+            i->expireTime = now + (idCacheTtl * 1000);
+            i->channel = item.channel;
+            i->id = item.id;
+            idCacheById.insert(idKey, i);
+            idCacheByExpireTime.insert(QPair<int64_t, CachedId *>(i->expireTime, i), i);
+        }
 
-		if(!seq)
-		{
-			q->itemReady(item);
-			return;
-		}
+        if (!seq) {
+            q->itemReady(item);
+            return;
+        }
 
-		QString lastId = lastIds->value(item.channel);
+        QString lastId = lastIds->value(item.channel);
 
-		if(!lastId.isNull() && !item.prevId.isNull() && lastId != item.prevId)
-		{
-			ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
+        if (!lastId.isNull() && !item.prevId.isNull() && lastId != item.prevId) {
+            ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
 
-			if(channelPendingItems.itemsByPrevId.contains(item.prevId))
-			{
-				log_debug("sequencer: already have item for channel [%s] depending on prev-id [%s], dropping", qPrintable(item.channel), qPrintable(item.prevId));
-				return;
-			}
+            if (channelPendingItems.itemsByPrevId.contains(item.prevId)) {
+                log_debug("sequencer: already have item for channel [%s] depending on "
+                          "prev-id [%s], dropping",
+                          qPrintable(item.channel), qPrintable(item.prevId));
+                return;
+            }
 
-			if(channelPendingItems.itemsByPrevId.count() >= CHANNEL_PENDING_MAX)
-			{
-				log_debug("sequencer: too many pending items for channel [%s], dropping", qPrintable(item.channel));
-				return;
-			}
+            if (channelPendingItems.itemsByPrevId.count() >= CHANNEL_PENDING_MAX) {
+                log_debug("sequencer: too many pending items for channel [%s], dropping",
+                          qPrintable(item.channel));
+                return;
+            }
 
-			PendingItem *i = new PendingItem;
-			i->time = now;
-			i->item = item;
+            PendingItem *i = new PendingItem;
+            i->time = now;
+            i->item = item;
 
-			channelPendingItems.itemsByPrevId.insert(item.prevId, i);
-			pendingItemsByTime.insert(QPair<int64_t, PendingItem*>(i->time, i), i);
+            channelPendingItems.itemsByPrevId.insert(item.prevId, i);
+            pendingItemsByTime.insert(QPair<int64_t, PendingItem *>(i->time, i), i);
 
-			if(!expireTimer->isActive())
-				expireTimer->start(EXPIRE_INTERVAL);
-			return;
-		}
+            if (!expireTimer->isActive())
+                expireTimer->start(EXPIRE_INTERVAL);
+            return;
+        }
 
-		sendItem(item);
-	}
+        sendItem(item);
+    }
 
-	void clear(const QString &channel)
-	{
-		if(!pendingItemsByChannel.contains(channel))
-			return;
+    void clear(const QString &channel) {
+        if (!pendingItemsByChannel.contains(channel))
+            return;
 
-		ChannelPendingItems &channelPendingItems = pendingItemsByChannel[channel];
-		QHashIterator<QString, PendingItem*> it(channelPendingItems.itemsByPrevId);
-		while(it.hasNext())
-		{
-			it.next();
-			PendingItem *i = it.value();
+        ChannelPendingItems &channelPendingItems = pendingItemsByChannel[channel];
+        QHashIterator<QString, PendingItem *> it(channelPendingItems.itemsByPrevId);
+        while (it.hasNext()) {
+            it.next();
+            PendingItem *i = it.value();
 
-			pendingItemsByTime.remove(QPair<int64_t, PendingItem*>(i->time, i));
-		}
+            pendingItemsByTime.remove(QPair<int64_t, PendingItem *>(i->time, i));
+        }
 
-		pendingItemsByChannel.remove(channel);
-	}
+        pendingItemsByChannel.remove(channel);
+    }
 
-	void sendItem(const PublishItem &item)
-	{
-		if(!item.id.isNull())
-			lastIds->set(item.channel, item.id);
-		else
-			lastIds->remove(item.channel);
+    void sendItem(const PublishItem &item) {
+        if (!item.id.isNull())
+            lastIds->set(item.channel, item.id);
+        else
+            lastIds->remove(item.channel);
 
-		q->itemReady(item);
+        q->itemReady(item);
 
-		if(pendingItemsByChannel.contains(item.channel))
-		{
-			ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
-			QString id = item.id;
+        if (pendingItemsByChannel.contains(item.channel)) {
+            ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
+            QString id = item.id;
 
-			while(!id.isNull() && !channelPendingItems.itemsByPrevId.isEmpty())
-			{
-				PendingItem *i = channelPendingItems.itemsByPrevId.value(id);
-				if(!i)
-					break;
+            while (!id.isNull() && !channelPendingItems.itemsByPrevId.isEmpty()) {
+                PendingItem *i = channelPendingItems.itemsByPrevId.value(id);
+                if (!i)
+                    break;
 
-				PublishItem pitem = i->item;
-				channelPendingItems.itemsByPrevId.remove(i->item.prevId);
-				pendingItemsByTime.remove(QPair<int64_t, PendingItem*>(i->time, i));
-				delete i;
+                PublishItem pitem = i->item;
+                channelPendingItems.itemsByPrevId.remove(i->item.prevId);
+                pendingItemsByTime.remove(QPair<int64_t, PendingItem *>(i->time, i));
+                delete i;
 
-				if(!pitem.id.isNull())
-					lastIds->set(pitem.channel, pitem.id);
-				else
-					lastIds->remove(pitem.channel);
+                if (!pitem.id.isNull())
+                    lastIds->set(pitem.channel, pitem.id);
+                else
+                    lastIds->remove(pitem.channel);
 
-				q->itemReady(pitem);
+                q->itemReady(pitem);
 
-				id = pitem.id;
-			}
+                id = pitem.id;
+            }
 
-			if(channelPendingItems.itemsByPrevId.isEmpty())
-			{
-				pendingItemsByChannel.remove(item.channel);
+            if (channelPendingItems.itemsByPrevId.isEmpty()) {
+                pendingItemsByChannel.remove(item.channel);
 
-				if(pendingItemsByChannel.isEmpty())
-					expireTimer->stop();
-			}
-		}
-	}
+                if (pendingItemsByChannel.isEmpty())
+                    expireTimer->stop();
+            }
+        }
+    }
 
-	void expireTimer_timeout()
-	{
-		int64_t now = QDateTime::currentMSecsSinceEpoch();
-		int64_t threshold = now - pendingExpireMSecs;
+    void expireTimer_timeout() {
+        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t threshold = now - pendingExpireMSecs;
 
-		while(!pendingItemsByTime.isEmpty())
-		{
-			QMap<QPair<int64_t, PendingItem*>, PendingItem*>::iterator it = pendingItemsByTime.begin();
-			PendingItem *i = it.value();
+        while (!pendingItemsByTime.isEmpty()) {
+            QMap<QPair<int64_t, PendingItem *>, PendingItem *>::iterator it =
+                pendingItemsByTime.begin();
+            PendingItem *i = it.value();
 
-			if(i->time > threshold)
-				break;
+            if (i->time > threshold)
+                break;
 
-			log_debug("timing out item channel=[%s] id=[%s]", qPrintable(i->item.channel), qPrintable(i->item.id));
+            log_debug("timing out item channel=[%s] id=[%s]", qPrintable(i->item.channel),
+                      qPrintable(i->item.id));
 
-			PublishItem item = i->item;
-			ChannelPendingItems &channelPendingItems = pendingItemsByChannel[i->item.channel];
-			channelPendingItems.itemsByPrevId.remove(i->item.prevId);
-			pendingItemsByTime.erase(it);
-			delete i;
+            PublishItem item = i->item;
+            ChannelPendingItems &channelPendingItems = pendingItemsByChannel[i->item.channel];
+            channelPendingItems.itemsByPrevId.remove(i->item.prevId);
+            pendingItemsByTime.erase(it);
+            delete i;
 
-			if(channelPendingItems.itemsByPrevId.isEmpty())
-			{
-				pendingItemsByChannel.remove(item.channel);
+            if (channelPendingItems.itemsByPrevId.isEmpty()) {
+                pendingItemsByChannel.remove(item.channel);
 
-				if(pendingItemsByChannel.isEmpty())
-					expireTimer->stop();
-			}
+                if (pendingItemsByChannel.isEmpty())
+                    expireTimer->stop();
+            }
 
-			sendItem(item);
-		}
-	}
+            sendItem(item);
+        }
+    }
 };
 
-Sequencer::Sequencer(PublishLastIds *publishLastIds)
-{
-	d = new Private(this, publishLastIds);
-}
+Sequencer::Sequencer(PublishLastIds *publishLastIds) { d = new Private(this, publishLastIds); }
 
-Sequencer::~Sequencer()
-{
-	delete d;
-}
+Sequencer::~Sequencer() { delete d; }
 
-void Sequencer::setWaitMax(int msecs)
-{
-	d->pendingExpireMSecs = msecs;
-}
+void Sequencer::setWaitMax(int msecs) { d->pendingExpireMSecs = msecs; }
 
-void Sequencer::setIdCacheTtl(int secs)
-{
-	d->idCacheTtl = secs;
-}
+void Sequencer::setIdCacheTtl(int secs) { d->idCacheTtl = secs; }
 
-void Sequencer::addItem(const PublishItem &item, bool seq)
-{
-	d->addItem(item, seq);
-}
+void Sequencer::addItem(const PublishItem &item, bool seq) { d->addItem(item, seq); }
 
-void Sequencer::clearPendingForChannel(const QString &channel)
-{
-	d->clear(channel);
-}
+void Sequencer::clearPendingForChannel(const QString &channel) { d->clear(channel); }

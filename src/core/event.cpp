@@ -18,19 +18,12 @@
 
 namespace Event {
 
-SetReadiness::SetReadiness(ffi::SetReadiness *inner) :
-	inner_(inner)
-{
+SetReadiness::SetReadiness(ffi::SetReadiness *inner) : inner_(inner) {}
+
+SetReadiness::~SetReadiness() { ffi::set_readiness_destroy(inner_); }
+
+int SetReadiness::setReadiness(uint8_t readiness) {
+    return ffi::set_readiness_set_readiness(inner_, readiness);
 }
 
-SetReadiness::~SetReadiness()
-{
-	ffi::set_readiness_destroy(inner_);
-}
-
-int SetReadiness::setReadiness(uint8_t readiness)
-{
-	return ffi::set_readiness_set_readiness(inner_, readiness);
-}
-
-}
+} // namespace Event

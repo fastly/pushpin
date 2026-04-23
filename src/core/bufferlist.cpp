@@ -22,164 +22,144 @@
 
 #include <assert.h>
 
-BufferList::BufferList() :
-	size_(0),
-	offset_(0)
-{
+BufferList::BufferList() : size_(0), offset_(0) {}
+
+void BufferList::findPos(int pos, int *bufferIndex, int *offset) const {
+    assert(pos < size_);
+
+    int at = 0;
+    int curOffset = offset_;
+
+    while (true) {
+        const QByteArray &buf = bufs_[at];
+        if (curOffset + pos < buf.size())
+            break;
+
+        ++at;
+        pos -= (buf.size() - curOffset);
+        curOffset = 0;
+    }
+
+    *bufferIndex = at;
+    *offset = curOffset + pos;
 }
 
-void BufferList::findPos(int pos, int *bufferIndex, int *offset) const
-{
-	assert(pos < size_);
+QByteArray BufferList::mid(int pos, int size) const {
+    assert(pos >= 0);
 
-	int at = 0;
-	int curOffset = offset_;
+    if (size_ == 0 || size == 0 || pos >= size_)
+        return QByteArray();
 
-	while(true)
-	{
-		const QByteArray &buf = bufs_[at];
-		if(curOffset + pos < buf.size())
-			break;
+    int toRead;
+    if (size > 0)
+        toRead = qMin(size, size_ - pos);
+    else
+        toRead = size_ - pos;
 
-		++at;
-		pos -= (buf.size() - curOffset);
-		curOffset = 0;
-	}
+    assert(!bufs_.isEmpty());
 
-	*bufferIndex = at;
-	*offset = curOffset + pos;
+    int at;
+    int offset;
+    findPos(pos, &at, &offset);
+
+    // If we're reading the exact size of the current buffer, cheaply
+    // return it
+    if (offset == 0 && bufs_[at].size() == toRead)
+        return bufs_[at];
+
+    QByteArray out;
+    out.resize(toRead);
+    char *outp = out.data();
+
+    while (toRead > 0) {
+        const QByteArray &buf = bufs_[at];
+        int bsize = qMin(buf.size() - offset, toRead);
+        memcpy(outp, buf.data() + offset, bsize);
+
+        if (offset + bsize >= buf.size()) {
+            ++at;
+            offset = 0;
+        }
+
+        toRead -= bsize;
+        outp += bsize;
+    }
+
+    return out;
 }
 
-QByteArray BufferList::mid(int pos, int size) const
-{
-	assert(pos >= 0);
-
-	if(size_ == 0 || size == 0 || pos >= size_)
-		return QByteArray();
-
-	int toRead;
-	if(size > 0)
-		toRead = qMin(size, size_ - pos);
-	else
-		toRead = size_ - pos;
-
-	assert(!bufs_.isEmpty());
-
-	int at;
-	int offset;
-	findPos(pos, &at, &offset);
-
-	// If we're reading the exact size of the current buffer, cheaply
-	// return it
-	if(offset == 0 && bufs_[at].size() == toRead)
-		return bufs_[at];
-
-	QByteArray out;
-	out.resize(toRead);
-	char *outp = out.data();
-
-	while(toRead > 0)
-	{
-		const QByteArray &buf = bufs_[at];
-		int bsize = qMin(buf.size() - offset, toRead);
-		memcpy(outp, buf.data() + offset, bsize);
-
-		if(offset + bsize >= buf.size())
-		{
-			++at;
-			offset = 0;
-		}
-
-		toRead -= bsize;
-		outp += bsize;
-	}
-
-	return out;
+void BufferList::clear() {
+    bufs_.clear();
+    size_ = 0;
+    offset_ = 0;
 }
 
-void BufferList::clear()
-{
-	bufs_.clear();
-	size_ = 0;
-	offset_ = 0;
+void BufferList::append(const QByteArray &buf) {
+    if (buf.size() < 1)
+        return;
+
+    bufs_ += buf;
+    size_ += buf.size();
 }
 
-void BufferList::append(const QByteArray &buf)
-{
-	if(buf.size() < 1)
-		return;
+QByteArray BufferList::take(int size) {
+    if (size_ == 0 || size == 0)
+        return QByteArray();
 
-	bufs_ += buf;
-	size_ += buf.size();
+    int toRead;
+    if (size > 0)
+        toRead = qMin(size, size_);
+    else
+        toRead = size_;
+
+    assert(!bufs_.isEmpty());
+
+    // If we're reading the exact size of the first buffer, cheaply
+    // return it
+    if (offset_ == 0 && bufs_.first().size() == toRead) {
+        size_ -= toRead;
+        return bufs_.takeFirst();
+    }
+
+    QByteArray out;
+    out.resize(toRead);
+    char *outp = out.data();
+
+    while (toRead > 0) {
+        const QByteArray &buf = bufs_.first();
+        int bsize = qMin(buf.size() - offset_, toRead);
+        memcpy(outp, buf.data() + offset_, bsize);
+
+        if (offset_ + bsize >= buf.size()) {
+            bufs_.removeFirst();
+            offset_ = 0;
+        } else
+            offset_ += bsize;
+
+        toRead -= bsize;
+        size_ -= bsize;
+        outp += bsize;
+    }
+
+    return out;
 }
 
-QByteArray BufferList::take(int size)
-{
-	if(size_ == 0 || size == 0)
-		return QByteArray();
+QByteArray BufferList::toByteArray() {
+    if (size_ == 0)
+        return QByteArray();
 
-	int toRead;
-	if(size > 0)
-		toRead = qMin(size, size_);
-	else
-		toRead = size_;
+    QByteArray out;
+    while (!bufs_.isEmpty()) {
+        if (offset_ > 0) {
+            out += bufs_.first().mid(offset_);
+            offset_ = 0;
+            bufs_.removeFirst();
+        } else
+            out += bufs_.takeFirst();
+    }
 
-	assert(!bufs_.isEmpty());
+    // Keep the rewritten buffer as the only buffer
+    bufs_ += out;
 
-	// If we're reading the exact size of the first buffer, cheaply
-	// return it
-	if(offset_ == 0 && bufs_.first().size() == toRead)
-	{
-		size_ -= toRead;
-		return bufs_.takeFirst();
-	}
-
-	QByteArray out;
-	out.resize(toRead);
-	char *outp = out.data();
-
-	while(toRead > 0)
-	{
-		const QByteArray &buf = bufs_.first();
-		int bsize = qMin(buf.size() - offset_, toRead);
-		memcpy(outp, buf.data() + offset_, bsize);
-
-		if(offset_ + bsize >= buf.size())
-		{
-			bufs_.removeFirst();
-			offset_ = 0;
-		}
-		else
-			offset_ += bsize;
-
-		toRead -= bsize;
-		size_ -= bsize;
-		outp += bsize;
-	}
-
-	return out;
-}
-
-QByteArray BufferList::toByteArray()
-{
-	if(size_ == 0)
-		return QByteArray();
-
-	QByteArray out;
-	while(!bufs_.isEmpty())
-	{
-		if(offset_ > 0)
-		{
-			out += bufs_.first().mid(offset_);
-			offset_ = 0;
-			bufs_.removeFirst();
-		}
-		else
-			out += bufs_.takeFirst();
-	}
-
-	// Keep the rewritten buffer as the only buffer
-	bufs_ += out;
-
-	return out;
+    return out;
 }

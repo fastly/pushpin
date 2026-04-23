@@ -19,7 +19,8 @@
 
 #include <QUrl>
 
-// Type alias for URL handling - this will be replaced with a custom implementation later
+// Type alias for URL handling - this will be replaced with a custom
+// implementation later
 using Url = QUrl;
 
 #endif // URL_H

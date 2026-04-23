@@ -24,9 +24,8 @@
 #ifndef SOCKJSMANAGER_H
 #define SOCKJSMANAGER_H
 
-#include "variant.h"
 #include "domainmap.h"
-#include <boost/signals2.hpp>
+#include "variant.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -37,32 +36,38 @@ class ZhttpRequest;
 class ZWebSocket;
 class SockJsSession;
 
-/// Manages SockJS sessions and routes clients using WebSocket, XHR, or JSONP comms
-class SockJsManager
-{
+/// Manages SockJS sessions and routes clients using WebSocket, XHR, or JSONP
+/// comms
+class SockJsManager {
 public:
-	SockJsManager(const QString &sockJsUrl);
-	~SockJsManager();
+    SockJsManager(const QString &sockJsUrl);
+    ~SockJsManager();
 
-	void giveRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath = QByteArray(), const DomainMap::Entry &route = DomainMap::Entry());
-	void giveSocket(ZWebSocket *sock, int basePathStart, const QByteArray &asPath = QByteArray(), const DomainMap::Entry &route = DomainMap::Entry());
+    void giveRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath = QByteArray(),
+                     const DomainMap::Entry &route = DomainMap::Entry());
+    void giveSocket(ZWebSocket *sock, int basePathStart, const QByteArray &asPath = QByteArray(),
+                    const DomainMap::Entry &route = DomainMap::Entry());
 
-	SockJsSession *takeNext();
+    SockJsSession *takeNext();
 
-	Signal sessionReady;
+    Signal sessionReady;
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 
-	friend class SockJsSession;
-	void unlink(SockJsSession *sess);
-	void setLinger(SockJsSession *sess, const Variant &closeValue);
-	void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray());
-	void respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback = QByteArray());
-	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message, bool discard = false);
-	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
+    friend class SockJsSession;
+    void unlink(SockJsSession *sess);
+    void setLinger(SockJsSession *sess, const Variant &closeValue);
+    void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(),
+                   const QByteArray &jsonpCallback = QByteArray());
+    void respondOk(ZhttpRequest *req, const QString &str,
+                   const QByteArray &jsonpCallback = QByteArray());
+    void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message,
+                      bool discard = false);
+    void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers,
+                 const QByteArray &body);
 };
 
 #endif

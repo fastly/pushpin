@@ -24,69 +24,40 @@
 #include "zmqreprouter.h"
 
 #include "cowstring.h"
-#include "zmqsocket.h"
 #include "zmqreqmessage.h"
+#include "zmqsocket.h"
 
-class ZmqRepRouter::Private
-{
+class ZmqRepRouter::Private {
 public:
-	ZmqRepRouter *q;
-	std::unique_ptr<ZmqSocket> sock;
-	Connection mWConnection;
-	Connection rrConnection;
+    ZmqRepRouter *q;
+    std::unique_ptr<ZmqSocket> sock;
+    Connection mWConnection;
+    Connection rrConnection;
 
-	Private(ZmqRepRouter *_q) :
-		q(_q)
-	{
-		sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
-		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
-		mWConnection = sock->messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this,  boost::placeholders::_1));
-	}
+    Private(ZmqRepRouter *_q) : q(_q) {
+        sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
+        rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+        mWConnection = sock->messagesWritten.connect(
+            boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
+    }
 
-	void sock_messagesWritten(int count)
-	{
-		q->messagesWritten(count);
-	}
+    void sock_messagesWritten(int count) { q->messagesWritten(count); }
 
-	void sock_readyRead()
-	{
-		q->readyRead();
-	}
+    void sock_readyRead() { q->readyRead(); }
 };
 
-ZmqRepRouter::ZmqRepRouter()
-{
-	d = std::make_unique<Private>(this);
-}
+ZmqRepRouter::ZmqRepRouter() { d = std::make_unique<Private>(this); }
 
 ZmqRepRouter::~ZmqRepRouter() = default;
 
-void ZmqRepRouter::setShutdownWaitTime(int msecs)
-{
-	d->sock->setShutdownWaitTime(msecs);
-}
+void ZmqRepRouter::setShutdownWaitTime(int msecs) { d->sock->setShutdownWaitTime(msecs); }
 
-void ZmqRepRouter::connectToAddress(const CowString &addr)
-{
-	d->sock->connectToAddress(addr);
-}
+void ZmqRepRouter::connectToAddress(const CowString &addr) { d->sock->connectToAddress(addr); }
 
-bool ZmqRepRouter::bind(const CowString &addr)
-{
-	return d->sock->bind(addr);
-}
+bool ZmqRepRouter::bind(const CowString &addr) { return d->sock->bind(addr); }
 
-bool ZmqRepRouter::canRead() const
-{
-	return d->sock->canRead();
-}
+bool ZmqRepRouter::canRead() const { return d->sock->canRead(); }
 
-ZmqReqMessage ZmqRepRouter::read()
-{
-	return ZmqReqMessage(d->sock->read());
-}
+ZmqReqMessage ZmqRepRouter::read() { return ZmqReqMessage(d->sock->read()); }
 
-void ZmqRepRouter::write(const ZmqReqMessage &message)
-{
-	d->sock->write(message.toRawMessage());
-}
+void ZmqRepRouter::write(const ZmqReqMessage &message) { d->sock->write(message.toRawMessage()); }

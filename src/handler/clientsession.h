@@ -23,10 +23,9 @@
 #ifndef CLIENTSESSION_H
 #define CLIENTSESSION_H
 
-class ClientSession
-{
+class ClientSession {
 public:
-	virtual ~ClientSession() = default;
+    virtual ~ClientSession() = default;
 };
 
 #endif

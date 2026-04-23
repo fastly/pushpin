@@ -24,105 +24,97 @@
 #ifndef STATSPACKET_H
 #define STATSPACKET_H
 
-#include <QByteArray>
 #include "variant.h"
+#include <QByteArray>
 #include <QHostAddress>
 
-class StatsPacket
-{
+class StatsPacket {
 public:
-	enum Type
-	{
-		Activity,
-		Message,
-		Connected,
-		Disconnected,
-		Subscribed,
-		Unsubscribed,
-		Report,
-		Counts,
-		ConnectionsMax,
-	};
+    enum Type {
+        Activity,
+        Message,
+        Connected,
+        Disconnected,
+        Subscribed,
+        Unsubscribed,
+        Report,
+        Counts,
+        ConnectionsMax,
+    };
 
-	enum ConnectionType
-	{
-		Http,
-		WebSocket
-	};
+    enum ConnectionType { Http, WebSocket };
 
-	Type type;
-	QByteArray from;
-	QByteArray route;
-	int64_t retrySeq; // Connections max
-	int count; // Activity, message
-	QByteArray connectionId; // Connected, disconnected
-	ConnectionType connectionType; // Connected
-	QHostAddress peerAddress; // Connected
-	bool ssl; // Connected
-	int ttl; // Connected, subscribed, connections max
-	QByteArray mode; // Subscribed, unsubscribed
-	QByteArray channel; // Message, subscribed, unsubscribed
-	QByteArray itemId; // Message
-	QByteArray transport; // Message
-	int blocks; // Message
-	int subscribers; // Subscribed
-	int connectionsMax; // Report, connections max
-	int connectionsMinutes; // Report
-	int messagesReceived; // Report
-	int messagesSent; // Report
-	int httpResponseMessagesSent; // Report
-	int blocksReceived; // Report
-	int blocksSent; // Report
-	int duration; // Report
-	int requestsReceived; // Counts
-	int clientHeaderBytesReceived; // Report
-	int clientHeaderBytesSent; // Report
-	int clientContentBytesReceived; // Report
-	int clientContentBytesSent; // Report
-	int clientMessagesReceived; // Report
-	int clientMessagesSent; // Report
-	int serverHeaderBytesReceived; // Report
-	int serverHeaderBytesSent; // Report
-	int serverContentBytesReceived; // Report
-	int serverContentBytesSent; // Report
-	int serverMessagesReceived; // Report
-	int serverMessagesSent; // Report
+    Type type;
+    QByteArray from;
+    QByteArray route;
+    int64_t retrySeq;               // Connections max
+    int count;                      // Activity, message
+    QByteArray connectionId;        // Connected, disconnected
+    ConnectionType connectionType;  // Connected
+    QHostAddress peerAddress;       // Connected
+    bool ssl;                       // Connected
+    int ttl;                        // Connected, subscribed, connections max
+    QByteArray mode;                // Subscribed, unsubscribed
+    QByteArray channel;             // Message, subscribed, unsubscribed
+    QByteArray itemId;              // Message
+    QByteArray transport;           // Message
+    int blocks;                     // Message
+    int subscribers;                // Subscribed
+    int connectionsMax;             // Report, connections max
+    int connectionsMinutes;         // Report
+    int messagesReceived;           // Report
+    int messagesSent;               // Report
+    int httpResponseMessagesSent;   // Report
+    int blocksReceived;             // Report
+    int blocksSent;                 // Report
+    int duration;                   // Report
+    int requestsReceived;           // Counts
+    int clientHeaderBytesReceived;  // Report
+    int clientHeaderBytesSent;      // Report
+    int clientContentBytesReceived; // Report
+    int clientContentBytesSent;     // Report
+    int clientMessagesReceived;     // Report
+    int clientMessagesSent;         // Report
+    int serverHeaderBytesReceived;  // Report
+    int serverHeaderBytesSent;      // Report
+    int serverContentBytesReceived; // Report
+    int serverContentBytesSent;     // Report
+    int serverMessagesReceived;     // Report
+    int serverMessagesSent;         // Report
 
-	StatsPacket() :
-		type((Type)-1),
-		retrySeq(-1),
-		count(-1),
-		connectionType((ConnectionType)-1),
-		ssl(false),
-		ttl(-1),
-		blocks(-1),
-		subscribers(-1),
-		connectionsMax(-1),
-		connectionsMinutes(-1),
-		messagesReceived(-1),
-		messagesSent(-1),
-		httpResponseMessagesSent(-1),
-		blocksReceived(-1),
-		blocksSent(-1),
-		duration(-1),
-		requestsReceived(-1),
-		clientHeaderBytesReceived(-1),
-		clientHeaderBytesSent(-1),
-		clientContentBytesReceived(-1),
-		clientContentBytesSent(-1),
-		clientMessagesReceived(-1),
-		clientMessagesSent(-1),
-		serverHeaderBytesReceived(-1),
-		serverHeaderBytesSent(-1),
-		serverContentBytesReceived(-1),
-		serverContentBytesSent(-1),
-		serverMessagesReceived(-1),
-		serverMessagesSent(-1)
-	{
-	}
+    StatsPacket()
+        : type((Type)-1),
+          retrySeq(-1),
+          count(-1),
+          connectionType((ConnectionType)-1),
+          ssl(false),
+          ttl(-1),
+          blocks(-1),
+          subscribers(-1),
+          connectionsMax(-1),
+          connectionsMinutes(-1),
+          messagesReceived(-1),
+          messagesSent(-1),
+          httpResponseMessagesSent(-1),
+          blocksReceived(-1),
+          blocksSent(-1),
+          duration(-1),
+          requestsReceived(-1),
+          clientHeaderBytesReceived(-1),
+          clientHeaderBytesSent(-1),
+          clientContentBytesReceived(-1),
+          clientContentBytesSent(-1),
+          clientMessagesReceived(-1),
+          clientMessagesSent(-1),
+          serverHeaderBytesReceived(-1),
+          serverHeaderBytesSent(-1),
+          serverContentBytesReceived(-1),
+          serverContentBytesSent(-1),
+          serverMessagesReceived(-1),
+          serverMessagesSent(-1) {}
 
-	Variant toVariant() const;
-	bool fromVariant(const QByteArray &type, const Variant &in);
+    Variant toVariant() const;
+    bool fromVariant(const QByteArray &type, const Variant &in);
 };
 
 #endif

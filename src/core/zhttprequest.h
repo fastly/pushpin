@@ -24,10 +24,10 @@
 #ifndef ZHTTPREQUEST_H
 #define ZHTTPREQUEST_H
 
-#include "variant.h"
 #include "httprequest.h"
-#include <boost/signals2.hpp>
 #include "url.h"
+#include "variant.h"
+#include <boost/signals2.hpp>
 
 #define TIMERS_PER_ZHTTPREQUEST 3
 
@@ -37,106 +37,99 @@ class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 class ZhttpManager;
 
-class ZhttpRequest : public HttpRequest
-{
+class ZhttpRequest : public HttpRequest {
 public:
-	// Pair of sender + request id
-	typedef QPair<QByteArray, QByteArray> Rid;
+    // Pair of sender + request id
+    typedef QPair<QByteArray, QByteArray> Rid;
 
-	class ServerState
-	{
-	public:
-		Rid rid;
-		QHostAddress peerAddress;
-		QString requestMethod;
-		Url requestUri;
-		HttpHeaders requestHeaders;
-		QByteArray requestBody;
-		int responseCode;
-		int inSeq;
-		int outSeq;
-		int outCredits;
-		bool routerResp;
-		Variant userData;
+    class ServerState {
+    public:
+        Rid rid;
+        QHostAddress peerAddress;
+        QString requestMethod;
+        Url requestUri;
+        HttpHeaders requestHeaders;
+        QByteArray requestBody;
+        int responseCode;
+        int inSeq;
+        int outSeq;
+        int outCredits;
+        bool routerResp;
+        Variant userData;
 
-		ServerState() :
-			responseCode(-1),
-			inSeq(-1),
-			outSeq(-1),
-			outCredits(-1),
-			routerResp(false)
-		{
-		}
-	};
+        ServerState()
+            : responseCode(-1), inSeq(-1), outSeq(-1), outCredits(-1), routerResp(false) {}
+    };
 
-	~ZhttpRequest();
+    ~ZhttpRequest();
 
-	Rid rid() const;
-	Variant passthroughData() const;
-	void setIsTls(bool on); // Updates scheme
-	void setSendBodyAfterAcknowledgement(bool on); // Only works in push/sub mode
-	void setPassthroughData(const Variant &data);
-	void setQuiet(bool on);
+    Rid rid() const;
+    Variant passthroughData() const;
+    void setIsTls(bool on);                        // Updates scheme
+    void setSendBodyAfterAcknowledgement(bool on); // Only works in push/sub mode
+    void setPassthroughData(const Variant &data);
+    void setQuiet(bool on);
 
-	// For server requests only
-	void pause();
-	void resume();
-	ServerState serverState() const;
+    // For server requests only
+    void pause();
+    void resume();
+    ServerState serverState() const;
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QHostAddress peerAddress() const;
+    virtual QHostAddress peerAddress() const;
 
-	virtual void setConnectHost(const QString &host);
-	virtual void setConnectPort(int port);
-	virtual void setIgnorePolicies(bool on);
-	virtual void setTrustConnectHost(bool on);
-	virtual void setIgnoreTlsErrors(bool on);
-	virtual void setTimeout(int msecs);
-	virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setConnectHost(const QString &host);
+    virtual void setConnectPort(int port);
+    virtual void setIgnorePolicies(bool on);
+    virtual void setTrustConnectHost(bool on);
+    virtual void setIgnoreTlsErrors(bool on);
+    virtual void setTimeout(int msecs);
+    virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
-	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
+    virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
+    virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
-	virtual void writeBody(const QByteArray &body);
+    virtual void writeBody(const QByteArray &body);
 
-	virtual void endBody();
+    virtual void endBody();
 
-	virtual int bytesAvailable() const;
-	virtual int writeBytesAvailable() const;
-	virtual bool isFinished() const;
-	virtual bool isInputFinished() const;
-	virtual bool isOutputFinished() const;
-	virtual bool isErrored() const;
-	virtual ErrorCondition errorCondition() const;
+    virtual int bytesAvailable() const;
+    virtual int writeBytesAvailable() const;
+    virtual bool isFinished() const;
+    virtual bool isInputFinished() const;
+    virtual bool isOutputFinished() const;
+    virtual bool isErrored() const;
+    virtual ErrorCondition errorCondition() const;
 
-	virtual QString requestMethod() const;
-	virtual Url requestUri() const;
-	virtual HttpHeaders requestHeaders() const;
+    virtual QString requestMethod() const;
+    virtual Url requestUri() const;
+    virtual HttpHeaders requestHeaders() const;
 
-	virtual int responseCode() const;
-	virtual QByteArray responseReason() const;
-	virtual HttpHeaders responseHeaders() const;
+    virtual int responseCode() const;
+    virtual QByteArray responseReason() const;
+    virtual HttpHeaders responseHeaders() const;
 
-	virtual QByteArray readBody(int size = -1);
+    virtual QByteArray readBody(int size = -1);
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 
-	friend class ZhttpManager;
-	ZhttpRequest();
-	void setupClient(ZhttpManager *manager, bool req);
-	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
-	void setupServer(ZhttpManager *manager, const ServerState &state);
-	void startServer();
-	bool isServer() const;
-	QByteArray toAddress() const;
-	bool routerResp() const;
-	int outSeqInc();
-	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
-	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
+    friend class ZhttpManager;
+    ZhttpRequest();
+    void setupClient(ZhttpManager *manager, bool req);
+    bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq,
+                     const ZhttpRequestPacket &packet);
+    void setupServer(ZhttpManager *manager, const ServerState &state);
+    void startServer();
+    bool isServer() const;
+    QByteArray toAddress() const;
+    bool routerResp() const;
+    int outSeqInc();
+    void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
+    void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
 };
 
 #endif

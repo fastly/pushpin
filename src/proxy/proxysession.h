@@ -24,12 +24,12 @@
 #ifndef PROXYSESSION_H
 #define PROXYSESSION_H
 
-#include <boost/signals2.hpp>
-#include "logutil.h"
 #include "domainmap.h"
+#include "logutil.h"
+#include <boost/signals2.hpp>
 
 namespace Jwt {
-	class EncodingKey;
+class EncodingKey;
 }
 
 class InspectData;
@@ -44,35 +44,35 @@ using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
 /// Proxies HTTP requests to backends with GRIP streaming and request sharing
-class ProxySession
-{
+class ProxySession {
 public:
-	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *stats = 0);
-	~ProxySession();
+    ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig,
+                 StatsManager *stats = 0);
+    ~ProxySession();
 
-	void setRoute(const DomainMap::Entry &route);
-	void setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key);
-	void setAcceptXForwardedProtocol(bool enabled);
-	void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
-	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
-	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
-	void setAcceptPushpinRoute(bool enabled);
-	void setCdnLoop(const QByteArray &value);
-	void setProxyInitialResponseEnabled(bool enabled);
+    void setRoute(const DomainMap::Entry &route);
+    void setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key);
+    void setAcceptXForwardedProtocol(bool enabled);
+    void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
+    void setXffRules(const XffRule &untrusted, const XffRule &trusted);
+    void setOrigHeadersNeedMark(const QList<QByteArray> &names);
+    void setAcceptPushpinRoute(bool enabled);
+    void setCdnLoop(const QByteArray &value);
+    void setProxyInitialResponseEnabled(bool enabled);
 
-	void setInspectData(const InspectData &idata);
+    void setInspectData(const InspectData &idata);
 
-	// Takes ownership
-	void add(RequestSession *rs);
+    // Takes ownership
+    void add(RequestSession *rs);
 
-	Signal addNotAllowed; // No more sharing, for whatever reason
-	Signal finished;
-	boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
+    Signal addNotAllowed; // No more sharing, for whatever reason
+    Signal finished;
+    boost::signals2::signal<void(RequestSession *, bool)> requestSessionDestroyed;
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
 #endif

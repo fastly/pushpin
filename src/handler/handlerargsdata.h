@@ -24,19 +24,18 @@
 #ifndef HANDLERARGSDATA_H
 #define HANDLERARGSDATA_H
 
-#include <QString>
 #include "rust/bindings.h"
+#include <QString>
 
-class HandlerArgsData
-{
+class HandlerArgsData {
 public:
-	QString configFile;
-	QString logFile;
-	int logLevel;
-	QString ipcPrefix;
-	int portOffset;
+    QString configFile;
+    QString logFile;
+    int logLevel;
+    QString ipcPrefix;
+    int portOffset;
 
-	HandlerArgsData(const ffi::HandlerCliArgs *argsFfi);
+    HandlerArgsData(const ffi::HandlerCliArgs *argsFfi);
 };
 
 #endif

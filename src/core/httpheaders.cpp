@@ -22,349 +22,284 @@
 #include "httpheaders.h"
 
 // Return position, end of string if not found, -1 on error
-static int findNonQuoted(const CowByteArray &in, char c, int offset = 0)
-{
-	bool inQuote = false;
+static int findNonQuoted(const CowByteArray &in, char c, int offset = 0) {
+    bool inQuote = false;
 
-	for(int n = offset; n < in.size(); ++n)
-	{
-		char i = in[n];
+    for (int n = offset; n < in.size(); ++n) {
+        char i = in[n];
 
-		if(inQuote)
-		{
-			if(i == '\\')
-			{
-				++n;
+        if (inQuote) {
+            if (i == '\\') {
+                ++n;
 
-				// No character after the escape
-				if(n >= in.size())
-				{
-					return -1;
-				}
-			}
-			else if(i == '\"')
-				inQuote = false;
-		}
-		else
-		{
-			if(i == '\"')
-			{
-				inQuote = true;
-			}
-			else if(i == c)
-			{
-				return n;
-			}
-		}
-	}
+                // No character after the escape
+                if (n >= in.size()) {
+                    return -1;
+                }
+            } else if (i == '\"')
+                inQuote = false;
+        } else {
+            if (i == '\"') {
+                inQuote = true;
+            } else if (i == c) {
+                return n;
+            }
+        }
+    }
 
-	// Unterminated quote
-	if(inQuote)
-	{
-		return -1;
-	}
+    // Unterminated quote
+    if (inQuote) {
+        return -1;
+    }
 
-	return in.size();
+    return in.size();
 }
 
 // Search for one of many chars
-static int findNext(const CowByteArray &in, const char *charList, int offset = 0)
-{
-	int len = qstrlen(charList);
-	for(int n = offset; n < in.size(); ++n)
-	{
-		char c = in[n];
-		for(int i = 0; i < len; ++i)
-		{
-			if(c == charList[i])
-				return n;
-		}
-	}
+static int findNext(const CowByteArray &in, const char *charList, int offset = 0) {
+    int len = qstrlen(charList);
+    for (int n = offset; n < in.size(); ++n) {
+        char c = in[n];
+        for (int i = 0; i < len; ++i) {
+            if (c == charList[i])
+                return n;
+        }
+    }
 
-	return -1;
+    return -1;
 }
 
-static CowByteArrayList headerSplit(const CowByteArray &in)
-{
-	CowByteArrayList parts;
-	int pos = 0;
-	while(pos < in.size())
-	{
-		int end = findNonQuoted(in, ',', pos);
-		if(end != -1)
-		{
-			parts += in.mid(pos, end - pos).trimmed();
+static CowByteArrayList headerSplit(const CowByteArray &in) {
+    CowByteArrayList parts;
+    int pos = 0;
+    while (pos < in.size()) {
+        int end = findNonQuoted(in, ',', pos);
+        if (end != -1) {
+            parts += in.mid(pos, end - pos).trimmed();
 
-			if(end < in.size())
-				pos = end + 1;
-			else
-				pos = in.size();
-		}
-		else
-		{
-			parts += in.mid(pos).trimmed();
+            if (end < in.size())
+                pos = end + 1;
+            else
+                pos = in.size();
+        } else {
+            parts += in.mid(pos).trimmed();
 
-			pos = in.size();
-		}
-	}
-	return parts;
+            pos = in.size();
+        }
+    }
+    return parts;
 }
 
-bool HttpHeaderParameters::contains(const CowByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		if(qstricmp(at(n).first.data(), key.data()) == 0)
-			return true;
-	}
+bool HttpHeaderParameters::contains(const CowByteArray &key) const {
+    for (int n = 0; n < count(); ++n) {
+        if (qstricmp(at(n).first.data(), key.data()) == 0)
+            return true;
+    }
 
-	return false;
+    return false;
 }
 
-CowByteArray HttpHeaderParameters::get(const CowByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeaderParameter &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-			return h.second;
-	}
+CowByteArray HttpHeaderParameters::get(const CowByteArray &key) const {
+    for (int n = 0; n < count(); ++n) {
+        const HttpHeaderParameter &h = at(n);
+        if (qstricmp(h.first.data(), key.data()) == 0)
+            return h.second;
+    }
 
-	return CowByteArray();
+    return CowByteArray();
 }
 
-bool HttpHeaders::contains(const CowByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		if(qstricmp(at(n).first.data(), key.data()) == 0)
-			return true;
-	}
+bool HttpHeaders::contains(const CowByteArray &key) const {
+    for (int n = 0; n < count(); ++n) {
+        if (qstricmp(at(n).first.data(), key.data()) == 0)
+            return true;
+    }
 
-	return false;
+    return false;
 }
 
-CowByteArray HttpHeaders::get(const CowByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeader &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-			return h.second;
-	}
+CowByteArray HttpHeaders::get(const CowByteArray &key) const {
+    for (int n = 0; n < count(); ++n) {
+        const HttpHeader &h = at(n);
+        if (qstricmp(h.first.data(), key.data()) == 0)
+            return h.second;
+    }
 
-	return CowByteArray();
+    return CowByteArray();
 }
 
-HttpHeaderParameters HttpHeaders::getAsParameters(const CowByteArray &key, ParseMode mode) const
-{
-	CowByteArray h = get(key);
-	if(h.isEmpty())
-		return HttpHeaderParameters();
+HttpHeaderParameters HttpHeaders::getAsParameters(const CowByteArray &key, ParseMode mode) const {
+    CowByteArray h = get(key);
+    if (h.isEmpty())
+        return HttpHeaderParameters();
 
-	return parseParameters(h, mode);
+    return parseParameters(h, mode);
 }
 
-CowByteArray HttpHeaders::getAsFirstParameter(const CowByteArray &key) const
-{
-	HttpHeaderParameters p = getAsParameters(key);
-	if(p.isEmpty())
-		return CowByteArray();
+CowByteArray HttpHeaders::getAsFirstParameter(const CowByteArray &key) const {
+    HttpHeaderParameters p = getAsParameters(key);
+    if (p.isEmpty())
+        return CowByteArray();
 
-	return p[0].first;
+    return p[0].first;
 }
 
-CowByteArrayList HttpHeaders::getAll(const CowByteArray &key, bool split) const
-{
-	CowByteArrayList out;
+CowByteArrayList HttpHeaders::getAll(const CowByteArray &key, bool split) const {
+    CowByteArrayList out;
 
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeader &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-		{
-			if(split)
-				out += headerSplit(h.second);
-			else
-				out += h.second;
-		}
-	}
+    for (int n = 0; n < count(); ++n) {
+        const HttpHeader &h = at(n);
+        if (qstricmp(h.first.data(), key.data()) == 0) {
+            if (split)
+                out += headerSplit(h.second);
+            else
+                out += h.second;
+        }
+    }
 
-	return out;
+    return out;
 }
 
-QList<HttpHeaderParameters> HttpHeaders::getAllAsParameters(const CowByteArray &key, ParseMode mode, bool split) const
-{
-	QList<HttpHeaderParameters> out;
+QList<HttpHeaderParameters> HttpHeaders::getAllAsParameters(const CowByteArray &key, ParseMode mode,
+                                                            bool split) const {
+    QList<HttpHeaderParameters> out;
 
-	CowByteArrayList l = getAll(key, split);
-	for(CowByteArrayConstRef h : std::as_const(l))
-	{
-		bool ok;
-		HttpHeaderParameters params = parseParameters(h, mode, &ok);
-		if(ok)
-			out += params;
-	}
+    CowByteArrayList l = getAll(key, split);
+    for (CowByteArrayConstRef h : std::as_const(l)) {
+        bool ok;
+        HttpHeaderParameters params = parseParameters(h, mode, &ok);
+        if (ok)
+            out += params;
+    }
 
-	return out;
+    return out;
 }
 
-CowByteArrayList HttpHeaders::takeAll(const CowByteArray &key, bool split)
-{
-	CowByteArrayList out;
+CowByteArrayList HttpHeaders::takeAll(const CowByteArray &key, bool split) {
+    CowByteArrayList out;
 
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeader &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-		{
-			if(split)
-				out += headerSplit(h.second);
-			else
-				out += h.second;
+    for (int n = 0; n < count(); ++n) {
+        const HttpHeader &h = at(n);
+        if (qstricmp(h.first.data(), key.data()) == 0) {
+            if (split)
+                out += headerSplit(h.second);
+            else
+                out += h.second;
 
-			removeAt(n);
-			--n; // Adjust position
-		}
-	}
+            removeAt(n);
+            --n; // Adjust position
+        }
+    }
 
-	return out;
+    return out;
 }
 
-void HttpHeaders::removeAll(const CowByteArray &key)
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		if(qstricmp(at(n).first.data(), key.data()) == 0)
-		{
-			removeAt(n);
-			--n; // Adjust position
-		}
-	}
+void HttpHeaders::removeAll(const CowByteArray &key) {
+    for (int n = 0; n < count(); ++n) {
+        if (qstricmp(at(n).first.data(), key.data()) == 0) {
+            removeAt(n);
+            --n; // Adjust position
+        }
+    }
 }
 
-CowByteArray HttpHeaders::join(const CowByteArrayList &values)
-{
-	CowByteArray out;
+CowByteArray HttpHeaders::join(const CowByteArrayList &values) {
+    CowByteArray out;
 
-	bool first = true;
-	for(CowByteArrayConstRef val : std::as_const(values))
-	{
-		if(!first)
-			out += ", ";
+    bool first = true;
+    for (CowByteArrayConstRef val : std::as_const(values)) {
+        if (!first)
+            out += ", ";
 
-		out += val;
-		first = false;
-	}
+        out += val;
+        first = false;
+    }
 
-	return out;
+    return out;
 }
 
-HttpHeaderParameters HttpHeaders::parseParameters(const CowByteArray &in, ParseMode mode, bool *ok)
-{
-	HttpHeaderParameters out;
+HttpHeaderParameters HttpHeaders::parseParameters(const CowByteArray &in, ParseMode mode,
+                                                  bool *ok) {
+    HttpHeaderParameters out;
 
-	int start = 0;
-	if(mode == NoParseFirstParameter)
-	{
-		int at = in.indexOf(';');
-		if(at != -1)
-		{
-			out += HttpHeaderParameter(in.mid(0, at).trimmed(), CowByteArray());
-			start = at + 1;
-		}
-		else
-		{
-			out += HttpHeaderParameter(in.trimmed(), CowByteArray());
-			start = in.size();
-		}
-	}
+    int start = 0;
+    if (mode == NoParseFirstParameter) {
+        int at = in.indexOf(';');
+        if (at != -1) {
+            out += HttpHeaderParameter(in.mid(0, at).trimmed(), CowByteArray());
+            start = at + 1;
+        } else {
+            out += HttpHeaderParameter(in.trimmed(), CowByteArray());
+            start = in.size();
+        }
+    }
 
-	while(start < in.size())
-	{
-		CowByteArray var;
-		CowByteArray val;
+    while (start < in.size()) {
+        CowByteArray var;
+        CowByteArray val;
 
-		int at = findNext(in, "=;", start);
-		if(at != -1)
-		{
-			var = in.mid(start, at - start).trimmed();
-			if(in[at] == '=')
-			{
-				++at;
+        int at = findNext(in, "=;", start);
+        if (at != -1) {
+            var = in.mid(start, at - start).trimmed();
+            if (in[at] == '=') {
+                ++at;
 
-				if(at < in.size() && in[at] == '\"')
-				{
-					++at;
+                if (at < in.size() && in[at] == '\"') {
+                    ++at;
 
-					bool complete = false;
-					for(int n = at; n < in.size(); ++n)
-					{
-						if(in[n] == '\\')
-						{
-							if(n + 1 >= in.size())
-							{
-								if(ok)
-									*ok = false;
-								return HttpHeaderParameters();
-							}
+                    bool complete = false;
+                    for (int n = at; n < in.size(); ++n) {
+                        if (in[n] == '\\') {
+                            if (n + 1 >= in.size()) {
+                                if (ok)
+                                    *ok = false;
+                                return HttpHeaderParameters();
+                            }
 
-							++n;
-							val += in[n];
-						}
-						else if(in[n] == '\"')
-						{
-							complete = true;
-							at = n + 1;
-							break;
-						}
-						else
-							val += in[n];
-					}
+                            ++n;
+                            val += in[n];
+                        } else if (in[n] == '\"') {
+                            complete = true;
+                            at = n + 1;
+                            break;
+                        } else
+                            val += in[n];
+                    }
 
-					if(!complete)
-					{
-						if(ok)
-							*ok = false;
-						return HttpHeaderParameters();
-					}
+                    if (!complete) {
+                        if (ok)
+                            *ok = false;
+                        return HttpHeaderParameters();
+                    }
 
-					at = in.indexOf(';', at);
-					if(at != -1)
-						start = at + 1;
-					else
-						start = in.size();
-				}
-				else
-				{
-					int vstart = at;
-					at = in.indexOf(';', vstart);
-					if(at != -1)
-					{
-						val = in.mid(vstart, at - vstart).trimmed();
-						start = at + 1;
-					}
-					else
-					{
-						val = in.mid(vstart).trimmed();
-						start = in.size();
-					}
-				}
-			}
-			else
-				start = at + 1;
-		}
-		else
-		{
-			var = in.mid(start).trimmed();
-			start = in.size();
-		}
+                    at = in.indexOf(';', at);
+                    if (at != -1)
+                        start = at + 1;
+                    else
+                        start = in.size();
+                } else {
+                    int vstart = at;
+                    at = in.indexOf(';', vstart);
+                    if (at != -1) {
+                        val = in.mid(vstart, at - vstart).trimmed();
+                        start = at + 1;
+                    } else {
+                        val = in.mid(vstart).trimmed();
+                        start = in.size();
+                    }
+                }
+            } else
+                start = at + 1;
+        } else {
+            var = in.mid(start).trimmed();
+            start = in.size();
+        }
 
-		out.append(HttpHeaderParameter(var, val));
-	}
+        out.append(HttpHeaderParameter(var, val));
+    }
 
-	if(ok)
-		*ok = true;
+    if (ok)
+        *ok = true;
 
-	return out;
+    return out;
 }

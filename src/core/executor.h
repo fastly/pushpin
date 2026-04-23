@@ -17,28 +17,27 @@
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
-#include <optional>
-#include <functional>
 #include "rust/bindings.h"
+#include <functional>
+#include <optional>
 
-class Executor
-{
+class Executor {
 public:
-	Executor(int tasksMax);
-	~Executor();
+    Executor(int tasksMax);
+    ~Executor();
 
-	bool run(std::function<bool (std::optional<int>)> park);
+    bool run(std::function<bool(std::optional<int>)> park);
 
-	/// Spawns `fut` on the executor in the current thread. Returns true on
-	/// success or false on error. An error can occur if there is no executor in
-	/// the current thread or if the executor is at capacity. This function takes
-	/// ownership of `fut` regardless of whether spawning is successful.
-	static bool currentSpawn(ffi::UnitFuture *fut);
+    /// Spawns `fut` on the executor in the current thread. Returns true on
+    /// success or false on error. An error can occur if there is no executor in
+    /// the current thread or if the executor is at capacity. This function takes
+    /// ownership of `fut` regardless of whether spawning is successful.
+    static bool currentSpawn(ffi::UnitFuture *fut);
 
 private:
-	ffi::Executor *inner_;
+    ffi::Executor *inner_;
 
-	static int park_cb(void *ctx, int ms);
+    static int park_cb(void *ctx, int ms);
 };
 
 #endif

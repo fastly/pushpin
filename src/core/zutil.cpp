@@ -22,78 +22,71 @@
 
 #include "zutil.h"
 
-#include <QFile>
-#include "zmqsocket.h"
 #include "cowstring.h"
+#include "zmqsocket.h"
+#include <QFile>
 
 namespace ZUtil {
 
-bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage)
-{
-	if(!sock->bind(spec))
-	{
-		if(errorMessage)
-			*errorMessage = QString("unable to bind to %1").arg(spec);
-		return false;
-	}
+bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage) {
+    if (!sock->bind(spec)) {
+        if (errorMessage)
+            *errorMessage = QString("unable to bind to %1").arg(spec);
+        return false;
+    }
 
-	if(spec.startsWith("ipc://") && ipcFileMode != -1)
-	{
-		QFile::Permissions perms;
-		if(ipcFileMode & 0400)
-			perms |= QFile::ReadUser;
-		if(ipcFileMode & 0200)
-			perms |= QFile::WriteUser;
-		if(ipcFileMode & 0100)
-			perms |= QFile::ExeUser;
-		if(ipcFileMode & 0040)
-			perms |= QFile::ReadGroup;
-		if(ipcFileMode & 0020)
-			perms |= QFile::WriteGroup;
-		if(ipcFileMode & 0010)
-			perms |= QFile::ExeGroup;
-		if(ipcFileMode & 0004)
-			perms |= QFile::ReadOther;
-		if(ipcFileMode & 0002)
-			perms |= QFile::WriteOther;
-		if(ipcFileMode & 0001)
-			perms |= QFile::ExeOther;
-		if(!QFile::setPermissions(spec.mid(6), perms))
-		{
-			if(errorMessage)
-				*errorMessage = QString("unable to set permissions on %1").arg(spec);
-			return false;
-		}
-	}
+    if (spec.startsWith("ipc://") && ipcFileMode != -1) {
+        QFile::Permissions perms;
+        if (ipcFileMode & 0400)
+            perms |= QFile::ReadUser;
+        if (ipcFileMode & 0200)
+            perms |= QFile::WriteUser;
+        if (ipcFileMode & 0100)
+            perms |= QFile::ExeUser;
+        if (ipcFileMode & 0040)
+            perms |= QFile::ReadGroup;
+        if (ipcFileMode & 0020)
+            perms |= QFile::WriteGroup;
+        if (ipcFileMode & 0010)
+            perms |= QFile::ExeGroup;
+        if (ipcFileMode & 0004)
+            perms |= QFile::ReadOther;
+        if (ipcFileMode & 0002)
+            perms |= QFile::WriteOther;
+        if (ipcFileMode & 0001)
+            perms |= QFile::ExeOther;
+        if (!QFile::setPermissions(spec.mid(6), perms)) {
+            if (errorMessage)
+                *errorMessage = QString("unable to set permissions on %1").arg(spec);
+            return false;
+        }
+    }
 
-	if(errorMessage)
-		*errorMessage = QString();
+    if (errorMessage)
+        *errorMessage = QString();
 
-	return true;
+    return true;
 }
 
-bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage)
-{
-	if(bind)
-	{
-		if(!bindSpec(sock, specs[0], ipcFileMode, errorMessage))
-			return false;
-	}
-	else
-	{
-		foreach(const QString &spec, specs)
-			sock->connectToAddress(spec);
-	}
+bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode,
+                 QString *errorMessage) {
+    if (bind) {
+        if (!bindSpec(sock, specs[0], ipcFileMode, errorMessage))
+            return false;
+    } else {
+        foreach (const QString &spec, specs)
+            sock->connectToAddress(spec);
+    }
 
-	if(errorMessage)
-		*errorMessage = QString();
+    if (errorMessage)
+        *errorMessage = QString();
 
-	return true;
+    return true;
 }
 
-bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage)
-{
-	return setupSocket(sock, QStringList() << spec, bind, ipcFileMode, errorMessage);
+bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode,
+                 QString *errorMessage) {
+    return setupSocket(sock, QStringList() << spec, bind, ipcFileMode, errorMessage);
 }
 
-}
+} // namespace ZUtil

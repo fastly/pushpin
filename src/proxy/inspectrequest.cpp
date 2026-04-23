@@ -23,150 +23,124 @@
 
 #include "inspectrequest.h"
 
+#include "inspectdata.h"
 #include "packet/httprequestdata.h"
 #include "qtcompat.h"
 #include "variant.h"
-#include "inspectdata.h"
 
-static InspectData resultToData(const Variant &in, bool *ok)
-{
-	InspectData out;
+static InspectData resultToData(const Variant &in, bool *ok) {
+    InspectData out;
 
-	if(typeId(in) != VariantType::Hash)
-	{
-		*ok = false;
-		return InspectData();
-	}
+    if (typeId(in) != VariantType::Hash) {
+        *ok = false;
+        return InspectData();
+    }
 
-	VariantHash obj = in.toHash();
+    VariantHash obj = in.toHash();
 
-	if(!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != VariantType::Bool)
-	{
-		*ok = false;
-		return InspectData();
-	}
-	out.doProxy = !obj["no-proxy"].toBool();
+    if (!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != VariantType::Bool) {
+        *ok = false;
+        return InspectData();
+    }
+    out.doProxy = !obj["no-proxy"].toBool();
 
-	out.sharingKey.clear();
-	if(obj.contains("sharing-key"))
-	{
-		if(typeId(obj["sharing-key"]) != VariantType::ByteArray)
-		{
-			*ok = false;
-			return InspectData();
-		}
+    out.sharingKey.clear();
+    if (obj.contains("sharing-key")) {
+        if (typeId(obj["sharing-key"]) != VariantType::ByteArray) {
+            *ok = false;
+            return InspectData();
+        }
 
-		out.sharingKey = obj["sharing-key"].toByteArray();
-	}
+        out.sharingKey = obj["sharing-key"].toByteArray();
+    }
 
-	out.sid.clear();
-	if(obj.contains("sid"))
-	{
-		if(typeId(obj["sid"]) != VariantType::ByteArray)
-		{
-			*ok = false;
-			return InspectData();
-		}
+    out.sid.clear();
+    if (obj.contains("sid")) {
+        if (typeId(obj["sid"]) != VariantType::ByteArray) {
+            *ok = false;
+            return InspectData();
+        }
 
-		out.sid = obj["sid"].toByteArray();
-	}
+        out.sid = obj["sid"].toByteArray();
+    }
 
-	out.lastIds.clear();
-	if(obj.contains("last-ids"))
-	{
-		if(typeId(obj["last-ids"]) != VariantType::Hash)
-		{
-			*ok = false;
-			return InspectData();
-		}
+    out.lastIds.clear();
+    if (obj.contains("last-ids")) {
+        if (typeId(obj["last-ids"]) != VariantType::Hash) {
+            *ok = false;
+            return InspectData();
+        }
 
-		VariantHash vlastIds = obj["last-ids"].toHash();
-		for(auto it = vlastIds.constBegin(); it != vlastIds.constEnd(); ++it)
-		{
-			if(typeId(it.value()) != VariantType::ByteArray)
-			{
-				*ok = false;
-				return InspectData();
-			}
+        VariantHash vlastIds = obj["last-ids"].toHash();
+        for (auto it = vlastIds.constBegin(); it != vlastIds.constEnd(); ++it) {
+            if (typeId(it.value()) != VariantType::ByteArray) {
+                *ok = false;
+                return InspectData();
+            }
 
-			QByteArray key = it.key().toUtf8();
-			QByteArray val = it.value().toByteArray();
-			out.lastIds.insert(key, val);
-		}
-	}
+            QByteArray key = it.key().toUtf8();
+            QByteArray val = it.value().toByteArray();
+            out.lastIds.insert(key, val);
+        }
+    }
 
-	out.userData = obj["user-data"];
+    out.userData = obj["user-data"];
 
-	*ok = true;
-	return out;
+    *ok = true;
+    return out;
 }
 
-class InspectRequest::Private
-{
+class InspectRequest::Private {
 public:
-	InspectRequest *q;
-	InspectData idata;
+    InspectRequest *q;
+    InspectData idata;
 
-	Private(InspectRequest *_q) :
-		q(_q)
-	{
-	}
+    Private(InspectRequest *_q) : q(_q) {}
 };
 
-InspectRequest::InspectRequest(ZrpcManager *manager) :
-	ZrpcRequest(manager)
-{
-	d = new Private(this);
+InspectRequest::InspectRequest(ZrpcManager *manager) : ZrpcRequest(manager) {
+    d = new Private(this);
 }
 
-InspectRequest::~InspectRequest()
-{
-	delete d;
+InspectRequest::~InspectRequest() { delete d; }
+
+InspectData InspectRequest::result() const { return d->idata; }
+
+void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession,
+                           bool autoShare) {
+    VariantHash args;
+
+    args["method"] = hdata.method.toLatin1();
+    args["uri"] = hdata.uri.toEncoded();
+
+    VariantList vheaders;
+    foreach (const HttpHeader &h, hdata.headers) {
+        VariantList vheader;
+        vheader += h.first.asQByteArray();
+        vheader += h.second.asQByteArray();
+        vheaders += Variant(vheader);
+    }
+
+    args["headers"] = vheaders;
+    args["body"] = hdata.body;
+
+    if (truncated)
+        args["truncated"] = true;
+
+    if (getSession)
+        args["get-session"] = true;
+
+    if (autoShare)
+        args["auto-share"] = true;
+
+    ZrpcRequest::start("inspect", args);
 }
 
-InspectData InspectRequest::result() const
-{
-	return d->idata;
-}
-
-void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession, bool autoShare)
-{
-	VariantHash args;
-
-	args["method"] = hdata.method.toLatin1();
-	args["uri"] = hdata.uri.toEncoded();
-
-	VariantList vheaders;
-	foreach(const HttpHeader &h, hdata.headers)
-	{
-		VariantList vheader;
-		vheader += h.first.asQByteArray();
-		vheader += h.second.asQByteArray();
-		vheaders += Variant(vheader);
-	}
-
-	args["headers"] = vheaders;
-	args["body"] = hdata.body;
-
-	if(truncated)
-		args["truncated"] = true;
-
-	if(getSession)
-		args["get-session"] = true;
-
-	if(autoShare)
-		args["auto-share"] = true;
-
-	ZrpcRequest::start("inspect", args);
-}
-
-void InspectRequest::onSuccess()
-{
-	bool ok;
-	d->idata = resultToData(ZrpcRequest::result(), &ok);
-	if(!ok)
-	{
-		setError(ErrorFormat);
-		return;
-	}
+void InspectRequest::onSuccess() {
+    bool ok;
+    d->idata = resultToData(ZrpcRequest::result(), &ok);
+    if (!ok) {
+        setError(ErrorFormat);
+        return;
+    }
 }

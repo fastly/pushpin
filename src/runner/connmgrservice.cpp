@@ -22,135 +22,110 @@
 
 #include "connmgrservice.h"
 
-#include <QDir>
-#include <QProcess>
-#include "url.h"
 #include "log.h"
 #include "template.h"
+#include "url.h"
+#include <QDir>
+#include <QProcess>
 
-ConnmgrService::ConnmgrService(
-	const QString &name,
-	const QString &binFile,
-	const QString &runDir,
-	const QString &logDir,
-	const QString &ipcPrefix,
-	const QString &filePrefix,
-	int logLevel,
-	const QString &certsDir,
-	int clientBufferSize,
-	int maxconn,
-	bool allowCompression,
-	const QList<ListenPort> &ports,
-	bool enableClient)
-{
-	args_ += binFile;
+ConnmgrService::ConnmgrService(const QString &name, const QString &binFile, const QString &runDir,
+                               const QString &logDir, const QString &ipcPrefix,
+                               const QString &filePrefix, int logLevel, const QString &certsDir,
+                               int clientBufferSize, int maxconn, bool allowCompression,
+                               const QList<ListenPort> &ports, bool enableClient) {
+    args_ += binFile;
 
-	if(!logDir.isEmpty())
-	{
-		setStandardOutputFile(QDir(logDir).filePath(filePrefix + name + ".log"));
-	}
+    if (!logDir.isEmpty()) {
+        setStandardOutputFile(QDir(logDir).filePath(filePrefix + name + ".log"));
+    }
 
-	if(logLevel >= 0)
-		args_ += "--log-level=" + QString::number(logLevel);
+    if (logLevel >= 0)
+        args_ += "--log-level=" + QString::number(logLevel);
 
-	args_ += "--buffer-size=" + QString::number(clientBufferSize);
+    args_ += "--buffer-size=" + QString::number(clientBufferSize);
 
-	args_ += "--stream-maxconn=" + QString::number(maxconn);
+    args_ += "--stream-maxconn=" + QString::number(maxconn);
 
-	if(allowCompression)
-		args_ += "--compression";
+    if (allowCompression)
+        args_ += "--compression";
 
-	if(!ports.isEmpty())
-	{
-		// Server mode
+    if (!ports.isEmpty()) {
+        // Server mode
 
-		bool usingSsl = false;
+        bool usingSsl = false;
 
-		foreach(const ListenPort &p, ports)
-		{
-			if(!p.localPath.isEmpty())
-			{
-				QString arg = "--listen=" + p.localPath + ",local,stream";
+        foreach (const ListenPort &p, ports) {
+            if (!p.localPath.isEmpty()) {
+                QString arg = "--listen=" + p.localPath + ",local,stream";
 
-				if(p.mode >= 0)
-					arg += ",mode=" + QString::number(p.mode, 8);
+                if (p.mode >= 0)
+                    arg += ",mode=" + QString::number(p.mode, 8);
 
-				if(!p.user.isEmpty())
-					arg += ",user=" + p.user;
+                if (!p.user.isEmpty())
+                    arg += ",user=" + p.user;
 
-				if(!p.group.isEmpty())
-					arg += ",group=" + p.group;
+                if (!p.group.isEmpty())
+                    arg += ",group=" + p.group;
 
-				args_ += arg;
-			}
-			else
-			{
-				Url url;
-				url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
-				url.setPort(p.port);
+                args_ += arg;
+            } else {
+                Url url;
+                url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
+                url.setPort(p.port);
 
-				QString arg = "--listen=" + url.authority() + ",stream";
+                QString arg = "--listen=" + url.authority() + ",stream";
 
-				if(p.ssl)
-				{
-					usingSsl = true;
+                if (p.ssl) {
+                    usingSsl = true;
 
-					arg += ",tls,default-cert=default_" + QString::number(p.port);
-				}
+                    arg += ",tls,default-cert=default_" + QString::number(p.port);
+                }
 
-				args_ += arg;
-			}
-		}
+                args_ += arg;
+            }
+        }
 
-		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr";
+        args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr";
 
-		if(usingSsl)
-			args_ += "--tls-identities-dir=" + certsDir;
-	}
+        if (usingSsl)
+            args_ += "--tls-identities-dir=" + certsDir;
+    }
 
-	if(enableClient)
-	{
-		// Client mode
+    if (enableClient) {
+        // Client mode
 
-		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr-client";
+        args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr-client";
 
-		args_ += "--deny-out-internal";
-	}
+        args_ += "--deny-out-internal";
+    }
 
-	setName(name);
-	setPidFile(QDir(runDir).filePath(filePrefix + name + ".pid"));
+    setName(name);
+    setPidFile(QDir(runDir).filePath(filePrefix + name + ".pid"));
 }
 
-QStringList ConnmgrService::arguments() const
-{
-	return args_;
-}
+QStringList ConnmgrService::arguments() const { return args_; }
 
-bool ConnmgrService::hasClientMode(const QString &binFile)
-{
-	QProcess proc;
+bool ConnmgrService::hasClientMode(const QString &binFile) {
+    QProcess proc;
 
-	proc.start(binFile, QStringList() << "--help");
+    proc.start(binFile, QStringList() << "--help");
 
-	if(!proc.waitForFinished(-1))
-	{
-		log_error("Failed to run connmgr: process error: %d", proc.error());
-		return false;
-	}
+    if (!proc.waitForFinished(-1)) {
+        log_error("Failed to run connmgr: process error: %d", proc.error());
+        return false;
+    }
 
-	if(proc.exitStatus() != QProcess::NormalExit)
-	{
-		log_error("Failed to run connmgr: process did not exit normally");
-		return false;
-	}
+    if (proc.exitStatus() != QProcess::NormalExit) {
+        log_error("Failed to run connmgr: process did not exit normally");
+        return false;
+    }
 
-	int code = proc.exitCode();
-	if(proc.exitCode() != 0)
-	{
-		log_error("connmgr returned non-zero status: %d", code);
-		return false;
-	}
+    int code = proc.exitCode();
+    if (proc.exitCode() != 0) {
+        log_error("connmgr returned non-zero status: %d", code);
+        return false;
+    }
 
-	QByteArray output = proc.readAllStandardOutput();
-	return output.contains("--zserver-stream");
+    QByteArray output = proc.readAllStandardOutput();
+    return output.contains("--zserver-stream");
 }

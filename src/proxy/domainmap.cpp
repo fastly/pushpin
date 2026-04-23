@@ -23,984 +23,876 @@
 
 #include "domainmap.h"
 
-#include <assert.h>
-#include <thread>
-#include <pthread.h>
-#include <QStringList>
-#include <QHash>
-#include <QMutex>
-#include <QWaitCondition>
-#include <QFile>
-#include <QDir>
-#include <QTextStream>
-#include "log.h"
-#include "timer.h"
 #include "defercall.h"
 #include "eventloop.h"
 #include "filewatcher.h"
+#include "log.h"
 #include "routesfile.h"
+#include "timer.h"
+#include <QDir>
+#include <QFile>
+#include <QHash>
+#include <QMutex>
+#include <QStringList>
+#include <QTextStream>
+#include <QWaitCondition>
+#include <assert.h>
+#include <pthread.h>
+#include <thread>
 
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
 
-static QString readFile(const QString &name, QString *errorMessage)
-{
-	QFile f(name);
-	if(!f.open(QFile::ReadOnly))
-	{
-		*errorMessage = QString("failed to open %1: %2").arg(name, f.errorString());
-		return QByteArray();
-	}
+static QString readFile(const QString &name, QString *errorMessage) {
+    QFile f(name);
+    if (!f.open(QFile::ReadOnly)) {
+        *errorMessage = QString("failed to open %1: %2").arg(name, f.errorString());
+        return QByteArray();
+    }
 
-	QByteArray data = f.readAll();
+    QByteArray data = f.readAll();
 
-	if(f.error() != QFileDevice::NoError)
-	{
-		*errorMessage = QString("failed to read %1: %2").arg(name, f.errorString());
-		return QByteArray();
-	}
+    if (f.error() != QFileDevice::NoError) {
+        *errorMessage = QString("failed to read %1: %2").arg(name, f.errorString());
+        return QByteArray();
+    }
 
-	return QString::fromUtf8(data);
+    return QString::fromUtf8(data);
 }
 
-class DomainMap::Worker
-{
+class DomainMap::Worker {
 public:
-	enum AddRuleResult
-	{
-		AddRuleOk,
-		AddRuleNoDomainOrId,
-		AddRuleDuplicate,
-	};
+    enum AddRuleResult {
+        AddRuleOk,
+        AddRuleNoDomainOrId,
+        AddRuleDuplicate,
+    };
 
-	class Rule
-	{
-	public:
-		QString domain;
+    class Rule {
+    public:
+        QString domain;
 
-		int proto; // -1=unspecified, 0=http, 1=websocket
-		QByteArray pathBeg;
-		int ssl; // -1=unspecified, 0=no, 1=yes
+        int proto; // -1=unspecified, 0=http, 1=websocket
+        QByteArray pathBeg;
+        int ssl; // -1=unspecified, 0=no, 1=yes
 
-		QByteArray id;
-		bool explicitId; // If the id was provided by the user
-		QByteArray sigIss;
-		Jwt::EncodingKey sigKey;
-		QByteArray prefix;
-		bool origHeaders;
-		QString asHost;
-		int pathRemove;
-		QByteArray pathPrepend;
-		bool debug;
-		bool autoCrossOrigin;
-		JsonpConfig jsonpConfig;
-		bool session;
-		QByteArray sockJsPath;
-		QByteArray sockJsAsPath;
-		HttpHeaders headers;
-		bool grip;
-		QList<Target> targets;
-		int logLevel;
+        QByteArray id;
+        bool explicitId; // If the id was provided by the user
+        QByteArray sigIss;
+        Jwt::EncodingKey sigKey;
+        QByteArray prefix;
+        bool origHeaders;
+        QString asHost;
+        int pathRemove;
+        QByteArray pathPrepend;
+        bool debug;
+        bool autoCrossOrigin;
+        JsonpConfig jsonpConfig;
+        bool session;
+        QByteArray sockJsPath;
+        QByteArray sockJsAsPath;
+        HttpHeaders headers;
+        bool grip;
+        QList<Target> targets;
+        int logLevel;
 
-		Rule() :
-			proto(-1),
-			ssl(-1),
-			explicitId(false),
-			origHeaders(false),
-			pathRemove(0),
-			debug(false),
-			autoCrossOrigin(false),
-			session(false),
-			grip(true),
-			logLevel(LOG_LEVEL_DEBUG)
-		{
-		}
+        Rule()
+            : proto(-1),
+              ssl(-1),
+              explicitId(false),
+              origHeaders(false),
+              pathRemove(0),
+              debug(false),
+              autoCrossOrigin(false),
+              session(false),
+              grip(true),
+              logLevel(LOG_LEVEL_DEBUG) {}
 
-		// Checks only the condition, not sig/targets
-		bool compare(const Rule &other) const
-		{
-			return (proto == other.proto && ssl == other.ssl && pathBeg == other.pathBeg);
-		}
+        // Checks only the condition, not sig/targets
+        bool compare(const Rule &other) const {
+            return (proto == other.proto && ssl == other.ssl && pathBeg == other.pathBeg);
+        }
 
-		inline bool matchProto(Protocol reqProto) const
-		{
-			return ((proto == 0 && reqProto == Http) || (proto == 1 && reqProto == WebSocket));
-		}
+        inline bool matchProto(Protocol reqProto) const {
+            return ((proto == 0 && reqProto == Http) || (proto == 1 && reqProto == WebSocket));
+        }
 
-		inline bool matchSsl(bool reqSsl) const
-		{
-			return ((ssl == 0 && !reqSsl) || (ssl == 1 && reqSsl));
-		}
+        inline bool matchSsl(bool reqSsl) const {
+            return ((ssl == 0 && !reqSsl) || (ssl == 1 && reqSsl));
+        }
 
-		bool isMatch(Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const
-		{
-			return ((proto == -1 || matchProto(reqProto)) && (ssl == -1 || matchSsl(reqSsl)) && (pathBeg.isEmpty() || reqPath.startsWith(pathBeg)));
-		}
+        bool isMatch(Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const {
+            return ((proto == -1 || matchProto(reqProto)) && (ssl == -1 || matchSsl(reqSsl)) &&
+                    (pathBeg.isEmpty() || reqPath.startsWith(pathBeg)));
+        }
 
-		bool isMoreSpecificMatch(const Rule &other, Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const
-		{
-			// Have to at least be a match
-			if(!isMatch(reqProto, reqSsl, reqPath))
-				return false;
+        bool isMoreSpecificMatch(const Rule &other, Protocol reqProto, bool reqSsl,
+                                 const QByteArray &reqPath) const {
+            // Have to at least be a match
+            if (!isMatch(reqProto, reqSsl, reqPath))
+                return false;
 
-			// Now let's see if we're a better match
+            // Now let's see if we're a better match
 
-			if(other.proto == -1 && proto != -1)
-				return true;
-			else if(other.proto != -1 && proto == -1)
-				return false;
+            if (other.proto == -1 && proto != -1)
+                return true;
+            else if (other.proto != -1 && proto == -1)
+                return false;
 
-			if(pathBeg.size() > other.pathBeg.size())
-				return true;
+            if (pathBeg.size() > other.pathBeg.size())
+                return true;
 
-			if(other.ssl == -1 && ssl != -1)
-				return true;
+            if (other.ssl == -1 && ssl != -1)
+                return true;
 
-			return false;
-		}
+            return false;
+        }
 
-		QByteArray idFromCondition() const {
-			QString domainStr;
-			if(!domain.isEmpty())
-				domainStr = domain;
-			else
-				domainStr = "*";
+        QByteArray idFromCondition() const {
+            QString domainStr;
+            if (!domain.isEmpty())
+                domainStr = domain;
+            else
+                domainStr = "*";
 
-			QString protoStr;
-			if(proto == 0)
-				protoStr = "http";
-			else if(proto == 1)
-				protoStr = "ws";
-			else
-				protoStr = "*";
+            QString protoStr;
+            if (proto == 0)
+                protoStr = "http";
+            else if (proto == 1)
+                protoStr = "ws";
+            else
+                protoStr = "*";
 
-			QString sslStr;
-			if(ssl == 0)
-				sslStr = "ssl";
-			else if(ssl == 1)
-				sslStr = "no-ssl";
-			else
-				sslStr = "*";
+            QString sslStr;
+            if (ssl == 0)
+                sslStr = "ssl";
+            else if (ssl == 1)
+                sslStr = "no-ssl";
+            else
+                sslStr = "*";
 
-			QString pathBegStr;
-			if(!pathBeg.isEmpty())
-				pathBegStr = pathBeg;
-			else
-				pathBegStr = "*";
+            QString pathBegStr;
+            if (!pathBeg.isEmpty())
+                pathBegStr = pathBeg;
+            else
+                pathBegStr = "*";
 
-			return (domainStr + ',' + protoStr + ',' + sslStr + ',' + pathBegStr).toUtf8();
-		}
+            return (domainStr + ',' + protoStr + ',' + sslStr + ',' + pathBegStr).toUtf8();
+        }
 
-		Entry toEntry() const
-		{
-			Entry e;
-			e.pathBeg = pathBeg;
-			e.id = id;
-			e.sigIss = sigIss;
-			e.sigKey = sigKey;
-			e.prefix = prefix;
-			e.origHeaders = origHeaders;
-			e.asHost = asHost;
-			e.pathRemove = pathRemove;
-			e.pathPrepend = pathPrepend;
-			e.debug = debug;
-			e.autoCrossOrigin = autoCrossOrigin;
-			e.jsonpConfig = jsonpConfig;
-			e.session = session;
-			e.sockJsPath = sockJsPath;
-			e.sockJsAsPath = sockJsAsPath;
-			e.headers = headers;
-			e.separateStats = explicitId;
-			e.grip = grip;
-			e.targets = targets;
-			e.logLevel = logLevel;
-			return e;
-		}
-	};
+        Entry toEntry() const {
+            Entry e;
+            e.pathBeg = pathBeg;
+            e.id = id;
+            e.sigIss = sigIss;
+            e.sigKey = sigKey;
+            e.prefix = prefix;
+            e.origHeaders = origHeaders;
+            e.asHost = asHost;
+            e.pathRemove = pathRemove;
+            e.pathPrepend = pathPrepend;
+            e.debug = debug;
+            e.autoCrossOrigin = autoCrossOrigin;
+            e.jsonpConfig = jsonpConfig;
+            e.session = session;
+            e.sockJsPath = sockJsPath;
+            e.sockJsAsPath = sockJsAsPath;
+            e.headers = headers;
+            e.separateStats = explicitId;
+            e.grip = grip;
+            e.targets = targets;
+            e.logLevel = logLevel;
+            return e;
+        }
+    };
 
-	QMutex m;
-	QString fileName;
-	QList<Rule> allRules;
-	QHash< QString, QList<Rule> > rulesByDomain;
-	QHash<QString, Rule> rulesById;
-	Timer t;
-	Connection tConnection;
-	FileWatcher watcher;
-	DeferCall deferCall;
+    QMutex m;
+    QString fileName;
+    QList<Rule> allRules;
+    QHash<QString, QList<Rule>> rulesByDomain;
+    QHash<QString, Rule> rulesById;
+    Timer t;
+    Connection tConnection;
+    FileWatcher watcher;
+    DeferCall deferCall;
 
-	Worker()
-	{
-		tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
-		t.setSingleShot(true);
-	}
+    Worker() {
+        tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
+        t.setSingleShot(true);
+    }
 
-	void reload()
-	{
-		QFile file(fileName);
-		if(!file.open(QFile::ReadOnly))
-		{
-			log_warning("unable to open routes file: %s", qPrintable(fileName));
-			return;
-		}
+    void reload() {
+        QFile file(fileName);
+        if (!file.open(QFile::ReadOnly)) {
+            log_warning("unable to open routes file: %s", qPrintable(fileName));
+            return;
+        }
 
-		QDir fileDir = QFileInfo(fileName).absoluteDir();
+        QDir fileDir = QFileInfo(fileName).absoluteDir();
 
-		QList<Rule> all;
-		QHash< QString, QList<Rule> > domainMap;
-		QHash<QString, Rule> idMap;
+        QList<Rule> all;
+        QHash<QString, QList<Rule>> domainMap;
+        QHash<QString, Rule> idMap;
 
-		QTextStream ts(&file);
-		for(int lineNum = 1; !ts.atEnd(); ++lineNum)
-		{
-			QString line = ts.readLine();
+        QTextStream ts(&file);
+        for (int lineNum = 1; !ts.atEnd(); ++lineNum) {
+            QString line = ts.readLine();
 
-			Rule r;
-			if(!parseRouteLine(line, fileName, lineNum, fileDir, &r))
-			{
-				// ParseRouteLine will have logged a message if needed
-				continue;
-			}
+            Rule r;
+            if (!parseRouteLine(line, fileName, lineNum, fileDir, &r)) {
+                // ParseRouteLine will have logged a message if needed
+                continue;
+            }
 
-			if(r.id.isEmpty())
-				r.id = r.idFromCondition();
+            if (r.id.isEmpty())
+                r.id = r.idFromCondition();
 
-			AddRuleResult ret = addRule(r, &all, &domainMap, &idMap);
-			if(ret != AddRuleOk)
-			{
-				if(ret == AddRuleNoDomainOrId)
-					log_warning("%s:%d condition has no domain or id", qPrintable(fileName), lineNum);
-				else // AddRuleDuplicate
-					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
+            AddRuleResult ret = addRule(r, &all, &domainMap, &idMap);
+            if (ret != AddRuleOk) {
+                if (ret == AddRuleNoDomainOrId)
+                    log_warning("%s:%d condition has no domain or id", qPrintable(fileName),
+                                lineNum);
+                else // AddRuleDuplicate
+                    log_warning("%s:%d skipping duplicate condition", qPrintable(fileName),
+                                lineNum);
 
-				continue;
-			}
-		}
+                continue;
+            }
+        }
 
-		log_debug("routes by domain:");
-		QHashIterator< QString, QList<Rule> > it(domainMap);
-		while(it.hasNext())
-		{
-			it.next();
+        log_debug("routes by domain:");
+        QHashIterator<QString, QList<Rule>> it(domainMap);
+        while (it.hasNext()) {
+            it.next();
 
-			const QString &domain = it.key();
-			const QList<Rule> &rules = it.value();
-			foreach(const Rule &r, rules)
-			{
-				QStringList tstr;
-				foreach(const Target &t, r.targets)
-				{
-					if(t.type == Target::Test)
-						tstr += "test";
-					else if(t.type == Target::Custom)
-						tstr += t.zhttpRoute.baseSpec;
-					else // Default
-						tstr += t.connectHost + ';' + QString::number(t.connectPort);
-				}
+            const QString &domain = it.key();
+            const QList<Rule> &rules = it.value();
+            foreach (const Rule &r, rules) {
+                QStringList tstr;
+                foreach (const Target &t, r.targets) {
+                    if (t.type == Target::Test)
+                        tstr += "test";
+                    else if (t.type == Target::Custom)
+                        tstr += t.zhttpRoute.baseSpec;
+                    else // Default
+                        tstr += t.connectHost + ';' + QString::number(t.connectPort);
+                }
 
-				if(!domain.isEmpty())
-					log_debug("  %s: %s", qPrintable(domain), qPrintable(tstr.join(" ")));
-				else
-					log_debug("  (default): %s", qPrintable(tstr.join(" ")));
-			}
-		}
+                if (!domain.isEmpty())
+                    log_debug("  %s: %s", qPrintable(domain), qPrintable(tstr.join(" ")));
+                else
+                    log_debug("  (default): %s", qPrintable(tstr.join(" ")));
+            }
+        }
 
-		// Atomically replace the map
-		m.lock();
-		allRules = all;
-		rulesByDomain = domainMap;
-		rulesById = idMap;
-		m.unlock();
+        // Atomically replace the map
+        m.lock();
+        allRules = all;
+        rulesByDomain = domainMap;
+        rulesById = idMap;
+        m.unlock();
 
-		log_info("routes loaded with %d entries", allRules.count());
+        log_info("routes loaded with %d entries", allRules.count());
 
-		deferCall.defer([=] { doChanged(); });
-	}
+        deferCall.defer([=] { doChanged(); });
+    }
 
-	// Mutex must be locked when calling this method
-	bool addRouteLine(const QString &line)
-	{
-		Rule r;
-		if(!parseRouteLine(line, "<route>", 1, QDir::current(), &r))
-			return false;
+    // Mutex must be locked when calling this method
+    bool addRouteLine(const QString &line) {
+        Rule r;
+        if (!parseRouteLine(line, "<route>", 1, QDir::current(), &r))
+            return false;
 
-		if(addRule(r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
-			return false;
+        if (addRule(r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
+            return false;
 
-		return true;
-	}
+        return true;
+    }
 
-	Signal started;
-	Signal changed;
+    Signal started;
+    Signal changed;
 
-	void start()
-	{
-		if(!fileName.isEmpty())
-		{
-			watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
+    void start() {
+        if (!fileName.isEmpty()) {
+            watcher.fileChanged.connect(boost::bind(&Worker::fileChanged, this));
 
-			if(!watcher.start(fileName)) {
-				log_error("failed to watch %s", qPrintable(fileName));
-			}
+            if (!watcher.start(fileName)) {
+                log_error("failed to watch %s", qPrintable(fileName));
+            }
 
-			reload();
-		}
+            reload();
+        }
 
-		started();
-	}
+        started();
+    }
 
-	void fileChanged()
-	{
-		// Inotify tends to give us extra events so let's hang around a
-		// little bit before reloading
-		if(!t.isActive())
-		{
-			log_info("routes file changed, reloading");
-			t.start(1000);
-		}
-	}
+    void fileChanged() {
+        // Inotify tends to give us extra events so let's hang around a
+        // little bit before reloading
+        if (!t.isActive()) {
+            log_info("routes file changed, reloading");
+            t.start(1000);
+        }
+    }
 
-	void doReload()
-	{
-		reload();
-	}
+    void doReload() { reload(); }
 
 private:
-	static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum, const QDir &fileDir, Rule *rule)
-	{
-		bool ok;
-		QString errmsg;
-		QList<RoutesFile::RouteSection> sections = RoutesFile::parseLine(line, &ok, &errmsg);
-		if(!ok)
-		{
-			log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
-			return false;
-		}
-
-		if(sections.isEmpty())
-		{
-			// Nothing. Could happen if line is blank or commented out
-			return false;
-		}
-
-		if(sections.count() < 2)
-		{
-			log_warning("%s:%d: must specify condition and at least one target", qPrintable(fileName), lineNum);
-			return false;
-		}
-
-		QString val = sections[0].value;
-		QMultiHash<QString, QString> props = sections[0].props;
-
-		Rule r;
-
-		if(val.isEmpty())
-			r.domain = QString(); // Null means unspecified
-		else if(val == "*")
-			r.domain = QString(""); // Empty means wildcard
-		else
-			r.domain = val; // Non-empty means exact match
-
-		r.jsonpConfig.mode = JsonpConfig::Extended;
-
-		if(props.contains("proto"))
-		{
-			val = props.value("proto");
-			if(val == "http")
-				r.proto = 0;
-			else if(val == "ws")
-				r.proto = 1;
-			else
-			{
-				log_warning("%s:%d: proto must be set to 'http' or 'ws'", qPrintable(fileName), lineNum);
-				return false;
-			}
-		}
-
-		if(props.contains("ssl"))
-		{
-			val = props.value("ssl");
-			if(val == "yes")
-				r.ssl = 1;
-			else if(val == "no")
-				r.ssl = 0;
-			else
-			{
-				log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName), lineNum);
-				return false;
-			}
-		}
-
-		if(props.contains("id"))
-		{
-			r.id = props.value("id").toUtf8();
-			r.explicitId = true;
-		}
-
-		if(props.contains("path_beg"))
-		{
-			QString pathBeg = props.value("path_beg");
-			if(pathBeg.isEmpty())
-			{
-				log_warning("%s:%d: path_beg cannot be empty", qPrintable(fileName), lineNum);
-				return false;
-			}
-
-			r.pathBeg = pathBeg.toUtf8();
-		}
-
-		if(props.contains("sig_iss"))
-		{
-			r.sigIss = props.value("sig_iss").toUtf8();
-		}
-
-		if(props.contains("sig_key"))
-		{
-			r.sigKey = Jwt::EncodingKey::fromConfigString(props.value("sig_key"), fileDir);
-		}
-
-		if(props.contains("prefix"))
-		{
-			r.prefix = props.value("prefix").toUtf8();
-		}
-
-		if(props.contains("orig_headers"))
-		{
-			r.origHeaders = true;
-		}
-
-		if(props.contains("as_host"))
-		{
-			r.asHost = props.value("as_host");
-		}
-
-		if(props.contains("path_rem"))
-		{
-			r.pathRemove = props.value("path_rem").toInt();
-		}
-
-		if(props.contains("replace_beg"))
-		{
-			r.pathRemove = r.pathBeg.length();
-			r.pathPrepend = props.value("replace_beg").toUtf8();
-		}
-
-		if(props.contains("debug"))
-			r.debug = true;
-
-		if(props.contains("aco"))
-			r.autoCrossOrigin = true;
-
-		if(props.contains("jsonp_mode"))
-		{
-			val = props.value("jsonp_mode");
-			if(val == "basic")
-				r.jsonpConfig.mode = JsonpConfig::Basic;
-			else if(val == "extended")
-				r.jsonpConfig.mode = JsonpConfig::Extended;
-			else
-			{
-				log_warning("%s:%d: jsonp_mode must be set to 'basic' or 'extended'", qPrintable(fileName), lineNum);
-				return false;
-			}
-		}
-
-		if(props.contains("jsonp_cb"))
-			r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
-
-		if(props.contains("jsonp_body"))
-			r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
-
-		if(props.contains("jsonp_defcb"))
-			r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
-
-		if(r.jsonpConfig.mode == JsonpConfig::Basic)
-			r.jsonpConfig.defaultMethod = "POST";
-		else // Extended
-			r.jsonpConfig.defaultMethod = "GET";
-
-		if(props.contains("jsonp_defmethod"))
-			r.jsonpConfig.defaultMethod = props.value("jsonp_defmethod");
-
-		if(props.contains("session"))
-			r.session = true;
-
-		if(props.contains("sockjs"))
-			r.sockJsPath = props.value("sockjs").toUtf8();
-
-		if(props.contains("sockjs_as_path"))
-			r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
-
-		if(props.contains("header"))
-		{
-			foreach(const QString &s, props.values("header"))
-			{
-				int at = s.indexOf(':');
-				if(at < 1)
-				{
-					log_warning("%s:%d: header must use format 'name:value'", qPrintable(fileName), lineNum);
-					return false;
-				}
-
-				QByteArray name = s.mid(0, at).toUtf8();
-				QByteArray value = s.mid(at + 1).toUtf8();
-
-				// Trim left side of value
-				int n = 0;
-				while(n < value.length() && value[n] == ' ')
-				{
-					++n;
-				}
-				if(n > 0)
-					value = value.mid(n);
-
-				r.headers += HttpHeader(name, value);
-			}
-		}
-
-		if(props.contains("no_grip"))
-			r.grip = false;
-
-		if(props.contains("log_level"))
-		{
-			r.logLevel = props.value("log_level").toInt();
-		}
-
-		ok = true;
-		for(int n = 1; n < sections.count(); ++n)
-		{
-			QString val = sections[n].value;
-			QMultiHash<QString, QString> props = sections[n].props;
-
-			Target target;
-
-			if(val == "test")
-			{
-				target.type = Target::Test;
-			}
-			else if(val.startsWith("zhttp/"))
-			{
-				target.type = Target::Custom;
-
-				target.zhttpRoute.baseSpec = val.mid(6);
-			}
-			else if(val.startsWith("zhttpreq/"))
-			{
-				target.type = Target::Custom;
-
-				target.zhttpRoute.baseSpec = val.mid(9);
-				target.zhttpRoute.req = true;
-			}
-			else
-			{
-				QString host;
-				int portPos = -1;
-
-				if(val.startsWith("["))
-				{
-					// Ipv6 address
-					int at = val.indexOf("]:");
-					if(at >= 0)
-					{
-						host = val.mid(1, at - 1);
-						portPos = at + 2;
-					}
-				}
-				else
-				{
-					// Domain or ipv4 address
-					int at = val.indexOf(':');
-					if(at >= 0)
-					{
-						host = val.mid(0, at);
-						portPos = at + 1;
-					}
-				}
-
-				if(portPos < 0)
-				{
-					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
-					ok = false;
-					break;
-				}
-
-				QString sport = val.mid(portPos);
-				int port = sport.toInt(&ok);
-				if(!ok || port < 1 || port > 65535)
-				{
-					log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
-					ok = false;
-					break;
-				}
-
-				target.type = Target::Default;
-				target.connectHost = host;
-				target.connectPort = port;
-			}
-
-			if(props.contains("ssl"))
-				target.ssl = true;
-
-			if(props.contains("untrusted"))
-				target.trusted = false;
-			else
-				target.trusted = true;
-
-			if(props.contains("trust_connect_host"))
-				target.trustConnectHost = true;
-
-			if(props.contains("insecure"))
-				target.insecure = true;
-
-			if(props.contains("host"))
-				target.host = props.value("host");
-
-			if(props.contains("sub"))
-			{
-				foreach(const QString &s, props.values("sub"))
-				{
-					if(!s.isEmpty())
-						target.subscriptions += s;
-				}
-			}
-
-			if(props.contains("over_http"))
-				target.overHttp = true;
-
-			if(props.contains("one_event"))
-				target.oneEvent = true;
-
-			if(props.contains("ipc_file_mode"))
-			{
-				bool ok_;
-				int x = props.value("ipc_file_mode").toInt(&ok_, 8);
-				if(ok_ && x >= 0)
-					target.zhttpRoute.ipcFileMode = x;
-			}
-
-			if(props.contains("client_cert"))
-			{
-				QString err;
-				QString data = readFile(props.value("client_cert"), &err);
-				if(!err.isEmpty())
-				{
-					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
-					ok = false;
-					break;
-				}
-
-				target.clientCert = data;
-			}
-
-			if(props.contains("client_key"))
-			{
-				QString err;
-				QString data = readFile(props.value("client_key"), &err);
-				if(!err.isEmpty())
-				{
-					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
-					ok = false;
-					break;
-				}
-
-				target.clientKey = data;
-			}
-
-			r.targets += target;
-		}
-
-		if(!ok)
-			return false;
-
-		*rule = r;
-		return true;
-	}
-
-	static AddRuleResult addRule(const Rule &r, QList<Rule> *all, QHash< QString,QList<Rule> > *domainMap, QHash<QString, Rule> *idMap)
-	{
-		if(r.domain.isNull() && r.id.isEmpty())
-			return AddRuleNoDomainOrId;
-
-		bool addByDomain = false;
-		bool addById = false;
-
-		if(!r.domain.isNull())
-		{
-			if(domainMap->contains(r.domain))
-			{
-				QList<Rule> *rules = &((*domainMap)[r.domain]);
-
-				bool found = false;
-				foreach(const Rule &b, *rules)
-				{
-					if(b.compare(r))
-					{
-						found = true;
-						break;
-					}
-				}
-
-				if(found)
-					return AddRuleDuplicate;
-			}
-
-			addByDomain = true;
-		}
-
-		if(!r.id.isEmpty())
-		{
-			if(!idMap->contains(r.id))
-			{
-				addById = true;
-			}
-			else
-			{
-				// Mark the key as unusable
-				idMap->insert(r.id, Rule());
-			}
-		}
-
-		*all += r;
-
-		if(addByDomain)
-		{
-			if(!domainMap->contains(r.domain))
-				domainMap->insert(r.domain, QList<Rule>());
-
-			QList<Rule> *rules = &((*domainMap)[r.domain]);
-
-			*rules += r;
-		}
-
-		if(addById)
-		{
-			idMap->insert(r.id, r);
-		}
-
-		return AddRuleOk;
-	}
-
-	void doChanged()
-	{
-		changed();
-	}
+    static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum,
+                               const QDir &fileDir, Rule *rule) {
+        bool ok;
+        QString errmsg;
+        QList<RoutesFile::RouteSection> sections = RoutesFile::parseLine(line, &ok, &errmsg);
+        if (!ok) {
+            log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
+            return false;
+        }
+
+        if (sections.isEmpty()) {
+            // Nothing. Could happen if line is blank or commented out
+            return false;
+        }
+
+        if (sections.count() < 2) {
+            log_warning("%s:%d: must specify condition and at least one target",
+                        qPrintable(fileName), lineNum);
+            return false;
+        }
+
+        QString val = sections[0].value;
+        QMultiHash<QString, QString> props = sections[0].props;
+
+        Rule r;
+
+        if (val.isEmpty())
+            r.domain = QString(); // Null means unspecified
+        else if (val == "*")
+            r.domain = QString(""); // Empty means wildcard
+        else
+            r.domain = val; // Non-empty means exact match
+
+        r.jsonpConfig.mode = JsonpConfig::Extended;
+
+        if (props.contains("proto")) {
+            val = props.value("proto");
+            if (val == "http")
+                r.proto = 0;
+            else if (val == "ws")
+                r.proto = 1;
+            else {
+                log_warning("%s:%d: proto must be set to 'http' or 'ws'", qPrintable(fileName),
+                            lineNum);
+                return false;
+            }
+        }
+
+        if (props.contains("ssl")) {
+            val = props.value("ssl");
+            if (val == "yes")
+                r.ssl = 1;
+            else if (val == "no")
+                r.ssl = 0;
+            else {
+                log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName),
+                            lineNum);
+                return false;
+            }
+        }
+
+        if (props.contains("id")) {
+            r.id = props.value("id").toUtf8();
+            r.explicitId = true;
+        }
+
+        if (props.contains("path_beg")) {
+            QString pathBeg = props.value("path_beg");
+            if (pathBeg.isEmpty()) {
+                log_warning("%s:%d: path_beg cannot be empty", qPrintable(fileName), lineNum);
+                return false;
+            }
+
+            r.pathBeg = pathBeg.toUtf8();
+        }
+
+        if (props.contains("sig_iss")) {
+            r.sigIss = props.value("sig_iss").toUtf8();
+        }
+
+        if (props.contains("sig_key")) {
+            r.sigKey = Jwt::EncodingKey::fromConfigString(props.value("sig_key"), fileDir);
+        }
+
+        if (props.contains("prefix")) {
+            r.prefix = props.value("prefix").toUtf8();
+        }
+
+        if (props.contains("orig_headers")) {
+            r.origHeaders = true;
+        }
+
+        if (props.contains("as_host")) {
+            r.asHost = props.value("as_host");
+        }
+
+        if (props.contains("path_rem")) {
+            r.pathRemove = props.value("path_rem").toInt();
+        }
+
+        if (props.contains("replace_beg")) {
+            r.pathRemove = r.pathBeg.length();
+            r.pathPrepend = props.value("replace_beg").toUtf8();
+        }
+
+        if (props.contains("debug"))
+            r.debug = true;
+
+        if (props.contains("aco"))
+            r.autoCrossOrigin = true;
+
+        if (props.contains("jsonp_mode")) {
+            val = props.value("jsonp_mode");
+            if (val == "basic")
+                r.jsonpConfig.mode = JsonpConfig::Basic;
+            else if (val == "extended")
+                r.jsonpConfig.mode = JsonpConfig::Extended;
+            else {
+                log_warning("%s:%d: jsonp_mode must be set to 'basic' or 'extended'",
+                            qPrintable(fileName), lineNum);
+                return false;
+            }
+        }
+
+        if (props.contains("jsonp_cb"))
+            r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
+
+        if (props.contains("jsonp_body"))
+            r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
+
+        if (props.contains("jsonp_defcb"))
+            r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
+
+        if (r.jsonpConfig.mode == JsonpConfig::Basic)
+            r.jsonpConfig.defaultMethod = "POST";
+        else // Extended
+            r.jsonpConfig.defaultMethod = "GET";
+
+        if (props.contains("jsonp_defmethod"))
+            r.jsonpConfig.defaultMethod = props.value("jsonp_defmethod");
+
+        if (props.contains("session"))
+            r.session = true;
+
+        if (props.contains("sockjs"))
+            r.sockJsPath = props.value("sockjs").toUtf8();
+
+        if (props.contains("sockjs_as_path"))
+            r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
+
+        if (props.contains("header")) {
+            foreach (const QString &s, props.values("header")) {
+                int at = s.indexOf(':');
+                if (at < 1) {
+                    log_warning("%s:%d: header must use format 'name:value'", qPrintable(fileName),
+                                lineNum);
+                    return false;
+                }
+
+                QByteArray name = s.mid(0, at).toUtf8();
+                QByteArray value = s.mid(at + 1).toUtf8();
+
+                // Trim left side of value
+                int n = 0;
+                while (n < value.length() && value[n] == ' ') {
+                    ++n;
+                }
+                if (n > 0)
+                    value = value.mid(n);
+
+                r.headers += HttpHeader(name, value);
+            }
+        }
+
+        if (props.contains("no_grip"))
+            r.grip = false;
+
+        if (props.contains("log_level")) {
+            r.logLevel = props.value("log_level").toInt();
+        }
+
+        ok = true;
+        for (int n = 1; n < sections.count(); ++n) {
+            QString val = sections[n].value;
+            QMultiHash<QString, QString> props = sections[n].props;
+
+            Target target;
+
+            if (val == "test") {
+                target.type = Target::Test;
+            } else if (val.startsWith("zhttp/")) {
+                target.type = Target::Custom;
+
+                target.zhttpRoute.baseSpec = val.mid(6);
+            } else if (val.startsWith("zhttpreq/")) {
+                target.type = Target::Custom;
+
+                target.zhttpRoute.baseSpec = val.mid(9);
+                target.zhttpRoute.req = true;
+            } else {
+                QString host;
+                int portPos = -1;
+
+                if (val.startsWith("[")) {
+                    // Ipv6 address
+                    int at = val.indexOf("]:");
+                    if (at >= 0) {
+                        host = val.mid(1, at - 1);
+                        portPos = at + 2;
+                    }
+                } else {
+                    // Domain or ipv4 address
+                    int at = val.indexOf(':');
+                    if (at >= 0) {
+                        host = val.mid(0, at);
+                        portPos = at + 1;
+                    }
+                }
+
+                if (portPos < 0) {
+                    log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
+                    ok = false;
+                    break;
+                }
+
+                QString sport = val.mid(portPos);
+                int port = sport.toInt(&ok);
+                if (!ok || port < 1 || port > 65535) {
+                    log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
+                    ok = false;
+                    break;
+                }
+
+                target.type = Target::Default;
+                target.connectHost = host;
+                target.connectPort = port;
+            }
+
+            if (props.contains("ssl"))
+                target.ssl = true;
+
+            if (props.contains("untrusted"))
+                target.trusted = false;
+            else
+                target.trusted = true;
+
+            if (props.contains("trust_connect_host"))
+                target.trustConnectHost = true;
+
+            if (props.contains("insecure"))
+                target.insecure = true;
+
+            if (props.contains("host"))
+                target.host = props.value("host");
+
+            if (props.contains("sub")) {
+                foreach (const QString &s, props.values("sub")) {
+                    if (!s.isEmpty())
+                        target.subscriptions += s;
+                }
+            }
+
+            if (props.contains("over_http"))
+                target.overHttp = true;
+
+            if (props.contains("one_event"))
+                target.oneEvent = true;
+
+            if (props.contains("ipc_file_mode")) {
+                bool ok_;
+                int x = props.value("ipc_file_mode").toInt(&ok_, 8);
+                if (ok_ && x >= 0)
+                    target.zhttpRoute.ipcFileMode = x;
+            }
+
+            if (props.contains("client_cert")) {
+                QString err;
+                QString data = readFile(props.value("client_cert"), &err);
+                if (!err.isEmpty()) {
+                    log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
+                    ok = false;
+                    break;
+                }
+
+                target.clientCert = data;
+            }
+
+            if (props.contains("client_key")) {
+                QString err;
+                QString data = readFile(props.value("client_key"), &err);
+                if (!err.isEmpty()) {
+                    log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(err));
+                    ok = false;
+                    break;
+                }
+
+                target.clientKey = data;
+            }
+
+            r.targets += target;
+        }
+
+        if (!ok)
+            return false;
+
+        *rule = r;
+        return true;
+    }
+
+    static AddRuleResult addRule(const Rule &r, QList<Rule> *all,
+                                 QHash<QString, QList<Rule>> *domainMap,
+                                 QHash<QString, Rule> *idMap) {
+        if (r.domain.isNull() && r.id.isEmpty())
+            return AddRuleNoDomainOrId;
+
+        bool addByDomain = false;
+        bool addById = false;
+
+        if (!r.domain.isNull()) {
+            if (domainMap->contains(r.domain)) {
+                QList<Rule> *rules = &((*domainMap)[r.domain]);
+
+                bool found = false;
+                foreach (const Rule &b, *rules) {
+                    if (b.compare(r)) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                    return AddRuleDuplicate;
+            }
+
+            addByDomain = true;
+        }
+
+        if (!r.id.isEmpty()) {
+            if (!idMap->contains(r.id)) {
+                addById = true;
+            } else {
+                // Mark the key as unusable
+                idMap->insert(r.id, Rule());
+            }
+        }
+
+        *all += r;
+
+        if (addByDomain) {
+            if (!domainMap->contains(r.domain))
+                domainMap->insert(r.domain, QList<Rule>());
+
+            QList<Rule> *rules = &((*domainMap)[r.domain]);
+
+            *rules += r;
+        }
+
+        if (addById) {
+            idMap->insert(r.id, r);
+        }
+
+        return AddRuleOk;
+    }
+
+    void doChanged() { changed(); }
 };
 
-class DomainMap::Thread
-{
+class DomainMap::Thread {
 public:
-	QString fileName;
-	std::thread thread;
-	std::unique_ptr<EventLoop> loop;
-	std::unique_ptr<Worker> worker;
-	QMutex m;
-	QWaitCondition w;
+    QString fileName;
+    std::thread thread;
+    std::unique_ptr<EventLoop> loop;
+    std::unique_ptr<Worker> worker;
+    QMutex m;
+    QWaitCondition w;
 
-	~Thread()
-	{
-		if(worker)
-		{
-			worker->deferCall.defer([&] {
-				// NOTE: called from worker thread
-				loop->exit(0);
-			});
-		}
+    ~Thread() {
+        if (worker) {
+            worker->deferCall.defer([&] {
+                // NOTE: called from worker thread
+                loop->exit(0);
+            });
+        }
 
-		thread.join();
-	}
+        thread.join();
+    }
 
-	void start()
-	{
-		QMutexLocker locker(&m);
+    void start() {
+        QMutexLocker locker(&m);
 
-		thread = std::thread([=] {
+        thread = std::thread([=] {
 #ifdef Q_OS_MAC
-			pthread_setname_np("domainmap");
+            pthread_setname_np("domainmap");
 #else
-			pthread_setname_np(pthread_self(), "domainmap");
+            pthread_setname_np(pthread_self(), "domainmap");
 #endif
 
-			run();
-		});
+            run();
+        });
 
-		w.wait(&m);
-	}
+        w.wait(&m);
+    }
 
-	void run()
-	{
-		// Will unlock during exec
-		m.lock();
+    void run() {
+        // Will unlock during exec
+        m.lock();
 
-		int registrationsMax = WORKER_THREAD_TIMERS + WORKER_THREAD_SOCKETNOTIFIERS;
-		loop = std::make_unique<EventLoop>(registrationsMax);
+        int registrationsMax = WORKER_THREAD_TIMERS + WORKER_THREAD_SOCKETNOTIFIERS;
+        loop = std::make_unique<EventLoop>(registrationsMax);
 
-		worker = std::make_unique<Worker>();
-		worker->fileName = fileName;
+        worker = std::make_unique<Worker>();
+        worker->fileName = fileName;
 
-		worker->started.connect([&] {
-			w.wakeOne();
-			m.unlock();
-		});
+        worker->started.connect([&] {
+            w.wakeOne();
+            m.unlock();
+        });
 
-		worker->deferCall.defer([=] { worker->start(); });
+        worker->deferCall.defer([=] { worker->start(); });
 
-		loop->exec();
+        loop->exec();
 
-		worker.reset();
-		loop.reset();
-	}
+        worker.reset();
+        loop.reset();
+    }
 };
 
-class DomainMap::Private
-{
+class DomainMap::Private {
 public:
-	DomainMap *q;
-	Thread *thread;
-	Connection changedConnection;
-	DeferCall deferCall;
+    DomainMap *q;
+    Thread *thread;
+    Connection changedConnection;
+    DeferCall deferCall;
 
-	Private(DomainMap *_q) :
-		q(_q),
-		thread(0)
-	{
-	}
+    Private(DomainMap *_q) : q(_q), thread(0) {}
 
-	~Private()
-	{
-		changedConnection.disconnect();
-		delete thread;
-	}
+    ~Private() {
+        changedConnection.disconnect();
+        delete thread;
+    }
 
-	void start(const QString &fileName = QString())
-	{
-		thread = new Thread;
-		thread->fileName = fileName;
-		thread->start();
+    void start(const QString &fileName = QString()) {
+        thread = new Thread;
+        thread->fileName = fileName;
+        thread->start();
 
-		// Worker guaranteed to exist after starting
-		changedConnection = thread->worker->changed.connect(boost::bind(&Private::workerChanged, this));
-	}
+        // Worker guaranteed to exist after starting
+        changedConnection =
+            thread->worker->changed.connect(boost::bind(&Private::workerChanged, this));
+    }
 
 private:
-	// NOTE: called from worker thread
-	void workerChanged()
-	{
-		deferCall.defer([=] {
-			// NOTE: called from outer thread
-			doChanged();
-		});
-	}
+    // NOTE: called from worker thread
+    void workerChanged() {
+        deferCall.defer([=] {
+            // NOTE: called from outer thread
+            doChanged();
+        });
+    }
 
-	void doChanged()
-	{
-		q->changed();
-	}
+    void doChanged() { q->changed(); }
 };
 
-DomainMap::DomainMap()
-{
-	d = new Private(this);
-	d->start();
+DomainMap::DomainMap() {
+    d = new Private(this);
+    d->start();
 }
 
-DomainMap::DomainMap(const QString &fileName)
-{
-	d = new Private(this);
-	d->start(fileName);
+DomainMap::DomainMap(const QString &fileName) {
+    d = new Private(this);
+    d->start(fileName);
 }
 
-DomainMap::~DomainMap()
-{
-	delete d;
+DomainMap::~DomainMap() { delete d; }
+
+void DomainMap::reload() {
+    Worker *worker = d->thread->worker.get();
+
+    worker->deferCall.defer([=] {
+        // NOTE: called from worker thread
+        worker->doReload();
+    });
 }
 
-void DomainMap::reload()
-{
-	Worker *worker = d->thread->worker.get();
+bool DomainMap::isIdShared(const QString &id) const {
+    QMutexLocker locker(&d->thread->worker->m);
 
-	worker->deferCall.defer([=] {
-		// NOTE: called from worker thread
-		worker->doReload();
-	});
+    if (!d->thread->worker->rulesById.contains(id))
+        return false;
+
+    const Worker::Rule *r = &d->thread->worker->rulesById[id];
+
+    return r->id.isEmpty();
 }
 
-bool DomainMap::isIdShared(const QString &id) const
-{
-	QMutexLocker locker(&d->thread->worker->m);
+DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domain,
+                                  const QByteArray &path) const {
+    QMutexLocker locker(&d->thread->worker->m);
 
-	if(!d->thread->worker->rulesById.contains(id))
-		return false;
+    const QList<Worker::Rule> *rules;
+    QString empty("");
+    if (d->thread->worker->rulesByDomain.contains(domain))
+        rules = &d->thread->worker->rulesByDomain[domain];
+    else if (d->thread->worker->rulesByDomain.contains(empty))
+        rules = &d->thread->worker->rulesByDomain[empty];
+    else
+        return Entry();
 
-	const Worker::Rule *r = &d->thread->worker->rulesById[id];
+    const Worker::Rule *best = 0;
+    foreach (const Worker::Rule &r, *rules) {
+        if ((!best && r.isMatch(proto, ssl, path)) ||
+            (best && r.isMoreSpecificMatch(*best, proto, ssl, path))) {
+            best = &r;
+        }
+    }
 
-	return r->id.isEmpty();
+    if (!best)
+        return Entry();
+
+    assert(!best->targets.isEmpty());
+
+    return best->toEntry();
 }
 
-DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const
-{
-	QMutexLocker locker(&d->thread->worker->m);
+DomainMap::Entry DomainMap::entry(const QString &id) const {
+    QMutexLocker locker(&d->thread->worker->m);
 
-	const QList<Worker::Rule> *rules;
-	QString empty("");
-	if(d->thread->worker->rulesByDomain.contains(domain))
-		rules = &d->thread->worker->rulesByDomain[domain];
-	else if(d->thread->worker->rulesByDomain.contains(empty))
-		rules = &d->thread->worker->rulesByDomain[empty];
-	else
-		return Entry();
+    if (!d->thread->worker->rulesById.contains(id))
+        return Entry();
 
-	const Worker::Rule *best = 0;
-	foreach(const Worker::Rule &r, *rules)
-	{
-		if((!best && r.isMatch(proto, ssl, path)) || (best && r.isMoreSpecificMatch(*best, proto, ssl, path)))
-		{
-			best = &r;
-		}
-	}
+    const Worker::Rule *r = &d->thread->worker->rulesById[id];
 
-	if(!best)
-		return Entry();
+    // This can happen if there were duplicate route IDs
+    if (r->id.isEmpty())
+        return Entry();
 
-	assert(!best->targets.isEmpty());
-
-	return best->toEntry();
+    return r->toEntry();
 }
 
-DomainMap::Entry DomainMap::entry(const QString &id) const
-{
-	QMutexLocker locker(&d->thread->worker->m);
+QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const {
+    QMutexLocker locker(&d->thread->worker->m);
 
-	if(!d->thread->worker->rulesById.contains(id))
-		return Entry();
+    QList<ZhttpRoute> out;
 
-	const Worker::Rule *r = &d->thread->worker->rulesById[id];
+    foreach (const Worker::Rule &r, d->thread->worker->allRules) {
+        foreach (const Target &t, r.targets) {
+            if (!t.zhttpRoute.isNull() && !out.contains(t.zhttpRoute))
+                out += t.zhttpRoute;
+        }
+    }
 
-	// This can happen if there were duplicate route IDs
-	if(r->id.isEmpty())
-		return Entry();
-
-	return r->toEntry();
+    return out;
 }
 
-QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const
-{
-	QMutexLocker locker(&d->thread->worker->m);
-
-	QList<ZhttpRoute> out;
-
-	foreach(const Worker::Rule &r, d->thread->worker->allRules)
-	{
-		foreach(const Target &t, r.targets)
-		{
-			if(!t.zhttpRoute.isNull() && !out.contains(t.zhttpRoute))
-				out += t.zhttpRoute;
-		}
-	}
-
-	return out;
-}
-
-bool DomainMap::addRouteLine(const QString &line)
-{
-	QMutexLocker locker(&d->thread->worker->m);
-	return d->thread->worker->addRouteLine(line);
+bool DomainMap::addRouteLine(const QString &line) {
+    QMutexLocker locker(&d->thread->worker->m);
+    return d->thread->worker->addRouteLine(line);
 }

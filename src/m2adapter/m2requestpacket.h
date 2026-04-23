@@ -23,47 +23,45 @@
 #ifndef M2REQUESTPACKET_H
 #define M2REQUESTPACKET_H
 
-#include <QHostAddress>
 #include "httpheaders.h"
+#include <QHostAddress>
 
-class M2RequestPacket
-{
+class M2RequestPacket {
 public:
-	enum Type
-	{
-		HttpRequest,
-		WebSocketHandshake, // Body will contain accept token
-		WebSocketFrame,
-		Disconnect,
-		Credits
-	};
+    enum Type {
+        HttpRequest,
+        WebSocketHandshake, // Body will contain accept token
+        WebSocketFrame,
+        Disconnect,
+        Credits
+    };
 
-	QByteArray sender;
-	QByteArray id;
+    QByteArray sender;
+    QByteArray id;
 
-	Type type;
+    Type type;
 
-	QHostAddress remoteAddress;
-	QByteArray scheme;
-	QByteArray version;
-	QString method;
-	QByteArray uri;
-	HttpHeaders headers;
-	QByteArray body;
+    QHostAddress remoteAddress;
+    QByteArray scheme;
+    QByteArray version;
+    QString method;
+    QByteArray uri;
+    HttpHeaders headers;
+    QByteArray body;
 
-	QString uploadFile;
-	bool uploadDone;
+    QString uploadFile;
+    bool uploadDone;
 
-	int uploadStreamOffset;
-	bool uploadStreamDone;
+    int uploadStreamOffset;
+    bool uploadStreamDone;
 
-	int downloadCredits;
+    int downloadCredits;
 
-	int frameFlags;
+    int frameFlags;
 
-	M2RequestPacket();
+    M2RequestPacket();
 
-	bool fromByteArray(const QByteArray &in);
+    bool fromByteArray(const QByteArray &in);
 };
 
 #endif

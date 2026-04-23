@@ -24,19 +24,18 @@
 #ifndef ZRPCREQUESTPACKET_H
 #define ZRPCREQUESTPACKET_H
 
-#include <QByteArray>
 #include "variant.h"
+#include <QByteArray>
 
-class ZrpcRequestPacket
-{
+class ZrpcRequestPacket {
 public:
-	QByteArray from;
-	QByteArray id;
-	QString method;
-	VariantHash args;
+    QByteArray from;
+    QByteArray id;
+    QString method;
+    VariantHash args;
 
-	Variant toVariant() const;
-	bool fromVariant(const Variant &in);
+    Variant toVariant() const;
+    bool fromVariant(const Variant &in);
 };
 
 #endif

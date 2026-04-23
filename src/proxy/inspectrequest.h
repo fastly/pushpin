@@ -30,23 +30,23 @@ class HttpRequestData;
 class InspectData;
 class ZrpcManager;
 
-/// Requests handler decision on whether to proxy HTTP request to backend or accept it
-class InspectRequest : public ZrpcRequest
-{
+/// Requests handler decision on whether to proxy HTTP request to backend or
+/// accept it
+class InspectRequest : public ZrpcRequest {
 public:
-	InspectRequest(ZrpcManager *manager);
-	~InspectRequest();
+    InspectRequest(ZrpcManager *manager);
+    ~InspectRequest();
 
-	InspectData result() const;
+    InspectData result() const;
 
-	void start(const HttpRequestData &hdata, bool truncated, bool getSession, bool autoShare);
+    void start(const HttpRequestData &hdata, bool truncated, bool getSession, bool autoShare);
 
 protected:
-	virtual void onSuccess();
+    virtual void onSuccess();
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

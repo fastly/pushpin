@@ -24,17 +24,12 @@
 #define XFFRULE_H
 
 /// Configuration for X-Forwarded-For header manipulation
-class XffRule
-{
+class XffRule {
 public:
-	int truncate;
-	bool append;
+    int truncate;
+    bool append;
 
-	XffRule() :
-		truncate(-1),
-		append(false)
-	{
-	}
+    XffRule() : truncate(-1), append(false) {}
 };
 
 #endif

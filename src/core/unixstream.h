@@ -17,49 +17,48 @@
 #ifndef UNIXSTREAM_H
 #define UNIXSTREAM_H
 
-#include <memory>
-#include <variant>
+#include "readwrite.h"
+#include "rust/bindings.h"
 #include <QByteArray>
 #include <boost/signals2.hpp>
-#include "rust/bindings.h"
-#include "readwrite.h"
+#include <memory>
+#include <variant>
 
 class SocketNotifier;
 
-class UnixStream : public ReadWrite
-{
+class UnixStream : public ReadWrite {
 public:
-	UnixStream();
-	~UnixStream();
+    UnixStream();
+    ~UnixStream();
 
-	// Disable copying
-	UnixStream(const UnixStream &) = delete;
-	UnixStream & operator=(const UnixStream &) = delete;
+    // Disable copying
+    UnixStream(const UnixStream &) = delete;
+    UnixStream &operator=(const UnixStream &) = delete;
 
-	// Returns true if connection starting, false on error
-	bool connect(const QString &path);
+    // Returns true if connection starting, false on error
+    bool connect(const QString &path);
 
-	// Returns true if connected, false on error. If errorCondition() returns
-	// ENOTCONN, then it is not fatal and the socket is still connecting
-	bool checkConnected();
+    // Returns true if connected, false on error. If errorCondition() returns
+    // ENOTCONN, then it is not fatal and the socket is still connecting
+    bool checkConnected();
 
-	// Reimplemented
-	virtual QByteArray read(int size = -1);
-	virtual int write(const QByteArray &buf);
-	virtual int errorCondition() const { return errorCondition_; }
+    // Reimplemented
+    virtual QByteArray read(int size = -1);
+    virtual int write(const QByteArray &buf);
+    virtual int errorCondition() const { return errorCondition_; }
 
 private:
-	friend class UnixListener;
+    friend class UnixListener;
 
-	ffi::UnixStream *inner_;
-	std::unique_ptr<SocketNotifier> sn_;
-	int errorCondition_;
-	std::shared_ptr<std::monostate> alive_;
+    ffi::UnixStream *inner_;
+    std::unique_ptr<SocketNotifier> sn_;
+    int errorCondition_;
+    std::shared_ptr<std::monostate> alive_;
 
-	UnixStream(ffi::UnixStream *inner);
-	void reset();
-	void setupNotifier();
-	void sn_activated(int socket, uint8_t readiness);
+    UnixStream(ffi::UnixStream *inner);
+    void reset();
+    void setupNotifier();
+    void sn_activated(int socket, uint8_t readiness);
 };
 
 #endif

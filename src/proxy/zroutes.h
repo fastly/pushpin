@@ -24,32 +24,32 @@
 #ifndef ZROUTES_H
 #define ZROUTES_H
 
-#include "zhttpmanager.h"
 #include "domainmap.h"
+#include "zhttpmanager.h"
 
-/// Manages the initialization, storage, and lookup mapping of the ZhttpManager instance for each route
-class ZRoutes
-{
+/// Manages the initialization, storage, and lookup mapping of the ZhttpManager
+/// instance for each route
+class ZRoutes {
 public:
-	ZRoutes();
-	~ZRoutes();
+    ZRoutes();
+    ~ZRoutes();
 
-	void setInstanceId(const QByteArray &id);
-	void setDefaultOutSpecs(const QStringList &specs);
-	void setDefaultOutStreamSpecs(const QStringList &specs);
-	void setDefaultInSpecs(const QStringList &specs);
+    void setInstanceId(const QByteArray &id);
+    void setDefaultOutSpecs(const QStringList &specs);
+    void setDefaultOutStreamSpecs(const QStringList &specs);
+    void setDefaultInSpecs(const QStringList &specs);
 
-	void setup(const QList<DomainMap::ZhttpRoute> &routes);
+    void setup(const QList<DomainMap::ZhttpRoute> &routes);
 
-	ZhttpManager *defaultManager();
-	ZhttpManager *managerForRoute(const DomainMap::ZhttpRoute &route);
+    ZhttpManager *defaultManager();
+    ZhttpManager *managerForRoute(const DomainMap::ZhttpRoute &route);
 
-	void addRef(ZhttpManager *zhttpManager);
-	void removeRef(ZhttpManager *zhttpManager);
+    void addRef(ZhttpManager *zhttpManager);
+    void removeRef(ZhttpManager *zhttpManager);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

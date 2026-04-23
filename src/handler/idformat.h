@@ -24,33 +24,33 @@
 #define IDFORMAT_H
 
 #include <QByteArray>
-#include <QString>
 #include <QHash>
+#include <QString>
 
 namespace IdFormat {
 
-class ContentRenderer
-{
+class ContentRenderer {
 public:
-	ContentRenderer(const QByteArray &defaultId, bool hex);
+    ContentRenderer(const QByteArray &defaultId, bool hex);
 
-	// Return null array on error
-	QByteArray update(const QByteArray &data);
-	QByteArray finalize();
+    // Return null array on error
+    QByteArray update(const QByteArray &data);
+    QByteArray finalize();
 
-	QString errorMessage() { return errorMessage_; }
+    QString errorMessage() { return errorMessage_; }
 
-	QByteArray process(const QByteArray &data);
+    QByteArray process(const QByteArray &data);
 
 private:
-	QByteArray defaultId_;
-	bool hex_;
-	QByteArray buf_;
-	QString errorMessage_;
+    QByteArray defaultId_;
+    bool hex_;
+    QByteArray buf_;
+    QString errorMessage_;
 };
 
-QByteArray renderId(const QByteArray &data, const QHash<QString, QByteArray> &vars, QString *error = 0);
+QByteArray renderId(const QByteArray &data, const QHash<QString, QByteArray> &vars,
+                    QString *error = 0);
 
-}
+} // namespace IdFormat
 
 #endif

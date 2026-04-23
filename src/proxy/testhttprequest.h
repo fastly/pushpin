@@ -27,56 +27,55 @@
 #include "url.h"
 
 /// HTTP request instance for testing that simulates HTTP behavior
-class TestHttpRequest : public HttpRequest
-{
+class TestHttpRequest : public HttpRequest {
 public:
-	// Pair of sender + request id
-	typedef QPair<QByteArray, QByteArray> Rid;
+    // Pair of sender + request id
+    typedef QPair<QByteArray, QByteArray> Rid;
 
-	TestHttpRequest();
-	~TestHttpRequest();
+    TestHttpRequest();
+    ~TestHttpRequest();
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QHostAddress peerAddress() const;
+    virtual QHostAddress peerAddress() const;
 
-	virtual void setConnectHost(const QString &host);
-	virtual void setConnectPort(int port);
-	virtual void setIgnorePolicies(bool on);
-	virtual void setTrustConnectHost(bool on);
-	virtual void setIgnoreTlsErrors(bool on);
-	virtual void setTimeout(int msecs);
-	virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setConnectHost(const QString &host);
+    virtual void setConnectPort(int port);
+    virtual void setIgnorePolicies(bool on);
+    virtual void setTrustConnectHost(bool on);
+    virtual void setIgnoreTlsErrors(bool on);
+    virtual void setTimeout(int msecs);
+    virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
-	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
+    virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
+    virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
-	virtual void writeBody(const QByteArray &body);
+    virtual void writeBody(const QByteArray &body);
 
-	virtual void endBody();
+    virtual void endBody();
 
-	virtual int bytesAvailable() const;
-	virtual int writeBytesAvailable() const;
-	virtual bool isFinished() const;
-	virtual bool isInputFinished() const;
-	virtual bool isOutputFinished() const;
-	virtual bool isErrored() const;
-	virtual ErrorCondition errorCondition() const;
+    virtual int bytesAvailable() const;
+    virtual int writeBytesAvailable() const;
+    virtual bool isFinished() const;
+    virtual bool isInputFinished() const;
+    virtual bool isOutputFinished() const;
+    virtual bool isErrored() const;
+    virtual ErrorCondition errorCondition() const;
 
-	virtual QString requestMethod() const;
-	virtual Url requestUri() const;
-	virtual HttpHeaders requestHeaders() const;
+    virtual QString requestMethod() const;
+    virtual Url requestUri() const;
+    virtual HttpHeaders requestHeaders() const;
 
-	virtual int responseCode() const;
-	virtual QByteArray responseReason() const;
-	virtual HttpHeaders responseHeaders() const;
+    virtual int responseCode() const;
+    virtual QByteArray responseReason() const;
+    virtual HttpHeaders responseHeaders() const;
 
-	virtual QByteArray readBody(int size = -1);
+    virtual QByteArray readBody(int size = -1);
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 };
 
 #endif

@@ -33,43 +33,34 @@ namespace Stats {
 
 // keep in sync with STATS_COUNTERS_MAX above
 enum Counter {
-    ClientHeaderBytesReceived  =  0,
-    ClientHeaderBytesSent      =  1,
-    ClientContentBytesReceived =  2,
-    ClientContentBytesSent     =  3,
-    ClientMessagesReceived     =  4,
-    ClientMessagesSent         =  5,
-    ServerHeaderBytesReceived  =  6,
-    ServerHeaderBytesSent      =  7,
-    ServerContentBytesReceived =  8,
-    ServerContentBytesSent     =  9,
-    ServerMessagesReceived     = 10,
-    ServerMessagesSent         = 11,
+    ClientHeaderBytesReceived = 0,
+    ClientHeaderBytesSent = 1,
+    ClientContentBytesReceived = 2,
+    ClientContentBytesSent = 3,
+    ClientMessagesReceived = 4,
+    ClientMessagesSent = 5,
+    ServerHeaderBytesReceived = 6,
+    ServerHeaderBytesSent = 7,
+    ServerContentBytesReceived = 8,
+    ServerContentBytesSent = 9,
+    ServerMessagesReceived = 10,
+    ServerMessagesSent = 11,
 };
 
-class Counters
-{
+class Counters {
 public:
-    Counters()
-    {
-        reset();
-    }
+    Counters() { reset(); }
 
-    bool isEmpty() const
-    {
-        return _empty;
-    }
+    bool isEmpty() const { return _empty; }
 
-    void reset()
-    {
-        for(int n = 0; n < STATS_COUNTERS_MAX; ++n)
+    void reset() {
+        for (int n = 0; n < STATS_COUNTERS_MAX; ++n)
             _values[n] = 0;
 
         _empty = true;
     }
 
-    uint32_t get(Counter c)
-    {
+    uint32_t get(Counter c) {
         int index = (int)c;
 
         assert(index >= 0 && index < STATS_COUNTERS_MAX);
@@ -77,15 +68,14 @@ public:
         return _values[index];
     }
 
-    void inc(Counter c, uint32_t count = 1)
-    {
+    void inc(Counter c, uint32_t count = 1) {
         int index = (int)c;
 
         assert(index >= 0 && index < STATS_COUNTERS_MAX);
 
         _values[index] += count;
 
-        if(count > 0)
+        if (count > 0)
             _empty = false;
     }
 
@@ -96,6 +86,6 @@ private:
     bool _empty;
 };
 
-}
+} // namespace Stats
 
 #endif

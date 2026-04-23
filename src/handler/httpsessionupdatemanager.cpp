@@ -23,158 +23,126 @@
 
 #include "httpsessionupdatemanager.h"
 
-#include "url.h"
-#include "timer.h"
 #include "defercall.h"
 #include "httpsession.h"
+#include "timer.h"
+#include "url.h"
 
-class HttpSessionUpdateManager::Private
-{
+class HttpSessionUpdateManager::Private {
 public:
-	class Bucket
-	{
-	public:
-		QPair<int, Url> key;
-		QSet<HttpSession*> sessions;
-		QSet<HttpSession*> deferredSessions;
-		std::unique_ptr<Timer> timer;
-	};
+    class Bucket {
+    public:
+        QPair<int, Url> key;
+        QSet<HttpSession *> sessions;
+        QSet<HttpSession *> deferredSessions;
+        std::unique_ptr<Timer> timer;
+    };
 
-	HttpSessionUpdateManager *q;
-	QHash<QPair<int, Url>, Bucket*> buckets;
-	QHash<Timer*, Bucket*> bucketsByTimer;
-	QHash<HttpSession*, Bucket*> bucketsBySession;
+    HttpSessionUpdateManager *q;
+    QHash<QPair<int, Url>, Bucket *> buckets;
+    QHash<Timer *, Bucket *> bucketsByTimer;
+    QHash<HttpSession *, Bucket *> bucketsBySession;
 
-	Private(HttpSessionUpdateManager *_q) :
-		q(_q)
-	{
-	}
+    Private(HttpSessionUpdateManager *_q) : q(_q) {}
 
-	~Private()
-	{
-		qDeleteAll(buckets);
-	}
+    ~Private() { qDeleteAll(buckets); }
 
-	void removeBucket(Bucket *bucket)
-	{
-		foreach(HttpSession *hs, bucket->sessions)
-			bucketsBySession.remove(hs);
+    void removeBucket(Bucket *bucket) {
+        foreach (HttpSession *hs, bucket->sessions)
+            bucketsBySession.remove(hs);
 
-		bucketsByTimer.remove(bucket->timer.get());
-		buckets.remove(bucket->key);
-		delete bucket;
-	}
+        bucketsByTimer.remove(bucket->timer.get());
+        buckets.remove(bucket->key);
+        delete bucket;
+    }
 
-	void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout)
-	{
-		Url tmp = uri;
-		tmp.setQuery(QString()); // Remove the query part
-		QPair<int, Url> key(timeout, tmp);
+    void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout) {
+        Url tmp = uri;
+        tmp.setQuery(QString()); // Remove the query part
+        QPair<int, Url> key(timeout, tmp);
 
-		Bucket *bucket = buckets.value(key);
-		if(bucket)
-		{
-			if(bucket->sessions.contains(hs))
-			{
-				if(resetTimeout)
-				{
-					// Flag for later processing
-					bucket->deferredSessions += hs;
-				}
-			}
-			else
-			{
-				// Move the session to this bucket
-				unregisterSession(hs);
-				bucket->sessions += hs;
-				bucketsBySession[hs] = bucket;
-			}
-		}
-		else
-		{
-			// Bucket doesn't exist. Make it and put this session in it
+        Bucket *bucket = buckets.value(key);
+        if (bucket) {
+            if (bucket->sessions.contains(hs)) {
+                if (resetTimeout) {
+                    // Flag for later processing
+                    bucket->deferredSessions += hs;
+                }
+            } else {
+                // Move the session to this bucket
+                unregisterSession(hs);
+                bucket->sessions += hs;
+                bucketsBySession[hs] = bucket;
+            }
+        } else {
+            // Bucket doesn't exist. Make it and put this session in it
 
-			unregisterSession(hs);
+            unregisterSession(hs);
 
-			bucket = new Bucket;
-			bucket->key = key;
-			bucket->sessions += hs;
-			bucket->timer = std::make_unique<Timer>();
-			bucket->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, bucket->timer.get()));
+            bucket = new Bucket;
+            bucket->key = key;
+            bucket->sessions += hs;
+            bucket->timer = std::make_unique<Timer>();
+            bucket->timer->timeout.connect(
+                boost::bind(&Private::timer_timeout, this, bucket->timer.get()));
 
-			buckets[key] = bucket;
-			bucketsByTimer[bucket->timer.get()] = bucket;
-			bucketsBySession[hs] = bucket;
+            buckets[key] = bucket;
+            bucketsByTimer[bucket->timer.get()] = bucket;
+            bucketsBySession[hs] = bucket;
 
-			bucket->timer->start(timeout * 1000);
-		}
-	}
+            bucket->timer->start(timeout * 1000);
+        }
+    }
 
-	void unregisterSession(HttpSession *hs)
-	{
-		Bucket *bucket = bucketsBySession.value(hs);
-		if(!bucket)
-			return;
+    void unregisterSession(HttpSession *hs) {
+        Bucket *bucket = bucketsBySession.value(hs);
+        if (!bucket)
+            return;
 
-		bucket->sessions.remove(hs);
-		bucket->deferredSessions.remove(hs);
-		bucketsBySession.remove(hs);
+        bucket->sessions.remove(hs);
+        bucket->deferredSessions.remove(hs);
+        bucketsBySession.remove(hs);
 
-		if(bucket->sessions.isEmpty())
-			removeBucket(bucket);
-	}
+        if (bucket->sessions.isEmpty())
+            removeBucket(bucket);
+    }
 
 private:
-	void timer_timeout(Timer *timer)
-	{
-		Bucket *bucket = bucketsByTimer.value(timer);
-		if(!bucket)
-			return;
+    void timer_timeout(Timer *timer) {
+        Bucket *bucket = bucketsByTimer.value(timer);
+        if (!bucket)
+            return;
 
-		QSet<HttpSession*> sessions;
+        QSet<HttpSession *> sessions;
 
-		if(!bucket->deferredSessions.isEmpty())
-		{
-			foreach(HttpSession *hs, bucket->sessions)
-			{
-				if(!bucket->deferredSessions.contains(hs))
-				{
-					sessions += hs;
-					bucketsBySession.remove(hs);
-				}
-			}
+        if (!bucket->deferredSessions.isEmpty()) {
+            foreach (HttpSession *hs, bucket->sessions) {
+                if (!bucket->deferredSessions.contains(hs)) {
+                    sessions += hs;
+                    bucketsBySession.remove(hs);
+                }
+            }
 
-			bucket->sessions = bucket->deferredSessions;
-			bucket->deferredSessions.clear();
-			bucket->timer->start();
-		}
-		else
-		{
-			sessions = bucket->sessions;
-			removeBucket(bucket);
-		}
+            bucket->sessions = bucket->deferredSessions;
+            bucket->deferredSessions.clear();
+            bucket->timer->start();
+        } else {
+            sessions = bucket->sessions;
+            removeBucket(bucket);
+        }
 
-		foreach(HttpSession *hs, sessions)
-			hs->update();
-	}
+        foreach (HttpSession *hs, sessions)
+            hs->update();
+    }
 };
 
-HttpSessionUpdateManager::HttpSessionUpdateManager()
-{
-	d = new Private(this);
+HttpSessionUpdateManager::HttpSessionUpdateManager() { d = new Private(this); }
+
+HttpSessionUpdateManager::~HttpSessionUpdateManager() { delete d; }
+
+void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const Url &uri,
+                                               bool resetTimeout) {
+    d->registerSession(hs, timeout, uri, resetTimeout);
 }
 
-HttpSessionUpdateManager::~HttpSessionUpdateManager()
-{
-	delete d;
-}
-
-void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout)
-{
-	d->registerSession(hs, timeout, uri, resetTimeout);
-}
-
-void HttpSessionUpdateManager::unregisterSession(HttpSession *hs)
-{
-	d->unregisterSession(hs);
-}
+void HttpSessionUpdateManager::unregisterSession(HttpSession *hs) { d->unregisterSession(hs); }

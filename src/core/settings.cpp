@@ -23,180 +23,146 @@
 
 #include "settings.h"
 
+#include "config.h"
+#include "qtcompat.h"
+#include "variant.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
-#include "qtcompat.h"
-#include "variant.h"
-#include "config.h"
 
-Settings::Settings(const QString &fileName) :
-	include_(0),
-	portOffset_(0)
-{
-	main_ = new QSettings(fileName, QSettings::IniFormat);
+Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
+    main_ = new QSettings(fileName, QSettings::IniFormat);
 
-	libdir_ = valueRaw("global/libdir").toString();
-	if(libdir_.isEmpty())
-	{
-		if(QFile::exists("src/bin/pushpin.rs"))
-		{
-			// Running in tree
-			libdir_ = QFileInfo("src").absoluteFilePath();
-		}
-		else
-		{
-			// Use compiled value
-			libdir_ = Config::get().libDir;
-		}
-	}
+    libdir_ = valueRaw("global/libdir").toString();
+    if (libdir_.isEmpty()) {
+        if (QFile::exists("src/bin/pushpin.rs")) {
+            // Running in tree
+            libdir_ = QFileInfo("src").absoluteFilePath();
+        } else {
+            // Use compiled value
+            libdir_ = Config::get().libDir;
+        }
+    }
 
-	rundir_ = valueRaw("global/rundir").toString();
-	if(rundir_.isEmpty())
-	{
-		// Fallback to runner section (deprecated)
-		rundir_ = valueRaw("runner/rundir").toString();
-	}
+    rundir_ = valueRaw("global/rundir").toString();
+    if (rundir_.isEmpty()) {
+        // Fallback to runner section (deprecated)
+        rundir_ = valueRaw("runner/rundir").toString();
+    }
 
-	ipcPrefix_ = valueRaw("global/ipc_prefix", "pushpin-").toString();
-	portOffset_ = valueRaw("global/port_offset", 0).toInt();
+    ipcPrefix_ = valueRaw("global/ipc_prefix", "pushpin-").toString();
+    portOffset_ = valueRaw("global/port_offset", 0).toInt();
 
-	QString includeFile = valueRaw("global/include").toString();
+    QString includeFile = valueRaw("global/include").toString();
 
-	// if include is exactly "internal.conf", rewrite relative to libdir
-	// TODO: remove this hack at next major version
-	if(includeFile == "internal.conf")
-		includeFile = "{libdir}/internal.conf";
+    // if include is exactly "internal.conf", rewrite relative to libdir
+    // TODO: remove this hack at next major version
+    if (includeFile == "internal.conf")
+        includeFile = "{libdir}/internal.conf";
 
-	includeFile = resolveVars(includeFile);
+    includeFile = resolveVars(includeFile);
 
-	if(!includeFile.isEmpty())
-	{
-		// If include is a relative path, then use it relative to the config file location
-		QFileInfo fi(includeFile);
-		if(fi.isRelative())
-			includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
+    if (!includeFile.isEmpty()) {
+        // If include is a relative path, then use it relative to the config file
+        // location
+        QFileInfo fi(includeFile);
+        if (fi.isRelative())
+            includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
 
-		include_ = new QSettings(includeFile, QSettings::IniFormat);
-	}
+        include_ = new QSettings(includeFile, QSettings::IniFormat);
+    }
 }
 
-Settings::~Settings()
-{
-	delete include_;
-	delete main_;
+Settings::~Settings() {
+    delete include_;
+    delete main_;
 }
 
-QString Settings::resolveVars(const QString &in) const
-{
-	QString out = in;
-	out.replace("{libdir}", libdir_);
-	out.replace("{rundir}", rundir_);
-	out.replace("{ipc_prefix}", ipcPrefix_);
+QString Settings::resolveVars(const QString &in) const {
+    QString out = in;
+    out.replace("{libdir}", libdir_);
+    out.replace("{rundir}", rundir_);
+    out.replace("{ipc_prefix}", ipcPrefix_);
 
-	// Adjust tcp ports
-	int at = 0;
-	while(true)
-	{
-		at = out.indexOf("tcp://", at);
-		if(at == -1)
-			break;
+    // Adjust tcp ports
+    int at = 0;
+    while (true) {
+        at = out.indexOf("tcp://", at);
+        if (at == -1)
+            break;
 
-		at = out.indexOf(':', at + 6);
-		if(at == -1)
-			break;
+        at = out.indexOf(':', at + 6);
+        if (at == -1)
+            break;
 
-		int start = at + 1;
-		for(at = start; at < out.length(); ++at)
-		{
-			if(!out[at].isDigit())
-				break;
-		}
+        int start = at + 1;
+        for (at = start; at < out.length(); ++at) {
+            if (!out[at].isDigit())
+                break;
+        }
 
-		bool ok;
-		int x = out.mid(start, at - start).toInt(&ok);
-		if(!ok)
-			break;
+        bool ok;
+        int x = out.mid(start, at - start).toInt(&ok);
+        if (!ok)
+            break;
 
-		x += portOffset_;
+        x += portOffset_;
 
-		out.replace(start, at, QString::number(x));
-	}
+        out.replace(start, at, QString::number(x));
+    }
 
-	return out;
+    return out;
 }
 
-bool Settings::contains(const QString &key) const
-{
-	if(main_->contains(key))
-		return true;
+bool Settings::contains(const QString &key) const {
+    if (main_->contains(key))
+        return true;
 
-	if(include_)
-		return include_->contains(key);
+    if (include_)
+        return include_->contains(key);
 
-	return false;
+    return false;
 }
 
-Variant Settings::valueRaw(const QString &key, const Variant &defaultValue) const
-{
-	if(include_)
-	{
-		if(main_->contains(key))
-			return main_->value(key);
-		else
-			return include_->value(key, defaultValue);
-	}
-	else
-		return main_->value(key, defaultValue);
+Variant Settings::valueRaw(const QString &key, const Variant &defaultValue) const {
+    if (include_) {
+        if (main_->contains(key))
+            return main_->value(key);
+        else
+            return include_->value(key, defaultValue);
+    } else
+        return main_->value(key, defaultValue);
 }
 
-Variant Settings::value(const QString &key, const Variant &defaultValue) const
-{
-	Variant v = valueRaw(key, defaultValue);
-	if(v.isValid())
-	{
-		if(typeId(v) == VariantType::String)
-		{
-			v = resolveVars(v.toString());
-		}
-		else if(typeId(v) == VariantType::List)
-		{
-			QStringList oldList = v.toStringList();
-			QStringList newList;
-			foreach(QString s, oldList)
-				newList += resolveVars(s);
-			v = newList;
-		}
-	}
+Variant Settings::value(const QString &key, const Variant &defaultValue) const {
+    Variant v = valueRaw(key, defaultValue);
+    if (v.isValid()) {
+        if (typeId(v) == VariantType::String) {
+            v = resolveVars(v.toString());
+        } else if (typeId(v) == VariantType::List) {
+            QStringList oldList = v.toStringList();
+            QStringList newList;
+            foreach (QString s, oldList)
+                newList += resolveVars(s);
+            v = newList;
+        }
+    }
 
-	return v;
+    return v;
 }
 
-int Settings::adjustedPort(const QString &key, int defaultValue) const
-{
-	int x = value(key, Variant(defaultValue)).toInt();
-	if(x > 0)
-		x += portOffset_;
-	return x;
+int Settings::adjustedPort(const QString &key, int defaultValue) const {
+    int x = value(key, Variant(defaultValue)).toInt();
+    if (x > 0)
+        x += portOffset_;
+    return x;
 }
 
-QString Settings::ipcPrefix() const
-{
-	return ipcPrefix_;
-}
+QString Settings::ipcPrefix() const { return ipcPrefix_; }
 
-int Settings::portOffset() const
-{
-	return portOffset_;
-}
+int Settings::portOffset() const { return portOffset_; }
 
-void Settings::setIpcPrefix(const QString &s)
-{
-	ipcPrefix_ = s;
-}
+void Settings::setIpcPrefix(const QString &s) { ipcPrefix_ = s; }
 
-void Settings::setPortOffset(int x)
-{
-	portOffset_ = x;
-}
+void Settings::setPortOffset(int x) { portOffset_ = x; }

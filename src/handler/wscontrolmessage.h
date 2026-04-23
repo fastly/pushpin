@@ -23,52 +23,39 @@
 #ifndef WSCONTROLMESSAGE_H
 #define WSCONTROLMESSAGE_H
 
+#include "variant.h"
 #include <QString>
 #include <QStringList>
-#include "variant.h"
 
-class WsControlMessage
-{
+class WsControlMessage {
 public:
-	enum Type
-	{
-		Subscribe,
-		Unsubscribe,
-		Detach,
-		Session,
-		SetMeta,
-		KeepAlive,
-		SendDelayed,
-		FlushDelayed
-	};
+    enum Type {
+        Subscribe,
+        Unsubscribe,
+        Detach,
+        Session,
+        SetMeta,
+        KeepAlive,
+        SendDelayed,
+        FlushDelayed
+    };
 
-	enum MessageType
-	{
-		Text,
-		Binary,
-		Ping,
-		Pong
-	};
+    enum MessageType { Text, Binary, Ping, Pong };
 
-	Type type;
-	QString channel;
-	QStringList filters;
-	QString sessionId;
-	QString metaName;
-	QString metaValue;
-	MessageType messageType;
-	QByteArray content;
-	int timeout;
-	QByteArray keepAliveMode;
+    Type type;
+    QString channel;
+    QStringList filters;
+    QString sessionId;
+    QString metaName;
+    QString metaValue;
+    MessageType messageType;
+    QByteArray content;
+    int timeout;
+    QByteArray keepAliveMode;
 
-	WsControlMessage() :
-		type((Type)-1),
-		messageType((MessageType)-1),
-		timeout(-1)
-	{
-	}
+    WsControlMessage() : type((Type)-1), messageType((MessageType)-1), timeout(-1) {}
 
-	static WsControlMessage fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0);
+    static WsControlMessage fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0);
 };
 
 #endif

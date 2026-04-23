@@ -23,19 +23,19 @@
 
 #include "wscontrolmanager.h"
 
-#include <assert.h>
-#include <QDateTime>
-#include <boost/signals2.hpp>
-#include "zmqsocket.h"
-#include "zmqvalve.h"
-#include "zmqreqmessage.h"
 #include "log.h"
+#include "logutil.h"
 #include "timer.h"
 #include "tnetstring.h"
 #include "variant.h"
-#include "zutil.h"
-#include "logutil.h"
 #include "wscontrolsession.h"
+#include "zmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zutil.h"
+#include <QDateTime>
+#include <assert.h>
+#include <boost/signals2.hpp>
 
 #define DEFAULT_HWM 101000
 
@@ -50,435 +50,378 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class WsControlManager::Private
-{
+class WsControlManager::Private {
 public:
-	class KeepAliveRegistration
-	{
-	public:
-		WsControlSession *s;
-		int64_t lastRefresh;
-		int refreshBucket;
-	};
+    class KeepAliveRegistration {
+    public:
+        WsControlSession *s;
+        int64_t lastRefresh;
+        int refreshBucket;
+    };
 
-	WsControlManager *q;
-	QByteArray identity;
-	int ipcFileMode;
-	QStringList initSpecs;
-	QStringList streamSpecs;
-	std::unique_ptr<ZmqSocket> initSock;
-	std::unique_ptr<ZmqSocket> streamSock;
-	std::unique_ptr<ZmqValve> streamValve;
-	QHash<QByteArray, WsControlSession*> sessionsByCid;
-	std::unique_ptr<Timer> refreshTimer;
-	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
-	QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
-	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
-	int currentSessionRefreshBucket;
-	Connection streamValveConnection;
-	Connection refreshTimerConnection;
+    WsControlManager *q;
+    QByteArray identity;
+    int ipcFileMode;
+    QStringList initSpecs;
+    QStringList streamSpecs;
+    std::unique_ptr<ZmqSocket> initSock;
+    std::unique_ptr<ZmqSocket> streamSock;
+    std::unique_ptr<ZmqValve> streamValve;
+    QHash<QByteArray, WsControlSession *> sessionsByCid;
+    std::unique_ptr<Timer> refreshTimer;
+    QHash<WsControlSession *, KeepAliveRegistration *> keepAliveRegistrations;
+    QMap<QPair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *> sessionsByLastRefresh;
+    QSet<KeepAliveRegistration *> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
+    int currentSessionRefreshBucket;
+    Connection streamValveConnection;
+    Connection refreshTimerConnection;
 
-	Private(WsControlManager *_q) :
-		q(_q),
-		ipcFileMode(-1),
-		currentSessionRefreshBucket(0)
-	{
-		refreshTimer = std::make_unique<Timer>();
-		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
-	}
+    Private(WsControlManager *_q) : q(_q), ipcFileMode(-1), currentSessionRefreshBucket(0) {
+        refreshTimer = std::make_unique<Timer>();
+        refreshTimerConnection =
+            refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
+    }
 
-	~Private()
-	{
-		assert(sessionsByCid.isEmpty());
-		assert(keepAliveRegistrations.isEmpty());
-	}
+    ~Private() {
+        assert(sessionsByCid.isEmpty());
+        assert(keepAliveRegistrations.isEmpty());
+    }
 
-	bool setupInit()
-	{
-		initSock.reset();
+    bool setupInit() {
+        initSock.reset();
 
-		initSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
+        initSock = std::make_unique<ZmqSocket>(ZmqSocket::Push);
 
-		initSock->setHwm(DEFAULT_HWM);
-		initSock->setShutdownWaitTime(0);
+        initSock->setHwm(DEFAULT_HWM);
+        initSock->setShutdownWaitTime(0);
 
-		foreach(const QString &spec, initSpecs)
-		{
-			QString errorMessage;
-			if(!ZUtil::setupSocket(initSock.get(), spec, true, ipcFileMode, &errorMessage))
-			{
-				log_error("%s", qPrintable(errorMessage));
-				return false;
-			}
-		}
+        foreach (const QString &spec, initSpecs) {
+            QString errorMessage;
+            if (!ZUtil::setupSocket(initSock.get(), spec, true, ipcFileMode, &errorMessage)) {
+                log_error("%s", qPrintable(errorMessage));
+                return false;
+            }
+        }
 
-		return true;
-	}
+        return true;
+    }
 
-	bool setupStream()
-	{
-		streamValve.reset();
-		streamSock.reset();
+    bool setupStream() {
+        streamValve.reset();
+        streamSock.reset();
 
-		streamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
+        streamSock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
 
-		streamSock->setIdentity(identity);
-		streamSock->setHwm(DEFAULT_HWM);
-		streamSock->setShutdownWaitTime(0);
+        streamSock->setIdentity(identity);
+        streamSock->setHwm(DEFAULT_HWM);
+        streamSock->setShutdownWaitTime(0);
 
-		foreach(const QString &spec, streamSpecs)
-		{
-			QString errorMessage;
-			if(!ZUtil::setupSocket(streamSock.get(), spec, true, ipcFileMode, &errorMessage))
-			{
-				log_error("%s", qPrintable(errorMessage));
-				return false;
-			}
-		}
+        foreach (const QString &spec, streamSpecs) {
+            QString errorMessage;
+            if (!ZUtil::setupSocket(streamSock.get(), spec, true, ipcFileMode, &errorMessage)) {
+                log_error("%s", qPrintable(errorMessage));
+                return false;
+            }
+        }
 
-		streamValve = std::make_unique<ZmqValve>(streamSock.get());
-		streamValveConnection = streamValve->readyRead.connect(boost::bind(&Private::stream_readyRead, this, boost::placeholders::_1));
+        streamValve = std::make_unique<ZmqValve>(streamSock.get());
+        streamValveConnection = streamValve->readyRead.connect(
+            boost::bind(&Private::stream_readyRead, this, boost::placeholders::_1));
 
-		streamValve->open();
+        streamValve->open();
 
-		return true;
-	}
+        return true;
+    }
 
-	int smallestSessionRefreshBucket()
-	{
-		int best = -1;
-		int bestSize = 0;
+    int smallestSessionRefreshBucket() {
+        int best = -1;
+        int bestSize = 0;
 
-		for(int n = 0; n < SESSION_REFRESH_BUCKETS; ++n)
-		{
-			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)
-			{
-				best = n;
-				bestSize = sessionRefreshBuckets[n].count();
-			}
-		}
+        for (int n = 0; n < SESSION_REFRESH_BUCKETS; ++n) {
+            if (best == -1 || sessionRefreshBuckets[n].count() < bestSize) {
+                best = n;
+                bestSize = sessionRefreshBuckets[n].count();
+            }
+        }
 
-		return best;
-	}
+        return best;
+    }
 
-	void writeInit(const WsControlPacket &packet)
-	{
-		assert(streamSock);
+    void writeInit(const WsControlPacket &packet) {
+        assert(streamSock);
 
-		Variant vpacket = packet.toVariant();
-		QByteArray buf = TnetString::fromVariant(vpacket);
+        Variant vpacket = packet.toVariant();
+        QByteArray buf = TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
+        if (log_outputLevel() >= LOG_LEVEL_DEBUG)
+            LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
-		initSock->write(QList<QByteArray>() << buf);
-	}
+        initSock->write(QList<QByteArray>() << buf);
+    }
 
-	void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress)
-	{
-		assert(streamSock);
+    void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress) {
+        assert(streamSock);
 
-		Variant vpacket = packet.toVariant();
-		QByteArray buf = TnetString::fromVariant(vpacket);
+        Variant vpacket = packet.toVariant();
+        QByteArray buf = TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s", instanceAddress.data());
+        if (log_outputLevel() >= LOG_LEVEL_DEBUG)
+            LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s",
+                                instanceAddress.data());
 
-		QList<QByteArray> msg;
-		msg += instanceAddress;
-		msg += QByteArray();
-		msg += buf;
-		streamSock->write(msg);
-	}
+        QList<QByteArray> msg;
+        msg += instanceAddress;
+        msg += QByteArray();
+        msg += buf;
+        streamSock->write(msg);
+    }
 
-	void writeInit(const WsControlPacket::Item &item)
-	{
-		WsControlPacket out;
-		out.from = identity;
-		out.items += item;
-		writeInit(out);
-	}
+    void writeInit(const WsControlPacket::Item &item) {
+        WsControlPacket out;
+        out.from = identity;
+        out.items += item;
+        writeInit(out);
+    }
 
-	void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress)
-	{
-		WsControlPacket out;
-		out.from = identity;
-		out.items += item;
-		writeStream(out, instanceAddress);
-	}
+    void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress) {
+        WsControlPacket out;
+        out.from = identity;
+        out.items += item;
+        writeStream(out, instanceAddress);
+    }
 
-	void registerKeepAlive(WsControlSession *s)
-	{
-		if(keepAliveRegistrations.contains(s))
-			return;
+    void registerKeepAlive(WsControlSession *s) {
+        if (keepAliveRegistrations.contains(s))
+            return;
 
-		int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-		KeepAliveRegistration *r = new KeepAliveRegistration;
-		r->s = s;
-		keepAliveRegistrations.insert(s, r);
+        KeepAliveRegistration *r = new KeepAliveRegistration;
+        r->s = s;
+        keepAliveRegistrations.insert(s, r);
 
-		r->lastRefresh = now;
-		sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
+        r->lastRefresh = now;
+        sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r), r);
 
-		r->refreshBucket = smallestSessionRefreshBucket();
-		sessionRefreshBuckets[r->refreshBucket] += r;
+        r->refreshBucket = smallestSessionRefreshBucket();
+        sessionRefreshBuckets[r->refreshBucket] += r;
 
-		setupKeepAlive();
-	}
+        setupKeepAlive();
+    }
 
-	void unregisterKeepAlive(WsControlSession *s)
-	{
-		KeepAliveRegistration *r = keepAliveRegistrations.value(s);
-		if(!r)
-			return;
+    void unregisterKeepAlive(WsControlSession *s) {
+        KeepAliveRegistration *r = keepAliveRegistrations.value(s);
+        if (!r)
+            return;
 
-		sessionRefreshBuckets[r->refreshBucket].remove(r);
-		sessionsByLastRefresh.remove(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r));
-		keepAliveRegistrations.remove(s);
-		delete r;
+        sessionRefreshBuckets[r->refreshBucket].remove(r);
+        sessionsByLastRefresh.remove(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r));
+        keepAliveRegistrations.remove(s);
+        delete r;
 
-		setupKeepAlive();
-	}
+        setupKeepAlive();
+    }
 
-	void setupKeepAlive()
-	{
-		if(!keepAliveRegistrations.isEmpty())
-		{
-			if(!refreshTimer->isActive())
-				refreshTimer->start(REFRESH_INTERVAL);
-		}
-		else
-			refreshTimer->stop();
-	}
+    void setupKeepAlive() {
+        if (!keepAliveRegistrations.isEmpty()) {
+            if (!refreshTimer->isActive())
+                refreshTimer->start(REFRESH_INTERVAL);
+        } else
+            refreshTimer->stop();
+    }
 
 private:
-	void stream_readyRead(const CowByteArrayList &message)
-	{
-		ZmqReqMessage req(message);
+    void stream_readyRead(const CowByteArrayList &message) {
+        ZmqReqMessage req(message);
 
-		if(req.content().count() != 1)
-		{
-			log_warning("wscontrol: received message with parts != 1, skipping");
-			return;
-		}
+        if (req.content().count() != 1) {
+            log_warning("wscontrol: received message with parts != 1, skipping");
+            return;
+        }
 
-		Variant data = TnetString::toVariant(req.content()[0]);
-		if(data.isNull())
-		{
-			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
+        Variant data = TnetString::toVariant(req.content()[0]);
+        if (data.isNull()) {
+            log_warning("wscontrol: received message with invalid format (tnetstring "
+                        "parse failed), skipping");
+            return;
+        }
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariant(LOG_LEVEL_DEBUG, data, "wscontrol: IN");
+        if (log_outputLevel() >= LOG_LEVEL_DEBUG)
+            LogUtil::logVariant(LOG_LEVEL_DEBUG, data, "wscontrol: IN");
 
-		WsControlPacket p;
-		if(!p.fromVariant(data))
-		{
-			log_warning("wscontrol: received message with invalid format (parse failed), skipping");
-			return;
-		}
+        WsControlPacket p;
+        if (!p.fromVariant(data)) {
+            log_warning("wscontrol: received message with invalid format (parse "
+                        "failed), skipping");
+            return;
+        }
 
-		if(p.from.isEmpty())
-		{
-			log_warning("wscontrol: received message with invalid from value, skipping");
-			return;
-		}
+        if (p.from.isEmpty()) {
+            log_warning("wscontrol: received message with invalid from value, skipping");
+            return;
+        }
 
-		std::weak_ptr<Private> self = q->d;
+        std::weak_ptr<Private> self = q->d;
 
-		foreach(const WsControlPacket::Item &i, p.items)
-		{
-			WsControlSession *s = sessionsByCid.value(i.cid);
-			if(!s)
-			{
-				log_debug("wscontrol: received item for unknown connection id, canceling");
+        foreach (const WsControlPacket::Item &i, p.items) {
+            WsControlSession *s = sessionsByCid.value(i.cid);
+            if (!s) {
+                log_debug("wscontrol: received item for unknown connection id, canceling");
 
-				// If this was not an error item, send cancel
-				if(i.type != WsControlPacket::Item::Cancel)
-				{
-					WsControlPacket::Item out;
-					out.cid = i.cid;
-					out.type = WsControlPacket::Item::Cancel;
-					writeStream(out, p.from);
-				}
+                // If this was not an error item, send cancel
+                if (i.type != WsControlPacket::Item::Cancel) {
+                    WsControlPacket::Item out;
+                    out.cid = i.cid;
+                    out.type = WsControlPacket::Item::Cancel;
+                    writeStream(out, p.from);
+                }
 
-				continue;
-			}
+                continue;
+            }
 
-			s->handle(p.from, i);
+            s->handle(p.from, i);
 
-			if(self.expired())
-				return;
-		}
-	}
+            if (self.expired())
+                return;
+        }
+    }
 
-	void refresh_timeout()
-	{
-		int64_t now = QDateTime::currentMSecsSinceEpoch();
+    void refresh_timeout() {
+        int64_t now = QDateTime::currentMSecsSinceEpoch();
 
-		QHash<QByteArray, WsControlPacket> packets;
+        QHash<QByteArray, WsControlPacket> packets;
 
-		// Process the current bucket
-		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
-		foreach(KeepAliveRegistration *r, bucket)
-		{
-			// Move to the end
-			QPair<int64_t, KeepAliveRegistration*> k(r->lastRefresh, r);
-			sessionsByLastRefresh.remove(k);
-			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
+        // Process the current bucket
+        const QSet<KeepAliveRegistration *> &bucket =
+            sessionRefreshBuckets[currentSessionRefreshBucket];
+        foreach (KeepAliveRegistration *r, bucket) {
+            // Move to the end
+            QPair<int64_t, KeepAliveRegistration *> k(r->lastRefresh, r);
+            sessionsByLastRefresh.remove(k);
+            r->lastRefresh = now;
+            sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r),
+                                         r);
 
-			QByteArray peer = r->s->peer();
-			if(peer.isEmpty())
-				continue;
+            QByteArray peer = r->s->peer();
+            if (peer.isEmpty())
+                continue;
 
-			if(!packets.contains(peer))
-			{
-				WsControlPacket packet;
-				packet.from = identity;
-				packets.insert(peer, packet);
-			}
+            if (!packets.contains(peer)) {
+                WsControlPacket packet;
+                packet.from = identity;
+                packets.insert(peer, packet);
+            }
 
-			WsControlPacket &packet = packets[peer];
+            WsControlPacket &packet = packets[peer];
 
-			WsControlPacket::Item i;
-			i.cid = r->s->cid();
-			i.type = WsControlPacket::Item::KeepAlive;
-			i.ttl = SESSION_EXPIRE / 1000;
-			packet.items += i;
+            WsControlPacket::Item i;
+            i.cid = r->s->cid();
+            i.type = WsControlPacket::Item::KeepAlive;
+            i.ttl = SESSION_EXPIRE / 1000;
+            packet.items += i;
 
-			// If we're at max, send out now
-			if(packet.items.count() >= PACKET_ITEMS_MAX)
-			{
-				writeStream(packet, peer);
-				packet.items.clear();
-			}
-		}
+            // If we're at max, send out now
+            if (packet.items.count() >= PACKET_ITEMS_MAX) {
+                writeStream(packet, peer);
+                packet.items.clear();
+            }
+        }
 
-		// Process any others
-		int64_t threshold = now - SESSION_MUST_PROCESS;
-		while(!sessionsByLastRefresh.isEmpty())
-		{
-			QMap<QPair<int64_t, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
-			KeepAliveRegistration *r = it.value();
+        // Process any others
+        int64_t threshold = now - SESSION_MUST_PROCESS;
+        while (!sessionsByLastRefresh.isEmpty()) {
+            QMap<QPair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *>::iterator it =
+                sessionsByLastRefresh.begin();
+            KeepAliveRegistration *r = it.value();
 
-			if(r->lastRefresh > threshold)
-				break;
+            if (r->lastRefresh > threshold)
+                break;
 
-			// Move to the end
-			sessionsByLastRefresh.erase(it);
-			r->lastRefresh = now;
-			sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration*>(r->lastRefresh, r), r);
+            // Move to the end
+            sessionsByLastRefresh.erase(it);
+            r->lastRefresh = now;
+            sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r),
+                                         r);
 
-			QByteArray peer = r->s->peer();
-			if(peer.isEmpty())
-				continue;
+            QByteArray peer = r->s->peer();
+            if (peer.isEmpty())
+                continue;
 
-			if(!packets.contains(peer))
-			{
-				WsControlPacket packet;
-				packet.from = identity;
-				packets.insert(peer, packet);
-			}
+            if (!packets.contains(peer)) {
+                WsControlPacket packet;
+                packet.from = identity;
+                packets.insert(peer, packet);
+            }
 
-			WsControlPacket &packet = packets[peer];
+            WsControlPacket &packet = packets[peer];
 
-			WsControlPacket::Item i;
-			i.cid = r->s->cid();
-			i.type = WsControlPacket::Item::KeepAlive;
-			i.ttl = SESSION_EXPIRE / 1000;
-			packet.items += i;
+            WsControlPacket::Item i;
+            i.cid = r->s->cid();
+            i.type = WsControlPacket::Item::KeepAlive;
+            i.ttl = SESSION_EXPIRE / 1000;
+            packet.items += i;
 
-			// If we're at max, send out now
-			if(packet.items.count() >= PACKET_ITEMS_MAX)
-			{
-				writeStream(packet, peer);
-				packet.items.clear();
-			}
-		}
+            // If we're at max, send out now
+            if (packet.items.count() >= PACKET_ITEMS_MAX) {
+                writeStream(packet, peer);
+                packet.items.clear();
+            }
+        }
 
-		// Send the rest
-		QHashIterator<QByteArray, WsControlPacket> it(packets);
-		while(it.hasNext())
-		{
-			it.next();
-			const QByteArray &peer = it.key();
-			const WsControlPacket &packet = it.value();
+        // Send the rest
+        QHashIterator<QByteArray, WsControlPacket> it(packets);
+        while (it.hasNext()) {
+            it.next();
+            const QByteArray &peer = it.key();
+            const WsControlPacket &packet = it.value();
 
-			if(!packet.items.isEmpty())
-				writeStream(packet, peer);
-		}
+            if (!packet.items.isEmpty())
+                writeStream(packet, peer);
+        }
 
-		++currentSessionRefreshBucket;
-		if(currentSessionRefreshBucket >= SESSION_REFRESH_BUCKETS)
-			currentSessionRefreshBucket = 0;
-	}
+        ++currentSessionRefreshBucket;
+        if (currentSessionRefreshBucket >= SESSION_REFRESH_BUCKETS)
+            currentSessionRefreshBucket = 0;
+    }
 };
 
-WsControlManager::WsControlManager() 
-{
-	d = std::make_shared<Private>(this);
-}
+WsControlManager::WsControlManager() { d = std::make_shared<Private>(this); }
 
 WsControlManager::~WsControlManager() = default;
 
-void WsControlManager::setIdentity(const QByteArray &id)
-{
-	d->identity = id;
+void WsControlManager::setIdentity(const QByteArray &id) { d->identity = id; }
+
+void WsControlManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
+
+bool WsControlManager::setInitSpecs(const QStringList &specs) {
+    d->initSpecs = specs;
+    return d->setupInit();
 }
 
-void WsControlManager::setIpcFileMode(int mode)
-{
-	d->ipcFileMode = mode;
+bool WsControlManager::setStreamSpecs(const QStringList &specs) {
+    d->streamSpecs = specs;
+    return d->setupStream();
 }
 
-bool WsControlManager::setInitSpecs(const QStringList &specs)
-{
-	d->initSpecs = specs;
-	return d->setupInit();
+WsControlSession *WsControlManager::createSession(const QByteArray &cid) {
+    WsControlSession *s = new WsControlSession;
+    s->setup(this, cid);
+    return s;
 }
 
-bool WsControlManager::setStreamSpecs(const QStringList &specs)
-{
-	d->streamSpecs = specs;
-	return d->setupStream();
+void WsControlManager::link(WsControlSession *s, const QByteArray &cid) {
+    d->sessionsByCid.insert(cid, s);
 }
 
-WsControlSession *WsControlManager::createSession(const QByteArray &cid)
-{
-	WsControlSession *s = new WsControlSession;
-	s->setup(this, cid);
-	return s;
+void WsControlManager::unlink(const QByteArray &cid) { d->sessionsByCid.remove(cid); }
+
+void WsControlManager::writeInit(const WsControlPacket::Item &item) { d->writeInit(item); }
+
+void WsControlManager::writeStream(const WsControlPacket::Item &item,
+                                   const QByteArray &instanceAddress) {
+    d->writeStream(item, instanceAddress);
 }
 
-void WsControlManager::link(WsControlSession *s, const QByteArray &cid)
-{
-	d->sessionsByCid.insert(cid, s);
-}
+void WsControlManager::registerKeepAlive(WsControlSession *s) { d->registerKeepAlive(s); }
 
-void WsControlManager::unlink(const QByteArray &cid)
-{
-	d->sessionsByCid.remove(cid);
-}
-
-void WsControlManager::writeInit(const WsControlPacket::Item &item)
-{
-	d->writeInit(item);
-}
-
-void WsControlManager::writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress)
-{
-	d->writeStream(item, instanceAddress);
-}
-
-void WsControlManager::registerKeepAlive(WsControlSession *s)
-{
-	d->registerKeepAlive(s);
-}
-
-void WsControlManager::unregisterKeepAlive(WsControlSession *s)
-{
-	d->unregisterKeepAlive(s);
-}
+void WsControlManager::unregisterKeepAlive(WsControlSession *s) { d->unregisterKeepAlive(s); }
