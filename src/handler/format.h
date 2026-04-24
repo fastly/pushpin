@@ -28,17 +28,17 @@
 
 namespace Format {
 
-class Handler
-{
+class Handler {
 public:
-	virtual ~Handler() {}
+    virtual ~Handler() {}
 
-	// Returns null array on error
-	virtual QByteArray handle(char type, const QByteArray &arg, QString *error) const = 0;
+    // Returns null array on error
+    virtual QByteArray handle(char type, const QByteArray &arg, QString *error) const = 0;
 };
 
-QByteArray process(const QByteArray &format, Handler *handler, int *partialPos = 0, QString *error = 0);
+QByteArray process(const QByteArray &format, Handler *handler, int *partialPos = 0,
+                   QString *error = 0);
 
-}
+} // namespace Format
 
 #endif

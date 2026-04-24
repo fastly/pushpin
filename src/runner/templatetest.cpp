@@ -21,44 +21,44 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include "template.h"
 #include "test.h"
 #include "variant.h"
-#include "template.h"
 
-static void render()
-{
-	VariantMap context;
-	context["place"] = "world";
+static void render() {
+    VariantMap context;
+    context["place"] = "world";
 
-	VariantMap user;
-	user["first"] = "john";
-	user["last"] = "smith";
-	context["user"] = user;
+    VariantMap user;
+    user["first"] = "john";
+    user["last"] = "smith";
+    context["user"] = user;
 
-	VariantList fruits;
-	fruits.append("apple");
-	fruits.append("banana");
-	context["fruits"] = fruits;
+    VariantList fruits;
+    fruits.append("apple");
+    fruits.append("banana");
+    context["fruits"] = fruits;
 
-	QString content("hello {{ place }}!");
-	QString output = Template::render(content, context);
-	TEST_ASSERT_EQ(output, QString("hello world!"));
+    QString content("hello {{ place }}!");
+    QString output = Template::render(content, context);
+    TEST_ASSERT_EQ(output, QString("hello world!"));
 
-	content = QString("hello {% if formal %}{{ user.last }}{% endif %}{% if not formal %}{{ user.first }}{% endif %}!");
-	output = Template::render(content, context);
-	TEST_ASSERT_EQ(output, QString("hello john!"));
-	context["formal"] = true;
-	output = Template::render(content, context);
-	TEST_ASSERT_EQ(output, QString("hello smith!"));
+    content = QString("hello {% if formal %}{{ user.last }}{% endif %}{% if not "
+                      "formal %}{{ user.first }}{% endif %}!");
+    output = Template::render(content, context);
+    TEST_ASSERT_EQ(output, QString("hello john!"));
+    context["formal"] = true;
+    output = Template::render(content, context);
+    TEST_ASSERT_EQ(output, QString("hello smith!"));
 
-	content = QString("please eat {% for f in fruits %}{% if not loop.first %} and {% endif %}fresh {{ f }}s{% endfor %}.");
-	output = Template::render(content, context);
-	TEST_ASSERT_EQ(output, QString("please eat fresh apples and fresh bananas."));
+    content = QString("please eat {% for f in fruits %}{% if not loop.first %} "
+                      "and {% endif %}fresh {{ f }}s{% endfor %}.");
+    output = Template::render(content, context);
+    TEST_ASSERT_EQ(output, QString("please eat fresh apples and fresh bananas."));
 }
 
-extern "C" int template_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(render());
+extern "C" int template_test(ffi::TestException *out_ex) {
+    TEST_CATCH(render());
 
-	return 0;
+    return 0;
 }

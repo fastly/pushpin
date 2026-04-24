@@ -16,136 +16,120 @@
 
 #include "tcpstream.h"
 
-#include <assert.h>
-#include <QHostAddress>
 #include "socketnotifier.h"
+#include <QHostAddress>
+#include <assert.h>
 
 #define DEFAULT_READ_SIZE 16384
 
-TcpStream::TcpStream() :
-	inner_(nullptr),
-	errorCondition_(0)
-{
+TcpStream::TcpStream() : inner_(nullptr), errorCondition_(0) {}
+
+TcpStream::TcpStream(ffi::TcpStream *inner)
+    : inner_(inner),
+      errorCondition_(0),
+      alive_(std::make_shared<std::monostate>(std::monostate{})) {
+    setupNotifier();
 }
 
-TcpStream::TcpStream(ffi::TcpStream *inner) :
-	inner_(inner),
-	errorCondition_(0),
-	alive_(std::make_shared<std::monostate>(std::monostate{}))
-{
-	setupNotifier();
+TcpStream::~TcpStream() { reset(); }
+
+bool TcpStream::connect(const QHostAddress &addr, uint16_t port) {
+    reset();
+
+    QByteArray ip = addr.toString().toUtf8();
+    errorCondition_ = 0;
+
+    inner_ = ffi::tcp_stream_connect(ip.data(), port, &errorCondition_);
+    if (!inner_)
+        return false;
+
+    setupNotifier();
+
+    return true;
 }
 
-TcpStream::~TcpStream()
-{
-	reset();
+bool TcpStream::checkConnected() {
+    assert(inner_);
+
+    errorCondition_ = 0;
+
+    if (ffi::tcp_stream_check_connected(inner_, &errorCondition_) != 0)
+        return false;
+
+    return true;
 }
 
-bool TcpStream::connect(const QHostAddress &addr, uint16_t port)
-{
-	reset();
+QByteArray TcpStream::read(int size) {
+    assert(inner_);
 
-	QByteArray ip = addr.toString().toUtf8();
-	errorCondition_ = 0;
+    if (size < 0)
+        size = DEFAULT_READ_SIZE;
 
-	inner_ = ffi::tcp_stream_connect(ip.data(), port, &errorCondition_);
-	if(!inner_)
-		return false;
+    QByteArray buf(size, 0);
+    errorCondition_ = 0;
 
-	setupNotifier();
+    int ret = ffi::tcp_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
 
-	return true;
+    if (ret < 0) {
+        if (errorCondition_ == EAGAIN)
+            sn_->clearReadiness(SocketNotifier::Read);
+
+        return QByteArray();
+    }
+
+    buf.resize(ret);
+
+    return buf;
 }
 
-bool TcpStream::checkConnected()
-{
-	assert(inner_);
+int TcpStream::write(const QByteArray &buf) {
+    assert(inner_);
 
-	errorCondition_ = 0;
+    errorCondition_ = 0;
 
-	if(ffi::tcp_stream_check_connected(inner_, &errorCondition_) != 0)
-		return false;
+    int ret = ffi::tcp_stream_write(inner_, (const uint8_t *)buf.constData(), buf.size(),
+                                    &errorCondition_);
 
-	return true;
+    if (ret < 0) {
+        if (errorCondition_ == EAGAIN)
+            sn_->clearReadiness(SocketNotifier::Write);
+
+        return -1;
+    }
+
+    return ret;
 }
 
-QByteArray TcpStream::read(int size)
-{
-	assert(inner_);
+void TcpStream::reset() {
+    sn_.reset();
 
-	if(size < 0)
-		size = DEFAULT_READ_SIZE;
-
-	QByteArray buf(size, 0);
-	errorCondition_ = 0;
-
-	int ret = ffi::tcp_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
-
-	if(ret < 0)
-	{
-		if(errorCondition_ == EAGAIN)
-			sn_->clearReadiness(SocketNotifier::Read);
-
-		return QByteArray();
-	}
-
-	buf.resize(ret);
-
-	return buf;
+    if (inner_) {
+        ffi::tcp_stream_destroy(inner_);
+        inner_ = nullptr;
+    }
 }
 
-int TcpStream::write(const QByteArray &buf)
-{
-	assert(inner_);
+void TcpStream::setupNotifier() {
+    int fd = ffi::tcp_stream_as_raw_fd(inner_);
 
-	errorCondition_ = 0;
-
-	int ret = ffi::tcp_stream_write(inner_, (const uint8_t *)buf.constData(), buf.size(), &errorCondition_);
-
-	if(ret < 0)
-	{
-		if(errorCondition_ == EAGAIN)
-			sn_->clearReadiness(SocketNotifier::Write);
-
-		return -1;
-	}
-
-	return ret;
+    sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read | SocketNotifier::Write);
+    sn_->activated.connect(boost::bind(&TcpStream::sn_activated, this, boost::placeholders::_1,
+                                       boost::placeholders::_2));
+    sn_->setReadEnabled(true);
+    sn_->setWriteEnabled(true);
 }
 
-void TcpStream::reset()
-{
-	sn_.reset();
+void TcpStream::sn_activated(int socket, uint8_t readiness) {
+    Q_UNUSED(socket);
 
-	if(inner_)
-	{
-		ffi::tcp_stream_destroy(inner_);
-		inner_ = nullptr;
-	}
-}
+    std::weak_ptr<std::monostate> self = alive_;
 
-void TcpStream::setupNotifier()
-{
-	int fd = ffi::tcp_stream_as_raw_fd(inner_);
+    if (readiness & SocketNotifier::Read)
+        readReady();
 
-	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read | SocketNotifier::Write);
-	sn_->activated.connect(boost::bind(&TcpStream::sn_activated, this, boost::placeholders::_1, boost::placeholders::_2));
-	sn_->setReadEnabled(true);
-	sn_->setWriteEnabled(true);
-}
+    if (self.expired())
+        return;
 
-void TcpStream::sn_activated(int socket, uint8_t readiness)
-{
-	Q_UNUSED(socket);
-
-	std::weak_ptr<std::monostate> self = alive_;
-
-	if(readiness & SocketNotifier::Read)
-		readReady();
-
-	if(self.expired())
-		return;
-
-	if(readiness & SocketNotifier::Write)
-		writeReady();
+    if (readiness & SocketNotifier::Write)
+        writeReady();
 }

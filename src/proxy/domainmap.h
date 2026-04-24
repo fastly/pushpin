@@ -24,12 +24,12 @@
 #ifndef DOMAINMAP_H
 #define DOMAINMAP_H
 
+#include "httpheaders.h"
+#include "jwt.h"
+#include "log.h"
 #include <QPair>
 #include <QString>
 #include <QStringList>
-#include "log.h"
-#include "httpheaders.h"
-#include "jwt.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -37,174 +37,137 @@ using Connection = boost::signals2::scoped_connection;
 
 /// Offers fast access to the routes file. The table is maintained
 /// by a background thread so that file access doesn't cause blocking.
-class DomainMap
-{
+class DomainMap {
 public:
-	class JsonpConfig
-	{
-	public:
-		enum Mode
-		{
-			Basic,
-			Extended
-		};
+    class JsonpConfig {
+    public:
+        enum Mode { Basic, Extended };
 
-		Mode mode;
-		QByteArray callbackParam;
-		QByteArray bodyParam;
-		QByteArray defaultCallback;
-		QString defaultMethod;
+        Mode mode;
+        QByteArray callbackParam;
+        QByteArray bodyParam;
+        QByteArray defaultCallback;
+        QString defaultMethod;
 
-		JsonpConfig() :
-			mode(Extended)
-		{
-		}
-	};
+        JsonpConfig() : mode(Extended) {}
+    };
 
-	enum Protocol
-	{
-		Http,
-		WebSocket
-	};
+    enum Protocol { Http, WebSocket };
 
-	class ZhttpRoute
-	{
-	public:
-		QString baseSpec;
-		bool req;
-		int ipcFileMode;
+    class ZhttpRoute {
+    public:
+        QString baseSpec;
+        bool req;
+        int ipcFileMode;
 
-		ZhttpRoute() :
-			req(false),
-			ipcFileMode(-1)
-		{
-		}
+        ZhttpRoute() : req(false), ipcFileMode(-1) {}
 
-		bool isNull() const
-		{
-			return baseSpec.isEmpty();
-		}
+        bool isNull() const { return baseSpec.isEmpty(); }
 
-		bool operator==(const ZhttpRoute &other) const
-		{
-			// Only compare spec
-			return (baseSpec == other.baseSpec);
-		}
-	};
+        bool operator==(const ZhttpRoute &other) const {
+            // Only compare spec
+            return (baseSpec == other.baseSpec);
+        }
+    };
 
-	class Target
-	{
-	public:
-		enum Type
-		{
-			Default,
-			Custom,
-			Test
-		};
+    class Target {
+    public:
+        enum Type { Default, Custom, Test };
 
-		Type type;
-		QString connectHost;
-		int connectPort;
-		ZhttpRoute zhttpRoute;
-		bool ssl; // Use https
-		bool trusted; // Bypass zurl access policies
-		bool trustConnectHost; // Verify cert against target host
-		bool insecure; // Ignore server certificate validity
-		QString host; // Override input host
-		QStringList subscriptions; // Implicit subscriptions
-		bool overHttp; // Use websocket-over-http protocol
-		bool oneEvent; // Send one event at a time with overHttp
-		QString clientCert;
-		QString clientKey;
+        Type type;
+        QString connectHost;
+        int connectPort;
+        ZhttpRoute zhttpRoute;
+        bool ssl;                  // Use https
+        bool trusted;              // Bypass zurl access policies
+        bool trustConnectHost;     // Verify cert against target host
+        bool insecure;             // Ignore server certificate validity
+        QString host;              // Override input host
+        QStringList subscriptions; // Implicit subscriptions
+        bool overHttp;             // Use websocket-over-http protocol
+        bool oneEvent;             // Send one event at a time with overHttp
+        QString clientCert;
+        QString clientKey;
 
-		Target() :
-			type(Default),
-			connectPort(-1),
-			ssl(false),
-			trusted(false),
-			trustConnectHost(false),
-			insecure(false),
-			overHttp(false),
-			oneEvent(false)
-		{
-		}
-	};
+        Target()
+            : type(Default),
+              connectPort(-1),
+              ssl(false),
+              trusted(false),
+              trustConnectHost(false),
+              insecure(false),
+              overHttp(false),
+              oneEvent(false) {}
+    };
 
-	class Entry
-	{
-	public:
-		QByteArray id;
-		QByteArray pathBeg;
-		QByteArray sigIss;
-		Jwt::EncodingKey sigKey;
-		QByteArray prefix;
-		bool origHeaders;
-		QString asHost;
-		int pathRemove;
-		QByteArray pathPrepend;
-		bool debug;
-		bool autoCrossOrigin;
-		JsonpConfig jsonpConfig;
-		bool session;
-		QByteArray sockJsPath;
-		QByteArray sockJsAsPath;
-		HttpHeaders headers;
-		bool separateStats;
-		bool grip;
-		QList<Target> targets;
-		int logLevel;
+    class Entry {
+    public:
+        QByteArray id;
+        QByteArray pathBeg;
+        QByteArray sigIss;
+        Jwt::EncodingKey sigKey;
+        QByteArray prefix;
+        bool origHeaders;
+        QString asHost;
+        int pathRemove;
+        QByteArray pathPrepend;
+        bool debug;
+        bool autoCrossOrigin;
+        JsonpConfig jsonpConfig;
+        bool session;
+        QByteArray sockJsPath;
+        QByteArray sockJsAsPath;
+        HttpHeaders headers;
+        bool separateStats;
+        bool grip;
+        QList<Target> targets;
+        int logLevel;
 
-		bool isNull() const
-		{
-			return targets.isEmpty();
-		}
+        bool isNull() const { return targets.isEmpty(); }
 
-		QByteArray statsRoute() const
-		{
-			if(separateStats)
-				return id;
-			else
-				return QByteArray(); // Global stats
-		}
+        QByteArray statsRoute() const {
+            if (separateStats)
+                return id;
+            else
+                return QByteArray(); // Global stats
+        }
 
-		Entry() :
-			origHeaders(false),
-			pathRemove(0),
-			debug(false),
-			autoCrossOrigin(false),
-			session(false),
-			separateStats(false),
-			grip(true),
-			logLevel(LOG_LEVEL_DEBUG)
-		{
-		}
-	};
+        Entry()
+            : origHeaders(false),
+              pathRemove(0),
+              debug(false),
+              autoCrossOrigin(false),
+              session(false),
+              separateStats(false),
+              grip(true),
+              logLevel(LOG_LEVEL_DEBUG) {}
+    };
 
-	DomainMap();
-	DomainMap(const QString &fileName);
-	~DomainMap();
+    DomainMap();
+    DomainMap(const QString &fileName);
+    ~DomainMap();
 
-	// Shouldn't really ever need to call this, but it's here in case the
-	// underlying file watching doesn't work
-	void reload();
+    // Shouldn't really ever need to call this, but it's here in case the
+    // underlying file watching doesn't work
+    void reload();
 
-	bool isIdShared(const QString &id) const;
-	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
-	Entry entry(const QString &id) const;
+    bool isIdShared(const QString &id) const;
+    Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
+    Entry entry(const QString &id) const;
 
-	QList<ZhttpRoute> zhttpRoutes() const;
+    QList<ZhttpRoute> zhttpRoutes() const;
 
-	bool addRouteLine(const QString &line);
+    bool addRouteLine(const QString &line);
 
-	Signal changed;
+    Signal changed;
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 
-	class Thread;
-	class Worker;
+    class Thread;
+    class Worker;
 };
 
 #endif

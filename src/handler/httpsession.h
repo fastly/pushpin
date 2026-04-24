@@ -24,16 +24,16 @@
 #ifndef HTTPSESSION_H
 #define HTTPSESSION_H
 
-#include <boost/signals2.hpp>
+#include "callback.h"
+#include "clientsession.h"
+#include "filter.h"
+#include "inspectdata.h"
+#include "instruct.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
-#include "callback.h"
-#include "inspectdata.h"
-#include "zhttprequest.h"
-#include "instruct.h"
-#include "filter.h"
-#include "clientsession.h"
 #include "url.h"
+#include "zhttprequest.h"
+#include <boost/signals2.hpp>
 
 // Each session can have a bunch of timers:
 // incoming request
@@ -41,7 +41,8 @@
 // 2 additional timers
 // filter timers
 // a few more just in case
-#define TIMERS_PER_HTTPSESSION ((TIMERS_PER_ZHTTPREQUEST * 2) + 2 + TIMERS_PER_MESSAGEFILTERSTACK + 4)
+#define TIMERS_PER_HTTPSESSION                                                                     \
+    ((TIMERS_PER_ZHTTPREQUEST * 2) + 2 + TIMERS_PER_MESSAGEFILTERSTACK + 4)
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -53,73 +54,74 @@ class PublishLastIds;
 class HttpSessionUpdateManager;
 class RetryRequestPacket;
 
-class HttpSession : public ClientSession
-{
+class HttpSession : public ClientSession {
 public:
-	class AcceptData
-	{
-	public:
-		QByteArray from;
-		QHostAddress logicalPeerAddress;
-		bool debug;
-		bool isRetry;
-		bool autoCrossOrigin;
-		QByteArray jsonpCallback;
-		bool jsonpExtendedResponse;
-		int unreportedTime;
-		HttpRequestData requestData;
-		QString route;
-		QString statsRoute;
-		QString channelPrefix;
-		int logLevel;
-		QSet<QString> implicitChannels;
-		bool trusted;
-		bool responseSent;
-		QString sid;
-		bool haveInspectInfo;
-		InspectData inspectInfo;
+    class AcceptData {
+    public:
+        QByteArray from;
+        QHostAddress logicalPeerAddress;
+        bool debug;
+        bool isRetry;
+        bool autoCrossOrigin;
+        QByteArray jsonpCallback;
+        bool jsonpExtendedResponse;
+        int unreportedTime;
+        HttpRequestData requestData;
+        QString route;
+        QString statsRoute;
+        QString channelPrefix;
+        int logLevel;
+        QSet<QString> implicitChannels;
+        bool trusted;
+        bool responseSent;
+        QString sid;
+        bool haveInspectInfo;
+        InspectData inspectInfo;
 
-		AcceptData() :
-			debug(false),
-			isRetry(false),
-			autoCrossOrigin(false),
-			jsonpExtendedResponse(false),
-			unreportedTime(-1),
-			logLevel(-1),
-			trusted(false),
-			responseSent(false),
-			haveInspectInfo(false)
-		{
-		}
-	};
+        AcceptData()
+            : debug(false),
+              isRetry(false),
+              autoCrossOrigin(false),
+              jsonpExtendedResponse(false),
+              unreportedTime(-1),
+              logLevel(-1),
+              trusted(false),
+              responseSent(false),
+              haveInspectInfo(false) {}
+    };
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, const std::shared_ptr<HttpSessionUpdateManager> &updateManager, int connectionSubscriptionMax);
-	~HttpSession();
+    HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct,
+                ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter,
+                const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds,
+                const std::shared_ptr<HttpSessionUpdateManager> &updateManager,
+                int connectionSubscriptionMax);
+    ~HttpSession();
 
-	Instruct::HoldMode holdMode() const;
-	ZhttpRequest::Rid rid() const;
-	Url requestUri() const;
-	bool isRetry() const;
-	QString statsRoute() const;
-	QString sid() const;
-	QHash<QString, Instruct::Channel> channels() const;
-	QHash<QString, QString> meta() const;
-	QByteArray retryToAddress() const;
-	RetryRequestPacket retryPacket() const;
+    Instruct::HoldMode holdMode() const;
+    ZhttpRequest::Rid rid() const;
+    Url requestUri() const;
+    bool isRetry() const;
+    QString statsRoute() const;
+    QString sid() const;
+    QHash<QString, Instruct::Channel> channels() const;
+    QHash<QString, QString> meta() const;
+    QByteArray retryToAddress() const;
+    RetryRequestPacket retryPacket() const;
 
-	void start();
-	void update();
-	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
+    void start();
+    void update();
+    void publish(const PublishItem &item,
+                 const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
-	// NOTE: for performance reasons we use callbacks instead of signals/slots
-	Callback<std::tuple<HttpSession *, const QString &>> & subscribeCallback();
-	Callback<std::tuple<HttpSession *, const QString &>> & unsubscribeCallback();
-	Callback<std::tuple<HttpSession *>> & finishedCallback();
+    // NOTE: for performance reasons we use callbacks instead of signals/slots
+    Callback<std::tuple<HttpSession *, const QString &>> &subscribeCallback();
+    Callback<std::tuple<HttpSession *, const QString &>> &unsubscribeCallback();
+    Callback<std::tuple<HttpSession *>> &finishedCallback();
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
 #endif

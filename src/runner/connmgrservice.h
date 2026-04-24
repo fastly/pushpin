@@ -23,35 +23,24 @@
 #ifndef CONNMGRSERVICE_H
 #define CONNMGRSERVICE_H
 
-#include "service.h"
 #include "listenport.h"
+#include "service.h"
 
-class ConnmgrService : public Service
-{
+class ConnmgrService : public Service {
 public:
-	ConnmgrService(
-		const QString &name,
-		const QString &binFile,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &ipcPrefix,
-		const QString &filePrefix,
-		int logLevel,
-		const QString &certsDir,
-		int clientBufferSize,
-		int maxconn,
-		bool allowCompression,
-		const QList<ListenPort> &ports,
-		bool enableClient);
+    ConnmgrService(const QString &name, const QString &binFile, const QString &runDir,
+                   const QString &logDir, const QString &ipcPrefix, const QString &filePrefix,
+                   int logLevel, const QString &certsDir, int clientBufferSize, int maxconn,
+                   bool allowCompression, const QList<ListenPort> &ports, bool enableClient);
 
-	static bool hasClientMode(const QString &binFile);
+    static bool hasClientMode(const QString &binFile);
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QStringList arguments() const;
+    virtual QStringList arguments() const;
 
 private:
-	QStringList args_;
+    QStringList args_;
 };
 
 #endif

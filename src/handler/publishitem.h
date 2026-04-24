@@ -23,31 +23,27 @@
 #ifndef PUBLISHITEM_H
 #define PUBLISHITEM_H
 
-#include <QString>
-#include <QHash>
-#include "variant.h"
 #include "publishformat.h"
+#include "variant.h"
+#include <QHash>
+#include <QString>
 
-class PublishItem
-{
+class PublishItem {
 public:
-	QString channel;
-	QString id;
-	QString prevId;
-	QHash<PublishFormat::Type, PublishFormat> formats;
-	QHash<QString, QString> meta;
-	int size;
-	bool noSeq;
+    QString channel;
+    QString id;
+    QString prevId;
+    QHash<PublishFormat::Type, PublishFormat> formats;
+    QHash<QString, QString> meta;
+    int size;
+    bool noSeq;
 
-	PublishFormat format; // For single format items
+    PublishFormat format; // For single format items
 
-	PublishItem() :
-		size(-1),
-		noSeq(false)
-	{
-	}
+    PublishItem() : size(-1), noSeq(false) {}
 
-	static PublishItem fromVariant(const Variant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
+    static PublishItem fromVariant(const Variant &vitem, const QString &channel = QString(),
+                                   bool *ok = 0, QString *errorMessage = 0);
 };
 
 #endif

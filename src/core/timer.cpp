@@ -23,276 +23,217 @@
 
 #include "timer.h"
 
-#include <assert.h>
+#include "eventloop.h"
+#include "timerwheel.h"
 #include <QDateTime>
 #include <QTimer>
-#include "timerwheel.h"
-#include "eventloop.h"
+#include <assert.h>
 
 #define TICK_DURATION_MS 10
 #define UPDATE_TICKS_MAX 1000
 #define EXPIRES_PER_CYCLE_MAX 100
 
-static int64_t durationToTicksRoundDown(int64_t msec)
-{
-	return msec / TICK_DURATION_MS;
+static int64_t durationToTicksRoundDown(int64_t msec) { return msec / TICK_DURATION_MS; }
+
+static int64_t durationToTicksRoundUp(int64_t msec) {
+    return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
 
-static int64_t durationToTicksRoundUp(int64_t msec)
-{
-	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
-}
+static int64_t ticksToDuration(int64_t ticks) { return ticks * TICK_DURATION_MS; }
 
-static int64_t ticksToDuration(int64_t ticks)
-{
-	return ticks * TICK_DURATION_MS;
-}
-
-class TimerManager
-{
+class TimerManager {
 public:
-	TimerManager(int capacity);
+    TimerManager(int capacity);
 
-	int add(int msec, Timer *r);
-	void remove(int key);
+    int add(int msec, Timer *r);
+    void remove(int key);
 
 private:
-	TimerWheel wheel_;
-	int64_t startTime_;
-	uint64_t currentTicks_;
-	std::unique_ptr<QTimer> t_;
+    TimerWheel wheel_;
+    int64_t startTime_;
+    uint64_t currentTicks_;
+    std::unique_ptr<QTimer> t_;
 
-	void t_timeout();
-	void updateTimeout(int64_t currentTime);
+    void t_timeout();
+    void updateTimeout(int64_t currentTime);
 };
 
-TimerManager::TimerManager(int capacity) :
-	wheel_(TimerWheel(capacity))
-{
-	startTime_ = QDateTime::currentMSecsSinceEpoch();
-	currentTicks_ = 0;
+TimerManager::TimerManager(int capacity) : wheel_(TimerWheel(capacity)) {
+    startTime_ = QDateTime::currentMSecsSinceEpoch();
+    currentTicks_ = 0;
 
-	t_ = std::make_unique<QTimer>();
+    t_ = std::make_unique<QTimer>();
 
-	// safe to not track, since t_ can't outlive this
-	QObject::connect(t_.get(), &QTimer::timeout, [=] {
-		t_timeout();
-	});
+    // safe to not track, since t_ can't outlive this
+    QObject::connect(t_.get(), &QTimer::timeout, [=] { t_timeout(); });
 
-	t_->setSingleShot(true);
+    t_->setSingleShot(true);
 }
 
-int TimerManager::add(int msec, Timer *r)
-{
-	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+int TimerManager::add(int msec, Timer *r) {
+    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	int64_t expiresTicks;
-	if(msec <= 0)
-	{
-		// For timeouts of zero, set immediate expiration with no rounding up
-		expiresTicks = currentTicks_;
-	}
-	else
-	{
-		// expireTime must be >= startTime_
-		int64_t expireTime = qMax(currentTime + msec, startTime_);
+    int64_t expiresTicks;
+    if (msec <= 0) {
+        // For timeouts of zero, set immediate expiration with no rounding up
+        expiresTicks = currentTicks_;
+    } else {
+        // expireTime must be >= startTime_
+        int64_t expireTime = qMax(currentTime + msec, startTime_);
 
-		expiresTicks = durationToTicksRoundUp(expireTime - startTime_);
-	}
+        expiresTicks = durationToTicksRoundUp(expireTime - startTime_);
+    }
 
-	int id = wheel_.add(expiresTicks, (size_t)r);
+    int id = wheel_.add(expiresTicks, (size_t)r);
 
-	if(id >= 0)
-	{
-		updateTimeout(currentTime);
-	}
+    if (id >= 0) {
+        updateTimeout(currentTime);
+    }
 
-	return id;
+    return id;
 }
 
-void TimerManager::remove(int key)
-{
-	wheel_.remove(key);
+void TimerManager::remove(int key) {
+    wheel_.remove(key);
 
-	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	updateTimeout(currentTime);
+    updateTimeout(currentTime);
 }
 
-void TimerManager::t_timeout()
-{
-	int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+void TimerManager::t_timeout() {
+    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	// Time must go forward
-	if(currentTime > startTime_)
-	{
-		currentTicks_ = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
+    // Time must go forward
+    if (currentTime > startTime_) {
+        currentTicks_ = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
 
-		wheel_.update(currentTicks_);
-	}
+        wheel_.update(currentTicks_);
+    }
 
-	for(int i = 0; i < EXPIRES_PER_CYCLE_MAX; ++i)
-	{
-		TimerWheel::Expired expired = wheel_.takeExpired();
+    for (int i = 0; i < EXPIRES_PER_CYCLE_MAX; ++i) {
+        TimerWheel::Expired expired = wheel_.takeExpired();
 
-		if(expired.key < 0)
-		{
-			break;
-		}
+        if (expired.key < 0) {
+            break;
+        }
 
-		Timer *r = (Timer *)expired.userData;
+        Timer *r = (Timer *)expired.userData;
 
-		r->timerReady();
-	}
+        r->timerReady();
+    }
 
-	updateTimeout(currentTime);
+    updateTimeout(currentTime);
 }
 
-void TimerManager::updateTimeout(int64_t currentTime)
-{
-	int64_t timeoutTicks = wheel_.timeout();
+void TimerManager::updateTimeout(int64_t currentTime) {
+    int64_t timeoutTicks = wheel_.timeout();
 
-	if(timeoutTicks >= 0)
-	{
-		// currentTime must be >= startTime_
-		currentTime = qMax(currentTime, startTime_);
+    if (timeoutTicks >= 0) {
+        // currentTime must be >= startTime_
+        currentTime = qMax(currentTime, startTime_);
 
-		uint64_t currentTicks = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
+        uint64_t currentTicks = (uint64_t)durationToTicksRoundDown(currentTime - startTime_);
 
-		// Time must go forward
-		currentTicks = qMax(currentTicks, currentTicks_);
+        // Time must go forward
+        currentTicks = qMax(currentTicks, currentTicks_);
 
-		int64_t ticksSinceWheelUpdate = (int64_t)(currentTicks - currentTicks_);
+        int64_t ticksSinceWheelUpdate = (int64_t)(currentTicks - currentTicks_);
 
-		// Reduce the timeout by the time already elapsed
-		timeoutTicks = qMax(timeoutTicks - ticksSinceWheelUpdate, (int64_t)0);
+        // Reduce the timeout by the time already elapsed
+        timeoutTicks = qMax(timeoutTicks - ticksSinceWheelUpdate, (int64_t)0);
 
-		// Cap the timeout so the wheel is regularly updated
-		int64_t maxTimeoutTicks = qMax(UPDATE_TICKS_MAX - ticksSinceWheelUpdate, (int64_t)0);
-		timeoutTicks = qMin(timeoutTicks, maxTimeoutTicks);
+        // Cap the timeout so the wheel is regularly updated
+        int64_t maxTimeoutTicks = qMax(UPDATE_TICKS_MAX - ticksSinceWheelUpdate, (int64_t)0);
+        timeoutTicks = qMin(timeoutTicks, maxTimeoutTicks);
 
-		int msec = ticksToDuration(timeoutTicks);
+        int msec = ticksToDuration(timeoutTicks);
 
-		t_->start(msec);
-	}
-	else
-	{
-		t_->stop();
-	}
+        t_->start(msec);
+    } else {
+        t_->stop();
+    }
 }
 
 static thread_local TimerManager *g_manager = 0;
 
-Timer::Timer() :
-	loop_(EventLoop::instance()),
-	singleShot_(false),
-	interval_(0),
-	timerId_(-1)
-{
+Timer::Timer() : loop_(EventLoop::instance()), singleShot_(false), interval_(0), timerId_(-1) {}
+
+Timer::~Timer() { stop(); }
+
+bool Timer::isActive() const { return (timerId_ >= 0); }
+
+void Timer::setSingleShot(bool singleShot) { singleShot_ = singleShot; }
+
+void Timer::setInterval(int msec) { interval_ = msec; }
+
+void Timer::start(int msec) {
+    setInterval(msec);
+    start();
 }
 
-Timer::~Timer()
-{
-	stop();
+void Timer::start() {
+    stop();
+
+    if (loop_) {
+        // If the rust-based eventloop is available, use it
+
+        int id = loop_->registerTimer(interval_, Timer::cb_timer_activated, this);
+        assert(id >= 0);
+
+        timerId_ = id;
+    } else {
+        // Else fall back to qt eventloop
+
+        // Must call Timer::init first
+        assert(g_manager);
+
+        int id = g_manager->add(interval_, this);
+        assert(id >= 0);
+
+        timerId_ = id;
+    }
 }
 
-bool Timer::isActive() const
-{
-	return (timerId_ >= 0);
+void Timer::stop() {
+    if (timerId_ >= 0) {
+        if (loop_) {
+            loop_->deregister(timerId_);
+        } else {
+            assert(g_manager);
+
+            g_manager->remove(timerId_);
+        }
+
+        timerId_ = -1;
+    }
 }
 
-void Timer::setSingleShot(bool singleShot)
-{
-	singleShot_ = singleShot;
+void Timer::cb_timer_activated(void *ctx, uint8_t readiness) {
+    Q_UNUSED(readiness);
+
+    Timer *self = (Timer *)ctx;
+
+    self->timerReady();
 }
 
-void Timer::setInterval(int msec)
-{
-	interval_ = msec;
+void Timer::timerReady() {
+    timerId_ = -1;
+
+    if (!singleShot_) {
+        start();
+    }
+
+    timeout();
 }
 
-void Timer::start(int msec)
-{
-	setInterval(msec);
-	start();
+void Timer::init(int capacity) {
+    assert(!g_manager);
+
+    g_manager = new TimerManager(capacity);
 }
 
-void Timer::start()
-{
-	stop();
-
-	if(loop_)
-	{
-		// If the rust-based eventloop is available, use it
-
-		int id = loop_->registerTimer(interval_, Timer::cb_timer_activated, this);
-		assert(id >= 0);
-
-		timerId_ = id;
-	}
-	else
-	{
-		// Else fall back to qt eventloop
-
-		// Must call Timer::init first
-		assert(g_manager);
-
-		int id = g_manager->add(interval_, this);
-		assert(id >= 0);
-
-		timerId_ = id;
-	}
-}
-
-void Timer::stop()
-{
-	if(timerId_ >= 0)
-	{
-		if(loop_)
-		{
-			loop_->deregister(timerId_);
-		}
-		else
-		{
-			assert(g_manager);
-
-			g_manager->remove(timerId_);
-		}
-
-		timerId_ = -1;
-	}
-}
-
-void Timer::cb_timer_activated(void *ctx, uint8_t readiness)
-{
-	Q_UNUSED(readiness);
-
-	Timer *self = (Timer *)ctx;
-
-	self->timerReady();
-}
-
-void Timer::timerReady()
-{
-	timerId_ = -1;
-
-	if(!singleShot_)
-	{
-		start();
-	}
-
-	timeout();
-}
-
-void Timer::init(int capacity)
-{
-	assert(!g_manager);
-
-	g_manager = new TimerManager(capacity);
-}
-
-void Timer::deinit()
-{
-	delete g_manager;
-	g_manager = 0;
+void Timer::deinit() {
+    delete g_manager;
+    g_manager = 0;
 }

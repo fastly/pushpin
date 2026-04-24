@@ -25,8 +25,8 @@
 #ifndef ZMQSOCKET_H
 #define ZMQSOCKET_H
 
-#include <boost/signals2.hpp>
 #include "cowbytearray.h"
+#include <boost/signals2.hpp>
 
 class CowString;
 
@@ -36,84 +36,72 @@ using Connection = boost::signals2::scoped_connection;
 
 class ZmqContext;
 
-class ZmqSocket
-{
+class ZmqSocket {
 public:
-	enum Type
-	{
-		Pair,
-		Dealer,
-		Router,
-		Req,
-		Rep,
-		Push,
-		Pull,
-		Pub,
-		Sub
-	};
+    enum Type { Pair, Dealer, Router, Req, Rep, Push, Pull, Pub, Sub };
 
-	ZmqSocket(Type type);
-	ZmqSocket(Type type, ZmqContext *context);
-	~ZmqSocket();
+    ZmqSocket(Type type);
+    ZmqSocket(Type type, ZmqContext *context);
+    ~ZmqSocket();
 
-	// 0 means drop queue and don't block, -1 means infinite (default = -1)
-	void setShutdownWaitTime(int msecs);
+    // 0 means drop queue and don't block, -1 means infinite (default = -1)
+    void setShutdownWaitTime(int msecs);
 
-	// If enabled, messages are queued internally until the socket is able
-	// to accept them. The messagesWritten signal is emitted once writes
-	// have succeeded. Otherwise, messages are passed directly to
-	// zmq_send and dropped if they can't be written. Default enabled.
-	// disabling the queue is good for socket types where the HWM has a
-	// drop policy. Enabling the queue is good when the HWM has a
-	// blocking policy.
-	void setWriteQueueEnabled(bool enable);
+    // If enabled, messages are queued internally until the socket is able
+    // to accept them. The messagesWritten signal is emitted once writes
+    // have succeeded. Otherwise, messages are passed directly to
+    // zmq_send and dropped if they can't be written. Default enabled.
+    // disabling the queue is good for socket types where the HWM has a
+    // drop policy. Enabling the queue is good when the HWM has a
+    // blocking policy.
+    void setWriteQueueEnabled(bool enable);
 
-	void subscribe(const CowByteArray &filter);
-	void unsubscribe(const CowByteArray &filter);
+    void subscribe(const CowByteArray &filter);
+    void unsubscribe(const CowByteArray &filter);
 
-	CowByteArray identity() const;
-	void setIdentity(const CowByteArray &id);
+    CowByteArray identity() const;
+    void setIdentity(const CowByteArray &id);
 
-	// deprecated, zmq 2.x
-	int hwm() const;
-	void setHwm(int hwm);
+    // deprecated, zmq 2.x
+    int hwm() const;
+    void setHwm(int hwm);
 
-	int sendHwm() const;
-	int receiveHwm() const;
-	void setSendHwm(int hwm);
-	void setReceiveHwm(int hwm);
+    int sendHwm() const;
+    int receiveHwm() const;
+    void setSendHwm(int hwm);
+    void setReceiveHwm(int hwm);
 
-	void setImmediateEnabled(bool on);
-	void setRouterMandatoryEnabled(bool on);
-	void setProbeRouterEnabled(bool on);
+    void setImmediateEnabled(bool on);
+    void setRouterMandatoryEnabled(bool on);
+    void setProbeRouterEnabled(bool on);
 
-	void setTcpKeepAliveEnabled(bool on);
-	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
+    void setTcpKeepAliveEnabled(bool on);
+    void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
 
-	void connectToAddress(const CowString &addr);
-	bool bind(const CowString &addr);
+    void connectToAddress(const CowString &addr);
+    bool bind(const CowString &addr);
 
-	bool canRead() const;
+    bool canRead() const;
 
-	// Returns true if this object believes the next write to zmq will
-	// succeed immediately. Note that it starts out false until the
-	// value is discovered. Also note that the write could still end up
-	// needing to be queued, if the conditions change in between.
-	bool canWriteImmediately() const;
+    // Returns true if this object believes the next write to zmq will
+    // succeed immediately. Note that it starts out false until the
+    // value is discovered. Also note that the write could still end up
+    // needing to be queued, if the conditions change in between.
+    bool canWriteImmediately() const;
 
-	CowByteArrayList read();
-	void write(const CowByteArrayList &message);
+    CowByteArrayList read();
+    void write(const CowByteArrayList &message);
 
-	Signal readyRead;
-	SignalInt messagesWritten;
+    Signal readyRead;
+    SignalInt messagesWritten;
 
 private:
-	ZmqSocket(const ZmqSocket &) = delete;
-	ZmqSocket &operator=(const ZmqSocket &) = delete;
+    ZmqSocket(const ZmqSocket &) = delete;
+    ZmqSocket &operator=(const ZmqSocket &) = delete;
 
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
 #endif

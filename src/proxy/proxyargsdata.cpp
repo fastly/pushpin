@@ -23,15 +23,13 @@
 
 #include "proxyargsdata.h"
 
-ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgs *argsFfi)
-{
-	configFile = QString::fromUtf8(argsFfi->config_file);
-	logFile    = QString::fromUtf8(argsFfi->log_file);
-	logLevel   = argsFfi->log_level;
-	ipcPrefix  = QString::fromUtf8(argsFfi->ipc_prefix);
+ProxyArgsData::ProxyArgsData(const ffi::ProxyCliArgs *argsFfi) {
+    configFile = QString::fromUtf8(argsFfi->config_file);
+    logFile = QString::fromUtf8(argsFfi->log_file);
+    logLevel = argsFfi->log_level;
+    ipcPrefix = QString::fromUtf8(argsFfi->ipc_prefix);
 
-	for (unsigned int i = 0; i < argsFfi->routes_count; ++i)
-	{
-		routeLines << QString::fromUtf8(argsFfi->routes[i]);
-	}
+    for (unsigned int i = 0; i < argsFfi->routes_count; ++i) {
+        routeLines << QString::fromUtf8(argsFfi->routes[i]);
+    }
 }

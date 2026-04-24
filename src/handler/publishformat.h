@@ -23,70 +23,49 @@
 #ifndef PUBLISHFORMAT_H
 #define PUBLISHFORMAT_H
 
+#include "httpheaders.h"
+#include "variant.h"
 #include <QByteArray>
 #include <QString>
-#include "variant.h"
-#include "httpheaders.h"
 
-class PublishFormat
-{
+class PublishFormat {
 public:
-	enum Type
-	{
-		HttpResponse,
-		HttpStream,
-		WebSocketMessage
-	};
+    enum Type { HttpResponse, HttpStream, WebSocketMessage };
 
-	enum Action
-	{
-		Send,
-		Hint,
-		Refresh,
-		Close
-	};
+    enum Action { Send, Hint, Refresh, Close };
 
-	enum MessageType
-	{
-		Text,
-		Binary,
-		Ping,
-		Pong
-	};
+    enum MessageType { Text, Binary, Ping, Pong };
 
-	Type type;
-	Action action; // Response/stream/ws
-	int code; // Response/ws
-	QByteArray reason; // Response/ws
-	HttpHeaders headers; // Response
-	QByteArray body; // Response/stream/ws
-	bool haveBodyPatch; // Response
-	VariantList bodyPatch; // Response
-	MessageType messageType; // Ws
-	bool haveContentFilters;
-	QStringList contentFilters; // Response/stream/ws
+    Type type;
+    Action action;           // Response/stream/ws
+    int code;                // Response/ws
+    QByteArray reason;       // Response/ws
+    HttpHeaders headers;     // Response
+    QByteArray body;         // Response/stream/ws
+    bool haveBodyPatch;      // Response
+    VariantList bodyPatch;   // Response
+    MessageType messageType; // Ws
+    bool haveContentFilters;
+    QStringList contentFilters; // Response/stream/ws
 
-	PublishFormat() :
-		type((Type)-1),
-		action(Send),
-		code(-1),
-		haveBodyPatch(false),
-		messageType((MessageType)-1),
-		haveContentFilters(false)
-	{
-	}
+    PublishFormat()
+        : type((Type)-1),
+          action(Send),
+          code(-1),
+          haveBodyPatch(false),
+          messageType((MessageType)-1),
+          haveContentFilters(false) {}
 
-	PublishFormat(Type _type) :
-		type(_type),
-		action(Send),
-		code(-1),
-		haveBodyPatch(false),
-		messageType((MessageType)-1),
-		haveContentFilters(false)
-	{
-	}
+    PublishFormat(Type _type)
+        : type(_type),
+          action(Send),
+          code(-1),
+          haveBodyPatch(false),
+          messageType((MessageType)-1),
+          haveContentFilters(false) {}
 
-	static PublishFormat fromVariant(Type type, const Variant &in, bool *ok = 0, QString *errorMessage = 0);
+    static PublishFormat fromVariant(Type type, const Variant &in, bool *ok = 0,
+                                     QString *errorMessage = 0);
 };
 
 #endif

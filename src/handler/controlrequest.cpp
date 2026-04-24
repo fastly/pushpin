@@ -23,103 +23,89 @@
 
 #include "controlrequest.h"
 
+#include "deferred.h"
 #include "packet/statspacket.h"
 #include "qtcompat.h"
 #include "variant.h"
-#include "deferred.h"
 #include "zrpcrequest.h"
 
 namespace ControlRequest {
 
-class ConnCheck : public Deferred
-{
+class ConnCheck : public Deferred {
 public:
-	ConnCheck(ZrpcManager *controlClient, const CidSet &cids)
-	{
-		req = std::make_unique<ZrpcRequest>(controlClient);
-		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
+    ConnCheck(ZrpcManager *controlClient, const CidSet &cids) {
+        req = std::make_unique<ZrpcRequest>(controlClient);
+        finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this));
 
-		VariantList vcids;
-		for(const QString &cid : cids)
-			vcids += cid.toUtf8();
+        VariantList vcids;
+        for (const QString &cid : cids)
+            vcids += cid.toUtf8();
 
-		VariantHash args;
-		args["ids"] = vcids;
-		req->start("conncheck", args);
-	}
+        VariantHash args;
+        args["ids"] = vcids;
+        req->start("conncheck", args);
+    }
 
 private:
-	std::unique_ptr<ZrpcRequest> req;
-	Connection finishedConnection;
+    std::unique_ptr<ZrpcRequest> req;
+    Connection finishedConnection;
 
-	void req_finished()
-	{
-		if(req->success())
-		{
-			Variant vresult = req->result();
-			if(typeId(vresult) != VariantType::List)
-			{
-				setFinished(false);
-				return;
-			}
+    void req_finished() {
+        if (req->success()) {
+            Variant vresult = req->result();
+            if (typeId(vresult) != VariantType::List) {
+                setFinished(false);
+                return;
+            }
 
-			VariantList result = vresult.toList();
+            VariantList result = vresult.toList();
 
-			CidSet out;
-			for(const Variant &vcid : result)
-			{
-				if(typeId(vcid) != VariantType::ByteArray)
-				{
-					setFinished(false);
-					return;
-				}
+            CidSet out;
+            for (const Variant &vcid : result) {
+                if (typeId(vcid) != VariantType::ByteArray) {
+                    setFinished(false);
+                    return;
+                }
 
-				out += QString::fromUtf8(vcid.toByteArray());
-			}
+                out += QString::fromUtf8(vcid.toByteArray());
+            }
 
-			setFinished(true, Variant::fromValue<CidSet>(out));
-		}
-		else
-		{
-			setFinished(false, req->errorCondition());
-		}
-	}
+            setFinished(true, Variant::fromValue<CidSet>(out));
+        } else {
+            setFinished(false, req->errorCondition());
+        }
+    }
 };
 
-class Refresh : public Deferred
-{
+class Refresh : public Deferred {
 public:
-	Refresh(ZrpcManager *controlClient, const QByteArray &cid)
-	{
-		req = std::make_unique<ZrpcRequest>(controlClient);
-		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this));
+    Refresh(ZrpcManager *controlClient, const QByteArray &cid) {
+        req = std::make_unique<ZrpcRequest>(controlClient);
+        finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this));
 
-		VariantHash args;
-		args["cid"] = cid;
-		req->start("refresh", args);
-	}
+        VariantHash args;
+        args["cid"] = cid;
+        req->start("refresh", args);
+    }
 
 private:
-	std::unique_ptr<ZrpcRequest> req;
-	Connection finishedConnection;
+    std::unique_ptr<ZrpcRequest> req;
+    Connection finishedConnection;
 
-	void req_finished()
-	{
-		if(req->success())
-			setFinished(true);
-		else
-			setFinished(false, req->errorConditionString());
-	}
+    void req_finished() {
+        if (req->success())
+            setFinished(true);
+        else
+            setFinished(false, req->errorConditionString());
+    }
 };
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
-{
-	return new ConnCheck(controlClient, cids);
+Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids) {
+    return new ConnCheck(controlClient, cids);
 }
 
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
-{
-	return new Refresh(controlClient, cid);
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid) {
+    return new Refresh(controlClient, cid);
 }
 
-}
+} // namespace ControlRequest

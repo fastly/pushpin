@@ -20,314 +20,298 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <unordered_map>
+#include "filter.h"
+#include "log.h"
+#include "ratelimiter.h"
+#include "test.h"
+#include "zhttpmanager.h"
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <boost/signals2.hpp>
-#include "test.h"
-#include "log.h"
-#include "zhttpmanager.h"
-#include "ratelimiter.h"
-#include "filter.h"
+#include <unordered_map>
 
 namespace {
 
-class HttpFilterServer
-{
+class HttpFilterServer {
 public:
-	std::unique_ptr<ZhttpManager> zhttpIn;
-	std::unordered_map<ZhttpRequest*, std::unique_ptr<ZhttpRequest>> reqs;
+    std::unique_ptr<ZhttpManager> zhttpIn;
+    std::unordered_map<ZhttpRequest *, std::unique_ptr<ZhttpRequest>> reqs;
 
-	HttpFilterServer(const QDir &workDir)
-	{
-		zhttpIn = std::make_unique<ZhttpManager>();
-		zhttpIn->setInstanceId("filter-test-server");
-		zhttpIn->setBind(true);
-		zhttpIn->setServerInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
-		zhttpIn->setServerInStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
-		zhttpIn->setServerOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
-		zhttpIn->requestReady.connect(boost::bind(&HttpFilterServer::zhttpIn_requestReady, this));
-	}
+    HttpFilterServer(const QDir &workDir) {
+        zhttpIn = std::make_unique<ZhttpManager>();
+        zhttpIn->setInstanceId("filter-test-server");
+        zhttpIn->setBind(true);
+        zhttpIn->setServerInSpecs(QStringList()
+                                  << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
+        zhttpIn->setServerInStreamSpecs(
+            QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
+        zhttpIn->setServerOutSpecs(QStringList()
+                                   << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
+        zhttpIn->requestReady.connect(boost::bind(&HttpFilterServer::zhttpIn_requestReady, this));
+    }
 
-	void zhttpIn_requestReady()
-	{
-		ZhttpRequest *req = zhttpIn->takeNextRequest();
-		if(!req)
-			return;
+    void zhttpIn_requestReady() {
+        ZhttpRequest *req = zhttpIn->takeNextRequest();
+        if (!req)
+            return;
 
-		req->readyRead.connect(boost::bind(&HttpFilterServer::req_readyRead, this, req));
-		req->bytesWritten.connect(boost::bind(&HttpFilterServer::req_bytesWritten, this, req, boost::placeholders::_1));
+        req->readyRead.connect(boost::bind(&HttpFilterServer::req_readyRead, this, req));
+        req->bytesWritten.connect(
+            boost::bind(&HttpFilterServer::req_bytesWritten, this, req, boost::placeholders::_1));
 
-		reqs.emplace(std::make_pair(req, std::unique_ptr<ZhttpRequest>(req)));
+        reqs.emplace(std::make_pair(req, std::unique_ptr<ZhttpRequest>(req)));
 
-		req_readyRead(req);
-	}
+        req_readyRead(req);
+    }
 
-	void req_readyRead(ZhttpRequest *req)
-	{
-		if(!req->isInputFinished())
-			return;
+    void req_readyRead(ZhttpRequest *req) {
+        if (!req->isInputFinished())
+            return;
 
-		handle(req);
-	}
+        handle(req);
+    }
 
-	void req_bytesWritten(ZhttpRequest *req, int written)
-	{
-		Q_UNUSED(written);
+    void req_bytesWritten(ZhttpRequest *req, int written) {
+        Q_UNUSED(written);
 
-		if(!req->isFinished())
-			return;
+        if (!req->isFinished())
+            return;
 
-		reqs.erase(req);
-	}
+        reqs.erase(req);
+    }
 
-	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
-	{
-		req->beginResponse(code, reason, headers);
-		req->writeBody(body);
-		req->endBody();
-	}
+    void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers,
+                 const QByteArray &body) {
+        req->beginResponse(code, reason, headers);
+        req->writeBody(body);
+        req->endBody();
+    }
 
-	void respondOk(ZhttpRequest *req, int code, bool accept, const QByteArray &body)
-	{
-		HttpHeaders headers;
-		if(!accept)
-			headers += HttpHeader("Action", "drop");
+    void respondOk(ZhttpRequest *req, int code, bool accept, const QByteArray &body) {
+        HttpHeaders headers;
+        if (!accept)
+            headers += HttpHeader("Action", "drop");
 
-		respond(req, code, "OK", headers, body);
-	}
+        respond(req, code, "OK", headers, body);
+    }
 
-	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QByteArray &body)
-	{
-		respond(req, code, reason, HttpHeaders(), body);
-	}
+    void respondError(ZhttpRequest *req, int code, const QByteArray &reason,
+                      const QByteArray &body) {
+        respond(req, code, reason, HttpHeaders(), body);
+    }
 
-	void handle(ZhttpRequest *req)
-	{
-		if(req->requestMethod() != "POST")
-		{
-			respondError(req, 400, "Bad Request", "Method must be POST\n");
-			return;
-		}
+    void handle(ZhttpRequest *req) {
+        if (req->requestMethod() != "POST") {
+            respondError(req, 400, "Bad Request", "Method must be POST\n");
+            return;
+        }
 
-		Url uri = req->requestUri();
-		QByteArray body = req->readBody();
+        Url uri = req->requestUri();
+        QByteArray body = req->readBody();
 
-		if(uri.path() == "/filter/accept")
-		{
-			respondOk(req, 200, true, "");
-		}
-		else if(uri.path() == "/filter/drop")
-		{
-			respondOk(req, 200, false, "");
-		}
-		else if(uri.path() == "/filter/modify")
-		{
-			if(req->requestHeaders().get("Grip-Last") != "test; last-id=a")
-			{
-				respondError(req, 400, "Bad Request", "Unexpected Grip-Last");
-				return;
-			}
+        if (uri.path() == "/filter/accept") {
+            respondOk(req, 200, true, "");
+        } else if (uri.path() == "/filter/drop") {
+            respondOk(req, 200, false, "");
+        } else if (uri.path() == "/filter/modify") {
+            if (req->requestHeaders().get("Grip-Last") != "test; last-id=a") {
+                respondError(req, 400, "Bad Request", "Unexpected Grip-Last");
+                return;
+            }
 
-			QJsonDocument subMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta").asQByteArray());
-			QJsonObject subMeta = subMetaDoc.object();
-			QJsonDocument pubMetaDoc = QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta").asQByteArray());
-			QJsonObject pubMeta = pubMetaDoc.object();
+            QJsonDocument subMetaDoc =
+                QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta").asQByteArray());
+            QJsonObject subMeta = subMetaDoc.object();
+            QJsonDocument pubMetaDoc =
+                QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta").asQByteArray());
+            QJsonObject pubMeta = pubMetaDoc.object();
 
-			QString prepend = subMeta["prepend"].toString();
-			QString append = pubMeta["append"].toString();
+            QString prepend = subMeta["prepend"].toString();
+            QString append = pubMeta["append"].toString();
 
-			if(!prepend.isEmpty() || !append.isEmpty())
-				respondOk(req, 200, true, prepend.toUtf8() + body + append.toUtf8());
-			else
-				respondOk(req, 204, true, "");
-		}
-		else if(uri.path() == "/filter/large")
-		{
-			respondOk(req, 200, true, QByteArray(1001, 'a'));
-		}
-		else
-		{
-			respondError(req, 400, "Bad Request", "Bad Request\n");
-		}
-	}
+            if (!prepend.isEmpty() || !append.isEmpty())
+                respondOk(req, 200, true, prepend.toUtf8() + body + append.toUtf8());
+            else
+                respondOk(req, 204, true, "");
+        } else if (uri.path() == "/filter/large") {
+            respondOk(req, 200, true, QByteArray(1001, 'a'));
+        } else {
+            respondError(req, 400, "Bad Request", "Bad Request\n");
+        }
+    }
 };
 
-class TestState
-{
+class TestState {
 public:
-	std::unique_ptr<HttpFilterServer> filterServer;
-	std::unique_ptr<ZhttpManager> zhttpOut;
-	std::shared_ptr<RateLimiter> limiter;
+    std::unique_ptr<HttpFilterServer> filterServer;
+    std::unique_ptr<ZhttpManager> zhttpOut;
+    std::shared_ptr<RateLimiter> limiter;
 
-	TestState(std::function<void (int)> loop_wait)
-	{
-		log_setOutputLevel(LOG_LEVEL_WARNING);
+    TestState(std::function<void(int)> loop_wait) {
+        log_setOutputLevel(LOG_LEVEL_WARNING);
 
-		QDir outDir(qgetenv("OUT_DIR"));
-		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
+        QDir outDir(qgetenv("OUT_DIR"));
+        QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
-		filterServer = std::make_unique<HttpFilterServer>(workDir);
+        filterServer = std::make_unique<HttpFilterServer>(workDir);
 
-		zhttpOut = std::make_unique<ZhttpManager>();
+        zhttpOut = std::make_unique<ZhttpManager>();
 
-		limiter = std::make_shared<RateLimiter>();
+        limiter = std::make_shared<RateLimiter>();
 
-		bool connected = false;
-		zhttpOut->probeAcked.connect([&] {
-			connected = true;
-		});
+        bool connected = false;
+        zhttpOut->probeAcked.connect([&] { connected = true; });
 
-		zhttpOut->setInstanceId("filter-test-client");
-		zhttpOut->setProbe(true);
-		zhttpOut->setClientOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
-		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
-		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
+        zhttpOut->setInstanceId("filter-test-client");
+        zhttpOut->setProbe(true);
+        zhttpOut->setClientOutSpecs(QStringList()
+                                    << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
+        zhttpOut->setClientOutStreamSpecs(
+            QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
+        zhttpOut->setClientInSpecs(QStringList()
+                                   << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
 
-		while(!connected)
-			loop_wait(10);
-	}
+        while (!connected)
+            loop_wait(10);
+    }
 
-	~TestState()
-	{
-		limiter.reset();
-		zhttpOut.reset();
-		filterServer.reset();
-	}
+    ~TestState() {
+        limiter.reset();
+        zhttpOut.reset();
+        filterServer.reset();
+    }
 };
 
+} // namespace
+
+static Filter::MessageFilter::Result runMessageFilters(const QStringList &filterNames,
+                                                       const Filter::Context &context,
+                                                       const QByteArray &content,
+                                                       std::function<void(int)> loop_wait) {
+    Filter::MessageFilterStack fs(filterNames);
+
+    bool finished = false;
+    Filter::MessageFilter::Result r;
+
+    fs.finished.connect([&](const Filter::MessageFilter::Result &_r) {
+        finished = true;
+        r = _r;
+    });
+
+    fs.start(context, content);
+
+    while (!finished)
+        loop_wait(10);
+
+    return r;
 }
 
-static Filter::MessageFilter::Result runMessageFilters(const QStringList &filterNames, const Filter::Context &context, const QByteArray &content, std::function<void (int)> loop_wait)
-{
-	Filter::MessageFilterStack fs(filterNames);
+static void messageFilters(std::function<void(int)> loop_wait) {
+    QStringList filterNames = QStringList() << "skip-self" << "var-subst";
 
-	bool finished = false;
-	Filter::MessageFilter::Result r;
+    Filter::Context context;
+    context.subscriptionMeta["user"] = "alice";
 
-	fs.finished.connect([&](const Filter::MessageFilter::Result &_r) {
-		finished = true;
-		r = _r;
-	});
+    QByteArray content = "hello %(user)s";
 
-	fs.start(context, content);
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "hello alice");
+    }
 
-	while(!finished)
-		loop_wait(10);
-
-	return r;
+    {
+        context.publishMeta["sender"] = "alice";
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
+    }
 }
 
-static void messageFilters(std::function<void (int)> loop_wait)
-{
-	QStringList filterNames = QStringList() << "skip-self" << "var-subst";
+static void httpCheck(std::function<void(int)> loop_wait) {
+    TestState state(loop_wait);
 
-	Filter::Context context;
-	context.subscriptionMeta["user"] = "alice";
+    QStringList filterNames = QStringList() << "http-check";
 
-	QByteArray content = "hello %(user)s";
+    Filter::Context context;
+    context.subscriptionMeta["url"] = "/filter/accept";
+    context.zhttpOut = state.zhttpOut.get();
+    context.currentUri = "http://localhost/";
+    context.limiter = state.limiter;
 
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
-		TEST_ASSERT_EQ(r.content, "hello alice");
-	}
+    QByteArray content = "hello world";
 
-	{
-		context.publishMeta["sender"] = "alice";
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
-	}
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "hello world");
+    }
+
+    context.subscriptionMeta["url"] = "/filter/drop";
+
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
+    }
+
+    context.subscriptionMeta["url"] = "/filter/error";
+
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT_EQ(r.errorMessage, "unexpected network request status: code=400");
+    }
 }
 
-static void httpCheck(std::function<void (int)> loop_wait)
-{
-	TestState state(loop_wait);
+static void httpModify(std::function<void(int)> loop_wait) {
+    TestState state(loop_wait);
 
-	QStringList filterNames = QStringList() << "http-check";
+    QStringList filterNames = QStringList() << "http-modify";
 
-	Filter::Context context;
-	context.subscriptionMeta["url"] = "/filter/accept";
-	context.zhttpOut = state.zhttpOut.get();
-	context.currentUri = "http://localhost/";
-	context.limiter = state.limiter;
+    Filter::Context context;
+    context.prevIds["test"] = "a";
+    context.subscriptionMeta["url"] = "/filter/modify";
+    context.zhttpOut = state.zhttpOut.get();
+    context.currentUri = "http://localhost/";
+    context.limiter = state.limiter;
 
-	QByteArray content = "hello world";
+    QByteArray content = "hello world";
 
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
-		TEST_ASSERT_EQ(r.content, "hello world");
-	}
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "hello world");
+    }
 
-	context.subscriptionMeta["url"] = "/filter/drop";
+    context.subscriptionMeta["prepend"] = "<<<";
+    context.publishMeta["append"] = ">>>";
 
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Drop);
-	}
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "<<<hello world>>>");
+    }
 
-	context.subscriptionMeta["url"] = "/filter/error";
+    context.subscriptionMeta.clear();
+    context.publishMeta.clear();
+    context.subscriptionMeta["url"] = "/filter/large";
+    context.responseSizeMax = 1000;
 
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT_EQ(r.errorMessage, "unexpected network request status: code=400");
-	}
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT_EQ(r.errorMessage, "network response exceeded 1000 bytes");
+    }
 }
 
-static void httpModify(std::function<void (int)> loop_wait)
-{
-	TestState state(loop_wait);
+extern "C" int filter_test(ffi::TestException *out_ex) {
+    TEST_CATCH(test_with_event_loop(messageFilters));
+    TEST_CATCH(test_with_event_loop(httpCheck));
+    TEST_CATCH(test_with_event_loop(httpModify));
 
-	QStringList filterNames = QStringList() << "http-modify";
-
-	Filter::Context context;
-	context.prevIds["test"] = "a";
-	context.subscriptionMeta["url"] = "/filter/modify";
-	context.zhttpOut = state.zhttpOut.get();
-	context.currentUri = "http://localhost/";
-	context.limiter = state.limiter;
-
-	QByteArray content = "hello world";
-
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
-		TEST_ASSERT_EQ(r.content, "hello world");
-	}
-
-	context.subscriptionMeta["prepend"] = "<<<";
-	context.publishMeta["append"] = ">>>";
-
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT(r.errorMessage.isNull());
-		TEST_ASSERT_EQ(r.sendAction, Filter::Send);
-		TEST_ASSERT_EQ(r.content, "<<<hello world>>>");
-	}
-
-	context.subscriptionMeta.clear();
-	context.publishMeta.clear();
-	context.subscriptionMeta["url"] = "/filter/large";
-	context.responseSizeMax = 1000;
-
-	{
-		auto r = runMessageFilters(filterNames, context, content, loop_wait);
-		TEST_ASSERT_EQ(r.errorMessage, "network response exceeded 1000 bytes");
-	}
-}
-
-extern "C" int filter_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(test_with_event_loop(messageFilters));
-	TEST_CATCH(test_with_event_loop(httpCheck));
-	TEST_CATCH(test_with_event_loop(httpModify));
-
-	return 0;
+    return 0;
 }

@@ -25,26 +25,19 @@
 
 #include "service.h"
 
-class PushpinProxyService : public Service
-{
+class PushpinProxyService : public Service {
 public:
-	PushpinProxyService(
-		const QString &binFile,
-		const QString &configFile,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &ipcPrefix,
-		const QString &filePrefix,
-		int logLevel,
-		const QStringList &routeLines);
+    PushpinProxyService(const QString &binFile, const QString &configFile, const QString &runDir,
+                        const QString &logDir, const QString &ipcPrefix, const QString &filePrefix,
+                        int logLevel, const QStringList &routeLines);
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QStringList arguments() const;
-	virtual bool acceptSighup() const;
+    virtual QStringList arguments() const;
+    virtual bool acceptSighup() const;
 
 private:
-	QStringList args_;
+    QStringList args_;
 };
 
 #endif

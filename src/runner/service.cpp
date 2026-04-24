@@ -22,367 +22,289 @@
 
 #include "service.h"
 
-#include <sys/types.h>
-#include <signal.h>
-#include <unistd.h>
-#include <QTimer>
+#include "log.h"
 #include <QFile>
 #include <QProcess>
-#include "log.h"
+#include <QTimer>
+#include <signal.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define STOP_TIMEOUT 4000
 
-static void setupChild()
-{
-	signal(SIGINT, SIG_IGN);
+static void setupChild() {
+    signal(SIGINT, SIG_IGN);
 
-	// subprocesses hopefully respect SIG_IGN, but are not required
-	// To. In case subprocess might reinstate a SIGINT handler,
-	// detach from process group to ensure ctrl-c in a shell
-	// doesn't cause SIGINT to be sent directly to subprocesses
-	setpgid(0, 0);
+    // subprocesses hopefully respect SIG_IGN, but are not required
+    // To. In case subprocess might reinstate a SIGINT handler,
+    // detach from process group to ensure ctrl-c in a shell
+    // doesn't cause SIGINT to be sent directly to subprocesses
+    setpgid(0, 0);
 }
 
-class ServiceProcess : public QProcess
-{
-	Q_OBJECT
+class ServiceProcess : public QProcess {
+    Q_OBJECT
 
 public:
-	ServiceProcess(QObject *parent = 0) :
-		QProcess(parent)
-	{
+    ServiceProcess(QObject *parent = 0) : QProcess(parent) {
 #if QT_VERSION >= 0x060000
-		setChildProcessModifier(setupChild);
+        setChildProcessModifier(setupChild);
 #endif
-	}
+    }
 
 #if QT_VERSION < 0x060000
-	// Reimplemented
-	virtual void setupChildProcess()
-	{
-		setupChild();
-	}
+    // Reimplemented
+    virtual void setupChildProcess() { setupChild(); }
 #endif
 };
 
-class Service::Private : public QObject
-{
-	Q_OBJECT
+class Service::Private : public QObject {
+    Q_OBJECT
 
 public:
-	enum State
-	{
-		NotStarted,
-		Starting,
-		Started,
-		Stopping,
-		Stopped
-	};
+    enum State { NotStarted, Starting, Started, Stopping, Stopped };
 
-	Service *q;
-	State state;
-	QString name;
-	QString outputFile;
-	QString pidFile;
-	QProcess *proc;
-	bool terminateAfterStarted;
-	bool sentKill;
-	QTimer *timer;
+    Service *q;
+    State state;
+    QString name;
+    QString outputFile;
+    QString pidFile;
+    QProcess *proc;
+    bool terminateAfterStarted;
+    bool sentKill;
+    QTimer *timer;
 
-	Private(Service *_q) :
-		QObject(_q),
-		q(_q),
-		state(NotStarted),
-		proc(0),
-		terminateAfterStarted(false),
-		sentKill(false)
-	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
+    Private(Service *_q)
+        : QObject(_q),
+          q(_q),
+          state(NotStarted),
+          proc(0),
+          terminateAfterStarted(false),
+          sentKill(false) {
+        timer = new QTimer(this);
+        connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
 
-		timer->setSingleShot(true);
-	}
+        timer->setSingleShot(true);
+    }
 
-	~Private()
-	{
-		timer->stop();
+    ~Private() {
+        timer->stop();
 
-		if(state == Starting || state == Started || state == Stopping)
-		{
-			proc->disconnect(this);
-			proc->setParent(0);
+        if (state == Starting || state == Started || state == Stopping) {
+            proc->disconnect(this);
+            proc->setParent(0);
 
-			if(!sentKill)
-			{
-				sentKill = true;
-				state = Stopping;
-				log_warning("%s running while needing to exit, forcing quit", qPrintable(name));
-				proc->kill();
+            if (!sentKill) {
+                sentKill = true;
+                state = Stopping;
+                log_warning("%s running while needing to exit, forcing quit", qPrintable(name));
+                proc->kill();
 
-				if(!pidFile.isEmpty())
-					QFile::remove(pidFile);
-			}
-			proc->waitForFinished();
-		}
+                if (!pidFile.isEmpty())
+                    QFile::remove(pidFile);
+            }
+            proc->waitForFinished();
+        }
 
-		cleanup();
+        cleanup();
 
-		timer->disconnect(this);
-		timer->setParent(0);
-		timer->deleteLater();
-	}
+        timer->disconnect(this);
+        timer->setParent(0);
+        timer->deleteLater();
+    }
 
-	void cleanup()
-	{
-		timer->stop();
+    void cleanup() {
+        timer->stop();
 
-		if(proc)
-		{
-			proc->disconnect(this);
-			proc->setParent(0);
-			proc->deleteLater();
-			proc = 0;
-		}
-	}
+        if (proc) {
+            proc->disconnect(this);
+            proc->setParent(0);
+            proc->deleteLater();
+            proc = 0;
+        }
+    }
 
-	void start()
-	{
-		proc = new ServiceProcess(this);
+    void start() {
+        proc = new ServiceProcess(this);
 
-		connect(proc, &QProcess::started, this, &Private::proc_started);
-		connect(proc, &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
-		connect(proc, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Private::proc_finished);
-		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::errorOccurred), this, &Private::proc_errorOccurred);
+        connect(proc, &QProcess::started, this, &Private::proc_started);
+        connect(proc, &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
+        connect(proc,
+                static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished),
+                this, &Private::proc_finished);
+        connect(proc,
+                static_cast<void (QProcess::*)(QProcess::ProcessError)>(&QProcess::errorOccurred),
+                this, &Private::proc_errorOccurred);
 
-		proc->setProcessChannelMode(QProcess::MergedChannels);
-		proc->setReadChannel(QProcess::StandardOutput);
+        proc->setProcessChannelMode(QProcess::MergedChannels);
+        proc->setReadChannel(QProcess::StandardOutput);
 
-		if(!outputFile.isEmpty())
-			proc->setStandardOutputFile(outputFile, QIODevice::Append);
+        if (!outputFile.isEmpty())
+            proc->setStandardOutputFile(outputFile, QIODevice::Append);
 
-		state = Starting;
+        state = Starting;
 
-		QStringList args = q->arguments();
+        QStringList args = q->arguments();
 
-		log_debug("running: %s", qPrintable(args.join(' ')));
+        log_debug("running: %s", qPrintable(args.join(' ')));
 
-		proc->start(args[0], args.mid(1));
-	}
+        proc->start(args[0], args.mid(1));
+    }
 
-	void stop()
-	{
-		if(state == Starting)
-		{
-			terminateAfterStarted = true;
-		}
-		else if(state == Started)
-		{
-			doStop();
-		}
-	}
+    void stop() {
+        if (state == Starting) {
+            terminateAfterStarted = true;
+        } else if (state == Started) {
+            doStop();
+        }
+    }
 
 private:
-	void doStop()
-	{
-		state = Stopping;
-		timer->start(STOP_TIMEOUT);
-		proc->terminate();
-	}
+    void doStop() {
+        state = Stopping;
+        timer->start(STOP_TIMEOUT);
+        proc->terminate();
+    }
 
-	bool writePidFile(const QString &file, int pid)
-	{
-		QFile f(file);
-		if(!f.open(QFile::WriteOnly | QFile::Truncate))
-			return false;
+    bool writePidFile(const QString &file, int pid) {
+        QFile f(file);
+        if (!f.open(QFile::WriteOnly | QFile::Truncate))
+            return false;
 
-		if(f.write(QByteArray::number(pid) + '\n') == -1)
-			return false;
+        if (f.write(QByteArray::number(pid) + '\n') == -1)
+            return false;
 
-		return true;
-	}
+        return true;
+    }
 
 private slots:
-	void doError(const QString &str)
-	{
-		q->error(str);
-	}
+    void doError(const QString &str) { q->error(str); }
 
-	void proc_started()
-	{
-		if(!pidFile.isEmpty())
-		{
-			if(!writePidFile(pidFile, proc->processId()))
-				log_error("failed to write pid file: %s", qPrintable(pidFile));
-		}
+    void proc_started() {
+        if (!pidFile.isEmpty()) {
+            if (!writePidFile(pidFile, proc->processId()))
+                log_error("failed to write pid file: %s", qPrintable(pidFile));
+        }
 
-		state = Started;
-		q->started();
+        state = Started;
+        q->started();
 
-		if(terminateAfterStarted)
-			doStop();
-	}
+        if (terminateAfterStarted)
+            doStop();
+    }
 
-	void proc_readyRead()
-	{
-		while(proc->canReadLine())
-		{
-			QByteArray line = proc->readLine();
-			if(!line.isEmpty() && line[line.length() - 1] == '\n')
-				line.truncate(line.length() - 1);
+    void proc_readyRead() {
+        while (proc->canReadLine()) {
+            QByteArray line = proc->readLine();
+            if (!line.isEmpty() && line[line.length() - 1] == '\n')
+                line.truncate(line.length() - 1);
 
-			q->logLine(QString::fromLocal8Bit(line));
-		}
-	}
+            q->logLine(QString::fromLocal8Bit(line));
+        }
+    }
 
-	void proc_finished(int exitCode, QProcess::ExitStatus exitStatus)
-	{
-		if(!pidFile.isEmpty())
-			QFile::remove(pidFile);
+    void proc_finished(int exitCode, QProcess::ExitStatus exitStatus) {
+        if (!pidFile.isEmpty())
+            QFile::remove(pidFile);
 
-		if(state != Stopping)
-		{
-			state = Stopped;
-			cleanup();
-			q->error("Exited unexpectedly");
-			return;
-		}
+        if (state != Stopping) {
+            state = Stopped;
+            cleanup();
+            q->error("Exited unexpectedly");
+            return;
+        }
 
-		state = Stopped;
-		cleanup();
+        state = Stopped;
+        cleanup();
 
-		if(exitStatus == QProcess::CrashExit)
-		{
-			if(sentKill)
-				q->stopped();
-			else
-				q->error("Exited uncleanly");
-			return;
-		}
+        if (exitStatus == QProcess::CrashExit) {
+            if (sentKill)
+                q->stopped();
+            else
+                q->error("Exited uncleanly");
+            return;
+        }
 
-		if(exitCode != 0)
-		{
-			q->error("Unexpected return code: " + QString::number(exitCode));
-			return;
-		}
+        if (exitCode != 0) {
+            q->error("Unexpected return code: " + QString::number(exitCode));
+            return;
+        }
 
-		q->stopped();
-	}
+        q->stopped();
+    }
 
-	void proc_errorOccurred(QProcess::ProcessError error)
-	{
-		if(error == QProcess::FailedToStart)
-		{
-			QString program = proc->program();
-			state = Stopped;
-			cleanup();
+    void proc_errorOccurred(QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            QString program = proc->program();
+            state = Stopped;
+            cleanup();
 
-			q->error("Error running: " + program);
-		}
-		else
-		{
-			// Other errors are followed by finished(), so we don't
-			// need to handle them here
-		}
-	}
+            q->error("Error running: " + program);
+        } else {
+            // Other errors are followed by finished(), so we don't
+            // need to handle them here
+        }
+    }
 
-	void timer_timeout()
-	{
-		if(!sentKill)
-		{
-			sentKill = true;
-			log_warning("%s taking too long, forcing quit", qPrintable(name));
-			proc->kill();
-		}
-	}
+    void timer_timeout() {
+        if (!sentKill) {
+            sentKill = true;
+            log_warning("%s taking too long, forcing quit", qPrintable(name));
+            proc->kill();
+        }
+    }
 };
 
-Service::Service(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
+Service::Service(QObject *parent) : QObject(parent) { d = new Private(this); }
+
+Service::~Service() { delete d; }
+
+QString Service::name() const { return d->name; }
+
+bool Service::acceptSighup() const { return false; }
+
+bool Service::alwaysLogStatus() const { return false; }
+
+bool Service::isStarted() const {
+    return (d->state != Private::NotStarted && d->state != Private::Starting);
 }
 
-Service::~Service()
-{
-	delete d;
+bool Service::preStart() {
+    // By default do nothing
+    return true;
 }
 
-QString Service::name() const
-{
-	return d->name;
+void Service::start() {
+    if (!preStart()) {
+        QString str = "Failure preparing to start";
+        QMetaObject::invokeMethod(d, "doError", Qt::QueuedConnection, Q_ARG(QString, str));
+        return;
+    }
+
+    d->start();
 }
 
-bool Service::acceptSighup() const
-{
-	return false;
+void Service::postStart() {
+    // By default do nothing
 }
 
-bool Service::alwaysLogStatus() const
-{
-	return false;
+void Service::stop() { d->stop(); }
+
+void Service::postStop() {
+    // By default do nothing
 }
 
-bool Service::isStarted() const
-{
-	return (d->state != Private::NotStarted && d->state != Private::Starting);
+QString Service::formatLogLine(const QString &line) const { return line; }
+
+void Service::sendSighup() {
+    if (d->proc)
+        ::kill(d->proc->processId(), SIGHUP);
 }
 
-bool Service::preStart()
-{
-	// By default do nothing
-	return true;
-}
+void Service::setName(const QString &name) { d->name = name; }
 
-void Service::start()
-{
-	if(!preStart())
-	{
-		QString str = "Failure preparing to start";
-		QMetaObject::invokeMethod(d, "doError", Qt::QueuedConnection, Q_ARG(QString, str));
-		return;
-	}
+void Service::setStandardOutputFile(const QString &file) { d->outputFile = file; }
 
-	d->start();
-}
-
-void Service::postStart()
-{
-	// By default do nothing
-}
-
-void Service::stop()
-{
-	d->stop();
-}
-
-void Service::postStop()
-{
-	// By default do nothing
-}
-
-QString Service::formatLogLine(const QString &line) const {
-	return line;
-}
-
-void Service::sendSighup()
-{
-	if(d->proc)
-		::kill(d->proc->processId(), SIGHUP);
-}
-
-void Service::setName(const QString &name)
-{
-	d->name = name;
-}
-
-void Service::setStandardOutputFile(const QString &file)
-{
-	d->outputFile = file;
-}
-
-void Service::setPidFile(const QString &file)
-{
-	d->pidFile = file;
-}
+void Service::setPidFile(const QString &file) { d->pidFile = file; }
 
 #include "service.moc"

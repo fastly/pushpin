@@ -24,62 +24,48 @@
 
 #include <assert.h>
 
-PublishLastIds::PublishLastIds(int maxCapacity) :
-	maxCapacity_(maxCapacity)
-{
+PublishLastIds::PublishLastIds(int maxCapacity) : maxCapacity_(maxCapacity) {}
+
+void PublishLastIds::set(const QString &channel, const QString &id) {
+    QDateTime now = QDateTime::currentDateTimeUtc();
+
+    if (table_.contains(channel)) {
+        Item &i = table_[channel];
+        recentlyUsed_.remove(TimeStringPair(i.time, channel));
+        i.id = id;
+        i.time = now;
+        recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
+    } else {
+        while (!table_.isEmpty() && table_.count() >= maxCapacity_) {
+            // Remove oldest
+            QMutableMapIterator<TimeStringPair, Item> it(recentlyUsed_);
+            assert(it.hasNext());
+            it.next();
+            QString channel = it.value().channel;
+            it.remove();
+            table_.remove(channel);
+        }
+
+        Item i;
+        i.channel = channel;
+        i.id = id;
+        i.time = now;
+        table_.insert(channel, i);
+        recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
+    }
 }
 
-void PublishLastIds::set(const QString &channel, const QString &id)
-{
-	QDateTime now = QDateTime::currentDateTimeUtc();
-
-	if(table_.contains(channel))
-	{
-		Item &i = table_[channel];
-		recentlyUsed_.remove(TimeStringPair(i.time, channel));
-		i.id = id;
-		i.time = now;
-		recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
-	}
-	else
-	{
-		while(!table_.isEmpty() && table_.count() >= maxCapacity_)
-		{
-			// Remove oldest
-			QMutableMapIterator<TimeStringPair, Item> it(recentlyUsed_);
-			assert(it.hasNext());
-			it.next();
-			QString channel = it.value().channel;
-			it.remove();
-			table_.remove(channel);
-		}
-
-		Item i;
-		i.channel = channel;
-		i.id = id;
-		i.time = now;
-		table_.insert(channel, i);
-		recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
-	}
+void PublishLastIds::remove(const QString &channel) {
+    if (table_.contains(channel)) {
+        Item &i = table_[channel];
+        recentlyUsed_.remove(TimeStringPair(i.time, channel));
+        table_.remove(channel);
+    }
 }
 
-void PublishLastIds::remove(const QString &channel)
-{
-	if(table_.contains(channel))
-	{
-		Item &i = table_[channel];
-		recentlyUsed_.remove(TimeStringPair(i.time, channel));
-		table_.remove(channel);
-	}
+void PublishLastIds::clear() {
+    recentlyUsed_.clear();
+    table_.clear();
 }
 
-void PublishLastIds::clear()
-{
-	recentlyUsed_.clear();
-	table_.clear();
-}
-
-QString PublishLastIds::value(const QString &channel)
-{
-	return table_.value(channel).id;
-}
+QString PublishLastIds::value(const QString &channel) { return table_.value(channel).id; }

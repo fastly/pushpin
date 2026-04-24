@@ -24,55 +24,55 @@
 #ifndef TESTWEBSOCKET_H
 #define TESTWEBSOCKET_H
 
-#include "websocket.h"
 #include "url.h"
+#include "websocket.h"
 
 class ZhttpManager;
 
 /// WebSocket instance for testing that simulates WebSocket behavior
-class TestWebSocket : public WebSocket
-{
+class TestWebSocket : public WebSocket {
 public:
-	TestWebSocket();
-	~TestWebSocket();
+    TestWebSocket();
+    ~TestWebSocket();
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QHostAddress peerAddress() const;
+    virtual QHostAddress peerAddress() const;
 
-	virtual void setConnectHost(const QString &host);
-	virtual void setConnectPort(int port);
-	virtual void setIgnorePolicies(bool on);
-	virtual void setTrustConnectHost(bool on);
-	virtual void setIgnoreTlsErrors(bool on);
-	virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setConnectHost(const QString &host);
+    virtual void setConnectPort(int port);
+    virtual void setIgnorePolicies(bool on);
+    virtual void setTrustConnectHost(bool on);
+    virtual void setIgnoreTlsErrors(bool on);
+    virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const Url &uri, const HttpHeaders &headers);
+    virtual void start(const Url &uri, const HttpHeaders &headers);
 
-	virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
-	virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
+    virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
+    virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
+                              const QByteArray &body);
 
-	virtual State state() const;
-	virtual Url requestUri() const;
-	virtual HttpHeaders requestHeaders() const;
-	virtual int responseCode() const;
-	virtual QByteArray responseReason() const;
-	virtual HttpHeaders responseHeaders() const;
-	virtual QByteArray responseBody() const;
-	virtual int framesAvailable() const;
-	virtual int writeBytesAvailable() const;
-	virtual int peerCloseCode() const;
-	virtual QString peerCloseReason() const;
-	virtual ErrorCondition errorCondition() const;
+    virtual State state() const;
+    virtual Url requestUri() const;
+    virtual HttpHeaders requestHeaders() const;
+    virtual int responseCode() const;
+    virtual QByteArray responseReason() const;
+    virtual HttpHeaders responseHeaders() const;
+    virtual QByteArray responseBody() const;
+    virtual int framesAvailable() const;
+    virtual int writeBytesAvailable() const;
+    virtual int peerCloseCode() const;
+    virtual QString peerCloseReason() const;
+    virtual ErrorCondition errorCondition() const;
 
-	virtual void writeFrame(const Frame &frame);
-	virtual Frame readFrame();
-	virtual void close(int code = -1, const QString &reason = QString());
+    virtual void writeFrame(const Frame &frame);
+    virtual Frame readFrame();
+    virtual void close(int code = -1, const QString &reason = QString());
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 };
 
 #endif

@@ -23,281 +23,251 @@
 
 #include "m2requestpacket.h"
 
-#include <QSet>
+#include "qtcompat.h"
+#include "tnetstring.h"
+#include "variant.h"
 #include <QJsonDocument>
 #include <QJsonObject>
-#include "qtcompat.h"
-#include "variant.h"
-#include "tnetstring.h"
+#include <QSet>
 
-static bool isAllCaps(const QString &s)
-{
-	for(int n = 0; n < s.length(); ++n)
-	{
-		QChar c = s[n];
+static bool isAllCaps(const QString &s) {
+    for (int n = 0; n < s.length(); ++n) {
+        QChar c = s[n];
 
-		// Non-letters are allowed, so what we really check against is
-		// lowercase
-		if(c.isLower())
-			return false;
-	}
+        // Non-letters are allowed, so what we really check against is
+        // lowercase
+        if (c.isLower())
+            return false;
+    }
 
-	return true;
+    return true;
 }
 
-static QString makeMixedCaseHeader(const QString &s)
-{
-	QString out;
-	for(int n = 0; n < s.length(); ++n)
-	{
-		QChar c = s[n];
-		if(n == 0 || (n - 1 >= 0 && s[n - 1] == '-'))
-			out += c.toUpper();
-		else
-			out += c;
-	}
+static QString makeMixedCaseHeader(const QString &s) {
+    QString out;
+    for (int n = 0; n < s.length(); ++n) {
+        QChar c = s[n];
+        if (n == 0 || (n - 1 >= 0 && s[n - 1] == '-'))
+            out += c.toUpper();
+        else
+            out += c;
+    }
 
-	return out;
+    return out;
 }
 
-M2RequestPacket::M2RequestPacket() :
-	type((Type)-1),
-	uploadDone(false),
-	uploadStreamOffset(-1),
-	uploadStreamDone(false),
-	downloadCredits(-1),
-	frameFlags(0)
-{
-}
+M2RequestPacket::M2RequestPacket()
+    : type((Type)-1),
+      uploadDone(false),
+      uploadStreamOffset(-1),
+      uploadStreamDone(false),
+      downloadCredits(-1),
+      frameFlags(0) {}
 
-bool M2RequestPacket::fromByteArray(const QByteArray &in)
-{
-	int start = 0;
-	int end = in.indexOf(' ');
-	if(end == -1)
-		return false;
+bool M2RequestPacket::fromByteArray(const QByteArray &in) {
+    int start = 0;
+    int end = in.indexOf(' ');
+    if (end == -1)
+        return false;
 
-	sender = in.mid(start, end - start);
+    sender = in.mid(start, end - start);
 
-	start = end + 1;
-	end = in.indexOf(' ', start);
-	if(end == -1)
-		return false;
+    start = end + 1;
+    end = in.indexOf(' ', start);
+    if (end == -1)
+        return false;
 
-	id = in.mid(start, end - start);
+    id = in.mid(start, end - start);
 
-	start = end + 1;
-	end = in.indexOf(' ', start);
-	if(end == -1)
-		return false;
+    start = end + 1;
+    end = in.indexOf(' ', start);
+    if (end == -1)
+        return false;
 
-	start = end + 1;
-	TnetString::Type htype;
-	int offset, size;
-	if(!TnetString::check(in, start, &htype, &offset, &size))
-		return false;
+    start = end + 1;
+    TnetString::Type htype;
+    int offset, size;
+    if (!TnetString::check(in, start, &htype, &offset, &size))
+        return false;
 
-	if(htype != TnetString::Hash && htype != TnetString::ByteArray)
-		return false;
+    if (htype != TnetString::Hash && htype != TnetString::ByteArray)
+        return false;
 
-	bool ok;
-	Variant vheaders = TnetString::toVariant(in, start, htype, offset, size, &ok);
-	if(!ok)
-		return false;
+    bool ok;
+    Variant vheaders = TnetString::toVariant(in, start, htype, offset, size, &ok);
+    if (!ok)
+        return false;
 
-	QSet<QString> skipHeaders;
-	skipHeaders += "x-mongrel2-upload-start";
-	skipHeaders += "x-mongrel2-upload-done";
+    QSet<QString> skipHeaders;
+    skipHeaders += "x-mongrel2-upload-start";
+    skipHeaders += "x-mongrel2-upload-done";
 
-	headers.clear(); // Will store full headers
-	QMap<QString, QByteArray> m2headers; // Single-value map for easy processing
-	if(htype == TnetString::Hash)
-	{
-		VariantMap headersMap = vheaders.toMap();
-		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
-		{
-			const QString &key = vit.key();
-			const Variant &val = vit.value();
+    headers.clear();                     // Will store full headers
+    QMap<QString, QByteArray> m2headers; // Single-value map for easy processing
+    if (htype == TnetString::Hash) {
+        VariantMap headersMap = vheaders.toMap();
+        for (auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit) {
+            const QString &key = vit.key();
+            const Variant &val = vit.value();
 
-			if(typeId(val) == VariantType::ByteArray)
-			{
-				QByteArray ba = val.toByteArray();
+            if (typeId(val) == VariantType::ByteArray) {
+                QByteArray ba = val.toByteArray();
 
-				m2headers[key] = ba;
+                m2headers[key] = ba;
 
-				if(!isAllCaps(key) && !skipHeaders.contains(key))
-					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
-			}
-			else if(typeId(val) == VariantType::List)
-			{
-				VariantList vl = val.toList();
-				if(vl.isEmpty())
-					return false;
+                if (!isAllCaps(key) && !skipHeaders.contains(key))
+                    headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
+            } else if (typeId(val) == VariantType::List) {
+                VariantList vl = val.toList();
+                if (vl.isEmpty())
+                    return false;
 
-				if(typeId(vl[0]) != VariantType::ByteArray)
-					return false;
+                if (typeId(vl[0]) != VariantType::ByteArray)
+                    return false;
 
-				m2headers[key] = vl[0].toByteArray();
+                m2headers[key] = vl[0].toByteArray();
 
-				if(!isAllCaps(key) && !skipHeaders.contains(key))
-				{
-					QByteArray name = makeMixedCaseHeader(key).toLatin1();
+                if (!isAllCaps(key) && !skipHeaders.contains(key)) {
+                    QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					for(const Variant &v : vl)
-					{
-						if(typeId(v) != VariantType::ByteArray)
-							return false;
+                    for (const Variant &v : vl) {
+                        if (typeId(v) != VariantType::ByteArray)
+                            return false;
 
-						headers += HttpHeader(name, v.toByteArray());
-					}
-				}
-			}
-			else
-				return false;
-		}
-	}
-	else // ByteArray
-	{
-		QJsonParseError error;
-		QJsonDocument doc = QJsonDocument::fromJson(vheaders.toByteArray(), &error);
-		if(error.error != QJsonParseError::NoError || !doc.isObject())
-			return false;
+                        headers += HttpHeader(name, v.toByteArray());
+                    }
+                }
+            } else
+                return false;
+        }
+    } else // ByteArray
+    {
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(vheaders.toByteArray(), &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject())
+            return false;
 
-		VariantMap headersMap = doc.object().toVariantMap();
-		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
-		{
-			const QString &key = vit.key();
-			const Variant &val = vit.value();
+        VariantMap headersMap = doc.object().toVariantMap();
+        for (auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit) {
+            const QString &key = vit.key();
+            const Variant &val = vit.value();
 
-			if(typeId(val) == VariantType::String)
-			{
-				QByteArray ba = val.toString().toUtf8();
+            if (typeId(val) == VariantType::String) {
+                QByteArray ba = val.toString().toUtf8();
 
-				m2headers[key] = ba;
+                m2headers[key] = ba;
 
-				if(!isAllCaps(key) && !skipHeaders.contains(key))
-					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
-			}
-			else if(typeId(val) == VariantType::List)
-			{
-				VariantList vl = val.toList();
-				if(vl.isEmpty())
-					return false;
+                if (!isAllCaps(key) && !skipHeaders.contains(key))
+                    headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
+            } else if (typeId(val) == VariantType::List) {
+                VariantList vl = val.toList();
+                if (vl.isEmpty())
+                    return false;
 
-				if(typeId(vl[0]) != VariantType::String)
-					return false;
+                if (typeId(vl[0]) != VariantType::String)
+                    return false;
 
-				m2headers[key] = vl[0].toString().toUtf8();
+                m2headers[key] = vl[0].toString().toUtf8();
 
-				if(!isAllCaps(key) && !skipHeaders.contains(key))
-				{
-					QByteArray name = makeMixedCaseHeader(key).toLatin1();
+                if (!isAllCaps(key) && !skipHeaders.contains(key)) {
+                    QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					for(const Variant &v : vl)
-					{
-						if(typeId(v) != VariantType::String)
-							return false;
+                    for (const Variant &v : vl) {
+                        if (typeId(v) != VariantType::String)
+                            return false;
 
-						headers += HttpHeader(name, v.toString().toUtf8());
-					}
-				}
-			}
-			else
-				return false;
-		}
-	}
+                        headers += HttpHeader(name, v.toString().toUtf8());
+                    }
+                }
+            } else
+                return false;
+        }
+    }
 
-	start = offset + size + 1;
-	TnetString::Type btype;
-	if(!TnetString::check(in, start, &btype, &offset, &size))
-		return false;
+    start = offset + size + 1;
+    TnetString::Type btype;
+    if (!TnetString::check(in, start, &btype, &offset, &size))
+        return false;
 
-	if(btype != TnetString::ByteArray)
-		return false;
+    if (btype != TnetString::ByteArray)
+        return false;
 
-	body = TnetString::toByteArray(in, start, offset, size, &ok);
-	if(!ok)
-		return false;
+    body = TnetString::toByteArray(in, start, offset, size, &ok);
+    if (!ok)
+        return false;
 
-	scheme = m2headers.value("URL_SCHEME");
-	version = m2headers.value("VERSION");
+    scheme = m2headers.value("URL_SCHEME");
+    version = m2headers.value("VERSION");
 
-	QByteArray m2method = m2headers.value("METHOD");
+    QByteArray m2method = m2headers.value("METHOD");
 
-	if(m2headers.contains("DOWNLOAD_CREDITS"))
-		downloadCredits = m2headers.value("DOWNLOAD_CREDITS").toInt();
+    if (m2headers.contains("DOWNLOAD_CREDITS"))
+        downloadCredits = m2headers.value("DOWNLOAD_CREDITS").toInt();
 
-	if(m2method == "JSON")
-	{
-		QJsonParseError error;
-		QJsonDocument doc = QJsonDocument::fromJson(body, &error);
-		if(error.error != QJsonParseError::NoError || !doc.isObject())
-			return false;
+    if (m2method == "JSON") {
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(body, &error);
+        if (error.error != QJsonParseError::NoError || !doc.isObject())
+            return false;
 
-		VariantMap data = doc.object().toVariantMap();
-		if(!data.contains("type") || typeId(data["type"]) != VariantType::String)
-			return false;
+        VariantMap data = doc.object().toVariantMap();
+        if (!data.contains("type") || typeId(data["type"]) != VariantType::String)
+            return false;
 
-		QString jtype = data["type"].toString();
+        QString jtype = data["type"].toString();
 
-		if(jtype == "disconnect")
-			type = Disconnect;
-		else if(jtype == "credits")
-			type = Credits;
-		else
-			return false;
+        if (jtype == "disconnect")
+            type = Disconnect;
+        else if (jtype == "credits")
+            type = Credits;
+        else
+            return false;
 
-		return true;
-	}
+        return true;
+    }
 
-	QByteArray m2RemoteAddr = m2headers.value("REMOTE_ADDR");
+    QByteArray m2RemoteAddr = m2headers.value("REMOTE_ADDR");
 
-	method = QString::fromLatin1(m2method);
-	uri = m2headers.value("URI");
+    method = QString::fromLatin1(m2method);
+    uri = m2headers.value("URI");
 
-	remoteAddress = QHostAddress();
-	if(!m2RemoteAddr.isEmpty())
-		remoteAddress = QHostAddress(QString::fromLatin1(m2RemoteAddr));
+    remoteAddress = QHostAddress();
+    if (!m2RemoteAddr.isEmpty())
+        remoteAddress = QHostAddress(QString::fromLatin1(m2RemoteAddr));
 
-	if(m2method == "WEBSOCKET_HANDSHAKE")
-	{
-		type = WebSocketHandshake;
-		return true;
-	}
-	else if(m2method == "WEBSOCKET")
-	{
-		type = WebSocketFrame;
+    if (m2method == "WEBSOCKET_HANDSHAKE") {
+        type = WebSocketHandshake;
+        return true;
+    } else if (m2method == "WEBSOCKET") {
+        type = WebSocketFrame;
 
-		QByteArray flagsStr = m2headers.value("FLAGS");
-		frameFlags = flagsStr.toInt(&ok, 16);
-		return ok;
-	}
+        QByteArray flagsStr = m2headers.value("FLAGS");
+        frameFlags = flagsStr.toInt(&ok, 16);
+        return ok;
+    }
 
-	type = HttpRequest;
+    type = HttpRequest;
 
-	QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
-	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");
-	if(!uploadDoneRaw.isEmpty())
-	{
-		// These headers must match for the packet to be valid. Not
-		// sure why mongrel2 can't enforce this for us but whatever
-		if(uploadStartRaw != uploadDoneRaw)
-			return false;
+    QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
+    QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");
+    if (!uploadDoneRaw.isEmpty()) {
+        // These headers must match for the packet to be valid. Not
+        // sure why mongrel2 can't enforce this for us but whatever
+        if (uploadStartRaw != uploadDoneRaw)
+            return false;
 
-		uploadFile = QString::fromUtf8(uploadDoneRaw);
-		uploadDone = true;
-	}
-	else if(!uploadStartRaw.isEmpty())
-	{
-		uploadFile = QString::fromUtf8(uploadStartRaw);
-	}
+        uploadFile = QString::fromUtf8(uploadDoneRaw);
+        uploadDone = true;
+    } else if (!uploadStartRaw.isEmpty()) {
+        uploadFile = QString::fromUtf8(uploadStartRaw);
+    }
 
-	QByteArray uploadStreamRaw = m2headers.value("UPLOAD_STREAM");
-	QByteArray uploadStreamDoneRaw = m2headers.value("UPLOAD_STREAM_DONE");
-	if(!uploadStreamRaw.isEmpty())
-		uploadStreamOffset = uploadStreamRaw.toInt();
-	if(!uploadStreamDoneRaw.isEmpty() && uploadStreamDoneRaw != "0")
-		uploadStreamDone = true;
+    QByteArray uploadStreamRaw = m2headers.value("UPLOAD_STREAM");
+    QByteArray uploadStreamDoneRaw = m2headers.value("UPLOAD_STREAM_DONE");
+    if (!uploadStreamRaw.isEmpty())
+        uploadStreamOffset = uploadStreamRaw.toInt();
+    if (!uploadStreamDoneRaw.isEmpty() && uploadStreamDoneRaw != "0")
+        uploadStreamDone = true;
 
-	return true;
+    return true;
 }

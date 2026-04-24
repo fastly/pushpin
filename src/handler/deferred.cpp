@@ -25,24 +25,15 @@
 
 #include "variant.h"
 
-Deferred::Deferred()
-{
-	qRegisterMetaType<DeferredResult>();
+Deferred::Deferred() { qRegisterMetaType<DeferredResult>(); }
+
+Deferred::~Deferred() {}
+
+void Deferred::setFinished(bool ok, const Variant &value) {
+    result_.success = ok;
+    result_.value = value;
+
+    deferCall_.defer([=] { doFinish(); });
 }
 
-Deferred::~Deferred()
-{
-}
-
-void Deferred::setFinished(bool ok, const Variant &value)
-{
-	result_.success = ok;
-	result_.value = value;
-
-	deferCall_.defer([=] { doFinish(); });
-}
-
-void Deferred::doFinish()
-{
-	finished(result_);
-}
+void Deferred::doFinish() { finished(result_); }

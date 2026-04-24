@@ -23,188 +23,174 @@
 
 #include "logutil.h"
 
-#include <assert.h>
-#include <stdarg.h>
+#include "log.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "variant.h"
-#include "log.h"
+#include <assert.h>
+#include <stdarg.h>
 
 #define MAX_DATA_LENGTH 1000
 #define MAX_CONTENT_LENGTH 1000
 
 namespace LogUtil {
 
-static QString trim(const QString &in, int max)
-{
-	if(in.length() > max && max >= 7)
-		return in.mid(0, max / 2) + "..." + in.mid(in.length() - (max / 2) + 3);
-	else
-		return in;
+static QString trim(const QString &in, int max) {
+    if (in.length() > max && max >= 7)
+        return in.mid(0, max / 2) + "..." + in.mid(in.length() - (max / 2) + 3);
+    else
+        return in;
 }
 
-static QByteArray trim(const QByteArray &in, int max)
-{
-	if(in.size() > max && max >= 7)
-		return in.mid(0, max / 2) + "..." + in.mid(in.size() - (max / 2) + 3);
-	else
-		return in;
+static QByteArray trim(const QByteArray &in, int max) {
+    if (in.size() > max && max >= 7)
+        return in.mid(0, max / 2) + "..." + in.mid(in.size() - (max / 2) + 3);
+    else
+        return in;
 }
 
-static QString makeLastIdsStr(const HttpHeaders &headers)
-{
-	QString out;
+static QString makeLastIdsStr(const HttpHeaders &headers) {
+    QString out;
 
-	bool first = true;
-	foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
-	{
-		if(!first)
-			out += ' ';
-		out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first.asQByteArray()), QString::fromUtf8(params.get("last-id").asQByteArray()));
-		first = false;
-	}
+    bool first = true;
+    foreach (const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last")) {
+        if (!first)
+            out += ' ';
+        out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first.asQByteArray()),
+                                     QString::fromUtf8(params.get("last-id").asQByteArray()));
+        first = false;
+    }
 
-	return out;
+    return out;
 }
 
-static void logPacket(int level, const QString &message, const Variant &data = Variant(), int dataMax = -1, const QByteArray &content = QByteArray(), int contentMax = -1)
-{
-	QString out = message;
+static void logPacket(int level, const QString &message, const Variant &data = Variant(),
+                      int dataMax = -1, const QByteArray &content = QByteArray(),
+                      int contentMax = -1) {
+    QString out = message;
 
-	if(data.isValid())
-	{
-		out += ' ' + trim(TnetString::variantToString(data, -1), dataMax);
-	}
+    if (data.isValid()) {
+        out += ' ' + trim(TnetString::variantToString(data, -1), dataMax);
+    }
 
-	if(!content.isNull())
-	{
-		out += ' ' + QString::number(content.size()) + ' ';
-		QByteArray buf = trim(content, contentMax);
-		out += TnetString::variantToString(Variant(buf), -1);
-	}
+    if (!content.isNull()) {
+        out += ' ' + QString::number(content.size()) + ' ';
+        QByteArray buf = trim(content, contentMax);
+        out += TnetString::variantToString(Variant(buf), -1);
+    }
 
-	log(level, "%s", qPrintable(out));
+    log(level, "%s", qPrintable(out));
 }
 
-static void logPacket(int level, const Variant &data, const char *fmt, va_list ap)
-{
-	logPacket(level, QString::vasprintf(fmt, ap), data, MAX_DATA_LENGTH);
+static void logPacket(int level, const Variant &data, const char *fmt, va_list ap) {
+    logPacket(level, QString::vasprintf(fmt, ap), data, MAX_DATA_LENGTH);
 }
 
-static void logPacket(int level, const QByteArray &content, const char *fmt, va_list ap)
-{
-	logPacket(level, QString::vasprintf(fmt, ap), Variant(), -1, content, MAX_CONTENT_LENGTH);
+static void logPacket(int level, const QByteArray &content, const char *fmt, va_list ap) {
+    logPacket(level, QString::vasprintf(fmt, ap), Variant(), -1, content, MAX_CONTENT_LENGTH);
 }
 
-static void logPacket(int level, const Variant &data, const QString &contentField, const char *fmt, va_list ap)
-{
-	Variant meta;
-	QByteArray content;
+static void logPacket(int level, const Variant &data, const QString &contentField, const char *fmt,
+                      va_list ap) {
+    Variant meta;
+    QByteArray content;
 
-	if(typeId(data) == VariantType::Hash)
-	{
-		// Extract content. Meta is the remaining data
-		VariantHash hdata = data.toHash();
-		content = hdata.value(contentField).toByteArray();
-		hdata.remove(contentField);
-		meta = hdata;
-	}
-	else
-	{
-		// If data isn't a hash, then we can't extract content, so
-		// the meta part will be the entire data
-		meta = data;
-	}
+    if (typeId(data) == VariantType::Hash) {
+        // Extract content. Meta is the remaining data
+        VariantHash hdata = data.toHash();
+        content = hdata.value(contentField).toByteArray();
+        hdata.remove(contentField);
+        meta = hdata;
+    } else {
+        // If data isn't a hash, then we can't extract content, so
+        // the meta part will be the entire data
+        meta = data;
+    }
 
-	logPacket(level, QString::vasprintf(fmt, ap), meta, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
+    logPacket(level, QString::vasprintf(fmt, ap), meta, MAX_DATA_LENGTH, content,
+              MAX_CONTENT_LENGTH);
 }
 
-void logVariant(int level, const Variant &data, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	logPacket(level, data, fmt, ap);
-	va_end(ap);
+void logVariant(int level, const Variant &data, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logPacket(level, data, fmt, ap);
+    va_end(ap);
 }
 
-void logByteArray(int level, const QByteArray &content, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	logPacket(level, content, fmt, ap);
-	va_end(ap);
+void logByteArray(int level, const QByteArray &content, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logPacket(level, content, fmt, ap);
+    va_end(ap);
 }
 
-void logVariantWithContent(int level, const Variant &data, const QString &contentField, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	logPacket(level, data, contentField, fmt, ap);
-	va_end(ap);
+void logVariantWithContent(int level, const Variant &data, const QString &contentField,
+                           const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logPacket(level, data, contentField, fmt, ap);
+    va_end(ap);
 }
 
-void logRequest(int level, const RequestData &data, const Config &config)
-{
-	QString msg = QString("%1 %2").arg(data.requestData.method, data.requestData.uri.toString(Url::FullyEncoded));
+void logRequest(int level, const RequestData &data, const Config &config) {
+    QString msg = QString("%1 %2").arg(data.requestData.method,
+                                       data.requestData.uri.toString(Url::FullyEncoded));
 
-	if(!data.targetStr.isEmpty())
-		msg += QString(" -> %1").arg(data.targetStr);
+    if (!data.targetStr.isEmpty())
+        msg += QString(" -> %1").arg(data.targetStr);
 
-	if(data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" && data.targetOverHttp)
-		msg += "[http]";
+    if (data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" &&
+        data.targetOverHttp)
+        msg += "[http]";
 
-	if(config.fromAddress && !data.fromAddress.isNull())
-		msg += QString(" from=%1").arg(data.fromAddress.toString());
+    if (config.fromAddress && !data.fromAddress.isNull())
+        msg += QString(" from=%1").arg(data.fromAddress.toString());
 
-	Url ref = Url(QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray()));
-	if(!ref.isEmpty())
-		msg += QString(" ref=%1").arg(ref.toString(Url::FullyEncoded));
+    Url ref = Url(QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray()));
+    if (!ref.isEmpty())
+        msg += QString(" ref=%1").arg(ref.toString(Url::FullyEncoded));
 
-	if(!data.routeId.isEmpty())
-		msg += QString(" route=%1").arg(data.routeId);
+    if (!data.routeId.isEmpty())
+        msg += QString(" route=%1").arg(data.routeId);
 
-	if(data.status == LogUtil::Response)
-	{
-		msg += QString(" code=%1 %2").arg(QString::number(data.responseData.code), QString::number(data.responseBodySize));
-	}
-	else if(data.status == LogUtil::Accept)
-	{
-		msg += " accept";
-	}
-	else
-	{
-		msg += " error";
-	}
+    if (data.status == LogUtil::Response) {
+        msg += QString(" code=%1 %2")
+                   .arg(QString::number(data.responseData.code),
+                        QString::number(data.responseBodySize));
+    } else if (data.status == LogUtil::Accept) {
+        msg += " accept";
+    } else {
+        msg += " error";
+    }
 
-	if(data.retry)
-		msg += " retry";
+    if (data.retry)
+        msg += " retry";
 
-	if(data.sharedBy)
-		msg += QString::asprintf(" shared=%p", data.sharedBy);
+    if (data.sharedBy)
+        msg += QString::asprintf(" shared=%p", data.sharedBy);
 
-	if(config.userAgent)
-	{
-		QString userAgent = data.requestData.headers.get("User-Agent").asQByteArray();
-		if(!userAgent.isEmpty())
-			msg += QString(" ua=%1").arg(userAgent);
-	}
+    if (config.userAgent) {
+        QString userAgent = data.requestData.headers.get("User-Agent").asQByteArray();
+        if (!userAgent.isEmpty())
+            msg += QString(" ua=%1").arg(userAgent);
+    }
 
-	QString lastIdsStr = makeLastIdsStr(data.requestData.headers);
-	if(!lastIdsStr.isEmpty())
-		msg += ' ' + lastIdsStr;
+    QString lastIdsStr = makeLastIdsStr(data.requestData.headers);
+    if (!lastIdsStr.isEmpty())
+        msg += ' ' + lastIdsStr;
 
-	log(level, "%s", qPrintable(msg));
+    log(level, "%s", qPrintable(msg));
 }
 
-void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	QString msg = QString::vasprintf(fmt, ap);
-	if(!routeInfo.id.isEmpty())
-		msg += QString(" route=%1").arg(routeInfo.id);
-	logPacket(routeInfo.logLevel, msg);
-	va_end(ap);
+void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    QString msg = QString::vasprintf(fmt, ap);
+    if (!routeInfo.id.isEmpty())
+        msg += QString(" route=%1").arg(routeInfo.id);
+    logPacket(routeInfo.logLevel, msg);
+    va_end(ap);
 }
 
-}
+} // namespace LogUtil

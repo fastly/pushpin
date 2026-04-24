@@ -23,26 +23,25 @@
 #ifndef FILTERSTACK_H
 #define FILTERSTACK_H
 
-#include <QStringList>
 #include "filter.h"
+#include <QStringList>
 
-class FilterStack : public Filter
-{
+class FilterStack : public Filter {
 public:
-	FilterStack(const Filter::Context &context, const QStringList &filters);
+    FilterStack(const Filter::Context &context, const QStringList &filters);
 
-	// Takes ownership of filters in list
-	FilterStack(const Filter::Context &context, const QList<Filter*> &filters);
+    // Takes ownership of filters in list
+    FilterStack(const Filter::Context &context, const QList<Filter *> &filters);
 
-	~FilterStack();
+    ~FilterStack();
 
-	// Reimplemented
-	virtual SendAction sendAction() const;
-	virtual QByteArray update(const QByteArray &data);
-	virtual QByteArray finalize();
+    // Reimplemented
+    virtual SendAction sendAction() const;
+    virtual QByteArray update(const QByteArray &data);
+    virtual QByteArray finalize();
 
 private:
-	QList<Filter*> filters_;
+    QList<Filter *> filters_;
 };
 
 #endif

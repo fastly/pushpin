@@ -24,52 +24,54 @@
 #ifndef WSCONTROLSESSION_H
 #define WSCONTROLSESSION_H
 
-#include <QByteArray>
-#include <boost/signals2.hpp>
-#include "websocket.h"
-#include "wscontrol.h"
 #include "packet/wscontrolpacket.h"
 #include "url.h"
+#include "websocket.h"
+#include "wscontrol.h"
+#include <QByteArray>
+#include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
 
 class WsControlManager;
 
-/// Handles communication with the handler for controlling an active WebSocket connection including
-/// sending GRIP control messages, managing channel subscriptions, and coordinating keepalives
-class WsControlSession
-{
+/// Handles communication with the handler for controlling an active WebSocket
+/// connection including sending GRIP control messages, managing channel
+/// subscriptions, and coordinating keepalives
+class WsControlSession {
 public:
-	~WsControlSession();
+    ~WsControlSession();
 
-	QByteArray peer() const;
-	QByteArray cid() const;
+    QByteArray peer() const;
+    QByteArray cid() const;
 
-	void start(bool debug, const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const Url &uri, bool targetTrusted);
-	void sendGripMessage(const QByteArray &message);
-	void sendNeedKeepAlive();
-	void sendSubscribe(const QByteArray &channel);
+    void start(bool debug, const QByteArray &routeId, bool separateStats,
+               const QByteArray &channelPrefix, int logLevel, const Url &uri, bool targetTrusted);
+    void sendGripMessage(const QByteArray &message);
+    void sendNeedKeepAlive();
+    void sendSubscribe(const QByteArray &channel);
 
-	// Tell session that a received sendEvent has been written
-	void sendEventWritten();
+    // Tell session that a received sendEvent has been written
+    void sendEventWritten();
 
-	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;
-	boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
-	Signal refreshEventReceived;
-	boost::signals2::signal<void(int, const QByteArray&)> closeEventReceived; // Use -1 for no code
-	Signal detachEventReceived;
-	Signal cancelEventReceived;
-	Signal error;
+    boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray &, bool)>
+        sendEventReceived;
+    boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
+    Signal refreshEventReceived;
+    boost::signals2::signal<void(int, const QByteArray &)> closeEventReceived; // Use -1 for no code
+    Signal detachEventReceived;
+    Signal cancelEventReceived;
+    Signal error;
 
 private:
-	class Private;
-	friend class Private;
-	std::unique_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::unique_ptr<Private> d;
 
-	friend class WsControlManager;
-	WsControlSession();
-	void setup(WsControlManager *manager, const QByteArray &cid);
-	void handle(const QByteArray &from, const WsControlPacket::Item &item);
+    friend class WsControlManager;
+    WsControlSession();
+    void setup(WsControlManager *manager, const QByteArray &cid);
+    void handle(const QByteArray &from, const WsControlPacket::Item &item);
 };
 
 #endif

@@ -25,44 +25,31 @@
 #include <QDir>
 #include <QProcess>
 
-PushpinHandlerService::PushpinHandlerService(
-	const QString &binFile,
-	const QString &configFile,
-	const QString &runDir,
-	const QString &logDir,
-	const QString &ipcPrefix,
-	const QString &filePrefix,
-	int portOffset,
-	int logLevel)
-{
-	args_ += binFile;
-	args_ += "--config=" + configFile;
+PushpinHandlerService::PushpinHandlerService(const QString &binFile, const QString &configFile,
+                                             const QString &runDir, const QString &logDir,
+                                             const QString &ipcPrefix, const QString &filePrefix,
+                                             int portOffset, int logLevel) {
+    args_ += binFile;
+    args_ += "--config=" + configFile;
 
-	if(!ipcPrefix.isEmpty())
-		args_ += "--ipc-prefix=" + ipcPrefix;
+    if (!ipcPrefix.isEmpty())
+        args_ += "--ipc-prefix=" + ipcPrefix;
 
-	if(portOffset > 0)
-		args_ += "--port-offset=" + QString::number(portOffset);
+    if (portOffset > 0)
+        args_ += "--port-offset=" + QString::number(portOffset);
 
-	if(!logDir.isEmpty())
-	{
-		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-handler.log");
-		setStandardOutputFile(QProcess::nullDevice());
-	}
+    if (!logDir.isEmpty()) {
+        args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-handler.log");
+        setStandardOutputFile(QProcess::nullDevice());
+    }
 
-	if(logLevel >= 0)
-		args_ += "--loglevel=" + QString::number(logLevel);
+    if (logLevel >= 0)
+        args_ += "--loglevel=" + QString::number(logLevel);
 
-	setName("handler");
-	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-handler.pid"));
+    setName("handler");
+    setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-handler.pid"));
 }
 
-QStringList PushpinHandlerService::arguments() const
-{
-	return args_;
-}
+QStringList PushpinHandlerService::arguments() const { return args_; }
 
-bool PushpinHandlerService::acceptSighup() const
-{
-	return true;
-}
+bool PushpinHandlerService::acceptSighup() const { return true; }

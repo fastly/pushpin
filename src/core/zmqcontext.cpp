@@ -23,16 +23,12 @@
 
 #include "zmqcontext.h"
 
-#include <assert.h>
 #include "rust/bindings.h"
+#include <assert.h>
 
-ZmqContext::ZmqContext(int ioThreads)
-{
-	context_ = ffi::wzmq_init(ioThreads);
-	assert(context_);
+ZmqContext::ZmqContext(int ioThreads) {
+    context_ = ffi::wzmq_init(ioThreads);
+    assert(context_);
 }
 
-ZmqContext::~ZmqContext()
-{
-	ffi::wzmq_term(context_);
-}
+ZmqContext::~ZmqContext() { ffi::wzmq_term(context_); }

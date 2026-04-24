@@ -23,11 +23,11 @@
 #ifndef VARIANT_H
 #define VARIANT_H
 
-#include <QVariant>
-#include <QHash>
-#include <QMap>
-#include <QList>
 #include "qtcompat.h"
+#include <QHash>
+#include <QList>
+#include <QMap>
+#include <QVariant>
 
 using Variant = QVariant;
 using VariantHash = QVariantHash;
@@ -35,6 +35,7 @@ using VariantMap = QVariantMap;
 using VariantList = QVariantList;
 
 // Note: typeId() and canConvert() functions are already provided by qtcompat.h
-// Since Variant = QVariant (alias), those functions work directly with our types
+// Since Variant = QVariant (alias), those functions work directly with our
+// types
 
 #endif

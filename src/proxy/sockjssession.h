@@ -24,11 +24,11 @@
 #ifndef SOCKJSSESSION_H
 #define SOCKJSSESSION_H
 
-#include "url.h"
-#include <QHostAddress>
-#include "httpheaders.h"
-#include "websocket.h"
 #include "domainmap.h"
+#include "httpheaders.h"
+#include "url.h"
+#include "websocket.h"
+#include <QHostAddress>
 #include <boost/signals2.hpp>
 
 using Connection = boost::signals2::scoped_connection;
@@ -37,62 +37,69 @@ class ZhttpRequest;
 class ZWebSocket;
 class SockJsManager;
 
-/// SockJS session for incoming client connections that converts XHR-polling, JSONP, and native WebSocket
-/// into unified WebSocket-style messaging with session state management, keepalive handling, and request queueing
-class SockJsSession : public WebSocket
-{
+/// SockJS session for incoming client connections that converts XHR-polling,
+/// JSONP, and native WebSocket into unified WebSocket-style messaging with
+/// session state management, keepalive handling, and request queueing
+class SockJsSession : public WebSocket {
 public:
-	~SockJsSession();
+    ~SockJsSession();
 
-	QByteArray sid() const;
-	DomainMap::Entry route() const;
+    QByteArray sid() const;
+    DomainMap::Entry route() const;
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QHostAddress peerAddress() const;
+    virtual QHostAddress peerAddress() const;
 
-	virtual void setConnectHost(const QString &host);
-	virtual void setConnectPort(int port);
-	virtual void setIgnorePolicies(bool on);
-	virtual void setTrustConnectHost(bool on);
-	virtual void setIgnoreTlsErrors(bool on);
-	virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setConnectHost(const QString &host);
+    virtual void setConnectPort(int port);
+    virtual void setIgnorePolicies(bool on);
+    virtual void setTrustConnectHost(bool on);
+    virtual void setIgnoreTlsErrors(bool on);
+    virtual void setClientCert(const QString &cert, const QString &key);
 
-	virtual void start(const Url &uri, const HttpHeaders &headers);
+    virtual void start(const Url &uri, const HttpHeaders &headers);
 
-	virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
-	virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
+    virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
+    virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
+                              const QByteArray &body);
 
-	virtual State state() const;
-	virtual Url requestUri() const;
-	virtual HttpHeaders requestHeaders() const;
-	virtual int responseCode() const;
-	virtual QByteArray responseReason() const;
-	virtual HttpHeaders responseHeaders() const;
-	virtual QByteArray responseBody() const;
-	virtual int framesAvailable() const;
-	virtual int writeBytesAvailable() const;
-	virtual int peerCloseCode() const;
-	virtual QString peerCloseReason() const;
-	virtual ErrorCondition errorCondition() const;
+    virtual State state() const;
+    virtual Url requestUri() const;
+    virtual HttpHeaders requestHeaders() const;
+    virtual int responseCode() const;
+    virtual QByteArray responseReason() const;
+    virtual HttpHeaders responseHeaders() const;
+    virtual QByteArray responseBody() const;
+    virtual int framesAvailable() const;
+    virtual int writeBytesAvailable() const;
+    virtual int peerCloseCode() const;
+    virtual QString peerCloseReason() const;
+    virtual ErrorCondition errorCondition() const;
 
-	virtual void writeFrame(const Frame &frame);
-	virtual Frame readFrame();
-	virtual void close(int code = -1, const QString &reason = QString());
+    virtual void writeFrame(const Frame &frame);
+    virtual Frame readFrame();
+    virtual void close(int code = -1, const QString &reason = QString());
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 
-	friend class SockJsManager;
-	SockJsSession();
-	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
-	void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const DomainMap::Entry &route);
-	void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);
+    friend class SockJsManager;
+    SockJsSession();
+    void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback,
+                     const Url &asUri, const QByteArray &sid, const QByteArray &lastPart,
+                     const QByteArray &body, const DomainMap::Entry &route);
+    void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri,
+                     const DomainMap::Entry &route);
+    void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri,
+                     const QByteArray &sid, const QByteArray &lastPart,
+                     const DomainMap::Entry &route);
 
-	void startServer();
-	void handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body);
+    void startServer();
+    void handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback,
+                       const QByteArray &lastPart, const QByteArray &body);
 };
 
 #endif

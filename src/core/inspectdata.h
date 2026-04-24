@@ -23,22 +23,18 @@
 #ifndef INSPECTDATA_H
 #define INSPECTDATA_H
 
-#include <QByteArray>
 #include "variant.h"
+#include <QByteArray>
 
-class InspectData
-{
+class InspectData {
 public:
-	bool doProxy;
-	QByteArray sharingKey;
-	QByteArray sid;
-	QHash<QByteArray, QByteArray> lastIds;
-	Variant userData;
+    bool doProxy;
+    QByteArray sharingKey;
+    QByteArray sid;
+    QHash<QByteArray, QByteArray> lastIds;
+    Variant userData;
 
-	InspectData() :
-		doProxy(false)
-	{
-	}
+    InspectData() : doProxy(false) {}
 };
 
 #endif

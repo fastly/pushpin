@@ -23,22 +23,21 @@
 #ifndef ROUTESFILE_H
 #define ROUTESFILE_H
 
-#include <QString>
 #include <QList>
 #include <QMultiHash>
+#include <QString>
 
 namespace RoutesFile {
 
-/// Single space-separated element from a route line 
-class RouteSection
-{
+/// Single space-separated element from a route line
+class RouteSection {
 public:
-	QString value;
-	QMultiHash<QString, QString> props;
+    QString value;
+    QMultiHash<QString, QString> props;
 };
 
 QList<RouteSection> parseLine(const QString &line, bool *ok = 0, QString *errorMessage = 0);
 
-}
+} // namespace RoutesFile
 
 #endif

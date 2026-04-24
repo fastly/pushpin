@@ -22,155 +22,134 @@
 
 #include "processquit.h"
 
-#include <signal.h>
-#include <unistd.h>
+#include "socketnotifier.h"
 #include <QGlobalStatic>
 #include <QMutex>
-#include "socketnotifier.h"
+#include <signal.h>
+#include <unistd.h>
 
 Q_GLOBAL_STATIC(QMutex, pq_mutex)
 static ProcessQuit *g_pq = nullptr;
 
-class ProcessQuit::Private
-{
+class ProcessQuit::Private {
 public:
-	ProcessQuit *q;
-	Connection activatedConnection;
+    ProcessQuit *q;
+    Connection activatedConnection;
 
-	bool done;
-	int sig_pipe[2];
-	std::unique_ptr<SocketNotifier> sig_notifier;
+    bool done;
+    int sig_pipe[2];
+    std::unique_ptr<SocketNotifier> sig_notifier;
 
-	Private(ProcessQuit *_q) :
-		q(_q)
-	{
-		done = false;
+    Private(ProcessQuit *_q) : q(_q) {
+        done = false;
 
-		if(pipe(sig_pipe) == -1)
-		{
-			// No support then
-			return;
-		}
+        if (pipe(sig_pipe) == -1) {
+            // No support then
+            return;
+        }
 
-		sig_notifier = std::make_unique<SocketNotifier>(sig_pipe[0], SocketNotifier::Read);
-		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
-		sig_notifier->clearReadiness(SocketNotifier::Read);
-		unixWatchAdd(SIGINT);
-		unixWatchAdd(SIGHUP);
-		unixWatchAdd(SIGTERM);
-	}
+        sig_notifier = std::make_unique<SocketNotifier>(sig_pipe[0], SocketNotifier::Read);
+        activatedConnection = sig_notifier->activated.connect(
+            boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
+        sig_notifier->clearReadiness(SocketNotifier::Read);
+        unixWatchAdd(SIGINT);
+        unixWatchAdd(SIGHUP);
+        unixWatchAdd(SIGTERM);
+    }
 
-	~Private()
-	{
-		unixWatchRemove(SIGINT);
-		unixWatchRemove(SIGHUP);
-		unixWatchRemove(SIGTERM);
-		activatedConnection.disconnect();
-		sig_notifier.reset();
-		close(sig_pipe[0]);
-		close(sig_pipe[1]);
-	}
+    ~Private() {
+        unixWatchRemove(SIGINT);
+        unixWatchRemove(SIGHUP);
+        unixWatchRemove(SIGTERM);
+        activatedConnection.disconnect();
+        sig_notifier.reset();
+        close(sig_pipe[0]);
+        close(sig_pipe[1]);
+    }
 
-	static void unixHandler(int sig)
-	{
-		Q_UNUSED(sig);
-		unsigned char c = 0;
-		if(sig == SIGHUP)
-			c = 1;
-		if(::write(g_pq->d->sig_pipe[1], &c, 1) == -1)
-		{
-			// TODO: error handling?
-			return;
-		}
-	}
+    static void unixHandler(int sig) {
+        Q_UNUSED(sig);
+        unsigned char c = 0;
+        if (sig == SIGHUP)
+            c = 1;
+        if (::write(g_pq->d->sig_pipe[1], &c, 1) == -1) {
+            // TODO: error handling?
+            return;
+        }
+    }
 
-	void unixWatchAdd(int sig)
-	{
-		struct sigaction sa;
-		sigaction(sig, NULL, &sa);
-		// If the signal is ignored, don't take it over.  This is
-		// recommended by the glibc manual
-		if(sa.sa_handler == SIG_IGN)
-			return;
-		sigemptyset(&(sa.sa_mask));
-		sa.sa_flags = 0;
-		sa.sa_handler = unixHandler;
-		sigaction(sig, &sa, 0);
-	}
+    void unixWatchAdd(int sig) {
+        struct sigaction sa;
+        sigaction(sig, NULL, &sa);
+        // If the signal is ignored, don't take it over.  This is
+        // recommended by the glibc manual
+        if (sa.sa_handler == SIG_IGN)
+            return;
+        sigemptyset(&(sa.sa_mask));
+        sa.sa_flags = 0;
+        sa.sa_handler = unixHandler;
+        sigaction(sig, &sa, 0);
+    }
 
-	void unixWatchRemove(int sig)
-	{
-		struct sigaction sa;
-		sigaction(sig, NULL, &sa);
-		// Ignored means we skipped it earlier, so we should
-		// skip it again
-		if(sa.sa_handler == SIG_IGN)
-			return;
-		sigemptyset(&(sa.sa_mask));
-		sa.sa_flags = 0;
-		sa.sa_handler = SIG_DFL;
-		sigaction(sig, &sa, 0);
-	}
+    void unixWatchRemove(int sig) {
+        struct sigaction sa;
+        sigaction(sig, NULL, &sa);
+        // Ignored means we skipped it earlier, so we should
+        // skip it again
+        if (sa.sa_handler == SIG_IGN)
+            return;
+        sigemptyset(&(sa.sa_mask));
+        sa.sa_flags = 0;
+        sa.sa_handler = SIG_DFL;
+        sigaction(sig, &sa, 0);
+    }
 
-	void sig_activated(int)
-	{
-		sig_notifier->clearReadiness(SocketNotifier::Read);
+    void sig_activated(int) {
+        sig_notifier->clearReadiness(SocketNotifier::Read);
 
-		unsigned char c;
-		if(::read(sig_pipe[0], &c, 1) == -1)
-		{
-			// TODO: error handling?
-			return;
-		}
+        unsigned char c;
+        if (::read(sig_pipe[0], &c, 1) == -1) {
+            // TODO: error handling?
+            return;
+        }
 
-		if(c == 1) // SIGHUP
-		{
-			q->hup();
-			return;
-		}
+        if (c == 1) // SIGHUP
+        {
+            q->hup();
+            return;
+        }
 
-		do_emit();
-	}
+        do_emit();
+    }
 
 private:
-	void do_emit()
-	{
-		// Only signal once
-		if(!done)
-		{
-			done = true;
-			q->quit();
-		}
-	}
+    void do_emit() {
+        // Only signal once
+        if (!done) {
+            done = true;
+            q->quit();
+        }
+    }
 };
 
-ProcessQuit::ProcessQuit()
-{
-	d = new Private(this);
+ProcessQuit::ProcessQuit() { d = new Private(this); }
+
+ProcessQuit::~ProcessQuit() { delete d; }
+
+ProcessQuit *ProcessQuit::instance() {
+    QMutexLocker locker(pq_mutex());
+    if (!g_pq)
+        g_pq = new ProcessQuit;
+    return g_pq;
 }
 
-ProcessQuit::~ProcessQuit()
-{
-	delete d;
+void ProcessQuit::reset() {
+    QMutexLocker locker(pq_mutex());
+    if (g_pq)
+        g_pq->d->done = false;
 }
 
-ProcessQuit *ProcessQuit::instance()
-{
-	QMutexLocker locker(pq_mutex());
-	if(!g_pq)
-		g_pq = new ProcessQuit;
-	return g_pq;
-}
-
-void ProcessQuit::reset()
-{
-	QMutexLocker locker(pq_mutex());
-	if(g_pq)
-		g_pq->d->done = false;
-}
-
-void ProcessQuit::cleanup()
-{
-	delete g_pq;
-	g_pq = nullptr;
+void ProcessQuit::cleanup() {
+    delete g_pq;
+    g_pq = nullptr;
 }

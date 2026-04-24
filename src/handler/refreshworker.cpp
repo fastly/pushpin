@@ -23,86 +23,71 @@
 
 #include "refreshworker.h"
 
-#include "qtcompat.h"
-#include "zrpcrequest.h"
 #include "controlrequest.h"
+#include "qtcompat.h"
 #include "statsmanager.h"
-#include "wssession.h"
 #include "variant.h"
+#include "wssession.h"
+#include "zrpcrequest.h"
 
-RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel) :
-	ignoreErrors_(false),
-	proxyControlClient_(proxyControlClient),
-	req_(req)
-{
-	VariantHash args = req_->args();
+RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient,
+                             QHash<QString, QSet<WsSession *>> *wsSessionsByChannel)
+    : ignoreErrors_(false), proxyControlClient_(proxyControlClient), req_(req) {
+    VariantHash args = req_->args();
 
-	if(args.contains("cid"))
-	{
-		if(typeId(args["cid"]) != VariantType::ByteArray)
-		{
-			respondError("bad-request");
-			return;
-		}
+    if (args.contains("cid")) {
+        if (typeId(args["cid"]) != VariantType::ByteArray) {
+            respondError("bad-request");
+            return;
+        }
 
-		cids_ += QString::fromUtf8(args["cid"].toByteArray());
+        cids_ += QString::fromUtf8(args["cid"].toByteArray());
 
-		refreshNextCid();
-	}
-	else if(args.contains("channel"))
-	{
-		if(typeId(args["channel"]) != VariantType::ByteArray)
-		{
-			respondError("bad-request");
-			return;
-		}
+        refreshNextCid();
+    } else if (args.contains("channel")) {
+        if (typeId(args["channel"]) != VariantType::ByteArray) {
+            respondError("bad-request");
+            return;
+        }
 
-		QString channel = QString::fromUtf8(args["channel"].toByteArray());
+        QString channel = QString::fromUtf8(args["channel"].toByteArray());
 
-		QSet<WsSession*> wsbc = wsSessionsByChannel->value(channel);
-		foreach(WsSession *s, wsbc)
-		{
-			cids_ += s->cid;
-		}
+        QSet<WsSession *> wsbc = wsSessionsByChannel->value(channel);
+        foreach (WsSession *s, wsbc) {
+            cids_ += s->cid;
+        }
 
-		ignoreErrors_ = true;
+        ignoreErrors_ = true;
 
-		refreshNextCid();
-	}
-	else
-	{
-		respondError("bad-request");
-		return;
-	}
+        refreshNextCid();
+    } else {
+        respondError("bad-request");
+        return;
+    }
 }
 
-void RefreshWorker::respondError(const QByteArray &condition)
-{
-	req_->respondError(condition);
-	setFinished(true);
+void RefreshWorker::respondError(const QByteArray &condition) {
+    req_->respondError(condition);
+    setFinished(true);
 }
 
-void RefreshWorker::refreshNextCid()
-{
-	if(cids_.isEmpty())
-	{
-		req_->respond();
-		setFinished(true);
-		return;
-	}
+void RefreshWorker::refreshNextCid() {
+    if (cids_.isEmpty()) {
+        req_->respond();
+        setFinished(true);
+        return;
+    }
 
-	refresh_ = std::unique_ptr<Deferred>(ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8()));
-	finishedConnection_ = refresh_->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
+    refresh_ = std::unique_ptr<Deferred>(
+        ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8()));
+    finishedConnection_ = refresh_->finished.connect(
+        boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
 }
 
-void RefreshWorker::proxyRefresh_finished(const DeferredResult &result)
-{
-	if(result.success || ignoreErrors_)
-	{
-		refreshNextCid();
-	}
-	else
-	{
-		respondError(result.value.toByteArray());
-	}
+void RefreshWorker::proxyRefresh_finished(const DeferredResult &result) {
+    if (result.success || ignoreErrors_) {
+        refreshNextCid();
+    } else {
+        respondError(result.value.toByteArray());
+    }
 }

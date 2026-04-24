@@ -21,70 +21,67 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "test.h"
 #include "idformat.h"
+#include "test.h"
 
-static void renderId()
-{
-	QHash<QString, QByteArray> vars;
-	QByteArray sformat = "This template has no directives.";
-	QByteArray ret = IdFormat::renderId(sformat, vars);
-	TEST_ASSERT_EQ(ret, QByteArray("This template has no directives."));
+static void renderId() {
+    QHash<QString, QByteArray> vars;
+    QByteArray sformat = "This template has no directives.";
+    QByteArray ret = IdFormat::renderId(sformat, vars);
+    TEST_ASSERT_EQ(ret, QByteArray("This template has no directives."));
 
-	vars["name"] = "Alice";
-	vars["food\\fruit(type)"] = "apples";
+    vars["name"] = "Alice";
+    vars["food\\fruit(type)"] = "apples";
 
-	sformat = "My name is %(name)s and I eat %(food\\\\fruit(type\\))s 10%% of the time.";
-	ret = IdFormat::renderId(sformat, vars);
-	TEST_ASSERT_EQ(ret, QByteArray("My name is Alice and I eat apples 10% of the time."));
+    sformat = "My name is %(name)s and I eat %(food\\\\fruit(type\\))s 10%% of "
+              "the time.";
+    ret = IdFormat::renderId(sformat, vars);
+    TEST_ASSERT_EQ(ret, QByteArray("My name is Alice and I eat apples 10% of the time."));
 }
 
-static void renderContent()
-{
-	QByteArray id = "C3PO";
-	QByteArray content = "This content has no directives.";
-	QByteArray ret = IdFormat::ContentRenderer(id, false).process(content);
-	TEST_ASSERT_EQ(ret, QByteArray("This content has no directives."));
+static void renderContent() {
+    QByteArray id = "C3PO";
+    QByteArray content = "This content has no directives.";
+    QByteArray ret = IdFormat::ContentRenderer(id, false).process(content);
+    TEST_ASSERT_EQ(ret, QByteArray("This content has no directives."));
 
-	content = "The ID is %I.";
-	ret = IdFormat::ContentRenderer(id, false).process(content);
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is C3PO."));
+    content = "The ID is %I.";
+    ret = IdFormat::ContentRenderer(id, false).process(content);
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is C3PO."));
 
-	ret = IdFormat::ContentRenderer(id, true).process(content);
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is 4333504f."));
+    ret = IdFormat::ContentRenderer(id, true).process(content);
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is 4333504f."));
 
-	content = "The ID is %(R2D2)I.";
-	ret = IdFormat::ContentRenderer(id, true).process(content);
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
+    content = "The ID is %(R2D2)I.";
+    ret = IdFormat::ContentRenderer(id, true).process(content);
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
 }
 
-static void renderContentIncremental()
-{
-	IdFormat::ContentRenderer cr(QByteArray(), true);
+static void renderContentIncremental() {
+    IdFormat::ContentRenderer cr(QByteArray(), true);
 
-	QByteArray ret = cr.update("The ID is %");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
-	ret += cr.update("(");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
-	ret += cr.update("R2D");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
-	ret += cr.update("2");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
-	ret += cr.update(")");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
-	ret += cr.update("I.");
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
+    QByteArray ret = cr.update("The ID is %");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
+    ret += cr.update("(");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
+    ret += cr.update("R2D");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
+    ret += cr.update("2");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
+    ret += cr.update(")");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is "));
+    ret += cr.update("I.");
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
 
-	ret += cr.finalize();
-	TEST_ASSERT(!ret.isNull());
-	TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
+    ret += cr.finalize();
+    TEST_ASSERT(!ret.isNull());
+    TEST_ASSERT_EQ(ret, QByteArray("The ID is 52324432."));
 }
 
-extern "C" int idformat_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(renderId());
-	TEST_CATCH(renderContent());
-	TEST_CATCH(renderContentIncremental());
+extern "C" int idformat_test(ffi::TestException *out_ex) {
+    TEST_CATCH(renderId());
+    TEST_CATCH(renderContent());
+    TEST_CATCH(renderContentIncremental());
 
-	return 0;
+    return 0;
 }

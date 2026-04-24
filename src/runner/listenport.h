@@ -25,34 +25,28 @@
 
 #include <QHostAddress>
 
-class ListenPort
-{
+class ListenPort {
 public:
-	QHostAddress addr;
-	int port;
-	bool ssl;
-	QString localPath;
-	int mode;
-	QString user;
-	QString group;
+    QHostAddress addr;
+    int port;
+    bool ssl;
+    QString localPath;
+    int mode;
+    QString user;
+    QString group;
 
-	ListenPort() :
-		port(-1),
-		ssl(false),
-		mode(-1)
-	{
-	}
+    ListenPort() : port(-1), ssl(false), mode(-1) {}
 
-	ListenPort(const QHostAddress &_addr, int _port, bool _ssl, const QString &_localPath = QString(), int _mode = -1, const QString &_user = QString(), const QString &_group = QString()) :
-		addr(_addr),
-		port(_port),
-		ssl(_ssl),
-		localPath(_localPath),
-		mode(_mode),
-		user(_user),
-		group(_group)
-	{
-	}
+    ListenPort(const QHostAddress &_addr, int _port, bool _ssl,
+               const QString &_localPath = QString(), int _mode = -1,
+               const QString &_user = QString(), const QString &_group = QString())
+        : addr(_addr),
+          port(_port),
+          ssl(_ssl),
+          localPath(_localPath),
+          mode(_mode),
+          user(_user),
+          group(_group) {}
 };
 
 #endif

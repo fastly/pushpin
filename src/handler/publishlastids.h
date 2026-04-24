@@ -23,35 +23,33 @@
 #ifndef PUBLISHLASTIDS_H
 #define PUBLISHLASTIDS_H
 
-#include <QString>
 #include <QDateTime>
-#include <QMap>
 #include <QHash>
+#include <QMap>
+#include <QString>
 
 // Cache with LRU expiration
-class PublishLastIds
-{
+class PublishLastIds {
 public:
-	PublishLastIds(int maxCapacity);
-	void set(const QString &channel, const QString &id);
-	void remove(const QString &channel);
-	void clear();
-	QString value(const QString &channel);
+    PublishLastIds(int maxCapacity);
+    void set(const QString &channel, const QString &id);
+    void remove(const QString &channel);
+    void clear();
+    QString value(const QString &channel);
 
 private:
-	typedef QPair<QDateTime, QString> TimeStringPair;
+    typedef QPair<QDateTime, QString> TimeStringPair;
 
-	class Item
-	{
-	public:
-		QString channel;
-		QString id;
-		QDateTime time;
-	};
+    class Item {
+    public:
+        QString channel;
+        QString id;
+        QDateTime time;
+    };
 
-	QHash<QString, Item> table_;
-	QMap<TimeStringPair, Item> recentlyUsed_;
-	int maxCapacity_;
+    QHash<QString, Item> table_;
+    QMap<TimeStringPair, Item> recentlyUsed_;
+    int maxCapacity_;
 };
 
 #endif

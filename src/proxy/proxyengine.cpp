@@ -23,1010 +23,912 @@
 
 #include "proxyengine.h"
 
-#include <assert.h>
-#include "zmqsocket.h"
-#include "zmqvalve.h"
-#include "zmqreqmessage.h"
-#include "tnetstring.h"
+#include "connectionmanager.h"
+#include "defercall.h"
+#include "domainmap.h"
+#include "inspectdata.h"
+#include "log.h"
+#include "logutil.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
-#include "qtcompat.h"
-#include "variant.h"
-#include "timer.h"
-#include "defercall.h"
-#include "log.h"
-#include "inspectdata.h"
-#include "zhttpmanager.h"
-#include "zhttprequest.h"
-#include "zwebsocket.h"
-#include "websocketoverhttp.h"
-#include "domainmap.h"
-#include "zroutes.h"
-#include "zrpcmanager.h"
-#include "zrpcrequest.h"
-#include "zrpcchecker.h"
-#include "wscontrolmanager.h"
-#include "requestsession.h"
 #include "proxysession.h"
-#include "wsproxysession.h"
-#include "statsmanager.h"
-#include "connectionmanager.h"
-#include "zutil.h"
+#include "qtcompat.h"
+#include "requestsession.h"
 #include "sockjsmanager.h"
 #include "sockjssession.h"
-#include "logutil.h"
+#include "statsmanager.h"
+#include "timer.h"
+#include "tnetstring.h"
+#include "variant.h"
+#include "websocketoverhttp.h"
+#include "wscontrolmanager.h"
+#include "wsproxysession.h"
+#include "zhttpmanager.h"
+#include "zhttprequest.h"
+#include "zmqreqmessage.h"
+#include "zmqsocket.h"
+#include "zmqvalve.h"
+#include "zroutes.h"
+#include "zrpcchecker.h"
+#include "zrpcmanager.h"
+#include "zrpcrequest.h"
+#include "zutil.h"
+#include "zwebsocket.h"
+#include <assert.h>
 
 #define DEFAULT_HWM 1000
 
-class Engine::Private
-{
+class Engine::Private {
 public:
-	class ProxyItem
-	{
-	public:
-		bool shared;
-		QByteArray key;
-		ProxySession *ps;
-
-		ProxyItem() :
-			shared(false),
-			ps(0)
-		{
-		}
-	};
-
-	class WsProxyItem
-	{
-	public:
-		WsProxySession *ps;
-
-		WsProxyItem() :
-			ps(0)
-		{
-		}
-	};
-
-	struct RequestSessionConnections {
-		Connection inspectedConnection;
-		Connection inspectErrorConnection;
-		Connection finishedConnection;
-		Connection finishedByAcceptConnection;
-	};
-
-	struct ProxySessionConnections {
-		Connection addNotAllowedConnection;
-		Connection finishedConnection;
-		Connection reqSessionDestroyedConnection;
-	};
-
-	Engine *q;
-	bool destroying;
-	DomainMap *domainMap;
-	Configuration config;
-	std::unique_ptr<ZhttpManager> zhttpIn;
-	std::unique_ptr<ZhttpManager> intZhttpIn;
-	std::unique_ptr<ZRoutes> zroutes;
-	std::unique_ptr<ZrpcManager> inspect;
-	std::unique_ptr<WsControlManager> wsControl;
-	std::unique_ptr<ZrpcChecker> inspectChecker;
-	std::unique_ptr<StatsManager> stats;
-	std::unique_ptr<ZrpcManager> command;
-	std::unique_ptr<ZrpcManager> accept;
-	std::unique_ptr<ZmqSocket> handler_retry_in_sock;
-	std::unique_ptr<ZmqValve> handler_retry_in_valve;
-	QSet<RequestSession*> requestSessions;
-	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
-	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
-	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
-	std::unique_ptr<SockJsManager> sockJsManager;
-	ConnectionManager connectionManager;
-	LogUtil::Config logConfig;
-	Connection cmdReqReadyConnection;
-	Connection sessionReadyConnection;
-	Connection requestReadyConnection;
-	Connection socketReadyConnection;
-	Connection iRequestReadyConnection;
-	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
-	map<ProxySession*, ProxySessionConnections> proxySessionConnectionMap;
-	Connection connMaxConnection;
-	Connection rrConnection;
-
-	Private(Engine *_q, DomainMap *_domainMap) :
-		q(_q),
-		destroying(false),
-		domainMap(_domainMap)
-	{
-	}
-
-	~Private()
-	{
-		destroying = true;
-
-		// Need to delete all objects that may have connections before
-		// deleting zhttpmanagers/zroutes
-
-		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
-		while(it.hasNext())
-		{
-			it.next();
-			delete it.key();
-			delete it.value();
-		}
-
-		proxyItemsBySession.clear();
-		proxyItemsByKey.clear();
-
-		QHashIterator<WsProxySession*, WsProxyItem*> wit(wsProxyItemsBySession);
-		while(wit.hasNext())
-		{
-			wit.next();
-			delete wit.key();
-			delete wit.value();
-		}
-
-		wsProxyItemsBySession.clear();
-
-		foreach(RequestSession *rs, requestSessions){
-			reqSessionConnectionMap.erase(rs);
-			delete rs;
-		}
-		requestSessions.clear();
-
-		// May have background connections
-		sockJsManager.reset();
-
-		WebSocketOverHttp::clearDisconnectManager();
-
-		// Need to make sure this is deleted before inspect manager
-		inspectChecker.reset();
-	}
-
-	bool start(const Configuration &_config)
-	{
-		config = _config;
-
-		logConfig.fromAddress = config.logFrom;
-		logConfig.userAgent = config.logUserAgent;
-
-		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
-
-		zhttpIn = std::make_unique<ZhttpManager>();
-		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
-		socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
-
-		zhttpIn->setInstanceId(config.clientId);
-		zhttpIn->setServerInSpecs(config.serverInSpecs);
-		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
-		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
-
-		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
-		{
-			intZhttpIn = std::make_unique<ZhttpManager>();
-			intZhttpIn->setBind(true);
-			intZhttpIn->setIpcFileMode(config.ipcFileMode);
-			iRequestReadyConnection = intZhttpIn->requestReady.connect(boost::bind(&Private::intZhttpIn_requestReady, this));
-
-			intZhttpIn->setInstanceId(config.clientId);
-			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
-			intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
-			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
-		}
-
-		zroutes = std::make_unique<ZRoutes>();
-		zroutes->setInstanceId(config.clientId);
-		zroutes->setDefaultOutSpecs(config.clientOutSpecs);
-		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
-		zroutes->setDefaultInSpecs(config.clientInSpecs);
-
-		sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
-		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
-		
-		// Set up the Inspect endpoint in pushpin-handler
-		if(!config.inspectSpec.isEmpty())
-		{
-			inspect = std::make_unique<ZrpcManager>();
-			inspect->setBind(true);
-			inspect->setIpcFileMode(config.ipcFileMode);
-			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
-			{
-				// ZrpcManager logs error
-				return false;
-			}
-
-			inspect->setTimeout(config.inspectTimeout);
-
-			inspectChecker = std::make_unique<ZrpcChecker>();
-		}
-		
-		// Set up the Accept endpoint in pushpin-handler
-		if(!config.acceptSpec.isEmpty())
-		{
-			accept = std::make_unique<ZrpcManager>();
-			accept->setInstanceId(config.clientId);
-			accept->setBind(true);
-			accept->setIpcFileMode(config.ipcFileMode);
-			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
-			{
-				// ZrpcManager logs error
-				return false;
-			}
-
-			// There's no acceptTimeout config option so we'll reuse inspectTimeout
-			accept->setTimeout(config.inspectTimeout);
-		}
-
-		if(!config.retryInSpec.isEmpty())
-		{
-			handler_retry_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
-
-			handler_retry_in_sock->setIdentity(config.clientId);
-			handler_retry_in_sock->setHwm(DEFAULT_HWM);
-
-			QString errorMessage;
-			if(!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true, config.ipcFileMode, &errorMessage))
-			{
-				log_error("%s", qPrintable(errorMessage));
-				return false;
-			}
-
-			handler_retry_in_valve = std::make_unique<ZmqValve>(handler_retry_in_sock.get());
-			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
-		}
-
-		if(handler_retry_in_valve)
-			handler_retry_in_valve->open();
-
-		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
-		{
-			wsControl = std::make_unique<WsControlManager>();
-
-			wsControl->setIdentity(config.clientId);
-			wsControl->setIpcFileMode(config.ipcFileMode);
-
-			if(!wsControl->setInitSpecs(config.wsControlInitSpecs))
-			{
-				log_error("unable to bind to handler_ws_control_init_specs: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
-				return false;
-			}
-
-			if(!wsControl->setStreamSpecs(config.wsControlStreamSpecs))
-			{
-				log_error("unable to bind to handler_ws_control_stream_specs: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
-				return false;
-			}
-		}
-
-		// Set up StatsManager
-		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
-		{
-			stats = std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
-
-			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
-
-			stats->setInstanceId(config.clientId);
-			stats->setIpcFileMode(config.ipcFileMode);
-			stats->setConnectionSendEnabled(config.statsConnectionSend);
-			stats->setConnectionsMaxSendEnabled(!config.statsConnectionSend);
-			stats->setConnectionTtl(config.statsConnectionTtl);
-			stats->setConnectionsMaxTtl(config.statsConnectionsMaxTtl);
-			stats->setReportInterval(config.statsReportInterval);
-
-			if(!config.statsSpec.isEmpty())
-			{
-				if(!stats->setSpec(config.statsSpec))
-				{
-					// StatsManager logs error
-					return false;
-				}
-			}
-
-			if(!config.prometheusPort.isEmpty())
-			{
-				stats->setPrometheusPrefix(config.prometheusPrefix);
-
-				if(!stats->setPrometheusPort(config.prometheusPort))
-				{
-					log_error("unable to bind to prometheus port: %s", qPrintable(config.prometheusPort));
-					return false;
-				}
-			}
-		}
-
-		if(!config.commandSpec.isEmpty())
-		{
-			command = std::make_unique<ZrpcManager>();
-			command->setBind(true);
-			command->setIpcFileMode(config.ipcFileMode);
-			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
-
-			if(!command->setServerSpecs(QStringList() << config.commandSpec))
-			{
-				// ZrpcManager logs error
-				return false;
-			}
-		}
-
-		// Init zroutes
-		routesChanged();
-
-		return true;
-	}
-
-	void routesChanged()
-	{
-		auto zhttpRoutes = domainMap->zhttpRoutes();
-
-		if(zhttpRoutes.count() > ZROUTES_MAX)
-		{
-			log_warning("too many unique zhttp route targets, limiting to %d", ZROUTES_MAX);
-			zhttpRoutes = zhttpRoutes.mid(0, ZROUTES_MAX);
-		}
-
-		// Connect to new zhttp targets, disconnect from old
-		zroutes->setup(zhttpRoutes);
-	}
-
-	void doProxy(RequestSession *rs, const InspectData *idata = 0)
-	{
-		DomainMap::Entry route = rs->route();
-
-		// We'll always have a route
-		assert(!route.isNull());
-
-		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
-
-		ProxySession *ps = 0;
-		if(sharable)
-		{
-			log_debug("need to proxy with sharing key: %s", idata->sharingKey.data());
-
-			ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
-			if(i)
-				ps = i->ps;
-		}
-
-		if(!ps)
-		{
-			log_debug("creating proxysession for id=%s", rs->rid().second.data());
-
-			ps = new ProxySession(zroutes.get(), accept.get(), logConfig, stats.get());
-			// TODO: use callbacks for performance
-			proxySessionConnectionMap[ps] = {
-				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
-				ps->finished.connect(boost::bind(&Private::ps_finished, this, ps)),
-				ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2))
-			};
-
-			ps->setRoute(route);
-			ps->setDefaultSigKey(config.sigIss, config.sigKey);
-			ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);
-			ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
-			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-			ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
-			ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
-			ps->setCdnLoop(config.cdnLoop);
-			ps->setProxyInitialResponseEnabled(true);
-
-			if(idata)
-				ps->setInspectData(*idata);
-
-			ProxyItem *i = new ProxyItem;
-			i->ps = ps;
-			proxyItemsBySession.insert(i->ps, i);
-
-			if(sharable)
-			{
-				i->shared = true;
-				i->key = idata->sharingKey;
-				proxyItemsByKey.insert(i->key, i);
-			}
-		}
-		else
-			log_debug("reusing proxysession");
-
-		// ProxySession will take it from here
-		// TODO: use callbacks for performance
-		reqSessionConnectionMap.erase(rs);
-
-		ps->add(rs);
-	}
-
-	void doProxySocket(WebSocket *sock, const DomainMap::Entry &route)
-	{
-		QByteArray cid = connectionManager.addConnection(sock);
-
-		WsProxySession *ps = new WsProxySession(zroutes.get(), &connectionManager, logConfig, stats.get(), wsControl.get());
-		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
-
-		connectionManager.setProxyForConnection(sock, ps);
-
-		ps->setDebugEnabled(config.debug || route.debug);
-		ps->setDefaultSigKey(config.sigIss, config.sigKey);
-		ps->setDefaultUpstreamKey(config.upstreamKey);
-		ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);
-		ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
-		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
-		ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
-		ps->setCdnLoop(config.cdnLoop);
-
-		WsProxyItem *i = new WsProxyItem;
-		i->ps = ps;
-		wsProxyItemsBySession.insert(i->ps, i);
-
-		// After this call, ps->logicalClientAddress() will be valid
-		ps->start(sock, cid, route);
-
-		if(stats)
-		{
-			stats->addConnection(cid, ps->statsRoute(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
-			stats->addActivity(ps->statsRoute());
-			stats->addRequestsReceived(1);
-		}
-	}
-
-	bool canTake()
-	{
-		// Don't accept new sessions during shutdown
-		if(destroying)
-			return false;
-
-		// Don't accept new sessions if we're servicing maximum
-		int curSessions = requestSessions.count() + wsProxyItemsBySession.count();
-		if(curSessions >= config.sessionsMax)
-			return false;
-
-		return true;
-	}
-
-	bool isXForwardedProtocolTls(const HttpHeaders &headers)
-	{
-		QByteArray xfp = headers.get("X-Forwarded-Proto").asQByteArray();
-		if(xfp.isEmpty())
-			xfp = headers.get("X-Forwarded-Protocol").asQByteArray();
-		return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
-	}
-
-	void tryTakeRequest()
-	{
-		if(!canTake())
-			return;
-
-		// Prioritize external requests over internal requests
-
-		ZhttpRequest *req = zhttpIn->takeNextRequest();
-		if(!req)
-		{
-			if(intZhttpIn)
-				req = intZhttpIn->takeNextRequest();
-
-			if(!req)
-				return;
-		}
-
-		QString routeId;
-		bool preferInternal = false;
-		bool autoShare = false;
-
-		Variant passthroughData = req->passthroughData();
-		if(passthroughData.isValid())
-		{
-			// Passthrough request, from handler
-
-			const VariantHash data = passthroughData.toHash();
-
-			// There is always a route
-			routeId = QString::fromUtf8(data["route"].toByteArray());
-
-			if(data.contains("prefer-internal"))
-				preferInternal = data["prefer-internal"].toBool();
-
-			if(data.contains("auto-share"))
-				autoShare = data["auto-share"].toBool();
-		}
-		else
-		{
-			// Regular request
-
-			if(config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
-				req->setIsTls(true);
-
-			if(config.acceptPushpinRoute)
-				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
-		}
-
-		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
-
-		if(passthroughData.isValid() && !preferInternal)
-		{
-			// Passthrough request with preferInternal=false. In this case,
-			// set up a direct route, using some settings from the original
-			// route
-
-			DomainMap::Entry originalRoute;
-			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-				originalRoute = domainMap->entry(routeId);
-
-			const VariantHash data = passthroughData.toHash();
-
-			DomainMap::Entry route;
-
-			// Use sig settings from the original route, if available
-			if(!originalRoute.isNull())
-			{
-				route.sigIss = originalRoute.sigIss;
-				route.sigKey = originalRoute.sigKey;
-			}
-
-			DomainMap::Target target;
-			Url uri = req->requestUri();
-			bool isHttps = (uri.scheme() == "https");
-			target.connectHost = uri.host();
-			target.connectPort = uri.port(isHttps ? 443 : 80);
-			target.ssl = isHttps;
-			target.trusted = data["trusted"].toBool();
-
-			route.targets += target;
-
-			rs->setRoute(route);
-		}
-		else
-		{
-			// Regular request (with or without a route ID), or a passthrough
-			// request with preferInternal=true. In that case, use domainmap
-			// for lookup, with route ID if available
-
-			rs->setRouteId(routeId);
-		}
-
-		if(!passthroughData.isValid())
-		{
-			// These only make sense on regular requests
-
-			rs->setDebugEnabled(config.debug);
-			rs->setAutoCrossOrigin(config.autoCrossOrigin);
-			rs->setPrefetchSize(config.inspectPrefetch);
-			rs->setDefaultUpstreamKey(config.upstreamKey);
-			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-		}
-
-		rs->setAutoShare(autoShare);
-
-		// TODO: use callbacks for performance
-		reqSessionConnectionMap[rs] = {
-			rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
-			rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
-			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
-			rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))
-		};
-
-		requestSessions += rs;
-
-		rs->start(req);
-	}
-
-	void tryTakeSocket()
-	{
-		if(!canTake())
-			return;
-
-		ZWebSocket *sock = zhttpIn->takeNextSocket();
-		if(!sock)
-			return;
-
-		if(config.acceptXForwardedProto && isXForwardedProtocolTls(sock->requestHeaders()))
-			sock->setIsTls(true);
-
-		Url requestUri = sock->requestUri();
-
-		log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(), requestUri.toEncoded().data());
-
-		bool isSecure = (requestUri.scheme() == "wss");
-		QString host = requestUri.host();
-
-		QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
-
-		QString routeId;
-
-		if(config.acceptPushpinRoute)
-			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route").asQByteArray());
-
-		// Look up the route
-		DomainMap::Entry route;
-		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-			route = domainMap->entry(routeId);
-		else
-			route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
-
-		// Before we do anything else, see if this is a sockjs request
-		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
-		{
-			sockJsManager->giveSocket(sock, route.sockJsPath.length(), route.sockJsAsPath, route);
-			return;
-		}
-
-		log_debug("creating wsproxysession for zws id=%s", sock->rid().second.data());
-		doProxySocket(sock, route);
-	}
-
-	void tryTakeSockJsSession()
-	{
-		if(!canTake())
-			return;
-
-		SockJsSession *sock = sockJsManager->takeNext();
-		if(!sock)
-			return;
-
-		log_debug("IN sockjs obj=%p %s", sock, sock->requestUri().toEncoded().data());
-
-		log_debug("creating wsproxysession for sockjs=%p", sock);
-		doProxySocket(sock, sock->route());
-	}
-
-	void tryTakeNext()
-	{
-		tryTakeRequest();
-		tryTakeSocket();
-		tryTakeSockJsSession();
-	}
-
-	void logFinished(RequestSession *rs, bool accepted = false)
-	{
-		HttpResponseData resp = rs->responseData();
-
-		LogUtil::RequestData rd;
-
-		DomainMap::Entry route = rs->route();
-
-		// Only log route id if explicitly set
-		if(route.separateStats)
-			rd.routeId = route.id;
-
-		if(accepted)
-		{
-			rd.status = LogUtil::Accept;
-		}
-		else if(resp.code != -1)
-		{
-			rd.status = LogUtil::Response;
-			rd.responseData = resp;
-			rd.responseBodySize = rs->responseBodySize();
-		}
-		else
-		{
-			rd.status = LogUtil::Error;
-		}
-
-		rd.requestData = rs->requestData();
-
-		rd.fromAddress = rs->logicalPeerAddress();
-
-		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
-	}
+    class ProxyItem {
+    public:
+        bool shared;
+        QByteArray key;
+        ProxySession *ps;
+
+        ProxyItem() : shared(false), ps(0) {}
+    };
+
+    class WsProxyItem {
+    public:
+        WsProxySession *ps;
+
+        WsProxyItem() : ps(0) {}
+    };
+
+    struct RequestSessionConnections {
+        Connection inspectedConnection;
+        Connection inspectErrorConnection;
+        Connection finishedConnection;
+        Connection finishedByAcceptConnection;
+    };
+
+    struct ProxySessionConnections {
+        Connection addNotAllowedConnection;
+        Connection finishedConnection;
+        Connection reqSessionDestroyedConnection;
+    };
+
+    Engine *q;
+    bool destroying;
+    DomainMap *domainMap;
+    Configuration config;
+    std::unique_ptr<ZhttpManager> zhttpIn;
+    std::unique_ptr<ZhttpManager> intZhttpIn;
+    std::unique_ptr<ZRoutes> zroutes;
+    std::unique_ptr<ZrpcManager> inspect;
+    std::unique_ptr<WsControlManager> wsControl;
+    std::unique_ptr<ZrpcChecker> inspectChecker;
+    std::unique_ptr<StatsManager> stats;
+    std::unique_ptr<ZrpcManager> command;
+    std::unique_ptr<ZrpcManager> accept;
+    std::unique_ptr<ZmqSocket> handler_retry_in_sock;
+    std::unique_ptr<ZmqValve> handler_retry_in_valve;
+    QSet<RequestSession *> requestSessions;
+    QHash<QByteArray, ProxyItem *> proxyItemsByKey;
+    QHash<ProxySession *, ProxyItem *> proxyItemsBySession;
+    QHash<WsProxySession *, WsProxyItem *> wsProxyItemsBySession;
+    std::unique_ptr<SockJsManager> sockJsManager;
+    ConnectionManager connectionManager;
+    LogUtil::Config logConfig;
+    Connection cmdReqReadyConnection;
+    Connection sessionReadyConnection;
+    Connection requestReadyConnection;
+    Connection socketReadyConnection;
+    Connection iRequestReadyConnection;
+    map<RequestSession *, RequestSessionConnections> reqSessionConnectionMap;
+    map<ProxySession *, ProxySessionConnections> proxySessionConnectionMap;
+    Connection connMaxConnection;
+    Connection rrConnection;
+
+    Private(Engine *_q, DomainMap *_domainMap) : q(_q), destroying(false), domainMap(_domainMap) {}
+
+    ~Private() {
+        destroying = true;
+
+        // Need to delete all objects that may have connections before
+        // deleting zhttpmanagers/zroutes
+
+        QHashIterator<ProxySession *, ProxyItem *> it(proxyItemsBySession);
+        while (it.hasNext()) {
+            it.next();
+            delete it.key();
+            delete it.value();
+        }
+
+        proxyItemsBySession.clear();
+        proxyItemsByKey.clear();
+
+        QHashIterator<WsProxySession *, WsProxyItem *> wit(wsProxyItemsBySession);
+        while (wit.hasNext()) {
+            wit.next();
+            delete wit.key();
+            delete wit.value();
+        }
+
+        wsProxyItemsBySession.clear();
+
+        foreach (RequestSession *rs, requestSessions) {
+            reqSessionConnectionMap.erase(rs);
+            delete rs;
+        }
+        requestSessions.clear();
+
+        // May have background connections
+        sockJsManager.reset();
+
+        WebSocketOverHttp::clearDisconnectManager();
+
+        // Need to make sure this is deleted before inspect manager
+        inspectChecker.reset();
+    }
+
+    bool start(const Configuration &_config) {
+        config = _config;
+
+        logConfig.fromAddress = config.logFrom;
+        logConfig.userAgent = config.logUserAgent;
+
+        WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
+
+        zhttpIn = std::make_unique<ZhttpManager>();
+        requestReadyConnection =
+            zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
+        socketReadyConnection =
+            zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
+
+        zhttpIn->setInstanceId(config.clientId);
+        zhttpIn->setServerInSpecs(config.serverInSpecs);
+        zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
+        zhttpIn->setServerOutSpecs(config.serverOutSpecs);
+
+        if (!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() &&
+            !config.intServerOutSpecs.isEmpty()) {
+            intZhttpIn = std::make_unique<ZhttpManager>();
+            intZhttpIn->setBind(true);
+            intZhttpIn->setIpcFileMode(config.ipcFileMode);
+            iRequestReadyConnection = intZhttpIn->requestReady.connect(
+                boost::bind(&Private::intZhttpIn_requestReady, this));
+
+            intZhttpIn->setInstanceId(config.clientId);
+            intZhttpIn->setServerInSpecs(config.intServerInSpecs);
+            intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
+            intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
+        }
+
+        zroutes = std::make_unique<ZRoutes>();
+        zroutes->setInstanceId(config.clientId);
+        zroutes->setDefaultOutSpecs(config.clientOutSpecs);
+        zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
+        zroutes->setDefaultInSpecs(config.clientInSpecs);
+
+        sockJsManager = std::make_unique<SockJsManager>(config.sockJsUrl);
+        sessionReadyConnection =
+            sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
+
+        // Set up the Inspect endpoint in pushpin-handler
+        if (!config.inspectSpec.isEmpty()) {
+            inspect = std::make_unique<ZrpcManager>();
+            inspect->setBind(true);
+            inspect->setIpcFileMode(config.ipcFileMode);
+            if (!inspect->setClientSpecs(QStringList() << config.inspectSpec)) {
+                // ZrpcManager logs error
+                return false;
+            }
+
+            inspect->setTimeout(config.inspectTimeout);
+
+            inspectChecker = std::make_unique<ZrpcChecker>();
+        }
+
+        // Set up the Accept endpoint in pushpin-handler
+        if (!config.acceptSpec.isEmpty()) {
+            accept = std::make_unique<ZrpcManager>();
+            accept->setInstanceId(config.clientId);
+            accept->setBind(true);
+            accept->setIpcFileMode(config.ipcFileMode);
+            if (!accept->setClientSpecs(QStringList() << config.acceptSpec)) {
+                // ZrpcManager logs error
+                return false;
+            }
+
+            // There's no acceptTimeout config option so we'll reuse inspectTimeout
+            accept->setTimeout(config.inspectTimeout);
+        }
+
+        if (!config.retryInSpec.isEmpty()) {
+            handler_retry_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Router);
+
+            handler_retry_in_sock->setIdentity(config.clientId);
+            handler_retry_in_sock->setHwm(DEFAULT_HWM);
+
+            QString errorMessage;
+            if (!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true,
+                                    config.ipcFileMode, &errorMessage)) {
+                log_error("%s", qPrintable(errorMessage));
+                return false;
+            }
+
+            handler_retry_in_valve = std::make_unique<ZmqValve>(handler_retry_in_sock.get());
+            rrConnection = handler_retry_in_valve->readyRead.connect(
+                boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
+        }
+
+        if (handler_retry_in_valve)
+            handler_retry_in_valve->open();
+
+        if (!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty()) {
+            wsControl = std::make_unique<WsControlManager>();
+
+            wsControl->setIdentity(config.clientId);
+            wsControl->setIpcFileMode(config.ipcFileMode);
+
+            if (!wsControl->setInitSpecs(config.wsControlInitSpecs)) {
+                log_error("unable to bind to handler_ws_control_init_specs: %s",
+                          qPrintable(config.wsControlInitSpecs.join(", ")));
+                return false;
+            }
+
+            if (!wsControl->setStreamSpecs(config.wsControlStreamSpecs)) {
+                log_error("unable to bind to handler_ws_control_stream_specs: %s",
+                          qPrintable(config.wsControlStreamSpecs.join(", ")));
+                return false;
+            }
+        }
+
+        // Set up StatsManager
+        if (!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty()) {
+            stats =
+                std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
+
+            connMaxConnection = stats->connMax.connect(
+                boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
+
+            stats->setInstanceId(config.clientId);
+            stats->setIpcFileMode(config.ipcFileMode);
+            stats->setConnectionSendEnabled(config.statsConnectionSend);
+            stats->setConnectionsMaxSendEnabled(!config.statsConnectionSend);
+            stats->setConnectionTtl(config.statsConnectionTtl);
+            stats->setConnectionsMaxTtl(config.statsConnectionsMaxTtl);
+            stats->setReportInterval(config.statsReportInterval);
+
+            if (!config.statsSpec.isEmpty()) {
+                if (!stats->setSpec(config.statsSpec)) {
+                    // StatsManager logs error
+                    return false;
+                }
+            }
+
+            if (!config.prometheusPort.isEmpty()) {
+                stats->setPrometheusPrefix(config.prometheusPrefix);
+
+                if (!stats->setPrometheusPort(config.prometheusPort)) {
+                    log_error("unable to bind to prometheus port: %s",
+                              qPrintable(config.prometheusPort));
+                    return false;
+                }
+            }
+        }
+
+        if (!config.commandSpec.isEmpty()) {
+            command = std::make_unique<ZrpcManager>();
+            command->setBind(true);
+            command->setIpcFileMode(config.ipcFileMode);
+            cmdReqReadyConnection =
+                command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
+
+            if (!command->setServerSpecs(QStringList() << config.commandSpec)) {
+                // ZrpcManager logs error
+                return false;
+            }
+        }
+
+        // Init zroutes
+        routesChanged();
+
+        return true;
+    }
+
+    void routesChanged() {
+        auto zhttpRoutes = domainMap->zhttpRoutes();
+
+        if (zhttpRoutes.count() > ZROUTES_MAX) {
+            log_warning("too many unique zhttp route targets, limiting to %d", ZROUTES_MAX);
+            zhttpRoutes = zhttpRoutes.mid(0, ZROUTES_MAX);
+        }
+
+        // Connect to new zhttp targets, disconnect from old
+        zroutes->setup(zhttpRoutes);
+    }
+
+    void doProxy(RequestSession *rs, const InspectData *idata = 0) {
+        DomainMap::Entry route = rs->route();
+
+        // We'll always have a route
+        assert(!route.isNull());
+
+        bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
+
+        ProxySession *ps = 0;
+        if (sharable) {
+            log_debug("need to proxy with sharing key: %s", idata->sharingKey.data());
+
+            ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
+            if (i)
+                ps = i->ps;
+        }
+
+        if (!ps) {
+            log_debug("creating proxysession for id=%s", rs->rid().second.data());
+
+            ps = new ProxySession(zroutes.get(), accept.get(), logConfig, stats.get());
+            // TODO: use callbacks for performance
+            proxySessionConnectionMap[ps] = {
+                ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
+                ps->finished.connect(boost::bind(&Private::ps_finished, this, ps)),
+                ps->requestSessionDestroyed.connect(
+                    boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1,
+                                boost::placeholders::_2))};
+
+            ps->setRoute(route);
+            ps->setDefaultSigKey(config.sigIss, config.sigKey);
+            ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);
+            ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
+            ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+            ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+            ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
+            ps->setCdnLoop(config.cdnLoop);
+            ps->setProxyInitialResponseEnabled(true);
+
+            if (idata)
+                ps->setInspectData(*idata);
+
+            ProxyItem *i = new ProxyItem;
+            i->ps = ps;
+            proxyItemsBySession.insert(i->ps, i);
+
+            if (sharable) {
+                i->shared = true;
+                i->key = idata->sharingKey;
+                proxyItemsByKey.insert(i->key, i);
+            }
+        } else
+            log_debug("reusing proxysession");
+
+        // ProxySession will take it from here
+        // TODO: use callbacks for performance
+        reqSessionConnectionMap.erase(rs);
+
+        ps->add(rs);
+    }
+
+    void doProxySocket(WebSocket *sock, const DomainMap::Entry &route) {
+        QByteArray cid = connectionManager.addConnection(sock);
+
+        WsProxySession *ps = new WsProxySession(zroutes.get(), &connectionManager, logConfig,
+                                                stats.get(), wsControl.get());
+        ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
+
+        connectionManager.setProxyForConnection(sock, ps);
+
+        ps->setDebugEnabled(config.debug || route.debug);
+        ps->setDefaultSigKey(config.sigIss, config.sigKey);
+        ps->setDefaultUpstreamKey(config.upstreamKey);
+        ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);
+        ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
+        ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+        ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+        ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
+        ps->setCdnLoop(config.cdnLoop);
+
+        WsProxyItem *i = new WsProxyItem;
+        i->ps = ps;
+        wsProxyItemsBySession.insert(i->ps, i);
+
+        // After this call, ps->logicalClientAddress() will be valid
+        ps->start(sock, cid, route);
+
+        if (stats) {
+            stats->addConnection(cid, ps->statsRoute(), StatsManager::WebSocket,
+                                 ps->logicalClientAddress(), sock->requestUri().scheme() == "wss",
+                                 false);
+            stats->addActivity(ps->statsRoute());
+            stats->addRequestsReceived(1);
+        }
+    }
+
+    bool canTake() {
+        // Don't accept new sessions during shutdown
+        if (destroying)
+            return false;
+
+        // Don't accept new sessions if we're servicing maximum
+        int curSessions = requestSessions.count() + wsProxyItemsBySession.count();
+        if (curSessions >= config.sessionsMax)
+            return false;
+
+        return true;
+    }
+
+    bool isXForwardedProtocolTls(const HttpHeaders &headers) {
+        QByteArray xfp = headers.get("X-Forwarded-Proto").asQByteArray();
+        if (xfp.isEmpty())
+            xfp = headers.get("X-Forwarded-Protocol").asQByteArray();
+        return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
+    }
+
+    void tryTakeRequest() {
+        if (!canTake())
+            return;
+
+        // Prioritize external requests over internal requests
+
+        ZhttpRequest *req = zhttpIn->takeNextRequest();
+        if (!req) {
+            if (intZhttpIn)
+                req = intZhttpIn->takeNextRequest();
+
+            if (!req)
+                return;
+        }
+
+        QString routeId;
+        bool preferInternal = false;
+        bool autoShare = false;
+
+        Variant passthroughData = req->passthroughData();
+        if (passthroughData.isValid()) {
+            // Passthrough request, from handler
+
+            const VariantHash data = passthroughData.toHash();
+
+            // There is always a route
+            routeId = QString::fromUtf8(data["route"].toByteArray());
+
+            if (data.contains("prefer-internal"))
+                preferInternal = data["prefer-internal"].toBool();
+
+            if (data.contains("auto-share"))
+                autoShare = data["auto-share"].toBool();
+        } else {
+            // Regular request
+
+            if (config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
+                req->setIsTls(true);
+
+            if (config.acceptPushpinRoute)
+                routeId =
+                    QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
+        }
+
+        RequestSession *rs =
+            new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(),
+                               inspectChecker.get(), accept.get(), stats.get());
+
+        if (passthroughData.isValid() && !preferInternal) {
+            // Passthrough request with preferInternal=false. In this case,
+            // set up a direct route, using some settings from the original
+            // route
+
+            DomainMap::Entry originalRoute;
+            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+                originalRoute = domainMap->entry(routeId);
+
+            const VariantHash data = passthroughData.toHash();
+
+            DomainMap::Entry route;
+
+            // Use sig settings from the original route, if available
+            if (!originalRoute.isNull()) {
+                route.sigIss = originalRoute.sigIss;
+                route.sigKey = originalRoute.sigKey;
+            }
+
+            DomainMap::Target target;
+            Url uri = req->requestUri();
+            bool isHttps = (uri.scheme() == "https");
+            target.connectHost = uri.host();
+            target.connectPort = uri.port(isHttps ? 443 : 80);
+            target.ssl = isHttps;
+            target.trusted = data["trusted"].toBool();
+
+            route.targets += target;
+
+            rs->setRoute(route);
+        } else {
+            // Regular request (with or without a route ID), or a passthrough
+            // request with preferInternal=true. In that case, use domainmap
+            // for lookup, with route ID if available
+
+            rs->setRouteId(routeId);
+        }
+
+        if (!passthroughData.isValid()) {
+            // These only make sense on regular requests
+
+            rs->setDebugEnabled(config.debug);
+            rs->setAutoCrossOrigin(config.autoCrossOrigin);
+            rs->setPrefetchSize(config.inspectPrefetch);
+            rs->setDefaultUpstreamKey(config.upstreamKey);
+            rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+        }
+
+        rs->setAutoShare(autoShare);
+
+        // TODO: use callbacks for performance
+        reqSessionConnectionMap[rs] = {
+            rs->inspected.connect(
+                boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
+            rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
+            rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
+            rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))};
+
+        requestSessions += rs;
+
+        rs->start(req);
+    }
+
+    void tryTakeSocket() {
+        if (!canTake())
+            return;
+
+        ZWebSocket *sock = zhttpIn->takeNextSocket();
+        if (!sock)
+            return;
+
+        if (config.acceptXForwardedProto && isXForwardedProtocolTls(sock->requestHeaders()))
+            sock->setIsTls(true);
+
+        Url requestUri = sock->requestUri();
+
+        log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(),
+                  requestUri.toEncoded().data());
+
+        bool isSecure = (requestUri.scheme() == "wss");
+        QString host = requestUri.host();
+
+        QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
+
+        QString routeId;
+
+        if (config.acceptPushpinRoute)
+            routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route").asQByteArray());
+
+        // Look up the route
+        DomainMap::Entry route;
+        if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+            route = domainMap->entry(routeId);
+        else
+            route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
+
+        // Before we do anything else, see if this is a sockjs request
+        if (!route.isNull() && !route.sockJsPath.isEmpty() &&
+            encPath.startsWith(route.sockJsPath)) {
+            sockJsManager->giveSocket(sock, route.sockJsPath.length(), route.sockJsAsPath, route);
+            return;
+        }
+
+        log_debug("creating wsproxysession for zws id=%s", sock->rid().second.data());
+        doProxySocket(sock, route);
+    }
+
+    void tryTakeSockJsSession() {
+        if (!canTake())
+            return;
+
+        SockJsSession *sock = sockJsManager->takeNext();
+        if (!sock)
+            return;
+
+        log_debug("IN sockjs obj=%p %s", sock, sock->requestUri().toEncoded().data());
+
+        log_debug("creating wsproxysession for sockjs=%p", sock);
+        doProxySocket(sock, sock->route());
+    }
+
+    void tryTakeNext() {
+        tryTakeRequest();
+        tryTakeSocket();
+        tryTakeSockJsSession();
+    }
+
+    void logFinished(RequestSession *rs, bool accepted = false) {
+        HttpResponseData resp = rs->responseData();
+
+        LogUtil::RequestData rd;
+
+        DomainMap::Entry route = rs->route();
+
+        // Only log route id if explicitly set
+        if (route.separateStats)
+            rd.routeId = route.id;
+
+        if (accepted) {
+            rd.status = LogUtil::Accept;
+        } else if (resp.code != -1) {
+            rd.status = LogUtil::Response;
+            rd.responseData = resp;
+            rd.responseBodySize = rs->responseBodySize();
+        } else {
+            rd.status = LogUtil::Error;
+        }
+
+        rd.requestData = rs->requestData();
+
+        rd.fromAddress = rs->logicalPeerAddress();
+
+        LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
+    }
 
 private:
-	void zhttpIn_requestReady()
-	{
-		tryTakeNext();
-	}
+    void zhttpIn_requestReady() { tryTakeNext(); }
 
-	void zhttpIn_socketReady()
-	{
-		tryTakeNext();
-	}
+    void zhttpIn_socketReady() { tryTakeNext(); }
 
-	void intZhttpIn_requestReady()
-	{
-		tryTakeNext();
-	}
+    void intZhttpIn_requestReady() { tryTakeNext(); }
 
-	void sockjs_sessionReady()
-	{
-		tryTakeNext();
-	}
+    void sockjs_sessionReady() { tryTakeNext(); }
 
-	void rs_inspectError(RequestSession *rs)
-	{
-		// Default action is to proxy without sharing
-		doProxy(rs);
-	}
+    void rs_inspectError(RequestSession *rs) {
+        // Default action is to proxy without sharing
+        doProxy(rs);
+    }
 
-	void rs_inspected(const InspectData &idata, RequestSession *rs)
-	{
-		// If we get here, then the request must be proxied. If it was to be directly
-		// accepted, then finishedByAccept would have been emitted instead
-		assert(idata.doProxy);
+    void rs_inspected(const InspectData &idata, RequestSession *rs) {
+        // If we get here, then the request must be proxied. If it was to be
+        // directly accepted, then finishedByAccept would have been emitted instead
+        assert(idata.doProxy);
 
-		doProxy(rs, &idata);
-	}
+        doProxy(rs, &idata);
+    }
 
-	void rs_finished(RequestSession *rs)
-	{
-		if(!rs->isSockJs())
-			logFinished(rs);
+    void rs_finished(RequestSession *rs) {
+        if (!rs->isSockJs())
+            logFinished(rs);
 
-		requestSessions.remove(rs);
-		reqSessionConnectionMap.erase(rs);
-		delete rs;
+        requestSessions.remove(rs);
+        reqSessionConnectionMap.erase(rs);
+        delete rs;
 
-		tryTakeNext();
-	}
+        tryTakeNext();
+    }
 
-	void rs_finishedByAccept(RequestSession *rs)
-	{
-		logFinished(rs, true);
+    void rs_finishedByAccept(RequestSession *rs) {
+        logFinished(rs, true);
 
-		requestSessions.remove(rs);
-		reqSessionConnectionMap.erase(rs);
-		delete rs;
+        requestSessions.remove(rs);
+        reqSessionConnectionMap.erase(rs);
+        delete rs;
 
-		tryTakeNext();
-	}
+        tryTakeNext();
+    }
 
-	void ps_addNotAllowed(ProxySession *ps)
-	{
-		ProxyItem *i = proxyItemsBySession.value(ps);
-		assert(i);
+    void ps_addNotAllowed(ProxySession *ps) {
+        ProxyItem *i = proxyItemsBySession.value(ps);
+        assert(i);
 
-		// No more sharing for this session
-		if(i->shared)
-		{
-			i->shared = false;
-			proxyItemsByKey.remove(i->key);
-		}
-	}
+        // No more sharing for this session
+        if (i->shared) {
+            i->shared = false;
+            proxyItemsByKey.remove(i->key);
+        }
+    }
 
-	void ps_finished(ProxySession *ps)
-	{
-		ProxyItem *i = proxyItemsBySession.value(ps);
-		assert(i);
+    void ps_finished(ProxySession *ps) {
+        ProxyItem *i = proxyItemsBySession.value(ps);
+        assert(i);
 
-		proxySessionConnectionMap.erase(ps);
-		
-		if(i->shared)
-			proxyItemsByKey.remove(i->key);
-		proxyItemsBySession.remove(i->ps);
-		delete i;
-		delete ps;
+        proxySessionConnectionMap.erase(ps);
 
-		tryTakeNext();
-	}
+        if (i->shared)
+            proxyItemsByKey.remove(i->key);
+        proxyItemsBySession.remove(i->ps);
+        delete i;
+        delete ps;
 
-	void ps_requestSessionDestroyed(RequestSession *rs, bool accept)
-	{
-		requestSessions.remove(rs);
+        tryTakeNext();
+    }
 
-		rs->setAccepted(accept);
+    void ps_requestSessionDestroyed(RequestSession *rs, bool accept) {
+        requestSessions.remove(rs);
 
-		tryTakeNext();
-	}
+        rs->setAccepted(accept);
 
-	static void wsps_finishedByPassthrough_cb(void *data, std::tuple<WsProxySession *> value)
-	{
-		Q_UNUSED(value);
+        tryTakeNext();
+    }
 
-		Private *self = (Private *)data;
+    static void wsps_finishedByPassthrough_cb(void *data, std::tuple<WsProxySession *> value) {
+        Q_UNUSED(value);
 
-		self->wsps_finishedByPassthrough(std::get<0>(value));
-	}
+        Private *self = (Private *)data;
 
-	void wsps_finishedByPassthrough(WsProxySession *ps)
-	{
-		WsProxyItem *i = wsProxyItemsBySession.value(ps);
-		assert(i);
+        self->wsps_finishedByPassthrough(std::get<0>(value));
+    }
 
-		if(stats)
-			stats->removeConnection(ps->cid(), false);
+    void wsps_finishedByPassthrough(WsProxySession *ps) {
+        WsProxyItem *i = wsProxyItemsBySession.value(ps);
+        assert(i);
 
-		wsProxyItemsBySession.remove(i->ps);
-		delete i;
+        if (stats)
+            stats->removeConnection(ps->cid(), false);
 
-		ps->finishedByPassthroughCallback().remove(this);
-		DeferCall::deleteLater(ps);
+        wsProxyItemsBySession.remove(i->ps);
+        delete i;
 
-		tryTakeNext();
-	}
+        ps->finishedByPassthroughCallback().remove(this);
+        DeferCall::deleteLater(ps);
+
+        tryTakeNext();
+    }
 
 private:
-	void handler_retry_in_readyRead(const CowByteArrayList &message)
-	{
-		ZmqReqMessage req(message);
+    void handler_retry_in_readyRead(const CowByteArrayList &message) {
+        ZmqReqMessage req(message);
 
-		if(req.content().count() != 1)
-		{
-			log_warning("retry: received message with parts != 1, skipping");
-			return;
-		}
+        if (req.content().count() != 1) {
+            log_warning("retry: received message with parts != 1, skipping");
+            return;
+        }
 
-		bool ok;
-		Variant data = TnetString::toVariant(req.content()[0], 0, &ok);
-		if(!ok)
-		{
-			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");
-			return;
-		}
+        bool ok;
+        Variant data = TnetString::toVariant(req.content()[0], 0, &ok);
+        if (!ok) {
+            log_warning("retry: received message with invalid format (tnetstring "
+                        "parse failed), skipping");
+            return;
+        }
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("retry: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+        if (log_outputLevel() >= LOG_LEVEL_DEBUG)
+            log_debug("retry: IN %s", qPrintable(TnetString::variantToString(data, -1)));
 
-		RetryRequestPacket p;
-		if(!p.fromVariant(data))
-		{
-			log_warning("retry: received message with invalid format (parse failed), skipping");
-			return;
-		}
+        RetryRequestPacket p;
+        if (!p.fromVariant(data)) {
+            log_warning("retry: received message with invalid format (parse failed), "
+                        "skipping");
+            return;
+        }
 
-		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
+        log_debug("IN (retry) %s %s", qPrintable(p.requestData.method),
+                  p.requestData.uri.toEncoded().data());
 
-		InspectData idata;
-		if(p.haveInspectInfo)
-		{
-			idata.doProxy = p.inspectInfo.doProxy;
-			idata.sharingKey = p.inspectInfo.sharingKey;
-			idata.sid = p.inspectInfo.sid;
-			idata.lastIds = p.inspectInfo.lastIds;
-			idata.userData = p.inspectInfo.userData;
-		}
+        InspectData idata;
+        if (p.haveInspectInfo) {
+            idata.doProxy = p.inspectInfo.doProxy;
+            idata.sharingKey = p.inspectInfo.sharingKey;
+            idata.sid = p.inspectInfo.sid;
+            idata.lastIds = p.inspectInfo.lastIds;
+            idata.userData = p.inspectInfo.userData;
+        }
 
-		foreach(const RetryRequestPacket::Request &req, p.requests)
-		{
-			ZhttpRequest::ServerState ss;
-			ss.rid = ZhttpRequest::Rid(req.rid.first, req.rid.second);
-			ss.peerAddress = req.peerAddress;
-			ss.requestMethod = p.requestData.method;
-			ss.requestUri = p.requestData.uri;
-			if(req.https)
-				ss.requestUri.setScheme("https");
-			ss.requestHeaders = p.requestData.headers;
-			ss.requestBody = p.requestData.body;
-			ss.inSeq = req.inSeq;
-			ss.outSeq = req.outSeq;
-			ss.outCredits = req.outCredits;
-			ss.routerResp = req.routerResp;
-			ss.userData = req.userData;
+        foreach (const RetryRequestPacket::Request &req, p.requests) {
+            ZhttpRequest::ServerState ss;
+            ss.rid = ZhttpRequest::Rid(req.rid.first, req.rid.second);
+            ss.peerAddress = req.peerAddress;
+            ss.requestMethod = p.requestData.method;
+            ss.requestUri = p.requestData.uri;
+            if (req.https)
+                ss.requestUri.setScheme("https");
+            ss.requestHeaders = p.requestData.headers;
+            ss.requestBody = p.requestData.body;
+            ss.inSeq = req.inSeq;
+            ss.outSeq = req.outSeq;
+            ss.outCredits = req.outCredits;
+            ss.routerResp = req.routerResp;
+            ss.userData = req.userData;
 
-			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
+            ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(), inspectChecker.get(), accept.get(), stats.get());
+            RequestSession *rs =
+                new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(),
+                                   inspectChecker.get(), accept.get(), stats.get());
 
-			requestSessions += rs;
+            requestSessions += rs;
 
-			rs->setDefaultUpstreamKey(config.upstreamKey);
-			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+            rs->setDefaultUpstreamKey(config.upstreamKey);
+            rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
-			if(!p.route.isEmpty())
-				rs->setRouteId(QString::fromUtf8(p.route));
+            if (!p.route.isEmpty())
+                rs->setRouteId(QString::fromUtf8(p.route));
 
-			// Note: if the routing table was changed, there's a chance the request
-			// might get a different route id this time around. This could confuse
-			// stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
+            // Note: if the routing table was changed, there's a chance the request
+            // might get a different route id this time around. This could confuse
+            // stats processors tracking route+connection mappings.
+            rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback,
+                           req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
-			doProxy(rs, p.haveInspectInfo ? &idata : 0);
-		}
-	}
+            doProxy(rs, p.haveInspectInfo ? &idata : 0);
+        }
+    }
 
-	void stats_connMax(const StatsPacket &packet)
-	{
-		if(accept->canWriteImmediately())
-		{
-			ZrpcRequestPacket p;
-			p.method = "conn-max";
-			p.args["conn-max"] = VariantList() << packet.toVariant();
+    void stats_connMax(const StatsPacket &packet) {
+        if (accept->canWriteImmediately()) {
+            ZrpcRequestPacket p;
+            p.method = "conn-max";
+            p.args["conn-max"] = VariantList() << packet.toVariant();
 
-			accept->write(p);
-		}
-	}
+            accept->write(p);
+        }
+    }
 
-	void command_requestReady()
-	{
-		ZrpcRequest *req = command->takeNext();
-		if(req->method() == "conncheck")
-		{
-			if(!stats)
-			{
-				req->respondError("service-unavailable");
-				delete req;
-				return;
-			}
+    void command_requestReady() {
+        ZrpcRequest *req = command->takeNext();
+        if (req->method() == "conncheck") {
+            if (!stats) {
+                req->respondError("service-unavailable");
+                delete req;
+                return;
+            }
 
-			VariantHash args = req->args();
-			if(!args.contains("ids") || typeId(args["ids"]) != VariantType::List)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
+            VariantHash args = req->args();
+            if (!args.contains("ids") || typeId(args["ids"]) != VariantType::List) {
+                req->respondError("bad-format");
+                delete req;
+                return;
+            }
 
-			VariantList vids = args["ids"].toList();
+            VariantList vids = args["ids"].toList();
 
-			bool ok = true;
-			QList<QByteArray> ids;
-			for(const Variant &vid : vids)
-			{
-				if(typeId(vid) != VariantType::ByteArray)
-				{
-					ok = false;
-					break;
-				}
+            bool ok = true;
+            QList<QByteArray> ids;
+            for (const Variant &vid : vids) {
+                if (typeId(vid) != VariantType::ByteArray) {
+                    ok = false;
+                    break;
+                }
 
-				ids += vid.toByteArray();
-			}
-			if(!ok)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
+                ids += vid.toByteArray();
+            }
+            if (!ok) {
+                req->respondError("bad-format");
+                delete req;
+                return;
+            }
 
-			VariantList out;
-			foreach(const QByteArray &id, ids)
-			{
-				if(stats->checkConnection(id))
-					out += id;
-			}
+            VariantList out;
+            foreach (const QByteArray &id, ids) {
+                if (stats->checkConnection(id))
+                    out += id;
+            }
 
-			req->respond(out);
-		}
-		else if(req->method() == "refresh")
-		{
-			VariantHash args = req->args();
-			if(!args.contains("cid") || typeId(args["cid"]) != VariantType::ByteArray)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
+            req->respond(out);
+        } else if (req->method() == "refresh") {
+            VariantHash args = req->args();
+            if (!args.contains("cid") || typeId(args["cid"]) != VariantType::ByteArray) {
+                req->respondError("bad-format");
+                delete req;
+                return;
+            }
 
-			QByteArray cid = args["cid"].toByteArray();
+            QByteArray cid = args["cid"].toByteArray();
 
-			WsProxySession *ps = connectionManager.getProxyForConnection(cid);
-			if(!ps)
-			{
-				req->respondError("item-not-found");
-				delete req;
-				return;
-			}
+            WsProxySession *ps = connectionManager.getProxyForConnection(cid);
+            if (!ps) {
+                req->respondError("item-not-found");
+                delete req;
+                return;
+            }
 
-			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
-			if(woh)
-				woh->refresh();
+            WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp *>(ps->outSocket());
+            if (woh)
+                woh->refresh();
 
-			req->respond();
-		}
-		else
-		{
-			req->respondError("method-not-found");
-		}
+            req->respond();
+        } else {
+            req->respondError("method-not-found");
+        }
 
-		delete req;
-	}
+        delete req;
+    }
 };
 
-Engine::Engine(DomainMap *domainMap)
-{
-	d = new Private(this, domainMap);
-}
+Engine::Engine(DomainMap *domainMap) { d = new Private(this, domainMap); }
 
-Engine::~Engine()
-{
-	delete d;
-}
+Engine::~Engine() { delete d; }
 
-StatsManager *Engine::statsManager() const
-{
-	return d->stats.get();
-}
+StatsManager *Engine::statsManager() const { return d->stats.get(); }
 
-bool Engine::start(const Configuration &config)
-{
-	return d->start(config);
-}
+bool Engine::start(const Configuration &config) { return d->start(config); }
 
-void Engine::routesChanged()
-{
-	d->routesChanged();
-}
+void Engine::routesChanged() { d->routesChanged(); }

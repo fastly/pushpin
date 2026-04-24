@@ -22,41 +22,39 @@
 #ifndef HTTPHEADERS_H
 #define HTTPHEADERS_H
 
-#include <QPair>
-#include <QList>
 #include "cowbytearray.h"
+#include <QList>
+#include <QPair>
 
 typedef QPair<CowByteArray, CowByteArray> HttpHeaderParameter;
 
-class HttpHeaderParameters : public QList<HttpHeaderParameter>
-{
+class HttpHeaderParameters : public QList<HttpHeaderParameter> {
 public:
-	bool contains(const CowByteArray &key) const;
-	CowByteArray get(const CowByteArray &key) const;
+    bool contains(const CowByteArray &key) const;
+    CowByteArray get(const CowByteArray &key) const;
 };
 
 typedef QPair<CowByteArray, CowByteArray> HttpHeader;
 
-class HttpHeaders : public QList<HttpHeader>
-{
+class HttpHeaders : public QList<HttpHeader> {
 public:
-	enum ParseMode
-	{
-		NoParseFirstParameter,
-		ParseAllParameters
-	};
+    enum ParseMode { NoParseFirstParameter, ParseAllParameters };
 
-	bool contains(const CowByteArray &key) const;
-	CowByteArray get(const CowByteArray &key) const;
-	HttpHeaderParameters getAsParameters(const CowByteArray &key, ParseMode mode = NoParseFirstParameter) const;
-	CowByteArray getAsFirstParameter(const CowByteArray &key) const;
-	CowByteArrayList getAll(const CowByteArray &key, bool split = true) const;
-	QList<HttpHeaderParameters> getAllAsParameters(const CowByteArray &key, ParseMode mode = NoParseFirstParameter, bool split = true) const;
-	CowByteArrayList takeAll(const CowByteArray &key, bool split = true);
-	void removeAll(const CowByteArray &key);
+    bool contains(const CowByteArray &key) const;
+    CowByteArray get(const CowByteArray &key) const;
+    HttpHeaderParameters getAsParameters(const CowByteArray &key,
+                                         ParseMode mode = NoParseFirstParameter) const;
+    CowByteArray getAsFirstParameter(const CowByteArray &key) const;
+    CowByteArrayList getAll(const CowByteArray &key, bool split = true) const;
+    QList<HttpHeaderParameters> getAllAsParameters(const CowByteArray &key,
+                                                   ParseMode mode = NoParseFirstParameter,
+                                                   bool split = true) const;
+    CowByteArrayList takeAll(const CowByteArray &key, bool split = true);
+    void removeAll(const CowByteArray &key);
 
-	static CowByteArray join(const CowByteArrayList &values);
-	static HttpHeaderParameters parseParameters(const CowByteArray &in, ParseMode mode = NoParseFirstParameter, bool *ok = 0);
+    static CowByteArray join(const CowByteArrayList &values);
+    static HttpHeaderParameters
+    parseParameters(const CowByteArray &in, ParseMode mode = NoParseFirstParameter, bool *ok = 0);
 };
 
 #endif

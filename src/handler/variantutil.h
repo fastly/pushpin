@@ -37,17 +37,21 @@ bool keyedObjectContains(const Variant &in, const QString &name);
 Variant keyedObjectGetValue(const Variant &in, const QString &name);
 void keyedObjectInsert(Variant *in, const QString &name, const Variant &value);
 
-Variant getChild(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
-Variant getKeyedObject(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
-VariantList getList(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+Variant getChild(const Variant &in, const QString &parentName, const QString &childName,
+                 bool required, bool *ok = 0, QString *errorMessage = 0);
+Variant getKeyedObject(const Variant &in, const QString &parentName, const QString &childName,
+                       bool required, bool *ok = 0, QString *errorMessage = 0);
+VariantList getList(const Variant &in, const QString &parentName, const QString &childName,
+                    bool required, bool *ok = 0, QString *errorMessage = 0);
 QString getString(const Variant &in, bool *ok = 0);
-QString getString(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+QString getString(const Variant &in, const QString &parentName, const QString &childName,
+                  bool required, bool *ok = 0, QString *errorMessage = 0);
 
 // Return true if item modified
 bool convertToJsonStyleInPlace(Variant *in);
 
 Variant convertToJsonStyle(const Variant &in);
 
-}
+} // namespace VariantUtil
 
 #endif

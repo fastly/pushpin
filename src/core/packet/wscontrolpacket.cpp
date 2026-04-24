@@ -23,443 +23,448 @@
 
 #include "wscontrolpacket.h"
 
-#include <assert.h>
 #include "qtcompat.h"
 #include "variant.h"
+#include <assert.h>
 
 // FIXME: rewrite packet class using this code?
 /*class WsControlPacket
 {
 public:
-	class Message
-	{
-	public:
-		enum Type
-		{
-			Here,
-			Gone,
-			Cancel,
-			Grip
-		};
+        class Message
+        {
+        public:
+                enum Type
+                {
+                        Here,
+                        Gone,
+                        Cancel,
+                        Grip
+                };
 
-		Type type;
-		QString cid;
-		QString channelPrefix; // Here only
-		QByteArray message; // Grip only
-	};
+                Type type;
+                QString cid;
+                QString channelPrefix; // Here only
+                QByteArray message; // Grip only
+        };
 
-	QString channelPrefix;
-	QList<Message> messages;
+        QString channelPrefix;
+        QList<Message> messages;
 
-	static WsControlPacket fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0)
-	{
-		QString pn = "wscontrol packet";
+        static WsControlPacket fromVariant(const Variant &in, bool *ok = 0,
+QString *errorMessage = 0)
+        {
+                QString pn = "wscontrol packet";
 
-		if(!isKeyedObject(in))
-		{
-			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
-			return WsControlPacket();
-		}
+                if(!isKeyedObject(in))
+                {
+                        setError(ok, errorMessage, QString("%1 is not an
+object").arg(pn)); return WsControlPacket();
+                }
 
-		pn = "wscontrol object";
+                pn = "wscontrol object";
 
-		bool ok_;
-		VariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return WsControlPacket();
-		}
+                bool ok_;
+                VariantList vitems = getList(in, pn, "items", false, &ok_,
+errorMessage); if(!ok_)
+                {
+                        if(ok)
+                                *ok = false;
+                        return WsControlPacket();
+                }
 
-		WsControlPacket out;
+                WsControlPacket out;
 
-		for(const Variant &vitem : vitems)
-		{
-			Message msg;
+                for(const Variant &vitem : vitems)
+                {
+                        Message msg;
 
-			pn = "wscontrol item";
+                        pn = "wscontrol item";
 
-			QString type = getString(vitem, pn, "type", true, &ok_, errorMessage);
-			if(!ok_)
-			{
-				if(ok)
-					*ok = false;
-				return WsControlPacket();
-			}
+                        QString type = getString(vitem, pn, "type", true, &ok_,
+errorMessage); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
 
-			if(type == "here")
-				msg.type = Message::Here;
-			else if(type == "gone")
-				msg.type = Message::Gone;
-			else if(type == "cancel")
-				msg.type = Message::Cancel;
-			else if(type == "grip")
-				msg.type = Message::Grip;
-			else
-			{
-				setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
-				return WsControlPacket();
-			}
+                        if(type == "here")
+                                msg.type = Message::Here;
+                        else if(type == "gone")
+                                msg.type = Message::Gone;
+                        else if(type == "cancel")
+                                msg.type = Message::Cancel;
+                        else if(type == "grip")
+                                msg.type = Message::Grip;
+                        else
+                        {
+                                setError(ok, errorMessage, QString("'type'
+contains unknown value: %1").arg(type)); return WsControlPacket();
+                        }
 
-			msg.cid = getString(vitem, pn, "cid", true, &ok_, errorMessage);
-			if(!ok_)
-			{
-				if(ok)
-					*ok = false;
-				return WsControlPacket();
-			}
+                        msg.cid = getString(vitem, pn, "cid", true, &ok_,
+errorMessage); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
 
-			msg.uri = Url::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), Url::StrictMode);
-			if(!ok_)
-			{
-				if(ok)
-					*ok = false;
-				return WsControlPacket();
-			}
+                        msg.uri = Url::fromEncoded(getString(vitem, pn, "uri",
+false, &ok_, errorMessage).toUtf8(), Url::StrictMode); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
 
-			msg.channelPrefix = getString(vitem, pn, "channel-prefix", false, &ok_, errorMessage);
-			if(!ok_)
-			{
-				if(ok)
-					*ok = false;
-				return WsControlPacket();
-			}
+                        msg.channelPrefix = getString(vitem, pn,
+"channel-prefix", false, &ok_, errorMessage); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
 
-			if(msg.type == Message::Grip)
-			{
-				if(!keyedObjectContains(vitem, "message"))
-				{
-					setError(ok, errorMessage, QString("'%1' does not contain 'message'").arg(pn));
-					return WsControlPacket();
-				}
+                        if(msg.type == Message::Grip)
+                        {
+                                if(!keyedObjectContains(vitem, "message"))
+                                {
+                                        setError(ok, errorMessage, QString("'%1'
+does not contain 'message'").arg(pn)); return WsControlPacket();
+                                }
 
-				Variant vmessage = keyedObjectGetValue(vitem, "message");
-				if(vmessage.type() != VariantType::ByteArray)
-				{
-					setError(ok, errorMessage, QString("'%1' contains 'message' with wrong type").arg(pn));
-					return WsControlPacket();
-				}
+                                Variant vmessage = keyedObjectGetValue(vitem,
+"message"); if(vmessage.type() != VariantType::ByteArray)
+                                {
+                                        setError(ok, errorMessage, QString("'%1'
+contains 'message' with wrong type").arg(pn)); return WsControlPacket();
+                                }
 
-				msg.message = vmessage.toByteArray();
-			}
+                                msg.message = vmessage.toByteArray();
+                        }
 
-			out.messages += msg;
-		}
+                        out.messages += msg;
+                }
 
-		setSuccess(ok, errorMessage);
-		return out;
-	}
+                setSuccess(ok, errorMessage);
+                return out;
+        }
 };*/
 
-Variant WsControlPacket::toVariant() const
-{
-	VariantHash obj;
+Variant WsControlPacket::toVariant() const {
+    VariantHash obj;
 
-	obj["from"] = from;
+    obj["from"] = from;
 
-	VariantList vitems;
-	foreach(const Item &item, items)
-	{
-		VariantHash vitem;
+    VariantList vitems;
+    foreach (const Item &item, items) {
+        VariantHash vitem;
 
-		vitem["cid"] = item.cid;
+        vitem["cid"] = item.cid;
 
-		QByteArray typeStr;
-		switch(item.type)
-		{
-			case Item::Here:           typeStr = "here"; break;
-			case Item::KeepAlive:      typeStr = "keep-alive"; break;
-			case Item::Gone:           typeStr = "gone"; break;
-			case Item::Grip:           typeStr = "grip"; break;
-			case Item::KeepAliveSetup: typeStr = "keep-alive-setup"; break;
-			case Item::Cancel:         typeStr = "cancel"; break;
-			case Item::Send:           typeStr = "send"; break;
-			case Item::NeedKeepAlive:  typeStr = "need-keep-alive"; break;
-			case Item::Subscribe:      typeStr = "subscribe"; break;
-			case Item::Refresh:        typeStr = "refresh"; break;
-			case Item::Close:          typeStr = "close"; break;
-			case Item::Detach:         typeStr = "detach"; break;
-			case Item::Ack:            typeStr = "ack"; break;
-			default:
-				assert(0);
-		}
-		vitem["type"] = typeStr;
+        QByteArray typeStr;
+        switch (item.type) {
+        case Item::Here:
+            typeStr = "here";
+            break;
+        case Item::KeepAlive:
+            typeStr = "keep-alive";
+            break;
+        case Item::Gone:
+            typeStr = "gone";
+            break;
+        case Item::Grip:
+            typeStr = "grip";
+            break;
+        case Item::KeepAliveSetup:
+            typeStr = "keep-alive-setup";
+            break;
+        case Item::Cancel:
+            typeStr = "cancel";
+            break;
+        case Item::Send:
+            typeStr = "send";
+            break;
+        case Item::NeedKeepAlive:
+            typeStr = "need-keep-alive";
+            break;
+        case Item::Subscribe:
+            typeStr = "subscribe";
+            break;
+        case Item::Refresh:
+            typeStr = "refresh";
+            break;
+        case Item::Close:
+            typeStr = "close";
+            break;
+        case Item::Detach:
+            typeStr = "detach";
+            break;
+        case Item::Ack:
+            typeStr = "ack";
+            break;
+        default:
+            assert(0);
+        }
+        vitem["type"] = typeStr;
 
-		if(!item.requestId.isEmpty())
-			vitem["req-id"] = item.requestId;
+        if (!item.requestId.isEmpty())
+            vitem["req-id"] = item.requestId;
 
-		if(!item.uri.isEmpty())
-			vitem["uri"] = item.uri.toEncoded();
+        if (!item.uri.isEmpty())
+            vitem["uri"] = item.uri.toEncoded();
 
-		if(!item.contentType.isEmpty())
-			vitem["content-type"] = item.contentType;
+        if (!item.contentType.isEmpty())
+            vitem["content-type"] = item.contentType;
 
-		if(!item.message.isNull())
-			vitem["message"] = item.message;
+        if (!item.message.isNull())
+            vitem["message"] = item.message;
 
-		if(item.queue)
-			vitem["queue"] = true;
+        if (item.queue)
+            vitem["queue"] = true;
 
-		if(item.code >= 0)
-			vitem["code"] = item.code;
+        if (item.code >= 0)
+            vitem["code"] = item.code;
 
-		if(!item.reason.isEmpty())
-			vitem["reason"] = item.reason;
+        if (!item.reason.isEmpty())
+            vitem["reason"] = item.reason;
 
-		if(item.debug)
-			vitem["debug"] = true;
+        if (item.debug)
+            vitem["debug"] = true;
 
-		if(!item.route.isEmpty())
-			vitem["route"] = item.route;
+        if (!item.route.isEmpty())
+            vitem["route"] = item.route;
 
-		if(item.separateStats)
-			vitem["separate-stats"] = true;
+        if (item.separateStats)
+            vitem["separate-stats"] = true;
 
-		if(!item.channelPrefix.isEmpty())
-			vitem["channel-prefix"] = item.channelPrefix;
+        if (!item.channelPrefix.isEmpty())
+            vitem["channel-prefix"] = item.channelPrefix;
 
-		if(item.logLevel >= 0)
-			vitem["log-level"] = item.logLevel;
+        if (item.logLevel >= 0)
+            vitem["log-level"] = item.logLevel;
 
-		if(item.trusted)
-			vitem["trusted"] = true;
+        if (item.trusted)
+            vitem["trusted"] = true;
 
-		if(!item.channel.isEmpty())
-			vitem["channel"] = item.channel;
+        if (!item.channel.isEmpty())
+            vitem["channel"] = item.channel;
 
-		if(item.ttl >= 0)
-			vitem["ttl"] = item.ttl;
+        if (item.ttl >= 0)
+            vitem["ttl"] = item.ttl;
 
-		if(item.timeout >= 0)
-			vitem["timeout"] = item.timeout;
+        if (item.timeout >= 0)
+            vitem["timeout"] = item.timeout;
 
-		if(!item.keepAliveMode.isEmpty())
-			vitem["keep-alive-mode"] = item.keepAliveMode;
+        if (!item.keepAliveMode.isEmpty())
+            vitem["keep-alive-mode"] = item.keepAliveMode;
 
-		vitems += vitem;
-	}
+        vitems += vitem;
+    }
 
-	obj["items"] = vitems;
-	return obj;
+    obj["items"] = vitems;
+    return obj;
 }
 
-bool WsControlPacket::fromVariant(const Variant &in)
-{
-	if(typeId(in) != VariantType::Hash)
-		return false;
+bool WsControlPacket::fromVariant(const Variant &in) {
+    if (typeId(in) != VariantType::Hash)
+        return false;
 
-	VariantHash obj = in.toHash();
+    VariantHash obj = in.toHash();
 
-	if(!obj.contains("from") || typeId(obj["from"]) != VariantType::ByteArray)
-		return false;
+    if (!obj.contains("from") || typeId(obj["from"]) != VariantType::ByteArray)
+        return false;
 
-	from = obj["from"].toByteArray();
+    from = obj["from"].toByteArray();
 
-	if(!obj.contains("items") || typeId(obj["items"]) != VariantType::List)
-		return false;
+    if (!obj.contains("items") || typeId(obj["items"]) != VariantType::List)
+        return false;
 
-	VariantList vitems = obj["items"].toList();
+    VariantList vitems = obj["items"].toList();
 
-	items.clear();
-	for(const Variant &v : vitems)
-	{
-		if(typeId(v) != VariantType::Hash)
-			return false;
+    items.clear();
+    for (const Variant &v : vitems) {
+        if (typeId(v) != VariantType::Hash)
+            return false;
 
-		VariantHash vitem = v.toHash();
+        VariantHash vitem = v.toHash();
 
-		Item item;
+        Item item;
 
-		if(!vitem.contains("cid") || typeId(vitem["cid"]) != VariantType::ByteArray)
-			return false;
-		item.cid = vitem["cid"].toByteArray();
+        if (!vitem.contains("cid") || typeId(vitem["cid"]) != VariantType::ByteArray)
+            return false;
+        item.cid = vitem["cid"].toByteArray();
 
-		if(!vitem.contains("type") || typeId(vitem["type"]) != VariantType::ByteArray)
-			return false;
-		QByteArray typeStr = vitem["type"].toByteArray();
+        if (!vitem.contains("type") || typeId(vitem["type"]) != VariantType::ByteArray)
+            return false;
+        QByteArray typeStr = vitem["type"].toByteArray();
 
-		if(typeStr == "here")
-			item.type = Item::Here;
-		else if(typeStr == "keep-alive")
-			item.type = Item::KeepAlive;
-		else if(typeStr == "gone")
-			item.type = Item::Gone;
-		else if(typeStr == "grip")
-			item.type = Item::Grip;
-		else if(typeStr == "keep-alive-setup")
-			item.type = Item::KeepAliveSetup;
-		else if(typeStr == "cancel")
-			item.type = Item::Cancel;
-		else if(typeStr == "send")
-			item.type = Item::Send;
-		else if(typeStr == "need-keep-alive")
-			item.type = Item::NeedKeepAlive;
-		else if(typeStr == "subscribe")
-			item.type = Item::Subscribe;
-		else if(typeStr == "refresh")
-			item.type = Item::Refresh;
-		else if(typeStr == "close")
-			item.type = Item::Close;
-		else if(typeStr == "detach")
-			item.type = Item::Detach;
-		else if(typeStr == "ack")
-			item.type = Item::Ack;
-		else
-			return false;
+        if (typeStr == "here")
+            item.type = Item::Here;
+        else if (typeStr == "keep-alive")
+            item.type = Item::KeepAlive;
+        else if (typeStr == "gone")
+            item.type = Item::Gone;
+        else if (typeStr == "grip")
+            item.type = Item::Grip;
+        else if (typeStr == "keep-alive-setup")
+            item.type = Item::KeepAliveSetup;
+        else if (typeStr == "cancel")
+            item.type = Item::Cancel;
+        else if (typeStr == "send")
+            item.type = Item::Send;
+        else if (typeStr == "need-keep-alive")
+            item.type = Item::NeedKeepAlive;
+        else if (typeStr == "subscribe")
+            item.type = Item::Subscribe;
+        else if (typeStr == "refresh")
+            item.type = Item::Refresh;
+        else if (typeStr == "close")
+            item.type = Item::Close;
+        else if (typeStr == "detach")
+            item.type = Item::Detach;
+        else if (typeStr == "ack")
+            item.type = Item::Ack;
+        else
+            return false;
 
-		if(vitem.contains("req-id"))
-		{
-			if(typeId(vitem["req-id"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("req-id")) {
+            if (typeId(vitem["req-id"]) != VariantType::ByteArray)
+                return false;
 
-			item.requestId = vitem["req-id"].toByteArray();
-		}
+            item.requestId = vitem["req-id"].toByteArray();
+        }
 
-		if(vitem.contains("uri"))
-		{
-			if(typeId(vitem["uri"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("uri")) {
+            if (typeId(vitem["uri"]) != VariantType::ByteArray)
+                return false;
 
-			item.uri = Url::fromEncoded(vitem["uri"].toByteArray(), Url::StrictMode);
-		}
+            item.uri = Url::fromEncoded(vitem["uri"].toByteArray(), Url::StrictMode);
+        }
 
-		if(vitem.contains("content-type"))
-		{
-			if(typeId(vitem["content-type"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("content-type")) {
+            if (typeId(vitem["content-type"]) != VariantType::ByteArray)
+                return false;
 
-			QByteArray contentType = vitem["content-type"].toByteArray();
-			if(!contentType.isEmpty())
-				item.contentType = contentType;
-		}
+            QByteArray contentType = vitem["content-type"].toByteArray();
+            if (!contentType.isEmpty())
+                item.contentType = contentType;
+        }
 
-		if(vitem.contains("message"))
-		{
-			if(typeId(vitem["message"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("message")) {
+            if (typeId(vitem["message"]) != VariantType::ByteArray)
+                return false;
 
-			item.message = vitem["message"].toByteArray();
-		}
+            item.message = vitem["message"].toByteArray();
+        }
 
-		if(vitem.contains("queue"))
-		{
-			if(typeId(vitem["queue"]) != VariantType::Bool)
-				return false;
+        if (vitem.contains("queue")) {
+            if (typeId(vitem["queue"]) != VariantType::Bool)
+                return false;
 
-			item.queue = vitem["queue"].toBool();
-		}
+            item.queue = vitem["queue"].toBool();
+        }
 
-		if(vitem.contains("code"))
-		{
-			if(!canConvert(vitem["code"], VariantType::Int))
-				return false;
+        if (vitem.contains("code")) {
+            if (!canConvert(vitem["code"], VariantType::Int))
+                return false;
 
-			item.code = vitem["code"].toInt();
-		}
+            item.code = vitem["code"].toInt();
+        }
 
-		if(vitem.contains("reason"))
-		{
-			if(typeId(vitem["reason"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("reason")) {
+            if (typeId(vitem["reason"]) != VariantType::ByteArray)
+                return false;
 
-			item.reason = vitem["reason"].toByteArray();
-		}
+            item.reason = vitem["reason"].toByteArray();
+        }
 
-		if(vitem.contains("debug"))
-		{
-			if(typeId(vitem["debug"]) != VariantType::Bool)
-				return false;
+        if (vitem.contains("debug")) {
+            if (typeId(vitem["debug"]) != VariantType::Bool)
+                return false;
 
-			item.debug = vitem["debug"].toBool();
-		}
+            item.debug = vitem["debug"].toBool();
+        }
 
-		if(vitem.contains("route"))
-		{
-			if(typeId(vitem["route"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("route")) {
+            if (typeId(vitem["route"]) != VariantType::ByteArray)
+                return false;
 
-			QByteArray route = vitem["route"].toByteArray();
-			if(!route.isEmpty())
-				item.route = route;
-		}
+            QByteArray route = vitem["route"].toByteArray();
+            if (!route.isEmpty())
+                item.route = route;
+        }
 
-		if(vitem.contains("separate-stats"))
-		{
-			if(typeId(vitem["separate-stats"]) != VariantType::Bool)
-				return false;
+        if (vitem.contains("separate-stats")) {
+            if (typeId(vitem["separate-stats"]) != VariantType::Bool)
+                return false;
 
-			item.separateStats = vitem["separate-stats"].toBool();
-		}
+            item.separateStats = vitem["separate-stats"].toBool();
+        }
 
-		if(vitem.contains("channel-prefix"))
-		{
-			if(typeId(vitem["channel-prefix"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("channel-prefix")) {
+            if (typeId(vitem["channel-prefix"]) != VariantType::ByteArray)
+                return false;
 
-			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
-			if(!channelPrefix.isEmpty())
-				item.channelPrefix = channelPrefix;
-		}
+            QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
+            if (!channelPrefix.isEmpty())
+                item.channelPrefix = channelPrefix;
+        }
 
-		if(vitem.contains("log-level"))
-		{
-			if(!canConvert(vitem["log-level"], VariantType::Int))
-				return false;
+        if (vitem.contains("log-level")) {
+            if (!canConvert(vitem["log-level"], VariantType::Int))
+                return false;
 
-			item.logLevel = vitem["log-level"].toInt();
-		}
+            item.logLevel = vitem["log-level"].toInt();
+        }
 
-		if(vitem.contains("trusted"))
-		{
-			if(typeId(vitem["trusted"]) != VariantType::Bool)
-				return false;
+        if (vitem.contains("trusted")) {
+            if (typeId(vitem["trusted"]) != VariantType::Bool)
+                return false;
 
-			item.trusted = vitem["trusted"].toBool();
-		}
+            item.trusted = vitem["trusted"].toBool();
+        }
 
-		if(vitem.contains("channel"))
-		{
-			if(typeId(vitem["channel"]) != VariantType::ByteArray)
-				return false;
+        if (vitem.contains("channel")) {
+            if (typeId(vitem["channel"]) != VariantType::ByteArray)
+                return false;
 
-			QByteArray channel = vitem["channel"].toByteArray();
-			if(!channel.isEmpty())
-				item.channel = channel;
-		}
+            QByteArray channel = vitem["channel"].toByteArray();
+            if (!channel.isEmpty())
+                item.channel = channel;
+        }
 
-		if(vitem.contains("ttl"))
-		{
-			if(!canConvert(vitem["ttl"], VariantType::Int))
-				return false;
+        if (vitem.contains("ttl")) {
+            if (!canConvert(vitem["ttl"], VariantType::Int))
+                return false;
 
-			item.ttl = vitem["ttl"].toInt();
-			if(item.ttl < 0)
-				item.ttl = 0;
-		}
+            item.ttl = vitem["ttl"].toInt();
+            if (item.ttl < 0)
+                item.ttl = 0;
+        }
 
-		if(vitem.contains("timeout"))
-		{
-			if(!canConvert(vitem["timeout"], VariantType::Int))
-				return false;
+        if (vitem.contains("timeout")) {
+            if (!canConvert(vitem["timeout"], VariantType::Int))
+                return false;
 
-			item.timeout = vitem["timeout"].toInt();
-			if(item.timeout < 0)
-				item.timeout = 0;
-		}
+            item.timeout = vitem["timeout"].toInt();
+            if (item.timeout < 0)
+                item.timeout = 0;
+        }
 
-		if(vitem.contains("keep-alive-mode"))
-		{
-			if(!canConvert(vitem["keep-alive-mode"], VariantType::ByteArray))
-				return false;
+        if (vitem.contains("keep-alive-mode")) {
+            if (!canConvert(vitem["keep-alive-mode"], VariantType::ByteArray))
+                return false;
 
-			QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
-			if(!keepAliveMode.isEmpty())
-				item.keepAliveMode = keepAliveMode;
-		}
+            QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
+            if (!keepAliveMode.isEmpty())
+                item.keepAliveMode = keepAliveMode;
+        }
 
-		items += item;
-	}
+        items += item;
+    }
 
-	return true;
+    return true;
 }

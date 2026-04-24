@@ -21,79 +21,76 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "test.h"
-#include "publishformat.h"
 #include "publishitem.h"
+#include "publishformat.h"
+#include "test.h"
 #include "variant.h"
 
-static void parseItem()
-{
-	VariantHash meta;
-	meta["foo"] = QByteArray("bar");
-	meta["bar"] = QByteArray("baz");
+static void parseItem() {
+    VariantHash meta;
+    meta["foo"] = QByteArray("bar");
+    meta["bar"] = QByteArray("baz");
 
-	VariantHash hs;
-	hs["content"] = QByteArray("hello world");
+    VariantHash hs;
+    hs["content"] = QByteArray("hello world");
 
-	VariantHash formats;
-	formats["http-stream"] = hs;
+    VariantHash formats;
+    formats["http-stream"] = hs;
 
-	VariantHash data;
-	data["channel"] = QByteArray("apple");
-	data["id"] = QByteArray("item1");
-	data["prev-id"] = QByteArray("item0");
-	data["meta"] = meta;
-	data["formats"] = formats;
+    VariantHash data;
+    data["channel"] = QByteArray("apple");
+    data["id"] = QByteArray("item1");
+    data["prev-id"] = QByteArray("item0");
+    data["meta"] = meta;
+    data["formats"] = formats;
 
-	bool ok;
-	PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
-	TEST_ASSERT(ok);
-	TEST_ASSERT_EQ(i.channel, QString("apple"));
-	TEST_ASSERT_EQ(i.id, QString("item1"));
-	TEST_ASSERT_EQ(i.prevId, QString("item0"));
-	TEST_ASSERT_EQ(i.meta.count(), 2);
-	TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
-	TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
-	TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
-	TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
+    bool ok;
+    PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
+    TEST_ASSERT(ok);
+    TEST_ASSERT_EQ(i.channel, QString("apple"));
+    TEST_ASSERT_EQ(i.id, QString("item1"));
+    TEST_ASSERT_EQ(i.prevId, QString("item0"));
+    TEST_ASSERT_EQ(i.meta.count(), 2);
+    TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
+    TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
+    TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
+    TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
 }
 
-static void parseItemJsonStyle()
-{
-	VariantMap meta;
-	meta["foo"] = QString("bar");
-	meta["bar"] = QString("baz");
+static void parseItemJsonStyle() {
+    VariantMap meta;
+    meta["foo"] = QString("bar");
+    meta["bar"] = QString("baz");
 
-	VariantMap hs;
-	hs["content"] = QString("hello world");
+    VariantMap hs;
+    hs["content"] = QString("hello world");
 
-	VariantMap formats;
-	formats["http-stream"] = hs;
+    VariantMap formats;
+    formats["http-stream"] = hs;
 
-	VariantMap data;
-	data["channel"] = QString("apple");
-	data["id"] = QString("item1");
-	data["prev-id"] = QString("item0");
-	data["meta"] = meta;
-	data["formats"] = formats;
+    VariantMap data;
+    data["channel"] = QString("apple");
+    data["id"] = QString("item1");
+    data["prev-id"] = QString("item0");
+    data["meta"] = meta;
+    data["formats"] = formats;
 
-	bool ok;
-	PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
-	TEST_ASSERT(ok);
-	TEST_ASSERT_EQ(i.channel, QString("apple"));
-	TEST_ASSERT_EQ(i.id, QString("item1"));
-	TEST_ASSERT_EQ(i.prevId, QString("item0"));
-	TEST_ASSERT_EQ(i.meta.count(), 2);
-	TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
-	TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
-	TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
-	TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
+    bool ok;
+    PublishItem i = PublishItem::fromVariant(data, QString(), &ok);
+    TEST_ASSERT(ok);
+    TEST_ASSERT_EQ(i.channel, QString("apple"));
+    TEST_ASSERT_EQ(i.id, QString("item1"));
+    TEST_ASSERT_EQ(i.prevId, QString("item0"));
+    TEST_ASSERT_EQ(i.meta.count(), 2);
+    TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
+    TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
+    TEST_ASSERT(i.formats.contains(PublishFormat::HttpStream));
+    TEST_ASSERT_EQ(i.formats.value(PublishFormat::HttpStream).body, QByteArray("hello world"));
 }
 
-extern "C" int publishitem_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(parseItem());
-	TEST_CATCH(parseItemJsonStyle());
+extern "C" int publishitem_test(ffi::TestException *out_ex) {
+    TEST_CATCH(parseItem());
+    TEST_CATCH(parseItemJsonStyle());
 
-	return 0;
+    return 0;
 }

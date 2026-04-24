@@ -34,32 +34,31 @@ using Connection = boost::signals2::scoped_connection;
 
 class ZmqReqMessage;
 
-class ZmqRepRouter
-{
+class ZmqRepRouter {
 public:
-	ZmqRepRouter();
-	~ZmqRepRouter();
+    ZmqRepRouter();
+    ~ZmqRepRouter();
 
-	void setShutdownWaitTime(int msecs);
+    void setShutdownWaitTime(int msecs);
 
-	void connectToAddress(const CowString &addr);
-	bool bind(const CowString &addr);
+    void connectToAddress(const CowString &addr);
+    bool bind(const CowString &addr);
 
-	bool canRead() const;
+    bool canRead() const;
 
-	ZmqReqMessage read();
-	void write(const ZmqReqMessage &message);
+    ZmqReqMessage read();
+    void write(const ZmqReqMessage &message);
 
-	Signal readyRead;
-	SignalInt messagesWritten;
+    Signal readyRead;
+    SignalInt messagesWritten;
 
 private:
-	ZmqRepRouter(const ZmqRepRouter &) = delete;
-	ZmqRepRouter &operator=(const ZmqRepRouter &) = delete;
+    ZmqRepRouter(const ZmqRepRouter &) = delete;
+    ZmqRepRouter &operator=(const ZmqRepRouter &) = delete;
 
-	class Private;
-	friend class Private;
-	std::unique_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::unique_ptr<Private> d;
 };
 
 #endif

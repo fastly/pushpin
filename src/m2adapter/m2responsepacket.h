@@ -25,16 +25,15 @@
 
 #include <QByteArray>
 
-class M2ResponsePacket
-{
+class M2ResponsePacket {
 public:
-	QByteArray sender;
-	QByteArray id;
-	QByteArray data;
+    QByteArray sender;
+    QByteArray id;
+    QByteArray data;
 
-	M2ResponsePacket();
+    M2ResponsePacket();
 
-	QByteArray toByteArray() const;
+    QByteArray toByteArray() const;
 };
 
 #endif
