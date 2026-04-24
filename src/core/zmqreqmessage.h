@@ -24,7 +24,7 @@
 #ifndef ZMQREQMESSAGE_H
 #define ZMQREQMESSAGE_H
 
-class CowByteArrayList;
+#include "cowbytearray.h"
 
 class ZmqReqMessage
 {
