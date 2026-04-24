@@ -12,14 +12,22 @@ endif
 
 all: postbuild
 
+fmt: cargo-fmt cpp-fmt FORCE
+
 build: FORCE
 	cargo$(cargo_toolchain) build$(cargo_flags)
+
+cargo-fmt: FORCE
+	cargo fmt
 
 cargo-test: FORCE
 	cargo$(cargo_toolchain) test$(cargo_flags) --all-features
 
 cargo-clean: FORCE
 	cargo clean
+
+cpp-fmt: FORCE
+	find src -name "*.cpp" -o -name "*.h" | xargs clang-format -i
 
 postbuild: build FORCE
 	cd postbuild && $(MAKE) -f Makefile
