@@ -22,7 +22,7 @@ use crate::core::net::{AsyncUnixListener, AsyncUnixStream};
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, Select2};
 use crate::core::task::{get_reactor, CancellationSender, CancellationToken};
-use log::{debug, warn, LevelFilter, Log, Metadata, Record};
+use log::{debug, error, warn, LevelFilter, Log, Metadata, Record};
 use mio::net::UnixListener;
 use std::fmt::Write as _;
 use std::fs::File;
@@ -166,7 +166,7 @@ impl Log for SimpleLogger {
             log::Level::Trace => "TRACE",
         };
 
-        if record.level() <= log::Level::Info {
+        if record.level() <= log::Level::Info || record.target().is_empty() {
             writeln!(&mut output, "[{}] {} {}", lname, ts, record.args())
                 .expect("failed to write log output");
         } else {
@@ -561,4 +561,125 @@ impl Log for DebugLogger {
     }
 
     fn flush(&self) {}
+}
+
+mod ffi {
+    use super::*;
+    use std::ffi::{c_char, c_int, CStr};
+    use std::fs::OpenOptions;
+
+    /// If `output_file` is non-null, attempt to configure logging to the
+    /// specified file. If `output_file` is null, log to stdout.
+    ///
+    /// Returns 0 on success, or non-zero if there was a problem opening
+    /// the log file. In the latter case, the logging system will still be
+    /// initialized, but will be configured log to stdout instead of a file,
+    /// and a file error message will be logged.
+    #[no_mangle]
+    pub extern "C" fn log_init(output_file: *const c_char) -> c_int {
+        let (output_file, file_error) = if !output_file.is_null() {
+            let f = unsafe {
+                CStr::from_ptr(output_file)
+                    .to_str()
+                    .expect("output_file must be utf-8")
+            };
+
+            match OpenOptions::new().create(true).append(true).open(f) {
+                Ok(f) => (Some(f), None),
+                Err(e) => (None, Some((f, e))),
+            }
+        } else {
+            (None, None)
+        };
+
+        ensure_init_simple_logger(output_file, false);
+
+        // Allow all log levels globally so individual loggers can limit as they choose
+        log::set_max_level(LevelFilter::Trace);
+
+        let logger = get_simple_logger();
+
+        log::set_logger(logger).unwrap();
+        logger.set_max_level(LevelFilter::Trace);
+
+        // Log any file opening error after initializing the logger
+        if let Some((f, e)) = file_error {
+            error!("failed to open log file {f}: {e}");
+            return -1;
+        }
+
+        0
+    }
+
+    #[no_mangle]
+    pub extern "C" fn log_initialized() -> c_int {
+        if LOGGER.get().is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn log_set_level(level: c_int) {
+        let level = match level {
+            core::i32::MIN..=0 => log::LevelFilter::Error,
+            1 => log::LevelFilter::Warn,
+            2 => log::LevelFilter::Info,
+            3 => log::LevelFilter::Debug,
+            4..=core::i32::MAX => log::LevelFilter::Trace,
+        };
+
+        get_simple_logger().set_max_level(level);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn log_log(level: c_int, message: *const c_char) {
+        if message.is_null() {
+            return;
+        }
+
+        let message = unsafe {
+            match CStr::from_ptr(message).to_str() {
+                Ok(s) => s,
+                Err(_) => return, // Invalid UTF-8, skip
+            }
+        };
+
+        let rust_level = match level {
+            0 => log::Level::Error, // LOG_LEVEL_ERROR
+            1 => log::Level::Warn,  // LOG_LEVEL_WARNING
+            2 => log::Level::Info,  // LOG_LEVEL_INFO
+            3 => log::Level::Debug, // LOG_LEVEL_DEBUG
+            _ => log::Level::Debug, // Default to debug for unknown levels
+        };
+
+        // The default log target is the current Rust module, but this isn't
+        // meaningful when logging via FFI, so let's set an empty target.
+        log::log!(target: "", rust_level, "{}", message);
+    }
+
+    #[no_mangle]
+    pub extern "C" fn log_log_raw(message: *const c_char) {
+        if message.is_null() {
+            return;
+        }
+
+        let message = unsafe {
+            match CStr::from_ptr(message).to_str() {
+                Ok(s) => s,
+                Err(_) => return, // Invalid UTF-8, skip
+            }
+        };
+
+        let logger = get_simple_logger();
+
+        let mut output = match &logger.output_file {
+            Some(f) => SharedOutput::File(f),
+            None => SharedOutput::Stdout(io::stdout()),
+        };
+
+        // Write raw message directly to output (assuming it's already formatted)
+        writeln!(&mut output, "{}", message).expect("failed to write log output");
+    }
 }

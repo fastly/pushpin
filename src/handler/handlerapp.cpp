@@ -161,19 +161,15 @@ extern "C" {
 int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     HandlerArgsData args(argsFfi);
 
-    // Set the log level
-    if (args.logLevel != -1)
-        log_setOutputLevel(args.logLevel);
+    if (!args.logFile.isEmpty())
+        ffi::log_init(args.logFile.toUtf8().data());
     else
-        log_setOutputLevel(LOG_LEVEL_INFO);
+        ffi::log_init(nullptr);
 
-    // Set the log file if specified
-    if (!args.logFile.isEmpty()) {
-        if (!log_setFile(args.logFile)) {
-            log_error("failed to open log file: %s", qPrintable(args.logFile));
-            return 1;
-        }
-    }
+    if (args.logLevel != -1)
+        ffi::log_set_level(args.logLevel);
+    else
+        ffi::log_set_level(LOG_LEVEL_INFO);
 
     log_debug("starting...");
 
