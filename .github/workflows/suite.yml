@@ -61,8 +61,10 @@ jobs:
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
-    - name: fmt
+    - name: format rust
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
+    - name: format c++
+      run:  find src -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror -style=file
     - name: format python
       run:  black --check .
   build:
