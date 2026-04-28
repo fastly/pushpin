@@ -22,15 +22,15 @@
  */
 
 #include "test.h"
-#include <QVariant>
+#include "variant.h"
 #include "publishformat.h"
 
 static void responseFormat()
 {
-	QVariantHash data;
+	VariantHash data;
 	data["code"] = 200;
 	data["reason"] = QByteArray("OK");
-	data["headers"] = QVariantList() << QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+	data["headers"] = VariantList() << Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
 	data["body"] = QByteArray("hello world");
 
 	bool ok;
@@ -56,7 +56,7 @@ static void responseFormat()
 
 static void streamFormat()
 {
-	QVariantHash data;
+	VariantHash data;
 	data["content"] = QByteArray("hello world");
 
 	bool ok;
@@ -76,7 +76,7 @@ static void streamFormat()
 
 static void webSocketMessageFormat()
 {
-	QVariantHash data;
+	VariantHash data;
 	data["content"] = QByteArray("hello world");
 
 	bool ok;

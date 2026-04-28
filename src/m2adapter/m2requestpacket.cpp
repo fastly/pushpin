@@ -27,6 +27,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qtcompat.h"
+#include "variant.h"
 #include "tnetstring.h"
 
 static bool isAllCaps(const QString &s)
@@ -100,7 +101,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		return false;
 
 	bool ok;
-	QVariant vheaders = TnetString::toVariant(in, start, htype, offset, size, &ok);
+	Variant vheaders = TnetString::toVariant(in, start, htype, offset, size, &ok);
 	if(!ok)
 		return false;
 
@@ -112,16 +113,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	QMap<QString, QByteArray> m2headers; // Single-value map for easy processing
 	if(htype == TnetString::Hash)
 	{
-		QVariantMap headersMap = vheaders.toMap();
-		QMapIterator<QString, QVariant> vit(headersMap);
-		while(vit.hasNext())
+		VariantMap headersMap = vheaders.toMap();
+		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 		{
-			vit.next();
+			const QString &key = vit.key();
+			const Variant &val = vit.value();
 
-			QString key = vit.key();
-			QVariant val = vit.value();
-
-			if(typeId(val) == QMetaType::QByteArray)
+			if(typeId(val) == VariantType::ByteArray)
 			{
 				QByteArray ba = val.toByteArray();
 
@@ -130,13 +128,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				if(!isAllCaps(key) && !skipHeaders.contains(key))
 					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
 			}
-			else if(typeId(val) == QMetaType::QVariantList)
+			else if(typeId(val) == VariantType::List)
 			{
-				QVariantList vl = val.toList();
+				VariantList vl = val.toList();
 				if(vl.isEmpty())
 					return false;
 
-				if(typeId(vl[0]) != QMetaType::QByteArray)
+				if(typeId(vl[0]) != VariantType::ByteArray)
 					return false;
 
 				m2headers[key] = vl[0].toByteArray();
@@ -145,9 +143,9 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				{
 					QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					foreach(const QVariant &v, vl)
+					for(const Variant &v : vl)
 					{
-						if(typeId(v) != QMetaType::QByteArray)
+						if(typeId(v) != VariantType::ByteArray)
 							return false;
 
 						headers += HttpHeader(name, v.toByteArray());
@@ -165,16 +163,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		if(error.error != QJsonParseError::NoError || !doc.isObject())
 			return false;
 
-		QVariantMap headersMap = doc.object().toVariantMap();
-		QMapIterator<QString, QVariant> vit(headersMap);
-		while(vit.hasNext())
+		VariantMap headersMap = doc.object().toVariantMap();
+		for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 		{
-			vit.next();
+			const QString &key = vit.key();
+			const Variant &val = vit.value();
 
-			QString key = vit.key();
-			QVariant val = vit.value();
-
-			if(typeId(val) == QMetaType::QString)
+			if(typeId(val) == VariantType::String)
 			{
 				QByteArray ba = val.toString().toUtf8();
 
@@ -183,13 +178,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				if(!isAllCaps(key) && !skipHeaders.contains(key))
 					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
 			}
-			else if(typeId(val) == QMetaType::QVariantList)
+			else if(typeId(val) == VariantType::List)
 			{
-				QVariantList vl = val.toList();
+				VariantList vl = val.toList();
 				if(vl.isEmpty())
 					return false;
 
-				if(typeId(vl[0]) != QMetaType::QString)
+				if(typeId(vl[0]) != VariantType::String)
 					return false;
 
 				m2headers[key] = vl[0].toString().toUtf8();
@@ -198,9 +193,9 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				{
 					QByteArray name = makeMixedCaseHeader(key).toLatin1();
 
-					foreach(const QVariant &v, vl)
+					for(const Variant &v : vl)
 					{
-						if(typeId(v) != QMetaType::QString)
+						if(typeId(v) != VariantType::String)
 							return false;
 
 						headers += HttpHeader(name, v.toString().toUtf8());
@@ -239,8 +234,8 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		if(error.error != QJsonParseError::NoError || !doc.isObject())
 			return false;
 
-		QVariantMap data = doc.object().toVariantMap();
-		if(!data.contains("type") || typeId(data["type"]) != QMetaType::QString)
+		VariantMap data = doc.object().toVariantMap();
+		if(!data.contains("type") || typeId(data["type"]) != VariantType::String)
 			return false;
 
 		QString jtype = data["type"].toString();

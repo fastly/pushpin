@@ -33,6 +33,7 @@
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "timer.h"
 #include "defercall.h"
 #include "log.h"
@@ -509,12 +510,12 @@ public:
 		bool preferInternal = false;
 		bool autoShare = false;
 
-		QVariant passthroughData = req->passthroughData();
+		Variant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
 			// Passthrough request, from handler
 
-			const QVariantHash data = passthroughData.toHash();
+			const VariantHash data = passthroughData.toHash();
 
 			// There is always a route
 			routeId = QString::fromUtf8(data["route"].toByteArray());
@@ -548,7 +549,7 @@ public:
 			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 				originalRoute = domainMap->entry(routeId);
 
-			const QVariantHash data = passthroughData.toHash();
+			const VariantHash data = passthroughData.toHash();
 
 			DomainMap::Entry route;
 
@@ -560,7 +561,7 @@ public:
 			}
 
 			DomainMap::Target target;
-			QUrl uri = req->requestUri();
+			Url uri = req->requestUri();
 			bool isHttps = (uri.scheme() == "https");
 			target.connectHost = uri.host();
 			target.connectPort = uri.port(isHttps ? 443 : 80);
@@ -618,14 +619,14 @@ public:
 		if(config.acceptXForwardedProto && isXForwardedProtocolTls(sock->requestHeaders()))
 			sock->setIsTls(true);
 
-		QUrl requestUri = sock->requestUri();
+		Url requestUri = sock->requestUri();
 
 		log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(), requestUri.toEncoded().data());
 
 		bool isSecure = (requestUri.scheme() == "wss");
 		QString host = requestUri.host();
 
-		QByteArray encPath = requestUri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
 
 		QString routeId;
 
@@ -842,7 +843,7 @@ private:
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(req.content()[0], 0, &ok);
+		Variant data = TnetString::toVariant(req.content()[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");
@@ -915,7 +916,7 @@ private:
 		{
 			ZrpcRequestPacket p;
 			p.method = "conn-max";
-			p.args["conn-max"] = QVariantList() << packet.toVariant();
+			p.args["conn-max"] = VariantList() << packet.toVariant();
 
 			accept->write(p);
 		}
@@ -933,21 +934,21 @@ private:
 				return;
 			}
 
-			QVariantHash args = req->args();
-			if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
+			VariantHash args = req->args();
+			if(!args.contains("ids") || typeId(args["ids"]) != VariantType::List)
 			{
 				req->respondError("bad-format");
 				delete req;
 				return;
 			}
 
-			QVariantList vids = args["ids"].toList();
+			VariantList vids = args["ids"].toList();
 
 			bool ok = true;
 			QList<QByteArray> ids;
-			foreach(const QVariant &vid, vids)
+			for(const Variant &vid : vids)
 			{
-				if(typeId(vid) != QMetaType::QByteArray)
+				if(typeId(vid) != VariantType::ByteArray)
 				{
 					ok = false;
 					break;
@@ -962,7 +963,7 @@ private:
 				return;
 			}
 
-			QVariantList out;
+			VariantList out;
 			foreach(const QByteArray &id, ids)
 			{
 				if(stats->checkConnection(id))
@@ -973,8 +974,8 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			QVariantHash args = req->args();
-			if(!args.contains("cid") || typeId(args["cid"]) != QMetaType::QByteArray)
+			VariantHash args = req->args();
+			if(!args.contains("cid") || typeId(args["cid"]) != VariantType::ByteArray)
 			{
 				req->respondError("bad-format");
 				delete req;

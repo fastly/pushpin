@@ -27,23 +27,24 @@
 #include "zrpcrequest.h"
 #include "controlrequest.h"
 #include "statsmanager.h"
+#include "variant.h"
 
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
 	req_(req)
 {
-	QVariantHash args = req_->args();
+	VariantHash args = req_->args();
 
-	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
+	if(!args.contains("ids") || typeId(args["ids"]) != VariantType::List)
 	{
 		respondError("bad-request");
 		return;
 	}
 
-	QVariantList vids = args["ids"].toList();
+	VariantList vids = args["ids"].toList();
 
-	foreach(const QVariant &vid, vids)
+	for(const Variant &vid : vids)
 	{
-		if(typeId(vid) != QMetaType::QByteArray)
+		if(typeId(vid) != VariantType::ByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -52,7 +53,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 		cids_ += QString::fromUtf8(vid.toByteArray());
 	}
 
-	foreach(const QString &cid, cids_)
+	for(const QString &cid : cids_)
 	{
 		if(!stats->checkConnection(cid.toUtf8()))
 			missing_ += cid;
@@ -80,8 +81,8 @@ void ConnCheckWorker::doFinish()
 	foreach(const QString &cid, missing_)
 		cids_.remove(cid);
 
-	QVariantList result;
-	foreach(const QString &cid, cids_)
+	VariantList result;
+	for(const QString &cid : cids_)
 		result += cid.toUtf8();
 
 	req_->respond(result);

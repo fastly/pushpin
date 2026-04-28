@@ -28,6 +28,7 @@
 #include <QFileInfo>
 #include <QSettings>
 #include "qtcompat.h"
+#include "variant.h"
 #include "config.h"
 
 Settings::Settings(const QString &fileName) :
@@ -137,7 +138,7 @@ bool Settings::contains(const QString &key) const
 	return false;
 }
 
-QVariant Settings::valueRaw(const QString &key, const QVariant &defaultValue) const
+Variant Settings::valueRaw(const QString &key, const Variant &defaultValue) const
 {
 	if(include_)
 	{
@@ -150,16 +151,16 @@ QVariant Settings::valueRaw(const QString &key, const QVariant &defaultValue) co
 		return main_->value(key, defaultValue);
 }
 
-QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
+Variant Settings::value(const QString &key, const Variant &defaultValue) const
 {
-	QVariant v = valueRaw(key, defaultValue);
+	Variant v = valueRaw(key, defaultValue);
 	if(v.isValid())
 	{
-		if(typeId(v) == QMetaType::QString)
+		if(typeId(v) == VariantType::String)
 		{
 			v = resolveVars(v.toString());
 		}
-		else if(typeId(v) == QMetaType::QStringList)
+		else if(typeId(v) == VariantType::List)
 		{
 			QStringList oldList = v.toStringList();
 			QStringList newList;
@@ -174,7 +175,7 @@ QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
 
 int Settings::adjustedPort(const QString &key, int defaultValue) const
 {
-	int x = value(key, QVariant(defaultValue)).toInt();
+	int x = value(key, Variant(defaultValue)).toInt();
 	if(x > 0)
 		x += portOffset_;
 	return x;

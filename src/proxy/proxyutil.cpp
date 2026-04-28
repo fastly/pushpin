@@ -27,13 +27,14 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 #include "jwt.h"
 #include "inspectdata.h"
 
 static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 {
-	QVariantMap claim;
+	VariantMap claim;
 	claim["iss"] = QString::fromUtf8(iss);
 	claim["exp"] = QDateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600;
 	return Jwt::encode(claim, key);
@@ -41,11 +42,11 @@ static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 
 static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 {
-	QVariant claimObj = Jwt::decode(token, key);
-	if(!claimObj.isValid() || typeId(claimObj) != QMetaType::QVariantMap)
+	Variant claimObj = Jwt::decode(token, key);
+	if(!claimObj.isValid() || typeId(claimObj) != VariantType::Map)
 		return false;
 
-	QVariantMap claim = claimObj.toMap();
+	VariantMap claim = claimObj.toMap();
 
 	int exp = claim.value("exp").toInt();
 	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toSecsSinceEpoch() >= exp)
@@ -235,7 +236,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		requestData->headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
 }
 
-void applyHost(QUrl *url, const QString &host)
+void applyHost(Url *url, const QString &host)
 {
 	int at = host.indexOf(':');
 	if(at != -1)
@@ -250,7 +251,7 @@ void applyHost(QUrl *url, const QString &host)
 	}
 }
 
-void applyHostHeader(HttpHeaders *headers, const QUrl &uri)
+void applyHostHeader(HttpHeaders *headers, const Url &uri)
 {
 	QByteArray hostHeader = uri.host().toUtf8();
 	if(uri.port() != -1)

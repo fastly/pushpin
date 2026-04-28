@@ -24,7 +24,7 @@
 #ifndef ZRPCREQUEST_H
 #define ZRPCREQUEST_H
 
-#include <QVariant>
+#include "variant.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -50,17 +50,17 @@ public:
 	QByteArray from() const;
 	QByteArray id() const;
 	QString method() const;
-	QVariantHash args() const;
+	VariantHash args() const;
 	bool success() const;
-	QVariant result() const;
+	Variant result() const;
 	ErrorCondition errorCondition() const;
 	QByteArray errorConditionString() const;
 
-	void start(const QString &method, const QVariantHash &args = QVariantHash());
-	void respond(const QVariant &result = QVariant());
-	void respondError(const QByteArray &condition, const QVariant &result = QVariant());
+	void start(const QString &method, const VariantHash &args = VariantHash());
+	void respond(const Variant &result = Variant());
+	void respondError(const QByteArray &condition, const Variant &result = Variant());
 
-	void setError(ErrorCondition condition, const QVariant &result = QVariant());
+	void setError(ErrorCondition condition, const Variant &result = Variant());
 
 	Signal finished;
 	Signal destroyed;

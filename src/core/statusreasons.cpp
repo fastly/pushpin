@@ -23,6 +23,7 @@
 #include "statusreasons.h"
 
 #include <QByteArray>
+#include "variant.h"
 
 namespace StatusReasons {
 

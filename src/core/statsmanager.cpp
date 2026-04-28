@@ -33,6 +33,7 @@
 #include "log.h"
 #include "defercall.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "httpheaders.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
@@ -904,7 +905,7 @@ public:
 		else // ConnectionsMax
 			prefix = "conn-max";
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 
 		QByteArray buf;
 		if(outputFormat == TnetStringFormat)
@@ -1622,17 +1623,17 @@ private:
 
 		foreach(const PrometheusMetric &m, prometheusMetrics)
 		{
-			QVariant value;
+			Variant value;
 
 			switch(m.mtype)
 			{
-				case PrometheusMetric::RequestReceived: value = QVariant(combinedReport.requestsReceived); break;
-				case PrometheusMetric::ConnectionConnected: value = QVariant(combinedReport.connectionsMax); break;
-				case PrometheusMetric::ConnectionMinute: value = QVariant(combinedReport.connectionsMinutes); break;
-				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
-				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
-				case PrometheusMetric::WSError: value = QVariant(combinedReport.counters.get(Stats::WSError)); break;
-				case PrometheusMetric::TLSError: value = QVariant(combinedReport.counters.get(Stats::TLSError)); break;
+				case PrometheusMetric::RequestReceived: value = Variant(combinedReport.requestsReceived); break;
+				case PrometheusMetric::ConnectionConnected: value = Variant(combinedReport.connectionsMax); break;
+				case PrometheusMetric::ConnectionMinute: value = Variant(combinedReport.connectionsMinutes); break;
+				case PrometheusMetric::MessageReceived: value = Variant(combinedReport.messagesReceived); break;
+				case PrometheusMetric::MessageSent: value = Variant(combinedReport.messagesSent); break;
+				case PrometheusMetric::WSError: value = Variant(combinedReport.counters.get(Stats::WSError)); break;
+				case PrometheusMetric::TLSError: value = Variant(combinedReport.counters.get(Stats::TLSError)); break;
 				case PrometheusMetric::ProxyWorkerConns:
 					for (size_t i = 0; i < combinedReport.connectionsMaxByWorker.size(); ++i)
 					{

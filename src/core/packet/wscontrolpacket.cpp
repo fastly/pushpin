@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include "qtcompat.h"
+#include "variant.h"
 
 // FIXME: rewrite packet class using this code?
 /*class WsControlPacket
@@ -50,7 +51,7 @@ public:
 	QString channelPrefix;
 	QList<Message> messages;
 
-	static WsControlPacket fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
+	static WsControlPacket fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0)
 	{
 		QString pn = "wscontrol packet";
 
@@ -63,7 +64,7 @@ public:
 		pn = "wscontrol object";
 
 		bool ok_;
-		QVariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
+		VariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
 		if(!ok_)
 		{
 			if(ok)
@@ -73,7 +74,7 @@ public:
 
 		WsControlPacket out;
 
-		foreach(const QVariant &vitem, vitems)
+		for(const Variant &vitem : vitems)
 		{
 			Message msg;
 
@@ -109,7 +110,7 @@ public:
 				return WsControlPacket();
 			}
 
-			msg.uri = QUrl::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), QUrl::StrictMode);
+			msg.uri = Url::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), Url::StrictMode);
 			if(!ok_)
 			{
 				if(ok)
@@ -133,8 +134,8 @@ public:
 					return WsControlPacket();
 				}
 
-				QVariant vmessage = keyedObjectGetValue(vitem, "message");
-				if(vmessage.type() != QVariant::ByteArray)
+				Variant vmessage = keyedObjectGetValue(vitem, "message");
+				if(vmessage.type() != VariantType::ByteArray)
 				{
 					setError(ok, errorMessage, QString("'%1' contains 'message' with wrong type").arg(pn));
 					return WsControlPacket();
@@ -151,16 +152,16 @@ public:
 	}
 };*/
 
-QVariant WsControlPacket::toVariant() const
+Variant WsControlPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	obj["from"] = from;
 
-	QVariantList vitems;
+	VariantList vitems;
 	foreach(const Item &item, items)
 	{
-		QVariantHash vitem;
+		VariantHash vitem;
 
 		vitem["cid"] = item.cid;
 
@@ -243,38 +244,38 @@ QVariant WsControlPacket::toVariant() const
 	return obj;
 }
 
-bool WsControlPacket::fromVariant(const QVariant &in)
+bool WsControlPacket::fromVariant(const Variant &in)
 {
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
-	if(!obj.contains("from") || typeId(obj["from"]) != QMetaType::QByteArray)
+	if(!obj.contains("from") || typeId(obj["from"]) != VariantType::ByteArray)
 		return false;
 
 	from = obj["from"].toByteArray();
 
-	if(!obj.contains("items") || typeId(obj["items"]) != QMetaType::QVariantList)
+	if(!obj.contains("items") || typeId(obj["items"]) != VariantType::List)
 		return false;
 
-	QVariantList vitems = obj["items"].toList();
+	VariantList vitems = obj["items"].toList();
 
 	items.clear();
-	foreach(const QVariant &v, vitems)
+	for(const Variant &v : vitems)
 	{
-		if(typeId(v) != QMetaType::QVariantHash)
+		if(typeId(v) != VariantType::Hash)
 			return false;
 
-		QVariantHash vitem = v.toHash();
+		VariantHash vitem = v.toHash();
 
 		Item item;
 
-		if(!vitem.contains("cid") || typeId(vitem["cid"]) != QMetaType::QByteArray)
+		if(!vitem.contains("cid") || typeId(vitem["cid"]) != VariantType::ByteArray)
 			return false;
 		item.cid = vitem["cid"].toByteArray();
 
-		if(!vitem.contains("type") || typeId(vitem["type"]) != QMetaType::QByteArray)
+		if(!vitem.contains("type") || typeId(vitem["type"]) != VariantType::ByteArray)
 			return false;
 		QByteArray typeStr = vitem["type"].toByteArray();
 
@@ -309,7 +310,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("req-id"))
 		{
-			if(typeId(vitem["req-id"]) != QMetaType::QByteArray)
+			if(typeId(vitem["req-id"]) != VariantType::ByteArray)
 				return false;
 
 			item.requestId = vitem["req-id"].toByteArray();
@@ -317,15 +318,15 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("uri"))
 		{
-			if(typeId(vitem["uri"]) != QMetaType::QByteArray)
+			if(typeId(vitem["uri"]) != VariantType::ByteArray)
 				return false;
 
-			item.uri = QUrl::fromEncoded(vitem["uri"].toByteArray(), QUrl::StrictMode);
+			item.uri = Url::fromEncoded(vitem["uri"].toByteArray(), Url::StrictMode);
 		}
 
 		if(vitem.contains("content-type"))
 		{
-			if(typeId(vitem["content-type"]) != QMetaType::QByteArray)
+			if(typeId(vitem["content-type"]) != VariantType::ByteArray)
 				return false;
 
 			QByteArray contentType = vitem["content-type"].toByteArray();
@@ -335,7 +336,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("message"))
 		{
-			if(typeId(vitem["message"]) != QMetaType::QByteArray)
+			if(typeId(vitem["message"]) != VariantType::ByteArray)
 				return false;
 
 			item.message = vitem["message"].toByteArray();
@@ -343,7 +344,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("queue"))
 		{
-			if(typeId(vitem["queue"]) != QMetaType::Bool)
+			if(typeId(vitem["queue"]) != VariantType::Bool)
 				return false;
 
 			item.queue = vitem["queue"].toBool();
@@ -351,7 +352,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("code"))
 		{
-			if(!canConvert(vitem["code"], QMetaType::Int))
+			if(!canConvert(vitem["code"], VariantType::Int))
 				return false;
 
 			item.code = vitem["code"].toInt();
@@ -359,7 +360,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("reason"))
 		{
-			if(typeId(vitem["reason"]) != QMetaType::QByteArray)
+			if(typeId(vitem["reason"]) != VariantType::ByteArray)
 				return false;
 
 			item.reason = vitem["reason"].toByteArray();
@@ -367,7 +368,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("debug"))
 		{
-			if(typeId(vitem["debug"]) != QMetaType::Bool)
+			if(typeId(vitem["debug"]) != VariantType::Bool)
 				return false;
 
 			item.debug = vitem["debug"].toBool();
@@ -375,7 +376,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("route"))
 		{
-			if(typeId(vitem["route"]) != QMetaType::QByteArray)
+			if(typeId(vitem["route"]) != VariantType::ByteArray)
 				return false;
 
 			QByteArray route = vitem["route"].toByteArray();
@@ -385,7 +386,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("separate-stats"))
 		{
-			if(typeId(vitem["separate-stats"]) != QMetaType::Bool)
+			if(typeId(vitem["separate-stats"]) != VariantType::Bool)
 				return false;
 
 			item.separateStats = vitem["separate-stats"].toBool();
@@ -393,7 +394,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("channel-prefix"))
 		{
-			if(typeId(vitem["channel-prefix"]) != QMetaType::QByteArray)
+			if(typeId(vitem["channel-prefix"]) != VariantType::ByteArray)
 				return false;
 
 			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
@@ -403,7 +404,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("log-level"))
 		{
-			if(!canConvert(vitem["log-level"], QMetaType::Int))
+			if(!canConvert(vitem["log-level"], VariantType::Int))
 				return false;
 
 			item.logLevel = vitem["log-level"].toInt();
@@ -411,7 +412,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("trusted"))
 		{
-			if(typeId(vitem["trusted"]) != QMetaType::Bool)
+			if(typeId(vitem["trusted"]) != VariantType::Bool)
 				return false;
 
 			item.trusted = vitem["trusted"].toBool();
@@ -419,7 +420,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("channel"))
 		{
-			if(typeId(vitem["channel"]) != QMetaType::QByteArray)
+			if(typeId(vitem["channel"]) != VariantType::ByteArray)
 				return false;
 
 			QByteArray channel = vitem["channel"].toByteArray();
@@ -429,7 +430,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("ttl"))
 		{
-			if(!canConvert(vitem["ttl"], QMetaType::Int))
+			if(!canConvert(vitem["ttl"], VariantType::Int))
 				return false;
 
 			item.ttl = vitem["ttl"].toInt();
@@ -439,7 +440,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("timeout"))
 		{
-			if(!canConvert(vitem["timeout"], QMetaType::Int))
+			if(!canConvert(vitem["timeout"], VariantType::Int))
 				return false;
 
 			item.timeout = vitem["timeout"].toInt();
@@ -449,7 +450,7 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(vitem.contains("keep-alive-mode"))
 		{
-			if(!canConvert(vitem["keep-alive-mode"], QMetaType::QByteArray))
+			if(!canConvert(vitem["keep-alive-mode"], VariantType::ByteArray))
 				return false;
 
 			QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();

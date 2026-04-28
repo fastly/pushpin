@@ -25,7 +25,6 @@
 
 #include <QByteArray>
 #include <QString>
-#include <QMetaType>
 
 class DetectRule
 {

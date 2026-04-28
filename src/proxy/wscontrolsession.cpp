@@ -25,7 +25,7 @@
 
 #include <assert.h>
 #include <QDateTime>
-#include <QUrl>
+#include "url.h"
 #include <boost/signals2.hpp>
 #include "timer.h"
 #include "wscontrolmanager.h"
@@ -52,7 +52,7 @@ public:
 	bool separateStats;
 	QByteArray channelPrefix;
 	int logLevel;
-	QUrl uri;
+	Url uri;
 	bool targetTrusted;
 	Connection requestTimerConnection;
 
@@ -328,7 +328,7 @@ QByteArray WsControlSession::cid() const
 	return d->cid;
 }
 
-void WsControlSession::start(bool debug, const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri, bool targetTrusted)
+void WsControlSession::start(bool debug, const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const Url &uri, bool targetTrusted)
 {
 	d->debug = debug;
 	d->route = routeId;

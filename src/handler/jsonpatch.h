@@ -23,11 +23,11 @@
 #ifndef JSONPATCH_H
 #define JSONPATCH_H
 
-#include <QVariant>
+#include "variant.h"
 
 namespace JsonPatch {
 
-QVariant patch(const QVariant &data, const QVariantList &ops, QString *errorMessage = 0);
+Variant patch(const Variant &data, const VariantList &ops, QString *errorMessage = 0);
 
 }
 

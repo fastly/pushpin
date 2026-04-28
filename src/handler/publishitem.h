@@ -25,7 +25,7 @@
 
 #include <QString>
 #include <QHash>
-#include <QVariant>
+#include "variant.h"
 #include "publishformat.h"
 
 class PublishItem
@@ -47,7 +47,7 @@ public:
 	{
 	}
 
-	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
+	static PublishItem fromVariant(const Variant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
 };
 
 #endif

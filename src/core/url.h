@@ -1,9 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +12,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
-#ifndef TEMPLATE_H
-#define TEMPLATE_H
+#ifndef URL_H
+#define URL_H
 
-#include <QString>
-#include "variant.h"
+#include <QUrl>
 
-namespace Template {
+// Type alias for URL handling - this will be replaced with a custom implementation later
+using Url = QUrl;
 
-QString render(const QString &content, const VariantMap &context, QString *error = 0);
-bool renderFile(const QString &inFile, const QString &outFile, const VariantMap &context, QString *error = 0);
-
-void dumpTemplate(const QString &content);
-
-}
-
-#endif
+#endif // URL_H

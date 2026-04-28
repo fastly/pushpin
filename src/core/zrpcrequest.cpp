@@ -27,6 +27,7 @@
 #include <boost/signals2.hpp>
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
+#include "variant.h"
 #include "zrpcmanager.h"
 #include "uuidutil.h"
 #include "log.h"
@@ -44,10 +45,10 @@ public:
 	QByteArray from;
 	QByteArray id;
 	QString method;
-	QVariantHash args;
+	VariantHash args;
 	bool success;
 	int startCounter;
-	QVariant result;
+	Variant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
 	std::unique_ptr<Timer> timer;
@@ -83,7 +84,7 @@ public:
 		}
 	}
 
-	void respond(const QVariant &value)
+	void respond(const Variant &value)
 	{
 		ZrpcResponsePacket p;
 		p.id = id;
@@ -92,7 +93,7 @@ public:
 		manager->write(reqHeaders, p);
 	}
 
-	void respondError(const QByteArray &condition, const QVariant &value)
+	void respondError(const QByteArray &condition, const Variant &value)
 	{
 		ZrpcResponsePacket p;
 		p.id = id;
@@ -210,7 +211,7 @@ QString ZrpcRequest::method() const
 	return d->method;
 }
 
-QVariantHash ZrpcRequest::args() const
+VariantHash ZrpcRequest::args() const
 {
 	return d->args;
 }
@@ -220,7 +221,7 @@ bool ZrpcRequest::success() const
 	return d->success;
 }
 
-QVariant ZrpcRequest::result() const
+Variant ZrpcRequest::result() const
 {
 	return d->result;
 }
@@ -235,24 +236,24 @@ QByteArray ZrpcRequest::errorConditionString() const
 	return d->conditionString;
 }
 
-void ZrpcRequest::start(const QString &method, const QVariantHash &args)
+void ZrpcRequest::start(const QString &method, const VariantHash &args)
 {
 	d->method = method;
 	d->args = args;
 	d->deferCall.defer([=] { d->doStart(); });
 }
 
-void ZrpcRequest::respond(const QVariant &result)
+void ZrpcRequest::respond(const Variant &result)
 {
 	d->respond(result);
 }
 
-void ZrpcRequest::respondError(const QByteArray &condition, const QVariant &result)
+void ZrpcRequest::respondError(const QByteArray &condition, const Variant &result)
 {
 	d->respondError(condition, result);
 }
 
-void ZrpcRequest::setError(ErrorCondition condition, const QVariant &result)
+void ZrpcRequest::setError(ErrorCondition condition, const Variant &result)
 {
 	d->success = false;
 	d->condition = condition;

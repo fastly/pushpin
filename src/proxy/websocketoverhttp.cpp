@@ -1131,7 +1131,7 @@ void WebSocketOverHttp::setBackendData(const QString &data)
 	d->backendData = data;
 }
 
-void WebSocketOverHttp::start(const QUrl &uri, const HttpHeaders &headers)
+void WebSocketOverHttp::start(const Url &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Idle);
 
@@ -1168,7 +1168,7 @@ WebSocket::State WebSocketOverHttp::state() const
 	return d->state;
 }
 
-QUrl WebSocketOverHttp::requestUri() const
+Url WebSocketOverHttp::requestUri() const
 {
 	return d->requestData.uri;
 }

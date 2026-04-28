@@ -24,6 +24,7 @@
 #include "variantutil.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
 namespace VariantUtil {
 
@@ -43,82 +44,82 @@ void setError(bool *ok, QString *errorMessage, const QString &msg)
 		*errorMessage = msg;
 }
 
-bool isKeyedObject(const QVariant &in)
+bool isKeyedObject(const Variant &in)
 {
-	return (typeId(in) == QMetaType::QVariantHash || typeId(in) == QMetaType::QVariantMap);
+	return (typeId(in) == VariantType::Hash || typeId(in) == VariantType::Map);
 }
 
-QVariant createSameKeyedObject(const QVariant &in)
+Variant createSameKeyedObject(const Variant &in)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
-		return QVariantHash();
-	else if(typeId(in) == QMetaType::QVariantMap)
-		return QVariantMap();
+	if(typeId(in) == VariantType::Hash)
+		return VariantHash();
+	else if(typeId(in) == VariantType::Map)
+		return VariantMap();
 	else
-		return QVariant();
+		return Variant();
 }
 
-bool keyedObjectIsEmpty(const QVariant &in)
+bool keyedObjectIsEmpty(const Variant &in)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().isEmpty();
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().isEmpty();
 	else
 		return true;
 }
 
-bool keyedObjectContains(const QVariant &in, const QString &name)
+bool keyedObjectContains(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().contains(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().contains(name);
 	else
 		return false;
 }
 
-QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
+Variant keyedObjectGetValue(const Variant &in, const QString &name)
 {
-	if(typeId(in) == QMetaType::QVariantHash)
+	if(typeId(in) == VariantType::Hash)
 		return in.toHash().value(name);
-	else if(typeId(in) == QMetaType::QVariantMap)
+	else if(typeId(in) == VariantType::Map)
 		return in.toMap().value(name);
 	else
-		return QVariant();
+		return Variant();
 }
 
-void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
+void keyedObjectInsert(Variant *in, const QString &name, const Variant &value)
 {
-	if(typeId(*in) == QMetaType::QVariantHash)
+	if(typeId(*in) == VariantType::Hash)
 	{
-		QVariantHash h = in->toHash();
+		VariantHash h = in->toHash();
 		h.insert(name, value);
 		*in = h;
 	}
-	else if(typeId(*in) == QMetaType::QVariantMap)
+	else if(typeId(*in) == VariantType::Map)
 	{
-		QVariantMap h = in->toMap();
+		VariantMap h = in->toMap();
 		h.insert(name, value);
 		*in = h;
 	}
 }
 
-QVariant getChild(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
+Variant getChild(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
 {
 	if(!isKeyedObject(in))
 	{
 		QString pn = !parentName.isEmpty() ? parentName : QString("value");
 		setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
-		return QVariant();
+		return Variant();
 	}
 
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
-	QVariant v;
-	if(typeId(in) == QMetaType::QVariantHash)
+	Variant v;
+	if(typeId(in) == VariantType::Hash)
 	{
-		QVariantHash h = in.toHash();
+		VariantHash h = in.toHash();
 
 		if(!h.contains(childName))
 		{
@@ -127,14 +128,14 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 			else
 				setSuccess(ok, errorMessage);
 
-			return QVariant();
+			return Variant();
 		}
 
 		v = h[childName];
 	}
 	else // Map
 	{
-		QVariantMap m = in.toMap();
+		VariantMap m = in.toMap();
 
 		if(!m.contains(childName))
 		{
@@ -143,7 +144,7 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 			else
 				setSuccess(ok, errorMessage);
 
-			return QVariant();
+			return Variant();
 		}
 
 		v = m[childName];
@@ -153,21 +154,21 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 	return v;
 }
 
-QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
+Variant getKeyedObject(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
 {
 	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	Variant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
 	if(!ok_)
 	{
 		if(ok)
 			*ok = false;
-		return QVariant();
+		return Variant();
 	}
 
 	if(!v.isValid() && !required)
 	{
 		setSuccess(ok, errorMessage);
-		return QVariant();
+		return Variant();
 	}
 
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
@@ -175,51 +176,51 @@ QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QSt
 	if(!isKeyedObject(v))
 	{
 		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
-		return QVariant();
+		return Variant();
 	}
 
 	setSuccess(ok, errorMessage);
 	return v;
 }
 
-QVariantList getList(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
+VariantList getList(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
 {
 	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	Variant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
 	if(!ok_)
 	{
 		if(ok)
 			*ok = false;
-		return QVariantList();
+		return VariantList();
 	}
 
 	if(!v.isValid() && !required)
 	{
 		setSuccess(ok, errorMessage);
-		return QVariantList();
+		return VariantList();
 	}
 
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
-	if(typeId(v) != QMetaType::QVariantList)
+	if(typeId(v) != VariantType::List)
 	{
 		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
-		return QVariantList();
+		return VariantList();
 	}
 
 	setSuccess(ok, errorMessage);
 	return v.toList();
 }
 
-QString getString(const QVariant &in, bool *ok)
+QString getString(const Variant &in, bool *ok)
 {
-	if(typeId(in) == QMetaType::QString)
+	if(typeId(in) == VariantType::String)
 	{
 		if(ok)
 			*ok = true;
 		return in.toString();
 	}
-	else if(typeId(in) == QMetaType::QByteArray)
+	else if(typeId(in) == VariantType::ByteArray)
 	{
 		QByteArray buf = in.toByteArray();
 		if(ok)
@@ -237,10 +238,10 @@ QString getString(const QVariant &in, bool *ok)
 	}
 }
 
-QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
+QString getString(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok, QString *errorMessage)
 {
 	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	Variant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
 	if(!ok_)
 	{
 		if(ok)
@@ -267,23 +268,21 @@ QString getString(const QVariant &in, const QString &parentName, const QString &
 	return str;
 }
 
-bool convertToJsonStyleInPlace(QVariant *in)
+bool convertToJsonStyleInPlace(Variant *in)
 {
 	// Hash -> Map
 	// ByteArray (UTF-8) -> String
 
 	bool changed = false;
 
-	QMetaType::Type type = typeId(*in);
-	if(type == QMetaType::QVariantHash)
+	VariantType::Type type = typeId(*in);
+	if(type == VariantType::Hash)
 	{
-		QVariantMap vmap;
-		QVariantHash vhash = in->toHash();
-		QHashIterator<QString, QVariant> it(vhash);
-		while(it.hasNext())
+		VariantMap vmap;
+		VariantHash vhash = in->toHash();
+		for(auto it = vhash.constBegin(); it != vhash.constEnd(); ++it)
 		{
-			it.next();
-			QVariant i = it.value();
+			Variant i = it.value();
 			convertToJsonStyleInPlace(&i);
 			vmap[it.key()] = i;
 		}
@@ -291,12 +290,12 @@ bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vmap;
 		changed = true;
 	}
-	else if(type == QMetaType::QVariantList)
+	else if(type == VariantType::List)
 	{
-		QVariantList vlist = in->toList();
+		VariantList vlist = in->toList();
 		for(int n = 0; n < vlist.count(); ++n)
 		{
-			QVariant i = vlist.at(n);
+			Variant i = vlist.at(n);
 			convertToJsonStyleInPlace(&i);
 			vlist[n] = i;
 		}
@@ -304,7 +303,7 @@ bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vlist;
 		changed = true;
 	}
-	else if(type == QMetaType::QByteArray)
+	else if(type == VariantType::ByteArray)
 	{
 		QByteArray buf = in->toByteArray();
 		if(!buf.isNull())
@@ -317,9 +316,9 @@ bool convertToJsonStyleInPlace(QVariant *in)
 	return changed;
 }
 
-QVariant convertToJsonStyle(const QVariant &in)
+Variant convertToJsonStyle(const Variant &in)
 {
-	QVariant v = in;
+	Variant v = in;
 	convertToJsonStyleInPlace(&v);
 	return v;
 }

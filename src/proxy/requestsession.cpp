@@ -24,7 +24,7 @@
 #include "requestsession.h"
 
 #include <assert.h>
-#include <QUrl>
+#include "url.h"
 #include <QHostAddress>
 #include <QUrlQuery>
 #include <QJsonDocument>
@@ -33,6 +33,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "defercall.h"
@@ -114,7 +115,7 @@ static bool validMethod(const QString &in)
 
 static QByteArray serializeJsonString(const QString &s)
 {
-	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s)).toJson(QJsonDocument::Compact);
 
 	assert(tmp.length() >= 4);
 	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -290,7 +291,7 @@ public:
 
 		if(route.isNull() && domainMap)
 		{
-			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+			QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
 
 			// Look up the route
 			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
@@ -402,7 +403,7 @@ public:
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
 
-		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
 
 		// Look up the route
 		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
@@ -570,7 +571,7 @@ public:
 			if(reasonJson.isNull())
 				return QByteArray();
 
-			QVariantMap vheaders;
+			VariantMap vheaders;
 			foreach(const HttpHeader h, headers)
 			{
 				if(!vheaders.contains(h.first.asQByteArray()))
@@ -629,7 +630,7 @@ public:
 		if(!config.bodyParam.isEmpty())
 			bodyParam = QString::fromUtf8(config.bodyParam);
 
-		QUrl uri = requestData.uri;
+		Url uri = requestData.uri;
 		QUrlQuery query(uri);
 
 		// Two ways to activate JSON-P:
@@ -644,7 +645,7 @@ public:
 		QByteArray callback;
 		if(query.hasQueryItem(callbackParam))
 		{
-			callback = parsePercentEncoding(query.queryItemValue(callbackParam, QUrl::FullyEncoded).toUtf8());
+			callback = parsePercentEncoding(query.queryItemValue(callbackParam, Url::FullyEncoded).toUtf8());
 			if(callback.isEmpty())
 			{
 				log_debug("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
@@ -661,7 +662,7 @@ public:
 		QString method;
 		if(query.hasQueryItem("_method"))
 		{
-			method = QString::fromLatin1(parsePercentEncoding(query.queryItemValue("_method", QUrl::FullyEncoded).toUtf8()));
+			method = QString::fromLatin1(parsePercentEncoding(query.queryItemValue("_method", Url::FullyEncoded).toUtf8()));
 			if(!validMethod(method))
 			{
 				log_debug("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
@@ -677,7 +678,7 @@ public:
 		if(query.hasQueryItem("_headers"))
 		{
 			QJsonParseError e;
-			QJsonDocument doc = QJsonDocument::fromJson(parsePercentEncoding(query.queryItemValue("_headers", QUrl::FullyEncoded).toUtf8()), &e);
+			QJsonDocument doc = QJsonDocument::fromJson(parsePercentEncoding(query.queryItemValue("_headers", Url::FullyEncoded).toUtf8()), &e);
 			if(e.error != QJsonParseError::NoError || !doc.isObject())
 			{
 				log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
@@ -686,14 +687,11 @@ public:
 				return false;
 			}
 
-			QVariantMap headersMap = doc.object().toVariantMap();
+			VariantMap headersMap = doc.object().toVariantMap();
 
-			QMapIterator<QString, QVariant> vit(headersMap);
-			while(vit.hasNext())
+			for(auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit)
 			{
-				vit.next();
-
-				if(typeId(vit.value()) != QMetaType::QString)
+				if(typeId(vit.value()) != VariantType::String)
 				{
 					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 					*ok = false;
@@ -720,7 +718,7 @@ public:
 		{
 			if(query.hasQueryItem(bodyParam))
 			{
-				body = parsePercentEncoding(query.queryItemValue(bodyParam, QUrl::FullyEncoded).toUtf8());
+				body = parsePercentEncoding(query.queryItemValue(bodyParam, Url::FullyEncoded).toUtf8());
 				if(body.isNull())
 				{
 					log_debug("requestsession: id=%s invalid body parameter, rejecting", rid.second.data());
@@ -761,7 +759,7 @@ public:
 			if(tmp.length() > 0 && tmp[tmp.length() - 1] == '?')
 			{
 				tmp.truncate(tmp.length() - 1);
-				uri = QUrl::fromEncoded(tmp, QUrl::StrictMode);
+				uri = Url::fromEncoded(tmp, Url::StrictMode);
 			}
 		}
 

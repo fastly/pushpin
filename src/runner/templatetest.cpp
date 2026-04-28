@@ -22,19 +22,20 @@
  */
 
 #include "test.h"
+#include "variant.h"
 #include "template.h"
 
 static void render()
 {
-	QVariantMap context;
+	VariantMap context;
 	context["place"] = "world";
 
-	QVariantMap user;
+	VariantMap user;
 	user["first"] = "john";
 	user["last"] = "smith";
 	context["user"] = user;
 
-	QVariantList fruits;
+	VariantList fruits;
 	fruits.append("apple");
 	fruits.append("banana");
 	context["fruits"] = fruits;

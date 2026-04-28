@@ -32,6 +32,7 @@
 #include <QCryptographicHash>
 #include <QRandomGenerator>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "timer.h"
@@ -63,7 +64,7 @@ const char *iframeHtmlTemplate =
 
 static QByteArray serializeJsonString(const QString &s)
 {
-	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s)).toJson(QJsonDocument::Compact);
 
 	assert(tmp.length() >= 4);
 	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -91,14 +92,14 @@ public:
 		BufferList reqBody;
 		QByteArray path;
 		QByteArray jsonpCallback;
-		QUrl asUri;
+		Url asUri;
 		DomainMap::Entry route;
 		QByteArray sid;
 		QByteArray lastPart;
 		bool pending;
 		SockJsSession *ext;
 		std::unique_ptr<Timer> timer;
-		QVariant closeValue;
+		Variant closeValue;
 		Connection timerConnection;
 
 		Session(Private *_owner) :
@@ -206,7 +207,7 @@ public:
 			removeSession(s);
 	}
 
-	void setLinger(SockJsSession *ext, const QVariant &closeValue)
+	void setLinger(SockJsSession *ext, const Variant &closeValue)
 	{
 		Session *s = sessionsByExt.value(ext);
 		assert(s);
@@ -219,9 +220,9 @@ public:
 		Session *s = new Session(this);
 		s->req = req;
 
-		QUrl uri = req->requestUri();
+		Url uri = req->requestUri();
 
-		QByteArray encPath = uri.path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
 
 		QUrlQuery query(uri);
@@ -244,9 +245,9 @@ public:
 		s->asUri = uri;
 		s->asUri.setScheme((s->asUri.scheme() == "https") ? "wss" : "ws");
 		if(!asPath.isEmpty())
-			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(asPath), Url::StrictMode);
 		else
-			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart)), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart)), Url::StrictMode);
 
 		s->route = route;
 
@@ -267,13 +268,13 @@ public:
 		Session *s = new Session(this);
 		s->sock = sock;
 
-		QByteArray encPath = sock->requestUri().path(QUrl::FullyEncoded).toUtf8();
+		QByteArray encPath = sock->requestUri().path(Url::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
 		s->asUri = sock->requestUri();
 		if(!asPath.isEmpty())
-			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(asPath), Url::StrictMode);
 		else
-			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), Url::StrictMode);
 		s->route = route;
 
 		wsConnectionMap[sock] = {
@@ -317,7 +318,7 @@ public:
 		respond(req, 204, "No Content", headers, QByteArray());
 	}
 
-	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
+	void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
 		HttpHeaders headers;
 		if(!jsonpCallback.isEmpty())
@@ -329,7 +330,7 @@ public:
 		if(data.isValid())
 		{
 			QJsonDocument doc;
-			if(typeId(data) == QMetaType::QVariantMap)
+			if(typeId(data) == VariantType::Map)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
@@ -422,9 +423,9 @@ public:
 		{
 			uint32_t x = QRandomGenerator::global()->generate();
 
-			QVariantMap out;
+			VariantMap out;
 			out["websocket"] = true;
-			out["origins"] = QVariantList() << QString("*:*");
+			out["origins"] = VariantList() << QString("*:*");
 			out["cookie_needed"] = false;
 			out["entropy"] = x;
 			respondOk(s->req, out);
@@ -477,7 +478,7 @@ public:
 						}
 						else
 						{
-							QVariantList out;
+							VariantList out;
 							out += 2010;
 							out += QString("Another connection still open");
 							respondOk(s->req, out, "c", s->jsonpCallback);
@@ -711,12 +712,12 @@ void SockJsManager::unlink(SockJsSession *sess)
 	d->unlink(sess);
 }
 
-void SockJsManager::setLinger(SockJsSession *ext, const QVariant &closeValue)
+void SockJsManager::setLinger(SockJsSession *ext, const Variant &closeValue)
 {
 	d->setLinger(ext, closeValue);
 }
 
-void SockJsManager::respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
+void SockJsManager::respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
 {
 	d->respondOk(req, data, prefix, jsonpCallback);
 }

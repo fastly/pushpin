@@ -25,6 +25,7 @@
 #define ACCEPTDATA_H
 
 #include <QList>
+#include "variant.h"
 #include "httpheaders.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -55,7 +56,7 @@ public:
 		int outSeq;
 		int outCredits;
 		bool routerResp;
-		QVariant userData;
+		Variant userData;
 
 		Request() :
 			https(false),
@@ -91,7 +92,7 @@ public:
 	bool trusted; // Whether a trusted target was used
 	bool useSession;
 	bool responseSent;
-	QVariantList connMaxPackets;
+	VariantList connMaxPackets;
 
 	AcceptData() :
 		haveInspectData(false),

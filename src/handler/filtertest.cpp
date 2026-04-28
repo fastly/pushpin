@@ -111,7 +111,7 @@ public:
 			return;
 		}
 
-		QUrl uri = req->requestUri();
+		Url uri = req->requestUri();
 		QByteArray body = req->readBody();
 
 		if(uri.path() == "/filter/accept")

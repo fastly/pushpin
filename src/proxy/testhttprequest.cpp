@@ -196,7 +196,7 @@ void TestHttpRequest::setBackendData(const QString &data)
 	Q_UNUSED(data);
 }
 
-void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
+void TestHttpRequest::start(const QString &method, const Url &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);
 
@@ -292,7 +292,7 @@ QString TestHttpRequest::requestMethod() const
 	return d->request.method;
 }
 
-QUrl TestHttpRequest::requestUri() const
+Url TestHttpRequest::requestUri() const
 {
 	return d->request.uri;
 }

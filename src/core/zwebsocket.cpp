@@ -28,6 +28,7 @@
 #include "zhttpresponsepacket.h"
 #include "log.h"
 #include "timer.h"
+#include "variant.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
@@ -64,7 +65,7 @@ public:
 	QString clientCert;
 	QString clientKey;
 	QString backendData;
-	QUrl requestUri;
+	Url requestUri;
 	HttpHeaders requestHeaders;
 	int inSeq;
 	int outSeq;
@@ -80,7 +81,7 @@ public:
 	QString closeReason;
 	int peerCloseCode;
 	QString peerCloseReason;
-	QVariant userData;
+	Variant userData;
 	bool pendingUpdate;
 	bool readableChanged;
 	bool writableChanged;
@@ -1140,7 +1141,7 @@ void ZWebSocket::setBackendData(const QString &data)
 	d->backendData = data;
 }
 
-void ZWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
+void ZWebSocket::start(const Url &uri, const HttpHeaders &headers)
 {
 	assert(!d->server);
 
@@ -1195,7 +1196,7 @@ WebSocket::State ZWebSocket::state() const
 	}
 }
 
-QUrl ZWebSocket::requestUri() const
+Url ZWebSocket::requestUri() const
 {
 	return d->requestUri;
 }

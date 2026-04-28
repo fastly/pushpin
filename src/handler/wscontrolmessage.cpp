@@ -23,13 +23,13 @@
 
 #include "wscontrolmessage.h"
 
-#include <QVariant>
 #include "qtcompat.h"
+#include "variant.h"
 #include "variantutil.h"
 
 using namespace VariantUtil;
 
-WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QString *errorMessage)
+WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QString *errorMessage)
 {
 	QString pn = "grip control packet";
 
@@ -92,7 +92,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 
 		if(out.type == Subscribe)
 		{
-			QVariantList vfilters = getList(in, pn, "filters", false, &ok_, errorMessage);
+			VariantList vfilters = getList(in, pn, "filters", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -100,7 +100,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 				return WsControlMessage();
 			}
 
-			foreach(const QVariant &vfilter, vfilters)
+			for(const Variant &vfilter : vfilters)
 			{
 				QString filter = getString(vfilter, &ok_);
 				if(!ok_)
@@ -181,11 +181,11 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 
 		if(keyedObjectContains(in, "content-bin"))
 		{
-			QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+			Variant vcontentBin = keyedObjectGetValue(in, "content-bin");
 
-			if(typeId(in) == QMetaType::QVariantMap) // JSON input
+			if(typeId(in) == VariantType::Map) // JSON input
 			{
-				if(typeId(vcontentBin) != QMetaType::QString)
+				if(typeId(vcontentBin) != VariantType::String)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -195,7 +195,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 			}
 			else
 			{
-				if(typeId(vcontentBin) != QMetaType::QByteArray)
+				if(typeId(vcontentBin) != VariantType::ByteArray)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -209,10 +209,10 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		}
 		else if(keyedObjectContains(in, "content"))
 		{
-			QVariant vcontent = keyedObjectGetValue(in, "content");
-			if(typeId(vcontent) == QMetaType::QByteArray)
+			Variant vcontent = keyedObjectGetValue(in, "content");
+			if(typeId(vcontent) == VariantType::ByteArray)
 				out.content = vcontent.toByteArray();
-			else if(typeId(vcontent) == QMetaType::QString)
+			else if(typeId(vcontent) == VariantType::String)
 				out.content = vcontent.toString().toUtf8();
 			else
 			{
@@ -228,8 +228,8 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		{
 			if(keyedObjectContains(in, "timeout"))
 			{
-				QVariant vtimeout = keyedObjectGetValue(in, "timeout");
-				if(!canConvert(vtimeout, QMetaType::Int))
+				Variant vtimeout = keyedObjectGetValue(in, "timeout");
+				if(!canConvert(vtimeout, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
 					return WsControlMessage();

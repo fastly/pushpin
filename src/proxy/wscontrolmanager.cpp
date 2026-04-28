@@ -32,6 +32,7 @@
 #include "log.h"
 #include "timer.h"
 #include "tnetstring.h"
+#include "variant.h"
 #include "zutil.h"
 #include "logutil.h"
 #include "wscontrolsession.h"
@@ -164,7 +165,7 @@ public:
 	{
 		assert(streamSock);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -177,7 +178,7 @@ public:
 	{
 		assert(streamSock);
 
-		QVariant vpacket = packet.toVariant();
+		Variant vpacket = packet.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -262,7 +263,7 @@ private:
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(req.content()[0]);
+		Variant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");

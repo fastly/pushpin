@@ -23,30 +23,30 @@
 #ifndef VARIANTUTIL_H
 #define VARIANTUTIL_H
 
-#include <QVariant>
+#include "variant.h"
 
 namespace VariantUtil {
 
 void setSuccess(bool *ok, QString *errorMessage);
 void setError(bool *ok, QString *errorMessage, const QString &msg);
 
-bool isKeyedObject(const QVariant &in);
-QVariant createSameKeyedObject(const QVariant &in);
-bool keyedObjectIsEmpty(const QVariant &in);
-bool keyedObjectContains(const QVariant &in, const QString &name);
-QVariant keyedObjectGetValue(const QVariant &in, const QString &name);
-void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value);
+bool isKeyedObject(const Variant &in);
+Variant createSameKeyedObject(const Variant &in);
+bool keyedObjectIsEmpty(const Variant &in);
+bool keyedObjectContains(const Variant &in, const QString &name);
+Variant keyedObjectGetValue(const Variant &in, const QString &name);
+void keyedObjectInsert(Variant *in, const QString &name, const Variant &value);
 
-QVariant getChild(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
-QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
-QVariantList getList(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
-QString getString(const QVariant &in, bool *ok = 0);
-QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+Variant getChild(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+Variant getKeyedObject(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+VariantList getList(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
+QString getString(const Variant &in, bool *ok = 0);
+QString getString(const Variant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0);
 
 // Return true if item modified
-bool convertToJsonStyleInPlace(QVariant *in);
+bool convertToJsonStyleInPlace(Variant *in);
 
-QVariant convertToJsonStyle(const QVariant &in);
+Variant convertToJsonStyle(const Variant &in);
 
 }
 

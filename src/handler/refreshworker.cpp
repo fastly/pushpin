@@ -28,17 +28,18 @@
 #include "controlrequest.h"
 #include "statsmanager.h"
 #include "wssession.h"
+#include "variant.h"
 
 RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel) :
 	ignoreErrors_(false),
 	proxyControlClient_(proxyControlClient),
 	req_(req)
 {
-	QVariantHash args = req_->args();
+	VariantHash args = req_->args();
 
 	if(args.contains("cid"))
 	{
-		if(typeId(args["cid"]) != QMetaType::QByteArray)
+		if(typeId(args["cid"]) != VariantType::ByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -50,7 +51,7 @@ RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, 
 	}
 	else if(args.contains("channel"))
 	{
-		if(typeId(args["channel"]) != QMetaType::QByteArray)
+		if(typeId(args["channel"]) != VariantType::ByteArray)
 		{
 			respondError("bad-request");
 			return;

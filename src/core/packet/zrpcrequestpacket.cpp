@@ -24,10 +24,11 @@
 #include "zrpcrequestpacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-QVariant ZrpcRequestPacket::toVariant() const
+Variant ZrpcRequestPacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	if(!from.isEmpty())
 		obj["from"] = from;
@@ -43,16 +44,16 @@ QVariant ZrpcRequestPacket::toVariant() const
 	return obj;
 }
 
-bool ZrpcRequestPacket::fromVariant(const QVariant &in)
+bool ZrpcRequestPacket::fromVariant(const Variant &in)
 {
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(obj.contains("from"))
 	{
-		if(typeId(obj["from"]) != QMetaType::QByteArray)
+		if(typeId(obj["from"]) != VariantType::ByteArray)
 			return false;
 
 		from = obj["from"].toByteArray();
@@ -60,19 +61,19 @@ bool ZrpcRequestPacket::fromVariant(const QVariant &in)
 
 	if(obj.contains("id"))
 	{
-		if(typeId(obj["id"]) != QMetaType::QByteArray)
+		if(typeId(obj["id"]) != VariantType::ByteArray)
 			return false;
 
 		id = obj["id"].toByteArray();
 	}
 
-	if(!obj.contains("method") || typeId(obj["method"]) != QMetaType::QByteArray)
+	if(!obj.contains("method") || typeId(obj["method"]) != VariantType::ByteArray)
 		return false;
 	method = QString::fromUtf8(obj["method"].toByteArray());
 
 	if(obj.contains("args"))
 	{
-		if(typeId(obj["args"]) != QMetaType::QVariantHash)
+		if(typeId(obj["args"]) != VariantType::Hash)
 			return false;
 
 		args = obj["args"].toHash();

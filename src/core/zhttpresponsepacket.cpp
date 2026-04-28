@@ -22,10 +22,11 @@
 #include "zhttpresponsepacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-QVariant ZhttpResponsePacket::toVariant() const
+Variant ZhttpResponsePacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	if(!from.isEmpty())
 		obj["from"] = from.asQByteArray();
@@ -42,10 +43,10 @@ QVariant ZhttpResponsePacket::toVariant() const
 		}
 		else
 		{
-			QVariantList vl;
+			VariantList vl;
 			foreach(const Id &id, ids)
 			{
-				QVariantHash vh;
+				VariantHash vh;
 				if(!id.id.isEmpty())
 					vh["id"] = id.id.asQByteArray();
 				if(id.seq != -1)
@@ -90,13 +91,13 @@ QVariant ZhttpResponsePacket::toVariant() const
 		if(type == Data || (type == Error && condition == "rejected"))
 		{
 			obj["reason"] = reason.asQByteArray();
-			QVariantList vheaders;
+			VariantList vheaders;
 			foreach(const HttpHeader &h, headers)
 			{
-				QVariantList vheader;
+				VariantList vheader;
 				vheader += h.first.asQByteArray();
 				vheader += h.second.asQByteArray();
-				vheaders += QVariant(vheader);
+				vheaders += Variant(vheader);
 			}
 			obj["headers"] = vheaders;
 		}
@@ -113,7 +114,7 @@ QVariant ZhttpResponsePacket::toVariant() const
 
 	if(multi)
 	{
-		QVariantHash ext;
+		VariantHash ext;
 		ext["multi"] = true;
 		obj["ext"] = ext;
 	}
@@ -121,17 +122,17 @@ QVariant ZhttpResponsePacket::toVariant() const
 	return obj;
 }
 
-bool ZhttpResponsePacket::fromVariant(const QVariant &in)
+bool ZhttpResponsePacket::fromVariant(const Variant &in)
 {
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	from.clear();
 	if(obj.contains("from"))
 	{
-		if(typeId(obj["from"]) != QMetaType::QByteArray)
+		if(typeId(obj["from"]) != VariantType::ByteArray)
 			return false;
 
 		from = obj["from"].toByteArray();
@@ -140,27 +141,27 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	ids.clear();
 	if(obj.contains("id"))
 	{
-		if(typeId(obj["id"]) == QMetaType::QByteArray)
+		if(typeId(obj["id"]) == VariantType::ByteArray)
 		{
 			Id id;
 			id.id = obj["id"].toByteArray();
 			ids += id;
 		}
-		else if(typeId(obj["id"]) == QMetaType::QVariantList)
+		else if(typeId(obj["id"]) == VariantType::List)
 		{
-			QVariantList vl = obj["id"].toList();
-			foreach(const QVariant &v, vl)
+			VariantList vl = obj["id"].toList();
+			for(const Variant &v : vl)
 			{
-				if(typeId(v) != QMetaType::QVariantHash)
+				if(typeId(v) != VariantType::Hash)
 					return false;
 
 				Id id;
 
-				QVariantHash vh = v.toHash();
+				VariantHash vh = v.toHash();
 
 				if(vh.contains("id"))
 				{
-					if(typeId(vh["id"]) != QMetaType::QByteArray)
+					if(typeId(vh["id"]) != VariantType::ByteArray)
 						return false;
 
 					id.id = vh["id"].toByteArray();
@@ -168,7 +169,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 
 				if(vh.contains("seq"))
 				{
-					if(!canConvert(vh["seq"], QMetaType::Int))
+					if(!canConvert(vh["seq"], VariantType::Int))
 						return false;
 
 					id.seq = vh["seq"].toInt();
@@ -183,7 +184,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 
 	if(obj.contains("seq"))
 	{
-		if(!canConvert(obj["seq"], QMetaType::Int))
+		if(!canConvert(obj["seq"], VariantType::Int))
 			return false;
 
 		if(ids.isEmpty())
@@ -195,7 +196,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	type = Data;
 	if(obj.contains("type"))
 	{
-		if(typeId(obj["type"]) != QMetaType::QByteArray)
+		if(typeId(obj["type"]) != VariantType::ByteArray)
 			return false;
 
 		QByteArray typeStr = obj["type"].toByteArray();
@@ -227,7 +228,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 		condition.clear();
 		if(obj.contains("condition"))
 		{
-			if(typeId(obj["condition"]) != QMetaType::QByteArray)
+			if(typeId(obj["condition"]) != VariantType::ByteArray)
 				return false;
 
 			condition = obj["condition"].toByteArray();
@@ -237,7 +238,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	credits = -1;
 	if(obj.contains("credits"))
 	{
-		if(!canConvert(obj["credits"], QMetaType::Int))
+		if(!canConvert(obj["credits"], VariantType::Int))
 			return false;
 
 		credits = obj["credits"].toInt();
@@ -246,7 +247,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	more = false;
 	if(obj.contains("more"))
 	{
-		if(typeId(obj["more"]) != QMetaType::Bool)
+		if(typeId(obj["more"]) != VariantType::Bool)
 			return false;
 
 		more = obj["more"].toBool();
@@ -255,7 +256,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	code = -1;
 	if(obj.contains("code"))
 	{
-		if(!canConvert(obj["code"], QMetaType::Int))
+		if(!canConvert(obj["code"], VariantType::Int))
 			return false;
 
 		code = obj["code"].toInt();
@@ -264,7 +265,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	reason.clear();
 	if(obj.contains("reason"))
 	{
-		if(typeId(obj["reason"]) != QMetaType::QByteArray)
+		if(typeId(obj["reason"]) != VariantType::ByteArray)
 			return false;
 
 		reason = obj["reason"].toByteArray();
@@ -273,16 +274,16 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	headers.clear();
 	if(obj.contains("headers"))
 	{
-		if(typeId(obj["headers"]) != QMetaType::QVariantList)
+		if(typeId(obj["headers"]) != VariantType::List)
 			return false;
 
-		foreach(const QVariant &i, obj["headers"].toList())
+		for(const Variant &i : obj["headers"].toList())
 		{
-			QVariantList list = i.toList();
+			VariantList list = i.toList();
 			if(list.count() != 2)
 				return false;
 
-			if(typeId(list[0]) != QMetaType::QByteArray || typeId(list[1]) != QMetaType::QByteArray)
+			if(typeId(list[0]) != VariantType::ByteArray || typeId(list[1]) != VariantType::ByteArray)
 				return false;
 
 			headers += HttpHeader(list[0].toByteArray(), list[1].toByteArray());
@@ -292,7 +293,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	body.clear();
 	if(obj.contains("body"))
 	{
-		if(typeId(obj["body"]) != QMetaType::QByteArray)
+		if(typeId(obj["body"]) != VariantType::ByteArray)
 			return false;
 
 		body = obj["body"].toByteArray();
@@ -301,7 +302,7 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	contentType.clear();
 	if(obj.contains("content-type"))
 	{
-		if(typeId(obj["content-type"]) != QMetaType::QByteArray)
+		if(typeId(obj["content-type"]) != VariantType::ByteArray)
 			return false;
 
 		contentType = obj["content-type"].toByteArray();
@@ -312,11 +313,11 @@ bool ZhttpResponsePacket::fromVariant(const QVariant &in)
 	multi = false;
 	if(obj.contains("ext"))
 	{
-		if(typeId(obj["ext"]) != QMetaType::QVariantHash)
+		if(typeId(obj["ext"]) != VariantType::Hash)
 			return false;
 
-		QVariantHash ext = obj["ext"].toHash();
-		if(ext.contains("multi") && typeId(ext["multi"]) == QMetaType::Bool)
+		VariantHash ext = obj["ext"].toHash();
+		if(ext.contains("multi") && typeId(ext["multi"]) == VariantType::Bool)
 		{
 			multi = ext["multi"].toBool();
 		}

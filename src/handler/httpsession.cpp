@@ -29,6 +29,7 @@
 #include <QJsonArray>
 #include <QRandomGenerator>
 #include "qtcompat.h"
+#include "variant.h"
 #include "timer.h"
 #include "defercall.h"
 #include "log.h"
@@ -55,7 +56,7 @@
 #define UPDATES_PER_ACTION_MAX 100
 #define PUBLISH_QUEUE_MAX 100
 
-static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyPatch)
+static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPatch)
 {
 	QByteArray body;
 
@@ -63,7 +64,7 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 	QJsonDocument doc = QJsonDocument::fromJson(in, &e);
 	if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
 	{
-		QVariant vbody;
+		Variant vbody;
 		if(doc.isObject())
 			vbody = doc.object().toVariantMap();
 		else // IsArray
@@ -73,10 +74,10 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 		vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
 		if(vbody.isValid())
 			vbody = VariantUtil::convertToJsonStyle(vbody);
-		if(vbody.isValid() && (typeId(vbody) == QMetaType::QVariantMap || typeId(vbody) == QMetaType::QVariantList))
+		if(vbody.isValid() && (typeId(vbody) == VariantType::Map || typeId(vbody) == VariantType::List))
 		{
 			QJsonDocument doc;
-			if(typeId(vbody) == QMetaType::QVariantMap)
+			if(typeId(vbody) == VariantType::Map)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
@@ -176,9 +177,9 @@ public:
 	int sentOutReqData;
 	int retries;
 	QString errorMessage;
-	QUrl currentUri;
-	QUrl nextUri;
-	QUrl goneUri;
+	Url currentUri;
+	Url nextUri;
+	Url goneUri;
 	bool needUpdate;
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
@@ -908,20 +909,18 @@ private:
 			{
 				if(adata.jsonpExtendedResponse)
 				{
-					QVariantMap result;
+					VariantMap result;
 					result["code"] = code;
 					result["reason"] = QString::fromUtf8(reason);
 
 					// Need to compact headers into a map
-					QVariantMap vheaders;
+					VariantMap vheaders;
 					foreach(const HttpHeader &h, headers)
 					{
 						// Don't add the same header name twice. We'll collect all values for a single header
 						bool found = false;
-						QMapIterator<QString, QVariant> it(vheaders);
-						while(it.hasNext())
+						for(auto it = vheaders.constBegin(); it != vheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &name = it.key();
 
 							QByteArray uname = name.toUtf8();
@@ -1135,7 +1134,7 @@ private:
 		finishedCallback.call({q});
 	}
 
-	void prepareOutReq(const QUrl &destUri, bool autoShare = false)
+	void prepareOutReq(const Url &destUri, bool autoShare = false)
 	{
 		haveOutReqHeaders = false;
 		sentOutReqData = 0;
@@ -1147,7 +1146,7 @@ private:
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
-		QVariantHash passthroughData;
+		VariantHash passthroughData;
 
 		passthroughData["route"] = adata.route.toUtf8();
 
@@ -1345,7 +1344,7 @@ private:
 		}
 	}
 
-	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
+	void logRequest(const QString &method, const Url &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
 		LogUtil::RequestData rd;
 
@@ -1365,7 +1364,7 @@ private:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
+	void logRequestError(const QString &method, const Url &uri, const HttpHeaders &headers)
 	{
 		LogUtil::RequestData rd;
 
@@ -1698,7 +1697,7 @@ ZhttpRequest::Rid HttpSession::rid() const
 	return d->req->rid();
 }
 
-QUrl HttpSession::requestUri() const
+Url HttpSession::requestUri() const
 {
 	return d->req->requestUri();
 }
