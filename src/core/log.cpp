@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "rust/bindings.h"
+
 Q_GLOBAL_STATIC(QMutex, g_mutex)
 static int g_level = LOG_LEVEL_DEBUG;
 static QElapsedTimer g_time;
@@ -44,6 +46,16 @@ static void log(const char *s) {
 }
 
 static void log(int level, const char *fmt, va_list ap) {
+    // Check if Rust logger is initialized
+    if (ffi::log_initialized()) {
+        // Send formatted message directly to Rust logger
+        QString str = QString::vasprintf(fmt, ap);
+        ffi::log_log(level, str.toUtf8().data());
+        return;
+    }
+
+    // Fall back to C++ logging system
+
     g_mutex()->lock();
     int current_level = g_level;
     int elapsed;
@@ -171,4 +183,14 @@ void log_debug(const char *fmt, ...) {
     va_end(ap);
 }
 
-void log_raw(const char *s) { log(s); }
+void log_raw(const char *s) {
+    // Check if Rust logger is initialized
+    if (ffi::log_initialized()) {
+        // Send raw message to Rust logger (already formatted with level, timestamp, etc.)
+        ffi::log_log_raw(s);
+        return;
+    }
+
+    // Fall back to C++ logging system
+    log(s);
+}
