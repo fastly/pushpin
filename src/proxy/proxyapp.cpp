@@ -141,10 +141,10 @@ public:
     QWaitCondition w;
     Engine::Configuration config;
     DomainMap *domainMap;
-    std::unique_ptr<EngineWorker> worker;
+    EngineWorker *worker;
 
     EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap)
-        : config(_config), domainMap(_domainMap) {}
+        : config(_config), domainMap(_domainMap), worker(nullptr) {}
 
     ~EngineThread() {
         stop();
@@ -206,11 +206,15 @@ public:
             (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
 
         int registrationsMax = timersMax + socketNotifiersMax;
-        std::unique_ptr<EventLoop> loop = std::make_unique<EventLoop>(registrationsMax);
+        EventLoop loop(registrationsMax);
 
-        worker = std::make_unique<EngineWorker>(config, domainMap);
+        // Create worker on the stack in this thread
+        EngineWorker worker_local(config, domainMap);
 
-        worker->started.connect([&] {
+        // Set member pointer for cross-thread access
+        worker = &worker_local;
+
+        worker_local.started.connect([&] {
             log_debug("worker %d: started", config.id);
 
             // Unblock start()
@@ -218,27 +222,27 @@ public:
             m.unlock();
         });
 
-        worker->stopped.connect([&] {
-            worker.reset();
-
+        worker_local.stopped.connect([&] {
             log_debug("worker %d: stopped", config.id);
 
-            loop->exit(0);
+            loop.exit(0);
         });
 
-        worker->error.connect([&] {
-            worker.reset();
-
-            loop->exit(0);
+        worker_local.error.connect([&] {
+            // Signal event loop to exit cleanly
+            loop.exit(0);
 
             // Unblock start()
             w.wakeOne();
             m.unlock();
         });
 
-        worker->deferCall.defer([=] { worker->start(); });
+        worker_local.deferCall.defer([&] { worker_local.start(); });
 
-        loop->exec();
+        loop.exec();
+
+        // Clear member pointer before worker is destroyed
+        worker = nullptr;
     }
 };
 
@@ -318,6 +322,9 @@ static int runLoop(const Engine::Configuration &config, const QStringList &route
             EngineThread *t = new EngineThread(wconfig, domainMap.get());
             if (!t->start()) {
                 delete t;
+
+                // Clean up ProcessQuit before destroying EventLoop
+                ProcessQuit::cleanup();
 
                 for (EngineThread *t : threads)
                     delete t;
