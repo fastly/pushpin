@@ -15,6 +15,7 @@
  */
 
 pub mod cliargs;
+pub mod domainmap;
 
 #[cfg(test)]
 mod tests {

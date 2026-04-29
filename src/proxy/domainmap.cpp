@@ -29,6 +29,7 @@
 #include "log.h"
 #include "routesfile.h"
 #include "timer.h"
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -723,6 +724,8 @@ public:
         }
 
         thread.join();
+
+        log_debug("domainmap thread stopped");
     }
 
     void start() {
@@ -742,6 +745,8 @@ public:
     }
 
     void run() {
+        log_debug("domainmap thread started");
+
         // Will unlock during exec
         m.lock();
 
@@ -770,9 +775,13 @@ public:
     DomainMap *q;
     Thread *thread;
     Connection changedConnection;
-    DeferCall deferCall;
+    std::unique_ptr<DeferCall> deferCall;
 
-    Private(DomainMap *_q) : q(_q), thread(0) {}
+    Private(DomainMap *_q) : q(_q), thread(0) {
+        // Only emit signals in the current thread if there is an event loop
+        if (EventLoop::instance() || QCoreApplication::instance())
+            deferCall = std::make_unique<DeferCall>();
+    }
 
     ~Private() {
         changedConnection.disconnect();
@@ -792,10 +801,12 @@ public:
 private:
     // NOTE: called from worker thread
     void workerChanged() {
-        deferCall.defer([=] {
-            // NOTE: called from outer thread
-            doChanged();
-        });
+        if (deferCall) {
+            deferCall->defer([=] {
+                // NOTE: called from outer thread
+                doChanged();
+            });
+        }
     }
 
     void doChanged() { q->changed(); }
@@ -896,3 +907,42 @@ bool DomainMap::addRouteLine(const QString &line) {
     QMutexLocker locker(&d->thread->worker->m);
     return d->thread->worker->addRouteLine(line);
 }
+
+// FFI functions for Rust integration
+extern "C" {
+
+// Route parameters struct for FFI
+struct DomainMapRouteParams {
+    int log_level;
+};
+
+DomainMap *domainmap_create(const char *filename) {
+    if (!filename) {
+        return nullptr;
+    }
+
+    QString qfilename = QString::fromUtf8(filename);
+    return new DomainMap(qfilename);
+}
+
+void domainmap_destroy(DomainMap *handle) { delete handle; }
+
+int domainmap_entry_params(DomainMap *handle, const char *route_id, DomainMapRouteParams *params) {
+    if (!handle || !route_id || !params) {
+        return -1;
+    }
+
+    QString qroute_id = QString::fromUtf8(route_id);
+    DomainMap::Entry entry = handle->entry(qroute_id);
+
+    if (entry.isNull()) {
+        return -1;
+    }
+
+    // Extract route parameters
+    params->log_level = entry.logLevel;
+
+    return 0;
+}
+
+} // extern "C"

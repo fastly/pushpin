@@ -127,6 +127,25 @@ pub mod ffi {
     #[cfg(test)]
     use crate::core::test::TestException;
 
+    // Route parameters struct for FFI (matches C++ struct)
+    #[repr(C)]
+    pub struct DomainMapRouteParams {
+        pub log_level: libc::c_int,
+    }
+
+    // Opaque handle to C++ DomainMap
+    pub enum DomainMap {}
+
+    import_cpp! {
+        pub fn domainmap_create(filename: *const libc::c_char) -> *mut DomainMap;
+        pub fn domainmap_destroy(handle: *mut DomainMap);
+        pub fn domainmap_entry_params(
+            handle: *mut DomainMap,
+            route_id: *const libc::c_char,
+            params: *mut DomainMapRouteParams,
+        ) -> libc::c_int;
+    }
+
     #[cfg(test)]
     import_cpptest! {
         pub fn cowbytearray_test(out_ex: *mut TestException) -> libc::c_int;

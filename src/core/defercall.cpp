@@ -25,6 +25,7 @@
 #include "event.h"
 #include "eventloop.h"
 #include "timer.h"
+#include <QCoreApplication>
 #include <QMetaObject>
 #include <QObject>
 #include <boost/signals2.hpp>
@@ -37,6 +38,9 @@ class ThreadWake : public QObject {
 public:
     ThreadWake() : customRegId_(-1), wakeQueued_(false) {
         EventLoop *loop = EventLoop::instance();
+
+        // Require an event loop to avoid queuing up idle events
+        assert(loop || QCoreApplication::instance());
 
         if (loop) {
             auto [regId, sr] = loop->registerCustom(ThreadWake::cb_ready, this);
