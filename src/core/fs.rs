@@ -182,8 +182,8 @@ pub struct FileWatcher {
 
 #[derive(Debug, Error)]
 pub enum FileWatcherError {
-    #[error("no parent")]
-    NoParent,
+    #[error(transparent)]
+    InvalidFilePath(#[from] io::Error),
 
     #[error(transparent)]
     Notify(#[from] notify::Error),
@@ -191,13 +191,25 @@ pub enum FileWatcherError {
 
 impl FileWatcher {
     // `file_path` must be a path to a file, not a directory, and the file's
-    // Parent directory must exist
+    // parent directory must exist
     pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, FileWatcherError> {
         let file = file_path.as_ref();
 
-        let Ok(dir) = parent_dir(file) else {
-            return Err(FileWatcherError::NoParent);
+        // Determine the canonical dir path for watching. Note that we don't
+        // canonicalize the full path with the filename since that action may
+        // require the file to exist, and we want to support paths to files
+        // that may not exist.
+        let dir = parent_dir(file)?.canonicalize()?;
+
+        let Some(file) = file.file_name() else {
+            return Err(FileWatcherError::InvalidFilePath(io::Error::from(
+                io::ErrorKind::InvalidInput,
+            )));
         };
+
+        // Join the file name with the canonicalized dir, to ensure notified
+        // paths can be compared consistently.
+        let file = dir.join(file);
 
         let mut fds = [0; 2];
 
@@ -211,7 +223,7 @@ impl FileWatcher {
         }
 
         let data = Arc::new(FileWatcherData {
-            file: file.to_owned(),
+            file,
             read_fd: fds[0],
             write_fd: fds[1],
             state: Mutex::new(None),
@@ -279,7 +291,7 @@ impl FileWatcher {
             // Watch the dir instead of the file, so we can detect file creates
             state
                 .watcher
-                .watch(dir, notify::RecursiveMode::NonRecursive)?;
+                .watch(&dir, notify::RecursiveMode::NonRecursive)?;
         }
 
         Ok(Self { data })
@@ -391,6 +403,7 @@ mod tests {
     use super::*;
     use crate::core::event::Poller;
     use crate::core::test_dir;
+    use std::env;
     use std::fs;
     use std::time::Duration;
 
@@ -407,7 +420,12 @@ mod tests {
 
     #[test]
     fn watcher() {
-        let file = test_dir().join("watch-file");
+        // Test against a relative dir to test internal canonicalization
+        let test_dir = test_dir().canonicalize().unwrap();
+        let test_dir = test_dir.strip_prefix(&env::current_dir().unwrap()).unwrap();
+        assert!(test_dir.is_relative());
+
+        let file = test_dir.join("watch-file");
 
         match fs::remove_file(&file) {
             Ok(()) => {}
