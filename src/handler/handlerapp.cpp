@@ -181,7 +181,8 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
 
     log_debug("starting...");
 
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
+    // QSettings doesn't inform us if the config file can't be opened, so do that
+    // ourselves
     {
         QFile file(args.configFile);
         if (!file.open(QIODevice::ReadOnly)) {
@@ -299,7 +300,8 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
 
     if (proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() ||
         proxy_retry_out_specs.isEmpty()) {
-        log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs");
+        log_error("must set proxy_inspect_specs, proxy_accept_specs, and "
+                  "proxy_retry_out_specs");
         return 1;
     }
 

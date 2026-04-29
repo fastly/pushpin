@@ -33,7 +33,8 @@ static void renderId() {
     vars["name"] = "Alice";
     vars["food\\fruit(type)"] = "apples";
 
-    sformat = "My name is %(name)s and I eat %(food\\\\fruit(type\\))s 10%% of the time.";
+    sformat = "My name is %(name)s and I eat %(food\\\\fruit(type\\))s 10%% of "
+              "the time.";
     ret = IdFormat::renderId(sformat, vars);
     TEST_ASSERT_EQ(ret, QByteArray("My name is Alice and I eat apples 10% of the time."));
 }

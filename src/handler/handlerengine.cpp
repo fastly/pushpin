@@ -792,7 +792,8 @@ public:
     }
 
     QList<std::shared_ptr<HttpSession>> takeSessions() {
-        // Swap instead of std::move since sessions is a member and should have a known state
+        // Swap instead of std::move since sessions is a member and should have a
+        // known state
         QList<std::shared_ptr<HttpSession>> out;
         out.swap(sessions);
         return out;
@@ -1025,7 +1026,8 @@ private:
             ZhttpRequest::Rid rid(rs.rid.first, rs.rid.second);
 
             if (zhttpIn->serverRequestByRid(rid)) {
-                log_error("received accept request for rid we already have (%s, %s), skipping",
+                log_error("received accept request for rid we already have (%s, %s), "
+                          "skipping",
                           rid.first.data(), rid.second.data());
                 continue;
             }
@@ -2396,8 +2398,8 @@ private:
         bool ok;
         Variant data = TnetString::toVariant(message, 0, &ok);
         if (!ok) {
-            log_warning("IN wscontrol: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("IN wscontrol: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -2713,8 +2715,8 @@ private:
         bool ok;
         Variant data = TnetString::toVariant(message[0], at + 2, &ok);
         if (!ok) {
-            log_warning("IN proxy stats: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("IN proxy stats: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -2744,7 +2746,8 @@ private:
                 bool localReplaced = stats->processExternalPacket(p, false);
 
                 if (!localReplaced) {
-                    // Forward the packet. This will stamp the from field and keep the rest
+                    // Forward the packet. This will stamp the from field and keep the
+                    // rest
                     stats->sendPacket(p);
                 }
             }
@@ -2783,9 +2786,9 @@ private:
             }
 
             if (responseContentType.isEmpty()) {
-                httpControlRespond(
-                    req, 406, "Not Acceptable",
-                    "Not Acceptable. Supported formats are text/plain and application/json.\n");
+                httpControlRespond(req, 406, "Not Acceptable",
+                                   "Not Acceptable. Supported formats are text/plain "
+                                   "and application/json.\n");
                 return;
             }
         } else {

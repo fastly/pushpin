@@ -185,8 +185,8 @@ public:
 
     void cleanup() {
         foreach (SessionItem *si, sessionItems) {
-            // Emitting a signal here is gross, but this way the engine cleans up the request
-            // sessions
+            // Emitting a signal here is gross, but this way the engine cleans up the
+            // request sessions
             q->requestSessionDestroyed(si->rs, false);
             delete si->rs;
             delete si;
@@ -212,7 +212,8 @@ public:
         if (rs->isRetry())
             si->countClientReceivedBytes = false;
 
-        // Internal requests originate internally and should not have client bytes counted
+        // Internal requests originate internally and should not have client bytes
+        // counted
         if (rs->request()->passthroughData().isValid()) {
             si->countClientReceivedBytes = false;
             si->countClientSentBytes = false;
@@ -1203,7 +1204,8 @@ public:
             adata.responseSent = acceptAfterResponding;
 
             if (!statsManager->connectionSendEnabled()) {
-                // Flush max. The count will include the connections we just unregistered
+                // Flush max. The count will include the connections we just
+                // unregistered
                 adata.connMaxPackets +=
                     statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
@@ -1231,7 +1233,8 @@ public:
         si->state = SessionItem::Errored;
         si->bytesToWrite = -1;
 
-        // Don't destroy the RequestSession here. A finished signal will arrive next.
+        // Don't destroy the RequestSession here. A finished signal will arrive
+        // next.
     }
 
     void rs_headerBytesSent(int count, RequestSession *rs) {
@@ -1261,7 +1264,8 @@ public:
                 foreach (SessionItem *si, sessionItems)
                     logFinished(si, true);
 
-                // The requests were paused, so deleting them will leave the peer sessions active
+                // The requests were paused, so deleting them will leave the peer
+                // sessions active
 
                 QList<RequestSession *> toDestroy;
                 foreach (SessionItem *si, sessionItems) {

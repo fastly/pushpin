@@ -44,7 +44,8 @@ class StatsManager;
 class ConnectionManager;
 class XffRule;
 
-/// Proxies WebSocket requests to backends with GRIP streaming and request sharing
+/// Proxies WebSocket requests to backends with GRIP streaming and request
+/// sharing
 class WsProxySession {
 public:
     WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager,

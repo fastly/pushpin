@@ -517,15 +517,15 @@ public:
 
             CowByteArray dataRaw = msg[1];
             if (dataRaw.length() < 1 || dataRaw[0] != 'T') {
-                log_warning("zhttp/zws client req: received message with invalid format (missing "
-                            "type), skipping");
+                log_warning("zhttp/zws client req: received message with invalid "
+                            "format (missing type), skipping");
                 continue;
             }
 
             Variant data = TnetString::toVariant(dataRaw.mid(1));
             if (data.isNull()) {
-                log_warning("zhttp/zws client req: received message with invalid format "
-                            "(tnetstring parse failed), skipping");
+                log_warning("zhttp/zws client req: received message with invalid "
+                            "format (tnetstring parse failed), skipping");
                 continue;
             }
 
@@ -535,13 +535,14 @@ public:
 
             ZhttpResponsePacket p;
             if (!p.fromVariant(data)) {
-                log_warning("zhttp/zws client req: received message with invalid format (parse "
-                            "failed), skipping");
+                log_warning("zhttp/zws client req: received message with invalid "
+                            "format (parse failed), skipping");
                 continue;
             }
 
             if (p.ids.count() != 1) {
-                log_warning("zhttp/zws client req: received message with multiple ids, skipping");
+                log_warning("zhttp/zws client req: received message with multiple ids, "
+                            "skipping");
                 return;
             }
 
@@ -565,15 +566,15 @@ public:
 
     void processClientIn(const CowByteArray &receiver, const CowByteArray &msg) {
         if (msg.length() < 1 || msg[0] != 'T') {
-            log_warning(
-                "zhttp/zws client: received message with invalid format (missing type), skipping");
+            log_warning("zhttp/zws client: received message with invalid format "
+                        "(missing type), skipping");
             return;
         }
 
         Variant data = TnetString::toVariant(msg.mid(1));
         if (data.isNull()) {
-            log_warning("zhttp/zws client: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("zhttp/zws client: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -588,8 +589,8 @@ public:
 
         ZhttpResponsePacket p;
         if (!p.fromVariant(data)) {
-            log_warning(
-                "zhttp/zws client: received message with invalid format (parse failed), skipping");
+            log_warning("zhttp/zws client: received message with invalid format "
+                        "(parse failed), skipping");
             return;
         }
 
@@ -618,13 +619,15 @@ public:
                 continue;
             }
 
-            log_debug("zhttp/zws client: received message for unknown request id, skipping");
+            log_debug("zhttp/zws client: received message for unknown request id, "
+                      "skipping");
         }
     }
 
     void client_out_stream_readyRead(const CowByteArrayList &msg) {
         if (msg.count() != 3) {
-            log_warning("zhttp/zws client: received router message with parts != 3, skipping");
+            log_warning("zhttp/zws client: received router message with parts != 3, "
+                        "skipping");
             return;
         }
 
@@ -644,7 +647,8 @@ public:
 
         int at = msg[0].indexOf(' ');
         if (at == -1) {
-            log_warning("zhttp/zws client: received pub message with invalid format, skipping");
+            log_warning("zhttp/zws client: received pub message with invalid format, "
+                        "skipping");
             return;
         }
 
@@ -661,15 +665,15 @@ public:
         }
 
         if (msg[0].length() < 1 || msg[0][0] != 'T') {
-            log_warning(
-                "zhttp/zws server: received message with invalid format (missing type), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(missing type), skipping");
             return;
         }
 
         Variant data = TnetString::toVariant(msg[0].mid(1));
         if (data.isNull()) {
-            log_warning("zhttp/zws server: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -678,8 +682,8 @@ public:
 
         ZhttpRequestPacket p;
         if (!p.fromVariant(data)) {
-            log_warning(
-                "zhttp/zws server: received message with invalid format (parse failed), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(parse failed), skipping");
             return;
         }
 
@@ -689,7 +693,8 @@ public:
         }
 
         if (p.ids.count() != 1) {
-            log_warning("zhttp/zws server: received initial message with multiple ids, skipping");
+            log_warning("zhttp/zws server: received initial message with multiple "
+                        "ids, skipping");
             return;
         }
 
@@ -723,7 +728,8 @@ public:
 
             ZhttpRequest *req = serverReqsByRid.value(rid);
             if (req) {
-                log_warning("zhttp server: received message for existing request id, canceling");
+                log_warning("zhttp server: received message for existing request id, "
+                            "canceling");
                 tryRespondCancel(HttpSession, id.id.asQByteArray(), p);
                 return;
             }
@@ -762,15 +768,15 @@ public:
         }
 
         if (msg[2].length() < 1 || msg[2][0] != 'T') {
-            log_warning(
-                "zhttp/zws server: received message with invalid format (missing type), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(missing type), skipping");
             return;
         }
 
         Variant data = TnetString::toVariant(msg[2].mid(1));
         if (data.isNull()) {
-            log_warning("zhttp/zws server: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -780,8 +786,8 @@ public:
 
         ZhttpRequestPacket p;
         if (!p.fromVariant(data)) {
-            log_warning(
-                "zhttp/zws server: received message with invalid format (parse failed), skipping");
+            log_warning("zhttp/zws server: received message with invalid format "
+                        "(parse failed), skipping");
             return;
         }
 
@@ -810,7 +816,8 @@ public:
                 continue;
             }
 
-            log_debug("zhttp/zws server: received message for unknown request id, skipping");
+            log_debug("zhttp/zws server: received message for unknown request id, "
+                      "skipping");
         }
     }
 
@@ -818,7 +825,8 @@ public:
         QHash<QByteArray, QList<KeepAliveRegistration *>>
             clientSessionsBySender[2]; // Index corresponds to type
         QHash<QByteArray, QList<KeepAliveRegistration *>>
-            serverSessionsBySender[4]; // Index corresponds to type and response mode
+            serverSessionsBySender[4]; // Index corresponds to type and response
+                                       // mode
 
         // Process the current bucket
         const QSet<KeepAliveRegistration *> &bucket =

@@ -263,7 +263,8 @@ public:
 
                 subscribeCallback.call({q, name});
 
-                assert(!self.expired()); // Deleting here would leak subscriptions/connections
+                assert(!self.expired()); // Deleting here would leak
+                                         // subscriptions/connections
             }
         }
 
@@ -576,13 +577,15 @@ private:
         foreach (const QString &channel, channelsRemoved) {
             unsubscribeCallback.call({q, channel});
 
-            assert(!self.expired()); // Deleting here would leak subscriptions/connections
+            assert(!self.expired()); // Deleting here would leak
+                                     // subscriptions/connections
         }
 
         foreach (const QString &channel, channelsAdded) {
             subscribeCallback.call({q, channel});
 
-            assert(!self.expired()); // Deleting here would leak subscriptions/connections
+            assert(!self.expired()); // Deleting here would leak
+                                     // subscriptions/connections
         }
 
         if (instruct.holdMode == Instruct::ResponseHold) {
@@ -671,8 +674,8 @@ private:
             const PublishItem &item = qi.item;
 
             if (!channels.contains(item.channel)) {
-                log_debug(
-                    "httpsession: received publish for channel with no subscription, dropping");
+                log_debug("httpsession: received publish for channel with no "
+                          "subscription, dropping");
                 publishQueue.removeFirst();
                 continue;
             }
@@ -819,8 +822,8 @@ private:
                     // Need to compact headers into a map
                     VariantMap vheaders;
                     foreach (const HttpHeader &h, headers) {
-                        // Don't add the same header name twice. We'll collect all values for a
-                        // single header
+                        // Don't add the same header name twice. We'll collect all values
+                        // for a single header
                         bool found = false;
                         for (auto it = vheaders.constBegin(); it != vheaders.constEnd(); ++it) {
                             const QString &name = it.key();
@@ -923,7 +926,8 @@ private:
 
             unsubscribeCallback.call({q, channel});
 
-            assert(!self.expired()); // Deleting here would leak subscriptions/connections
+            assert(!self.expired()); // Deleting here would leak
+                                     // subscriptions/connections
         }
 
         if (retry) {
@@ -1059,8 +1063,8 @@ private:
         log_debug("httpsession: next: %s", qPrintable(nextUri.toString()));
 
         if (!outZhttp) {
-            errorMessage =
-                "Instruct contained link, but handler not configured for outbound requests.";
+            errorMessage = "Instruct contained link, but handler not configured for "
+                           "outbound requests.";
             deferCall.defer([=] { doError(); });
             return;
         }
@@ -1245,7 +1249,7 @@ private:
     }
 
     void incCounter(Stats::Counter c, int count = 1) {
-        stats->incCounter(adata.statsRoute.toUtf8(), c, count, adata.requestData.uri.host());
+        stats->incCounter(adata.statsRoute.toUtf8(), c, count);
     }
 
     void writeBody(const QByteArray &body) {

@@ -496,7 +496,8 @@ public:
         if (configFile.isEmpty())
             configFile = QDir(Config::get().configDir).filePath("m2adapter.conf");
 
-        // QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
+        // QSettings doesn't inform us if the config file doesn't exist, so do that
+        // ourselves
         {
             QFile file(configFile);
             if (!file.open(QIODevice::ReadOnly)) {
@@ -560,16 +561,16 @@ public:
              !zhttp_out_stream_specs.isEmpty()) &&
             (zhttp_in_specs.isEmpty() || zhttp_out_specs.isEmpty() ||
              zhttp_out_stream_specs.isEmpty())) {
-            log_error("if zhttp is used, must set all of zhttp_in_specs, zhttp_out_specs, and "
-                      "zhttp_out_stream_specs");
+            log_error("if zhttp is used, must set all of zhttp_in_specs, "
+                      "zhttp_out_specs, and zhttp_out_stream_specs");
             return false;
         }
 
         if ((!zws_in_specs.isEmpty() || !zws_out_specs.isEmpty() ||
              !zws_out_stream_specs.isEmpty()) &&
             (zws_in_specs.isEmpty() || zws_out_specs.isEmpty() || zws_out_stream_specs.isEmpty())) {
-            log_error("if zws is used, must set all of zws_in_specs, zws_out_specs, and "
-                      "zws_out_stream_specs");
+            log_error("if zws is used, must set all of zws_in_specs, zws_out_specs, "
+                      "and zws_out_stream_specs");
             return false;
         }
 
@@ -1065,12 +1066,14 @@ public:
     }
 
     void m2_writeErrorClose(const QByteArray &sender, const QByteArray &id) {
-        // Same as closing. In the future we may want to send something interesting first.
+        // Same as closing. In the future we may want to send something interesting
+        // first.
         m2_writeClose(sender, id);
     }
 
     void m2_writeErrorClose(M2Connection *conn) {
-        // Same as closing. In the future we may want to send something interesting first.
+        // Same as closing. In the future we may want to send something interesting
+        // first.
         m2_writeClose(conn);
     }
 
@@ -1144,7 +1147,8 @@ public:
 
         Variant rows = vhash["rows"];
 
-        // Once we get at least one successful response then we flag the port as working
+        // Once we get at least one successful response then we flag the port as
+        // working
         if (!controlPorts[index].works) {
             controlPorts[index].works = true;
             log_debug("control port index=%d works", index);
@@ -1238,7 +1242,8 @@ public:
         if (s->inHandoff)
             return;
 
-        // Address could be empty here if we're handling write of non-sequenced response
+        // Address could be empty here if we're handling write of non-sequenced
+        // response
         if (giveCredits && !s->zhttpAddress.isEmpty()) {
             ZhttpRequestPacket zreq;
             zreq.type = ZhttpRequestPacket::Credit;
@@ -1249,7 +1254,8 @@ public:
     }
 
     void endSession(Session *s, const QByteArray &errorCondition = QByteArray()) {
-        // If we are in handoff or haven't received a worker ack, then queue the state
+        // If we are in handoff or haven't received a worker ack, then queue the
+        // state
         if (s->inHandoff || s->zhttpAddress.isEmpty()) {
             if (!errorCondition.isEmpty())
                 s->errorCondition = errorCondition;
@@ -1300,8 +1306,8 @@ public:
 
         Variant data = TnetString::toVariant(dataRaw.mid(1));
         if (data.isNull()) {
-            log_warning(
-                "%s: received message with invalid format (tnetstring parse failed), skipping",
+            log_warning("%s: received message with invalid format (tnetstring parse "
+                        "failed), skipping",
                 logprefix);
             return;
         }
@@ -1352,8 +1358,8 @@ public:
                 (zresp.type == ZhttpResponsePacket::Data && zresp.more)) {
                 // Sequence must have from address
                 if (zresp.from.isEmpty()) {
-                    log_warning(
-                        "%s: received first response of sequence with no from address, canceling",
+                    log_warning("%s: received first response of sequence with no from "
+                                "address, canceling",
                         logprefix);
                     destroySessionAndErrorConnection(s);
                     return;
@@ -1362,8 +1368,8 @@ public:
                 s->zhttpAddress = zresp.from.asQByteArray();
 
                 if (seq != 0) {
-                    log_warning(
-                        "%s: received first response of sequence without valid seq, canceling",
+                    log_warning("%s: received first response of sequence without valid "
+                                "seq, canceling",
                         logprefix);
                     ZhttpRequestPacket zreq;
                     zreq.type = ZhttpRequestPacket::Cancel;
@@ -1378,8 +1384,8 @@ public:
 
                 // If not sequenced, but seq is provided, then it must be 0
                 if (seq != -1 && seq != 0) {
-                    log_warning(
-                        "%s: received response out of sequence (got=%d, expected=-1,0), canceling",
+                    log_warning("%s: received response out of sequence (got=%d, "
+                                "expected=-1,0), canceling",
                         logprefix, seq);
 
                     if (!s->zhttpAddress.isEmpty()) {
@@ -1394,8 +1400,8 @@ public:
             }
         } else {
             if (seq != -1 && seq != s->inSeq) {
-                log_warning(
-                    "%s: received response out of sequence (got=%d, expected=%d), canceling",
+                log_warning("%s: received response out of sequence (got=%d, "
+                            "expected=%d), canceling",
                     logprefix, seq, s->inSeq);
                 ZhttpRequestPacket zreq;
                 zreq.type = ZhttpRequestPacket::Cancel;
@@ -1541,8 +1547,8 @@ public:
                 // Respond with data if we have body data or this is the first packet
                 if (!zresp.body.isEmpty() || firstDataPacket) {
                     if (firstDataPacket) {
-                        // Use flow control if the control port works and the response is more than
-                        // one packet
+                        // Use flow control if the control port works and the response is
+                        // more than one packet
                         if ((s->conn->outCreditsEnabled ||
                              controlPorts[s->conn->identIndex].works) &&
                             zresp.more)
@@ -2475,8 +2481,8 @@ public:
 
             Variant data = TnetString::toVariant(message[1]);
             if (data.isNull()) {
-                log_warning("m2: received control response with invalid format (tnetstring parse "
-                            "failed), skipping");
+                log_warning("m2: received control response with invalid format "
+                            "(tnetstring parse failed), skipping");
                 continue;
             }
 

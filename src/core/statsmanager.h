@@ -30,7 +30,8 @@
 
 class QHostAddress;
 
-/// Collects and reports statistics via ZeroMQ (internal) and Prometheus (external) on:
+/// Collects and reports statistics via ZeroMQ (internal) and Prometheus
+/// (external) on:
 /// - Connections
 /// - Subscriptions
 /// - Messages sent/received

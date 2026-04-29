@@ -1491,7 +1491,7 @@ private:
                 for (size_t i = 0; i < combinedReport.connectionsMaxByWorker.size(); ++i) {
                     auto metricName = QString("%1%2").arg(prometheusPrefix, m.name);
                     auto workerLabel = QString("{worker=\"%1\"}").arg(i);
-                    value = QVariant(combinedReport.connectionsMaxByWorker[i]);
+                    value = Variant(combinedReport.connectionsMaxByWorker[i]);
 
                     if (i == 0)
                         data += QString("# HELP %1 %2\n"
@@ -1643,7 +1643,8 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
     d->updateConnectionsMax(c->routeId, now);
 
     if (d->reportInterval > 0) {
-        // Only immediately count a minute if an offset wasn't set and we weren't replacing
+        // Only immediately count a minute if an offset wasn't set and we weren't
+        // replacing
         if (reportOffset < 0 && !replacing) {
             Private::Report *report = d->getOrCreateReport(c->routeId);
 
@@ -1858,7 +1859,8 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
                     return false;
                 }
 
-                // Otherwise, remove local connection and it will be replaced with external
+                // Otherwise, remove local connection and it will be replaced with
+                // external
 
                 replacing = true;
                 lastReport = c->lastReport;

@@ -548,8 +548,8 @@ public:
 
         if (serviceNames.contains("connmgr") &&
             (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter"))) {
-            log_error(
-                "cannot enable the connmgr service at the same time as mongrel2 or m2adapter");
+            log_error("cannot enable the connmgr service at the same time as "
+                      "mongrel2 or m2adapter");
             q->quit(1);
             return;
         }

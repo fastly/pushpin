@@ -169,8 +169,8 @@ public:
 
         Variant data = TnetString::toVariant(message[1]);
         if (data.isNull()) {
-            log_warning("zrpc client: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("zrpc client: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -179,8 +179,8 @@ public:
 
         ZrpcResponsePacket p;
         if (!p.fromVariant(data)) {
-            log_warning(
-                "zrpc client: received message with invalid format (parse failed), skipping");
+            log_warning("zrpc client: received message with invalid format (parse "
+                        "failed), skipping");
             return;
         }
 
@@ -203,8 +203,8 @@ public:
 
         Variant data = TnetString::toVariant(req.content()[0]);
         if (data.isNull()) {
-            log_warning("zrpc server: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("zrpc server: received message with invalid format "
+                        "(tnetstring parse failed), skipping");
             return;
         }
 
@@ -213,8 +213,8 @@ public:
 
         ZrpcRequestPacket p;
         if (!p.fromVariant(data)) {
-            log_warning(
-                "zrpc server: received message with invalid format (parse failed), skipping");
+            log_warning("zrpc server: received message with invalid format (parse "
+                        "failed), skipping");
             return;
         }
 
