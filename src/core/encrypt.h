@@ -1,8 +1,8 @@
 #ifndef ENCRYPT_H
 #define ENCRYPT_H
 
-#include <QByteArray>
 #include "rust/encrypt.h"
+#include <QByteArray>
 
 class QString;
 class QDir;
@@ -21,6 +21,6 @@ QByteArray keyFromConfigString(const QString &s, const QDir &baseDir);
 // returns decrypted data, null on error
 QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *error = 0);
 
-}
+} // namespace Encrypt
 
 #endif

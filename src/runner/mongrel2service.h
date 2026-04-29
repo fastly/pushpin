@@ -23,40 +23,36 @@
 #ifndef MONGREL2SERVICE_H
 #define MONGREL2SERVICE_H
 
-#include "service.h"
 #include "listenport.h"
+#include "service.h"
 
-class Mongrel2Service : public Service
-{
-	Q_OBJECT
+class Mongrel2Service : public Service {
+    Q_OBJECT
 
 public:
-	Mongrel2Service(
-		const QString &binFile,
-		const QString &configFile,
-		const QString &serverName,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &filePrefix,
-		int port,
-		bool ssl,
-		int logLevel);
+    Mongrel2Service(const QString &binFile, const QString &configFile, const QString &serverName,
+                    const QString &runDir, const QString &logDir, const QString &filePrefix,
+                    int port, bool ssl, int logLevel);
 
-	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel);
+    static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile,
+                                   const QString &runDir, const QString &logDir,
+                                   const QString &ipcPrefix, const QString &filePrefix,
+                                   const QString &certsDir, int clientBufferSize, int maxconn,
+                                   const QList<ListenPort> &ports, int logLevel);
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QStringList arguments() const;
-	virtual bool acceptSighup() const;
-	virtual bool alwaysLogStatus() const;
-	virtual QString formatLogLine(const QString &line) const;
+    virtual QStringList arguments() const;
+    virtual bool acceptSighup() const;
+    virtual bool alwaysLogStatus() const;
+    virtual QString formatLogLine(const QString &line) const;
 
 private:
-	QStringList args_;
-	QString prefix_;
-	int logLevel_;
+    QStringList args_;
+    QString prefix_;
+    int logLevel_;
 
-	QString filterLogLine(int, const QString&) const;
+    QString filterLogLine(int, const QString &) const;
 };
 
 #endif

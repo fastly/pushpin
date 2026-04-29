@@ -21,37 +21,35 @@
 #ifndef BUFFERLIST_H
 #define BUFFERLIST_H
 
-#include <QList>
 #include <QByteArray>
+#include <QList>
 
-class BufferList
-{
+class BufferList {
 public:
-	BufferList();
+    BufferList();
 
-	int size() const { return size_; }
-	bool isEmpty() const { return size_ == 0; }
+    int size() const { return size_; }
+    bool isEmpty() const { return size_ == 0; }
 
-	QByteArray mid(int pos, int size = -1) const;
+    QByteArray mid(int pos, int size = -1) const;
 
-	void clear();
-	void append(const QByteArray &buf);
-	QByteArray take(int size = -1);
+    void clear();
+    void append(const QByteArray &buf);
+    QByteArray take(int size = -1);
 
-	QByteArray toByteArray(); // Non-const because we rewrite the list
+    QByteArray toByteArray(); // Non-const because we rewrite the list
 
-	BufferList & operator+=(const QByteArray &buf)
-	{
-		append(buf);
-		return *this;
-	}
+    BufferList &operator+=(const QByteArray &buf) {
+        append(buf);
+        return *this;
+    }
 
 private:
-	QList<QByteArray> bufs_;
-	int size_;
-	int offset_;
+    QList<QByteArray> bufs_;
+    int size_;
+    int offset_;
 
-	void findPos(int pos, int *bufferIndex, int *offset) const;
+    void findPos(int pos, int *bufferIndex, int *offset) const;
 };
 
 #endif

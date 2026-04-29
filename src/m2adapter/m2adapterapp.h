@@ -30,22 +30,21 @@ using std::map;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
-class M2AdapterApp : public QObject
-{
-	Q_OBJECT
+class M2AdapterApp : public QObject {
+    Q_OBJECT
 
 public:
-	M2AdapterApp(QObject *parent = 0);
-	~M2AdapterApp();
+    M2AdapterApp(QObject *parent = 0);
+    ~M2AdapterApp();
 
-	void start();
+    void start();
 
-	SignalInt quit;
+    SignalInt quit;
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 };
 
 #endif

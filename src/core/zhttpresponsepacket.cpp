@@ -24,304 +24,289 @@
 #include "qtcompat.h"
 #include "variant.h"
 
-Variant ZhttpResponsePacket::toVariant() const
-{
-	VariantHash obj;
+Variant ZhttpResponsePacket::toVariant() const {
+    VariantHash obj;
 
-	if(!from.isEmpty())
-		obj["from"] = from.asQByteArray();
+    if (!from.isEmpty())
+        obj["from"] = from.asQByteArray();
 
-	if(!ids.isEmpty())
-	{
-		if(ids.count() == 1)
-		{
-			const Id &id = ids.first();
-			if(!id.id.isEmpty())
-				obj["id"] = id.id.asQByteArray();
-			if(id.seq != -1)
-				obj["seq"] = id.seq;
-		}
-		else
-		{
-			VariantList vl;
-			foreach(const Id &id, ids)
-			{
-				VariantHash vh;
-				if(!id.id.isEmpty())
-					vh["id"] = id.id.asQByteArray();
-				if(id.seq != -1)
-					vh["seq"] = id.seq;
-				vl += vh;
-			}
-			obj["id"] = vl;
-		}
-	}
+    if (!ids.isEmpty()) {
+        if (ids.count() == 1) {
+            const Id &id = ids.first();
+            if (!id.id.isEmpty())
+                obj["id"] = id.id.asQByteArray();
+            if (id.seq != -1)
+                obj["seq"] = id.seq;
+        } else {
+            VariantList vl;
+            foreach (const Id &id, ids) {
+                VariantHash vh;
+                if (!id.id.isEmpty())
+                    vh["id"] = id.id.asQByteArray();
+                if (id.seq != -1)
+                    vh["seq"] = id.seq;
+                vl += vh;
+            }
+            obj["id"] = vl;
+        }
+    }
 
-	QByteArray typeStr;
-	switch(type)
-	{
-		case Error:          typeStr = "error"; break;
-		case Credit:         typeStr = "credit"; break;
-		case KeepAlive:      typeStr = "keep-alive"; break;
-		case Cancel:         typeStr = "cancel"; break;
-		case HandoffStart:   typeStr = "handoff-start"; break;
-		case HandoffProceed: typeStr = "handoff-proceed"; break;
-		case Close:          typeStr = "close"; break;
-		case Ping:           typeStr = "ping"; break;
-		case Pong:           typeStr = "pong"; break;
-		default: break;
-	}
+    QByteArray typeStr;
+    switch (type) {
+    case Error:
+        typeStr = "error";
+        break;
+    case Credit:
+        typeStr = "credit";
+        break;
+    case KeepAlive:
+        typeStr = "keep-alive";
+        break;
+    case Cancel:
+        typeStr = "cancel";
+        break;
+    case HandoffStart:
+        typeStr = "handoff-start";
+        break;
+    case HandoffProceed:
+        typeStr = "handoff-proceed";
+        break;
+    case Close:
+        typeStr = "close";
+        break;
+    case Ping:
+        typeStr = "ping";
+        break;
+    case Pong:
+        typeStr = "pong";
+        break;
+    default:
+        break;
+    }
 
-	if(!typeStr.isEmpty())
-		obj["type"] = typeStr;
+    if (!typeStr.isEmpty())
+        obj["type"] = typeStr;
 
-	if(type == Error && !condition.isEmpty())
-		obj["condition"] = condition.asQByteArray();
+    if (type == Error && !condition.isEmpty())
+        obj["condition"] = condition.asQByteArray();
 
-	if(credits != -1)
-		obj["credits"] = credits;
+    if (credits != -1)
+        obj["credits"] = credits;
 
-	if(more)
-		obj["more"] = true;
+    if (more)
+        obj["more"] = true;
 
-	if(code != -1)
-	{
-		obj["code"] = code;
+    if (code != -1) {
+        obj["code"] = code;
 
-		if(type == Data || (type == Error && condition == "rejected"))
-		{
-			obj["reason"] = reason.asQByteArray();
-			VariantList vheaders;
-			foreach(const HttpHeader &h, headers)
-			{
-				VariantList vheader;
-				vheader += h.first.asQByteArray();
-				vheader += h.second.asQByteArray();
-				vheaders += Variant(vheader);
-			}
-			obj["headers"] = vheaders;
-		}
-	}
+        if (type == Data || (type == Error && condition == "rejected")) {
+            obj["reason"] = reason.asQByteArray();
+            VariantList vheaders;
+            foreach (const HttpHeader &h, headers) {
+                VariantList vheader;
+                vheader += h.first.asQByteArray();
+                vheader += h.second.asQByteArray();
+                vheaders += Variant(vheader);
+            }
+            obj["headers"] = vheaders;
+        }
+    }
 
-	if(!body.isNull())
-		obj["body"] = body.asQByteArray();
+    if (!body.isNull())
+        obj["body"] = body.asQByteArray();
 
-	if(!contentType.isEmpty())
-		obj["content-type"] = contentType.asQByteArray();
+    if (!contentType.isEmpty())
+        obj["content-type"] = contentType.asQByteArray();
 
-	if(userData.isValid())
-		obj["user-data"] = userData;
+    if (userData.isValid())
+        obj["user-data"] = userData;
 
-	if(multi)
-	{
-		VariantHash ext;
-		ext["multi"] = true;
-		obj["ext"] = ext;
-	}
+    if (multi) {
+        VariantHash ext;
+        ext["multi"] = true;
+        obj["ext"] = ext;
+    }
 
-	return obj;
+    return obj;
 }
 
-bool ZhttpResponsePacket::fromVariant(const Variant &in)
-{
-	if(typeId(in) != VariantType::Hash)
-		return false;
+bool ZhttpResponsePacket::fromVariant(const Variant &in) {
+    if (typeId(in) != VariantType::Hash)
+        return false;
 
-	VariantHash obj = in.toHash();
+    VariantHash obj = in.toHash();
 
-	from.clear();
-	if(obj.contains("from"))
-	{
-		if(typeId(obj["from"]) != VariantType::ByteArray)
-			return false;
+    from.clear();
+    if (obj.contains("from")) {
+        if (typeId(obj["from"]) != VariantType::ByteArray)
+            return false;
 
-		from = obj["from"].toByteArray();
-	}
+        from = obj["from"].toByteArray();
+    }
 
-	ids.clear();
-	if(obj.contains("id"))
-	{
-		if(typeId(obj["id"]) == VariantType::ByteArray)
-		{
-			Id id;
-			id.id = obj["id"].toByteArray();
-			ids += id;
-		}
-		else if(typeId(obj["id"]) == VariantType::List)
-		{
-			VariantList vl = obj["id"].toList();
-			for(const Variant &v : vl)
-			{
-				if(typeId(v) != VariantType::Hash)
-					return false;
+    ids.clear();
+    if (obj.contains("id")) {
+        if (typeId(obj["id"]) == VariantType::ByteArray) {
+            Id id;
+            id.id = obj["id"].toByteArray();
+            ids += id;
+        } else if (typeId(obj["id"]) == VariantType::List) {
+            VariantList vl = obj["id"].toList();
+            for (const Variant &v : vl) {
+                if (typeId(v) != VariantType::Hash)
+                    return false;
 
-				Id id;
+                Id id;
 
-				VariantHash vh = v.toHash();
+                VariantHash vh = v.toHash();
 
-				if(vh.contains("id"))
-				{
-					if(typeId(vh["id"]) != VariantType::ByteArray)
-						return false;
+                if (vh.contains("id")) {
+                    if (typeId(vh["id"]) != VariantType::ByteArray)
+                        return false;
 
-					id.id = vh["id"].toByteArray();
-				}
+                    id.id = vh["id"].toByteArray();
+                }
 
-				if(vh.contains("seq"))
-				{
-					if(!canConvert(vh["seq"], VariantType::Int))
-						return false;
+                if (vh.contains("seq")) {
+                    if (!canConvert(vh["seq"], VariantType::Int))
+                        return false;
 
-					id.seq = vh["seq"].toInt();
-				}
+                    id.seq = vh["seq"].toInt();
+                }
 
-				ids += id;
-			}
-		}
-		else
-			return false;
-	}
+                ids += id;
+            }
+        } else
+            return false;
+    }
 
-	if(obj.contains("seq"))
-	{
-		if(!canConvert(obj["seq"], VariantType::Int))
-			return false;
+    if (obj.contains("seq")) {
+        if (!canConvert(obj["seq"], VariantType::Int))
+            return false;
 
-		if(ids.isEmpty())
-			ids += Id();
+        if (ids.isEmpty())
+            ids += Id();
 
-		ids.first().seq = obj["seq"].toInt();
-	}
+        ids.first().seq = obj["seq"].toInt();
+    }
 
-	type = Data;
-	if(obj.contains("type"))
-	{
-		if(typeId(obj["type"]) != VariantType::ByteArray)
-			return false;
+    type = Data;
+    if (obj.contains("type")) {
+        if (typeId(obj["type"]) != VariantType::ByteArray)
+            return false;
 
-		QByteArray typeStr = obj["type"].toByteArray();
+        QByteArray typeStr = obj["type"].toByteArray();
 
-		if(typeStr == "error")
-			type = Error;
-		else if(typeStr == "credit")
-			type = Credit;
-		else if(typeStr == "keep-alive")
-			type = KeepAlive;
-		else if(typeStr == "cancel")
-			type = Cancel;
-		else if(typeStr == "handoff-start")
-			type = HandoffStart;
-		else if(typeStr == "handoff-proceed")
-			type = HandoffProceed;
-		else if(typeStr == "close")
-			type = Close;
-		else if(typeStr == "ping")
-			type = Ping;
-		else if(typeStr == "pong")
-			type = Pong;
-		else
-			return false;
-	}
+        if (typeStr == "error")
+            type = Error;
+        else if (typeStr == "credit")
+            type = Credit;
+        else if (typeStr == "keep-alive")
+            type = KeepAlive;
+        else if (typeStr == "cancel")
+            type = Cancel;
+        else if (typeStr == "handoff-start")
+            type = HandoffStart;
+        else if (typeStr == "handoff-proceed")
+            type = HandoffProceed;
+        else if (typeStr == "close")
+            type = Close;
+        else if (typeStr == "ping")
+            type = Ping;
+        else if (typeStr == "pong")
+            type = Pong;
+        else
+            return false;
+    }
 
-	if(type == Error)
-	{
-		condition.clear();
-		if(obj.contains("condition"))
-		{
-			if(typeId(obj["condition"]) != VariantType::ByteArray)
-				return false;
+    if (type == Error) {
+        condition.clear();
+        if (obj.contains("condition")) {
+            if (typeId(obj["condition"]) != VariantType::ByteArray)
+                return false;
 
-			condition = obj["condition"].toByteArray();
-		}
-	}
+            condition = obj["condition"].toByteArray();
+        }
+    }
 
-	credits = -1;
-	if(obj.contains("credits"))
-	{
-		if(!canConvert(obj["credits"], VariantType::Int))
-			return false;
+    credits = -1;
+    if (obj.contains("credits")) {
+        if (!canConvert(obj["credits"], VariantType::Int))
+            return false;
 
-		credits = obj["credits"].toInt();
-	}
+        credits = obj["credits"].toInt();
+    }
 
-	more = false;
-	if(obj.contains("more"))
-	{
-		if(typeId(obj["more"]) != VariantType::Bool)
-			return false;
+    more = false;
+    if (obj.contains("more")) {
+        if (typeId(obj["more"]) != VariantType::Bool)
+            return false;
 
-		more = obj["more"].toBool();
-	}
+        more = obj["more"].toBool();
+    }
 
-	code = -1;
-	if(obj.contains("code"))
-	{
-		if(!canConvert(obj["code"], VariantType::Int))
-			return false;
+    code = -1;
+    if (obj.contains("code")) {
+        if (!canConvert(obj["code"], VariantType::Int))
+            return false;
 
-		code = obj["code"].toInt();
-	}
+        code = obj["code"].toInt();
+    }
 
-	reason.clear();
-	if(obj.contains("reason"))
-	{
-		if(typeId(obj["reason"]) != VariantType::ByteArray)
-			return false;
+    reason.clear();
+    if (obj.contains("reason")) {
+        if (typeId(obj["reason"]) != VariantType::ByteArray)
+            return false;
 
-		reason = obj["reason"].toByteArray();
-	}
+        reason = obj["reason"].toByteArray();
+    }
 
-	headers.clear();
-	if(obj.contains("headers"))
-	{
-		if(typeId(obj["headers"]) != VariantType::List)
-			return false;
+    headers.clear();
+    if (obj.contains("headers")) {
+        if (typeId(obj["headers"]) != VariantType::List)
+            return false;
 
-		for(const Variant &i : obj["headers"].toList())
-		{
-			VariantList list = i.toList();
-			if(list.count() != 2)
-				return false;
+        for (const Variant &i : obj["headers"].toList()) {
+            VariantList list = i.toList();
+            if (list.count() != 2)
+                return false;
 
-			if(typeId(list[0]) != VariantType::ByteArray || typeId(list[1]) != VariantType::ByteArray)
-				return false;
+            if (typeId(list[0]) != VariantType::ByteArray ||
+                typeId(list[1]) != VariantType::ByteArray)
+                return false;
 
-			headers += HttpHeader(list[0].toByteArray(), list[1].toByteArray());
-		}
-	}
+            headers += HttpHeader(list[0].toByteArray(), list[1].toByteArray());
+        }
+    }
 
-	body.clear();
-	if(obj.contains("body"))
-	{
-		if(typeId(obj["body"]) != VariantType::ByteArray)
-			return false;
+    body.clear();
+    if (obj.contains("body")) {
+        if (typeId(obj["body"]) != VariantType::ByteArray)
+            return false;
 
-		body = obj["body"].toByteArray();
-	}
+        body = obj["body"].toByteArray();
+    }
 
-	contentType.clear();
-	if(obj.contains("content-type"))
-	{
-		if(typeId(obj["content-type"]) != VariantType::ByteArray)
-			return false;
+    contentType.clear();
+    if (obj.contains("content-type")) {
+        if (typeId(obj["content-type"]) != VariantType::ByteArray)
+            return false;
 
-		contentType = obj["content-type"].toByteArray();
-	}
+        contentType = obj["content-type"].toByteArray();
+    }
 
-	userData = obj["user-data"];
+    userData = obj["user-data"];
 
-	multi = false;
-	if(obj.contains("ext"))
-	{
-		if(typeId(obj["ext"]) != VariantType::Hash)
-			return false;
+    multi = false;
+    if (obj.contains("ext")) {
+        if (typeId(obj["ext"]) != VariantType::Hash)
+            return false;
 
-		VariantHash ext = obj["ext"].toHash();
-		if(ext.contains("multi") && typeId(ext["multi"]) == VariantType::Bool)
-		{
-			multi = ext["multi"].toBool();
-		}
-	}
+        VariantHash ext = obj["ext"].toHash();
+        if (ext.contains("multi") && typeId(ext["multi"]) == VariantType::Bool) {
+            multi = ext["multi"].toBool();
+        }
+    }
 
-	return true;
+    return true;
 }

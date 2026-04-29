@@ -23,298 +23,274 @@
 
 #include "wssession.h"
 
-#include <QDateTime>
-#include "log.h"
-#include "timer.h"
 #include "defercall.h"
 #include "filter.h"
-#include "publishitem.h"
+#include "log.h"
 #include "publishformat.h"
+#include "publishitem.h"
+#include "timer.h"
+#include <QDateTime>
 
 #define WSCONTROL_REQUEST_TIMEOUT 8000
 
-WsSession::WsSession() :
-	nextReqId(0),
-	debug(false),
-	logLevel(LOG_LEVEL_DEBUG),
-	targetTrusted(false),
-	ttl(0),
-	inProcessPublishQueue(false),
-	closed(false)
-{
-	expireTimer = std::make_unique<Timer>();
-	expireTimer->setSingleShot(true);
-	expireTimer->timeout.connect(boost::bind(&WsSession::expireTimer_timeout, this));
+WsSession::WsSession()
+    : nextReqId(0),
+      debug(false),
+      logLevel(LOG_LEVEL_DEBUG),
+      targetTrusted(false),
+      ttl(0),
+      inProcessPublishQueue(false),
+      closed(false) {
+    expireTimer = std::make_unique<Timer>();
+    expireTimer->setSingleShot(true);
+    expireTimer->timeout.connect(boost::bind(&WsSession::expireTimer_timeout, this));
 
-	delayedTimer = std::make_unique<Timer>();
-	delayedTimer->setSingleShot(true);
-	delayedTimer->timeout.connect(boost::bind(&WsSession::delayedTimer_timeout, this));
+    delayedTimer = std::make_unique<Timer>();
+    delayedTimer->setSingleShot(true);
+    delayedTimer->timeout.connect(boost::bind(&WsSession::delayedTimer_timeout, this));
 
-	requestTimer = std::make_unique<Timer>();
-	requestTimer->setSingleShot(true);
-	requestTimer->timeout.connect(boost::bind(&WsSession::requestTimer_timeout, this));
+    requestTimer = std::make_unique<Timer>();
+    requestTimer->setSingleShot(true);
+    requestTimer->timeout.connect(boost::bind(&WsSession::requestTimer_timeout, this));
 }
 
 WsSession::~WsSession() = default;
 
-void WsSession::refreshExpiration()
-{
-	expireTimer->start(ttl * 1000);
+void WsSession::refreshExpiration() { expireTimer->start(ttl * 1000); }
+
+void WsSession::flushDelayed() {
+    if (delayedTimer->isActive()) {
+        delayedTimer->stop();
+        delayedTimer_timeout();
+    }
 }
 
-void WsSession::flushDelayed()
-{
-	if(delayedTimer->isActive())
-	{
-		delayedTimer->stop();
-		delayedTimer_timeout();
-	}
+void WsSession::sendDelayed(const QByteArray &type, const QByteArray &message, int timeout) {
+    flushDelayed();
+
+    delayedType = type;
+    delayedMessage = message;
+    delayedTimer->start(timeout * 1000);
 }
 
-void WsSession::sendDelayed(const QByteArray &type, const QByteArray &message, int timeout)
-{
-	flushDelayed();
-
-	delayedType = type;
-	delayedMessage = message;
-	delayedTimer->start(timeout * 1000);
+void WsSession::ack(int reqId) {
+    if (pendingRequests.contains(reqId)) {
+        pendingRequests.remove(reqId);
+        setupRequestTimer();
+    }
 }
 
-void WsSession::ack(int reqId)
-{
-	if(pendingRequests.contains(reqId))
-	{
-		pendingRequests.remove(reqId);
-		setupRequestTimer();
-	}
+void WsSession::publish(const PublishItem &item) {
+    const PublishFormat &f = item.format;
+
+    if (f.type != PublishFormat::WebSocketMessage)
+        return;
+
+    publishQueue += item;
+
+    if (!inProcessPublishQueue)
+        processPublishQueue();
 }
 
-void WsSession::publish(const PublishItem &item)
-{
-	const PublishFormat &f = item.format;
+void WsSession::processPublishQueue() {
+    assert(!inProcessPublishQueue);
+    inProcessPublishQueue = true;
 
-	if(f.type != PublishFormat::WebSocketMessage)
-		return;
+    while (!closed && !publishQueue.isEmpty() && !filters) {
+        const PublishItem &item = publishQueue.first();
+        const PublishFormat &f = item.format;
 
-	publishQueue += item;
+        if (f.haveContentFilters) {
+            // Ensure content filters match
+            QStringList contentFilters;
+            foreach (const QString &f, channels[item.channel].filters) {
+                if (Filter::targets(f) & Filter::MessageContent)
+                    contentFilters += f;
+            }
+            if (contentFilters != f.contentFilters) {
+                publishQueue.removeFirst();
 
-	if(!inProcessPublishQueue)
-		processPublishQueue();
+                if (debug) {
+                    QString errorMessage =
+                        QString("content filter mismatch: subscription=%1 message=%2")
+                            .arg(contentFilters.join(","), f.contentFilters.join(","));
+                    sendCloseError(errorMessage);
+                    break;
+                }
+
+                continue;
+            }
+        }
+
+        filters = std::make_unique<Filter::MessageFilterStack>(channels[item.channel].filters);
+        filtersFinishedConnection = filters->finished.connect(
+            boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
+
+        // Websocket sessions currently don't support previous IDs on
+        // subscriptions, but we still need to populate the channel names in
+        // in the filter context even if all the values will be null
+        QHash<QString, QString> prevIds;
+        QHashIterator<QString, Instruct::Channel> it(channels);
+        while (it.hasNext()) {
+            it.next();
+            const Instruct::Channel &c = it.value();
+            prevIds[c.name] = c.prevId;
+        }
+
+        Filter::Context fc;
+        fc.prevIds = prevIds;
+        fc.subscriptionMeta = meta;
+        fc.publishMeta = item.meta;
+        fc.zhttpOut = zhttpOut;
+        fc.currentUri = requestData.uri;
+        fc.route = route;
+        fc.trusted = targetTrusted;
+        fc.limiter = filterLimiter;
+
+        // May call filtersFinished immediately. If it does, queue processing
+        // will continue. Else, the loop will end and queue processing will
+        // resume after the filters finish
+        filters->start(fc, f.body);
+    }
+
+    inProcessPublishQueue = false;
 }
 
-void WsSession::processPublishQueue()
-{
-	assert(!inProcessPublishQueue);
-	inProcessPublishQueue = true;
+void WsSession::filtersFinished(const Filter::MessageFilter::Result &result) {
+    PublishItem item = publishQueue.takeFirst();
 
-	while(!closed && !publishQueue.isEmpty() && !filters)
-	{
-		const PublishItem &item = publishQueue.first();
-		const PublishFormat &f = item.format;
+    filtersFinishedConnection.disconnect();
+    filters.reset();
 
-		if(f.haveContentFilters)
-		{
-			// Ensure content filters match
-			QStringList contentFilters;
-			foreach(const QString &f, channels[item.channel].filters)
-			{
-				if(Filter::targets(f) & Filter::MessageContent)
-					contentFilters += f;
-			}
-			if(contentFilters != f.contentFilters)
-			{
-				publishQueue.removeFirst();
+    if (!result.errorMessage.isNull()) {
+        if (debug) {
+            QString errorMessage = QString("filter error: %1").arg(result.errorMessage);
+            sendCloseError(errorMessage);
+            return;
+        }
+    } else {
+        afterFilters(item, result.sendAction, result.content);
+    }
 
-				if(debug)
-				{
-					QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-					sendCloseError(errorMessage);
-					break;
-				}
-
-				continue;
-			}
-		}
-
-		filters = std::make_unique<Filter::MessageFilterStack>(channels[item.channel].filters);
-		filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
-
-		// Websocket sessions currently don't support previous IDs on
-		// subscriptions, but we still need to populate the channel names in
-		// in the filter context even if all the values will be null
-		QHash<QString, QString> prevIds;
-		QHashIterator<QString, Instruct::Channel> it(channels);
-		while(it.hasNext())
-		{
-			it.next();
-			const Instruct::Channel &c = it.value();
-			prevIds[c.name] = c.prevId;
-		}
-
-		Filter::Context fc;
-		fc.prevIds = prevIds;
-		fc.subscriptionMeta = meta;
-		fc.publishMeta = item.meta;
-		fc.zhttpOut = zhttpOut;
-		fc.currentUri = requestData.uri;
-		fc.route = route;
-		fc.trusted = targetTrusted;
-		fc.limiter = filterLimiter;
-
-		// May call filtersFinished immediately. If it does, queue processing
-		// will continue. Else, the loop will end and queue processing will
-		// resume after the filters finish
-		filters->start(fc, f.body);
-	}
-
-	inProcessPublishQueue = false;
+    // If filters finished asynchronously then we need to resume processing
+    if (!inProcessPublishQueue)
+        processPublishQueue();
 }
 
-void WsSession::filtersFinished(const Filter::MessageFilter::Result &result)
-{
-	PublishItem item = publishQueue.takeFirst();
+void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAction,
+                             const QByteArray &content) {
+    if (sendAction == Filter::Drop)
+        return;
 
-	filtersFinishedConnection.disconnect();
-	filters.reset();
+    const PublishFormat &f = item.format;
 
-	if(!result.errorMessage.isNull())
-	{
-		if(debug)
-		{
-			QString errorMessage = QString("filter error: %1").arg(result.errorMessage);
-			sendCloseError(errorMessage);
-			return;
-		}
-	}
-	else
-	{
-		afterFilters(item, result.sendAction, result.content);
-	}
+    // TODO: hint support for websockets?
+    if (f.action != PublishFormat::Send && f.action != PublishFormat::Close &&
+        f.action != PublishFormat::Refresh)
+        return;
 
-	// If filters finished asynchronously then we need to resume processing
-	if(!inProcessPublishQueue)
-		processPublishQueue();
+    WsControlPacket::Item i;
+    i.cid = cid.toUtf8();
+
+    if (f.action == PublishFormat::Send) {
+        i.type = WsControlPacket::Item::Send;
+
+        switch (f.messageType) {
+        case PublishFormat::Text:
+            i.contentType = "text";
+            break;
+        case PublishFormat::Binary:
+            i.contentType = "binary";
+            break;
+        case PublishFormat::Ping:
+            i.contentType = "ping";
+            break;
+        case PublishFormat::Pong:
+            i.contentType = "pong";
+            break;
+        default:
+            return; // Unrecognized type, skip
+        }
+
+        i.message = content;
+    } else if (f.action == PublishFormat::Close) {
+        closed = true;
+
+        i.type = WsControlPacket::Item::Close;
+        i.code = f.code;
+        i.reason = f.reason;
+    } else if (f.action == PublishFormat::Refresh) {
+        i.type = WsControlPacket::Item::Refresh;
+    }
+
+    send(i);
 }
 
-void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content)
-{
-	if(sendAction == Filter::Drop)
-		return;
+void WsSession::sendCloseError(const QString &message) {
+    closed = true;
 
-	const PublishFormat &f = item.format;
+    WsControlPacket::Item i;
+    i.cid = cid.toUtf8();
+    i.type = WsControlPacket::Item::Close;
+    i.code = 1011;
 
-	// TODO: hint support for websockets?
-	if(f.action != PublishFormat::Send && f.action != PublishFormat::Close && f.action != PublishFormat::Refresh)
-		return;
+    if (debug)
+        i.reason = message.toUtf8();
 
-	WsControlPacket::Item i;
-	i.cid = cid.toUtf8();
-
-	if(f.action == PublishFormat::Send)
-	{
-		i.type = WsControlPacket::Item::Send;
-
-		switch(f.messageType)
-		{
-			case PublishFormat::Text:   i.contentType = "text"; break;
-			case PublishFormat::Binary: i.contentType = "binary"; break;
-			case PublishFormat::Ping:   i.contentType = "ping"; break;
-			case PublishFormat::Pong:   i.contentType = "pong"; break;
-			default: return; // Unrecognized type, skip
-		}
-
-		i.message = content;
-	}
-	else if(f.action == PublishFormat::Close)
-	{
-		closed = true;
-
-		i.type = WsControlPacket::Item::Close;
-		i.code = f.code;
-		i.reason = f.reason;
-	}
-	else if(f.action == PublishFormat::Refresh)
-	{
-		i.type = WsControlPacket::Item::Refresh;
-	}
-
-	send(i);
+    send(i);
 }
 
-void WsSession::sendCloseError(const QString &message)
-{
-	closed = true;
+void WsSession::setupRequestTimer() {
+    if (!pendingRequests.isEmpty()) {
+        // Find next expiring request
+        int64_t lowestTime = -1;
+        QHashIterator<int, int64_t> it(pendingRequests);
+        while (it.hasNext()) {
+            it.next();
+            int64_t time = it.value();
 
-	WsControlPacket::Item i;
-	i.cid = cid.toUtf8();
-	i.type = WsControlPacket::Item::Close;
-	i.code = 1011;
+            if (lowestTime == -1 || time < lowestTime)
+                lowestTime = time;
+        }
 
-	if(debug)
-		i.reason = message.toUtf8();
+        int until = int(lowestTime - QDateTime::currentMSecsSinceEpoch());
 
-	send(i);
+        requestTimer->start(qMax(until, 0));
+    } else {
+        requestTimer->stop();
+    }
 }
 
-void WsSession::setupRequestTimer()
-{
-	if(!pendingRequests.isEmpty())
-	{
-		// Find next expiring request
-		int64_t lowestTime = -1;
-		QHashIterator<int, int64_t> it(pendingRequests);
-		while(it.hasNext())
-		{
-			it.next();
-			int64_t time = it.value();
+void WsSession::expireTimer_timeout() {
+    log_debug("timing out ws session: %s", qPrintable(cid));
 
-			if(lowestTime == -1 || time < lowestTime)
-				lowestTime = time;
-		}
-
-		int until = int(lowestTime - QDateTime::currentMSecsSinceEpoch());
-
-		requestTimer->start(qMax(until, 0));
-	}
-	else
-	{
-		requestTimer->stop();
-	}
+    expired();
 }
 
-void WsSession::expireTimer_timeout()
-{
-	log_debug("timing out ws session: %s", qPrintable(cid));
+void WsSession::delayedTimer_timeout() {
+    int reqId = nextReqId++;
 
-	expired();
+    QByteArray message = delayedMessage;
+    delayedMessage.clear();
+
+    pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
+    setupRequestTimer();
+
+    WsControlPacket::Item i;
+    i.cid = cid.toUtf8();
+    i.requestId = QByteArray::number(reqId);
+    i.type = WsControlPacket::Item::Send;
+    i.contentType = delayedType;
+    i.message = message;
+    i.queue = true;
+
+    send(i);
 }
 
-void WsSession::delayedTimer_timeout()
-{
-	int reqId = nextReqId++;
+void WsSession::requestTimer_timeout() {
+    // On error, destroy any other pending requests
+    pendingRequests.clear();
+    setupRequestTimer();
 
-	QByteArray message = delayedMessage;
-	delayedMessage.clear();
-
-	pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
-	setupRequestTimer();
-
-	WsControlPacket::Item i;
-	i.cid = cid.toUtf8();
-	i.requestId = QByteArray::number(reqId);
-	i.type = WsControlPacket::Item::Send;
-	i.contentType = delayedType;
-	i.message = message;
-	i.queue = true;
-
-	send(i);
-}
-
-void WsSession::requestTimer_timeout()
-{
-	// On error, destroy any other pending requests
-	pendingRequests.clear();
-	setupRequestTimer();
-
-	error();
+    error();
 }

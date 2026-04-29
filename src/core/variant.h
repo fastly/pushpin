@@ -23,11 +23,11 @@
 #ifndef VARIANT_H
 #define VARIANT_H
 
-#include <QVariant>
-#include <QHash>
-#include <QMap>
-#include <QList>
 #include "qtcompat.h"
+#include <QHash>
+#include <QList>
+#include <QMap>
+#include <QVariant>
 
 using Variant = QVariant;
 using VariantHash = QVariantHash;

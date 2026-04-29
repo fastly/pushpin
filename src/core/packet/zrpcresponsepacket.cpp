@@ -26,74 +26,64 @@
 #include "qtcompat.h"
 #include "variant.h"
 
-Variant ZrpcResponsePacket::toVariant() const
-{
-	VariantHash obj;
+Variant ZrpcResponsePacket::toVariant() const {
+    VariantHash obj;
 
-	if(!id.isEmpty())
-		obj["id"] = id;
+    if (!id.isEmpty())
+        obj["id"] = id;
 
-	obj["success"] = success;
+    obj["success"] = success;
 
-	if(success)
-	{
-		if(typeId(value) == VariantType::String)
-			obj["value"] = value.toString().toUtf8();
-		else
-			obj["value"] = value;
-	}
-	else
-	{
-		obj["condition"] = condition;
+    if (success) {
+        if (typeId(value) == VariantType::String)
+            obj["value"] = value.toString().toUtf8();
+        else
+            obj["value"] = value;
+    } else {
+        obj["condition"] = condition;
 
-		if(value.isValid())
-		{
-			if(typeId(value) == VariantType::String)
-				obj["value"] = value.toString().toUtf8();
-			else
-				obj["value"] = value;
-		}
-	}
+        if (value.isValid()) {
+            if (typeId(value) == VariantType::String)
+                obj["value"] = value.toString().toUtf8();
+            else
+                obj["value"] = value;
+        }
+    }
 
-	return obj;
+    return obj;
 }
 
-bool ZrpcResponsePacket::fromVariant(const Variant &in)
-{
-	if(typeId(in) != VariantType::Hash)
-		return false;
+bool ZrpcResponsePacket::fromVariant(const Variant &in) {
+    if (typeId(in) != VariantType::Hash)
+        return false;
 
-	VariantHash obj = in.toHash();
+    VariantHash obj = in.toHash();
 
-	if(obj.contains("id"))
-	{
-		if(typeId(obj["id"]) != VariantType::ByteArray)
-			return false;
+    if (obj.contains("id")) {
+        if (typeId(obj["id"]) != VariantType::ByteArray)
+            return false;
 
-		id = obj["id"].toByteArray();
-	}
+        id = obj["id"].toByteArray();
+    }
 
-	if(!obj.contains("success") || typeId(obj["success"]) != VariantType::Bool)
-		return false;
-	success = obj["success"].toBool();
+    if (!obj.contains("success") || typeId(obj["success"]) != VariantType::Bool)
+        return false;
+    success = obj["success"].toBool();
 
-	value.clear();
-	condition.clear();
-	if(success)
-	{
-		if(!obj.contains("value"))
-			return false;
-		value = obj["value"];
-	}
-	else
-	{
-		if(!obj.contains("condition") || typeId(obj["condition"]) != VariantType::ByteArray)
-			return false;
-		condition = obj["condition"].toByteArray();
+    value.clear();
+    condition.clear();
+    if (success) {
+        if (!obj.contains("value"))
+            return false;
+        value = obj["value"];
+    } else {
+        if (!obj.contains("condition") || typeId(obj["condition"]) != VariantType::ByteArray)
+            return false;
+        condition = obj["condition"].toByteArray();
 
-		if(obj.contains("value"))
-			value = obj["value"];
-	}
+        if (obj.contains("value"))
+            value = obj["value"];
+    }
 
-	return true;
+    return true;
 }

@@ -24,82 +24,85 @@
 #ifndef ZHTTPMANAGER_H
 #define ZHTTPMANAGER_H
 
+#include "url.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <boost/signals2.hpp>
-#include "url.h"
 
 using Signal = boost::signals2::signal<void()>;
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 
-class ZhttpManager
-{
+class ZhttpManager {
 public:
-	ZhttpManager();
-	~ZhttpManager();
+    ZhttpManager();
+    ~ZhttpManager();
 
-	int connectionCount() const;
-	bool clientUsesReq() const;
-	ZhttpRequest *serverRequestByRid(const ZhttpRequest::Rid &rid) const;
+    int connectionCount() const;
+    bool clientUsesReq() const;
+    ZhttpRequest *serverRequestByRid(const ZhttpRequest::Rid &rid) const;
 
-	QByteArray instanceId() const;
-	void setInstanceId(const QByteArray &id);
+    QByteArray instanceId() const;
+    void setInstanceId(const QByteArray &id);
 
-	void setIpcFileMode(int mode);
-	void setBind(bool enable);
-	void setProbe(bool enable);
+    void setIpcFileMode(int mode);
+    void setBind(bool enable);
+    void setProbe(bool enable);
 
-	bool setClientOutSpecs(const QStringList &specs);
-	bool setClientOutStreamSpecs(const QStringList &specs);
-	bool setClientInSpecs(const QStringList &specs);
+    bool setClientOutSpecs(const QStringList &specs);
+    bool setClientOutStreamSpecs(const QStringList &specs);
+    bool setClientInSpecs(const QStringList &specs);
 
-	bool setClientReqSpecs(const QStringList &specs);
+    bool setClientReqSpecs(const QStringList &specs);
 
-	bool setServerInSpecs(const QStringList &specs);
-	bool setServerInStreamSpecs(const QStringList &specs);
-	bool setServerOutSpecs(const QStringList &specs);
+    bool setServerInSpecs(const QStringList &specs);
+    bool setServerInStreamSpecs(const QStringList &specs);
+    bool setServerOutSpecs(const QStringList &specs);
 
-	ZhttpRequest *createRequest();
-	ZhttpRequest *takeNextRequest();
+    ZhttpRequest *createRequest();
+    ZhttpRequest *takeNextRequest();
 
-	ZWebSocket *createSocket();
-	ZWebSocket *takeNextSocket();
+    ZWebSocket *createSocket();
+    ZWebSocket *takeNextSocket();
 
-	// For server mode, jump directly to responding state
-	ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
+    // For server mode, jump directly to responding state
+    ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
-	static int estimateRequestHeaderBytes(const QString &method, const Url &uri, const HttpHeaders &headers);
-	static int estimateResponseHeaderBytes(int code, const QByteArray &reason, const HttpHeaders &headers);
+    static int estimateRequestHeaderBytes(const QString &method, const Url &uri,
+                                          const HttpHeaders &headers);
+    static int estimateResponseHeaderBytes(int code, const QByteArray &reason,
+                                           const HttpHeaders &headers);
 
-	Signal requestReady;
-	Signal socketReady;
-	Signal probeAcked;
+    Signal requestReady;
+    Signal socketReady;
+    Signal probeAcked;
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 
-	friend class ZhttpRequest;
-	friend class ZWebSocket;
-	void link(ZhttpRequest *req);
-	void unlink(ZhttpRequest *req);
-	void link(ZWebSocket *sock);
-	void unlink(ZWebSocket *sock);
-	bool canWriteImmediately() const;
-	void writeHttp(const ZhttpRequestPacket &packet);
-	void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
-	void writeWs(const ZhttpRequestPacket &packet);
-	void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress, bool routerResp);
+    friend class ZhttpRequest;
+    friend class ZWebSocket;
+    void link(ZhttpRequest *req);
+    void unlink(ZhttpRequest *req);
+    void link(ZWebSocket *sock);
+    void unlink(ZWebSocket *sock);
+    bool canWriteImmediately() const;
+    void writeHttp(const ZhttpRequestPacket &packet);
+    void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
+    void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+                   bool routerResp);
+    void writeWs(const ZhttpRequestPacket &packet);
+    void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
+    void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+                 bool routerResp);
 
-	void registerKeepAlive(ZhttpRequest *req);
-	void unregisterKeepAlive(ZhttpRequest *req);
-	void registerKeepAlive(ZWebSocket *sock);
-	void unregisterKeepAlive(ZWebSocket *sock);
+    void registerKeepAlive(ZhttpRequest *req);
+    void unregisterKeepAlive(ZhttpRequest *req);
+    void registerKeepAlive(ZWebSocket *sock);
+    void unregisterKeepAlive(ZWebSocket *sock);
 };
 
 #endif

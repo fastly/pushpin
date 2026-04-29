@@ -22,66 +22,52 @@
 
 #include "zurlservice.h"
 
-#include <QDir>
-#include <QProcess>
 #include "log.h"
 #include "template.h"
 #include "variant.h"
+#include <QDir>
+#include <QProcess>
 
-ZurlService::ZurlService(
-	const QString &binFile,
-	const QString &configTemplateFile,
-	const QString &runDir,
-	const QString &logDir,
-	const QString &ipcPrefix,
-	const QString &filePrefix,
-	int logLevel)
-{
-	args_ += binFile;
-	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "zurl.conf");
+ZurlService::ZurlService(const QString &binFile, const QString &configTemplateFile,
+                         const QString &runDir, const QString &logDir, const QString &ipcPrefix,
+                         const QString &filePrefix, int logLevel) {
+    args_ += binFile;
+    args_ += "--config=" + QDir(runDir).filePath(filePrefix + "zurl.conf");
 
-	if(!logDir.isEmpty())
-	{
-		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "zurl.log");
-		setStandardOutputFile(QProcess::nullDevice());
-	}
+    if (!logDir.isEmpty()) {
+        args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "zurl.log");
+        setStandardOutputFile(QProcess::nullDevice());
+    }
 
-	if(logLevel >= 3)
-		args_ += "--verbose";
-	else
-		args_ += "--loglevel=" + QString::number(logLevel);
+    if (logLevel >= 3)
+        args_ += "--verbose";
+    else
+        args_ += "--loglevel=" + QString::number(logLevel);
 
-	configTemplateFile_ = configTemplateFile;
-	runDir_ = runDir;
-	ipcPrefix_ = ipcPrefix;
-	filePrefix_ = filePrefix;
+    configTemplateFile_ = configTemplateFile;
+    runDir_ = runDir;
+    ipcPrefix_ = ipcPrefix;
+    filePrefix_ = filePrefix;
 
-	setName("zurl");
-	setPidFile(QDir(runDir).filePath(filePrefix + "zurl.pid"));
+    setName("zurl");
+    setPidFile(QDir(runDir).filePath(filePrefix + "zurl.pid"));
 }
 
-QStringList ZurlService::arguments() const
-{
-	return args_;
-}
+QStringList ZurlService::arguments() const { return args_; }
 
-bool ZurlService::acceptSighup() const
-{
-	return true;
-}
+bool ZurlService::acceptSighup() const { return true; }
 
-bool ZurlService::preStart()
-{
-	VariantMap context;
-	context["rundir"] = runDir_;
-	context["ipc_prefix"] = ipcPrefix_;
+bool ZurlService::preStart() {
+    VariantMap context;
+    context["rundir"] = runDir_;
+    context["ipc_prefix"] = ipcPrefix_;
 
-	QString error;
-	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath(filePrefix_ + "zurl.conf"), context, &error))
-	{
-		log_error("Failed to generate zurl config file: %s", qPrintable(error));
-		return false;
-	}
+    QString error;
+    if (!Template::renderFile(configTemplateFile_,
+                              QDir(runDir_).filePath(filePrefix_ + "zurl.conf"), context, &error)) {
+        log_error("Failed to generate zurl config file: %s", qPrintable(error));
+        return false;
+    }
 
-	return true;
+    return true;
 }

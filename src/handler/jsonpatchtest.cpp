@@ -21,81 +21,79 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "test.h"
-#include "qtcompat.h"
-#include "variant.h"
 #include "jsonpatch.h"
+#include "qtcompat.h"
+#include "test.h"
+#include "variant.h"
 
-static void patch()
-{
-	VariantMap data;
-	data["foo"] = "bar";
+static void patch() {
+    VariantMap data;
+    data["foo"] = "bar";
 
-	VariantMap op;
-	op["op"] = "test";
-	op["path"] = "/foo";
-	op["value"] = "bar";
-	QString msg;
-	Variant ret = JsonPatch::patch(data, VariantList() << op, &msg);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
+    VariantMap op;
+    op["op"] = "test";
+    op["path"] = "/foo";
+    op["value"] = "bar";
+    QString msg;
+    Variant ret = JsonPatch::patch(data, VariantList() << op, &msg);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
 
-	op.clear();
-	op["op"] = "add";
-	op["path"] = "/fruit";
-	op["value"] = VariantList() << "apple";
-	ret = JsonPatch::patch(data, VariantList() << op);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
-	TEST_ASSERT_EQ(typeId(data["fruit"]), VariantType::List);
-	TEST_ASSERT_EQ(data["fruit"].toList()[0].toString(), QString("apple"));
+    op.clear();
+    op["op"] = "add";
+    op["path"] = "/fruit";
+    op["value"] = VariantList() << "apple";
+    ret = JsonPatch::patch(data, VariantList() << op);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
+    TEST_ASSERT_EQ(typeId(data["fruit"]), VariantType::List);
+    TEST_ASSERT_EQ(data["fruit"].toList()[0].toString(), QString("apple"));
 
-	op.clear();
-	op["op"] = "copy";
-	op["from"] = "/foo";
-	op["path"] = "/fruit/-";
-	ret = JsonPatch::patch(data, VariantList() << op);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
-	TEST_ASSERT_EQ(data["fruit"].toList()[1].toString(), QString("bar"));
+    op.clear();
+    op["op"] = "copy";
+    op["from"] = "/foo";
+    op["path"] = "/fruit/-";
+    ret = JsonPatch::patch(data, VariantList() << op);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
+    TEST_ASSERT_EQ(data["fruit"].toList()[1].toString(), QString("bar"));
 
-	op.clear();
-	op["op"] = "replace";
-	op["path"] = "/fruit/1";
-	VariantMap bowl;
-	bowl["cherries"] = true;
-	bowl["grapes"] = 5;
-	op["value"] = bowl;
-	ret = JsonPatch::patch(data, VariantList() << op);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
-	TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), VariantType::Map);
-	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
-	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
+    op.clear();
+    op["op"] = "replace";
+    op["path"] = "/fruit/1";
+    VariantMap bowl;
+    bowl["cherries"] = true;
+    bowl["grapes"] = 5;
+    op["value"] = bowl;
+    ret = JsonPatch::patch(data, VariantList() << op);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
+    TEST_ASSERT_EQ(typeId(data["fruit"].toList()[1]), VariantType::Map);
+    TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
+    TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 
-	op.clear();
-	op["op"] = "remove";
-	op["path"] = "/fruit/1/cherries";
-	ret = JsonPatch::patch(data, VariantList() << op);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
-	TEST_ASSERT(!data["fruit"].toList()[1].toMap().contains("cherries"));
-	TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
+    op.clear();
+    op["op"] = "remove";
+    op["path"] = "/fruit/1/cherries";
+    ret = JsonPatch::patch(data, VariantList() << op);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
+    TEST_ASSERT(!data["fruit"].toList()[1].toMap().contains("cherries"));
+    TEST_ASSERT_EQ(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 
-	op.clear();
-	op["op"] = "move";
-	op["from"] = "/fruit/0";
-	op["path"] = "/foo";
-	ret = JsonPatch::patch(data, VariantList() << op);
-	TEST_ASSERT(ret.isValid());
-	data = ret.toMap();
-	TEST_ASSERT_EQ(data["foo"].toString(), QString("apple"));
-	TEST_ASSERT_EQ(data["fruit"].toList()[0].toMap().value("grapes").toInt(), 5);
+    op.clear();
+    op["op"] = "move";
+    op["from"] = "/fruit/0";
+    op["path"] = "/foo";
+    ret = JsonPatch::patch(data, VariantList() << op);
+    TEST_ASSERT(ret.isValid());
+    data = ret.toMap();
+    TEST_ASSERT_EQ(data["foo"].toString(), QString("apple"));
+    TEST_ASSERT_EQ(data["fruit"].toList()[0].toMap().value("grapes").toInt(), 5);
 }
 
-extern "C" int jsonpatch_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(patch());
+extern "C" int jsonpatch_test(ffi::TestException *out_ex) {
+    TEST_CATCH(patch());
 
-	return 0;
+    return 0;
 }

@@ -23,62 +23,46 @@
 #ifndef CALLBACK_H
 #define CALLBACK_H
 
-#include <assert.h>
 #include <QList>
+#include <assert.h>
 
-template <typename T> class Callback
-{
+template <typename T> class Callback {
 public:
     typedef void (*CallbackFunc)(void *data, T);
 
-    Callback() :
-        activeCalls_(0),
-        destroyed_(0)
-    {
-    }
+    Callback() : activeCalls_(0), destroyed_(0) {}
 
-    ~Callback()
-    {
-        if(destroyed_)
+    ~Callback() {
+        if (destroyed_)
             *destroyed_ = true;
     }
 
-    void add(CallbackFunc cb, void *data)
-    {
-        targets_ += Target(cb, data);
-    }
+    void add(CallbackFunc cb, void *data) { targets_ += Target(cb, data); }
 
-    void remove(void *data)
-    {
+    void remove(void *data) {
         // Mark for removal, but don't actually remove
-        for(int n = 0; n < targets_.count(); ++n)
-        {
+        for (int n = 0; n < targets_.count(); ++n) {
             Target &t = targets_[n];
 
-            if(t.second == data)
-            {
+            if (t.second == data) {
                 t.second = 0;
             }
         }
 
         // Only actually remove if not in the middle of a call
-        if(activeCalls_ == 0)
-        {
+        if (activeCalls_ == 0) {
             removeMarked();
         }
     }
 
-    void call(T value)
-    {
+    void call(T value) {
         activeCalls_ += 1;
 
-        for(int n = 0; n < targets_.count(); ++n)
-        {
+        for (int n = 0; n < targets_.count(); ++n) {
             const Target &t = targets_[n];
 
             // Skip if marked for removal
-            if(!t.second)
-            {
+            if (!t.second) {
                 continue;
             }
 
@@ -92,10 +76,8 @@ public:
 
             f(data, value);
 
-            if(destroyed)
-            {
-                if(prevDestroyed)
-                {
+            if (destroyed) {
+                if (prevDestroyed) {
                     *prevDestroyed = true;
                 }
 
@@ -108,8 +90,7 @@ public:
         assert(activeCalls_ >= 1);
         activeCalls_ -= 1;
 
-        if(activeCalls_ == 0)
-        {
+        if (activeCalls_ == 0) {
             removeMarked();
         }
     }
@@ -120,14 +101,11 @@ private:
     bool activeCalls_;
     bool *destroyed_;
 
-    void removeMarked()
-    {
+    void removeMarked() {
         assert(activeCalls_ == 0);
 
-        for(int n = 0; n < targets_.count(); ++n)
-        {
-            if(!targets_[n].second)
-            {
+        for (int n = 0; n < targets_.count(); ++n) {
+            if (!targets_[n].second) {
                 targets_.removeAt(n);
                 --n; // Adjust position
             }

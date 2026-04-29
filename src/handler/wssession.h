@@ -24,15 +24,15 @@
 #ifndef WSSESSION_H
 #define WSSESSION_H
 
-#include <QHash>
-#include <QSet>
-#include <boost/signals2.hpp>
+#include "clientsession.h"
+#include "filter.h"
+#include "instruct.h"
 #include "packet/httprequestdata.h"
 #include "packet/wscontrolpacket.h"
 #include "ratelimiter.h"
-#include "instruct.h"
-#include "filter.h"
-#include "clientsession.h"
+#include <QHash>
+#include <QSet>
+#include <boost/signals2.hpp>
 
 // Each session can have a bunch of timers:
 // 3 misc timers
@@ -46,62 +46,62 @@ class Timer;
 class ZhttpManager;
 class PublishItem;
 
-class WsSession : public ClientSession
-{
+class WsSession : public ClientSession {
 public:
-	QByteArray peer;
-	QString cid;
-	int nextReqId;
-	bool debug;
-	QString channelPrefix;
-	int logLevel;
-	HttpRequestData requestData;
-	QString route;
-	QString statsRoute;
-	bool targetTrusted;
-	QString sid;
-	QHash<QString, QString> meta;
-	QHash<QString, Instruct::Channel> channels;
-	QSet<QString> implicitChannels;
-	int ttl;
-	QByteArray keepAliveType;
-	QByteArray keepAliveMessage;
-	QByteArray delayedType;
-	QByteArray delayedMessage;
-	QHash<int, int64_t> pendingRequests;
-	std::unique_ptr<Timer> expireTimer;
-	std::unique_ptr<Timer> delayedTimer;
-	std::unique_ptr<Timer> requestTimer;
-	QList<PublishItem> publishQueue;
-	ZhttpManager *zhttpOut;
-	std::shared_ptr<RateLimiter> filterLimiter;
-	std::unique_ptr<Filter::MessageFilter> filters;
-	Connection filtersFinishedConnection;
-	bool inProcessPublishQueue;
-	bool closed;
+    QByteArray peer;
+    QString cid;
+    int nextReqId;
+    bool debug;
+    QString channelPrefix;
+    int logLevel;
+    HttpRequestData requestData;
+    QString route;
+    QString statsRoute;
+    bool targetTrusted;
+    QString sid;
+    QHash<QString, QString> meta;
+    QHash<QString, Instruct::Channel> channels;
+    QSet<QString> implicitChannels;
+    int ttl;
+    QByteArray keepAliveType;
+    QByteArray keepAliveMessage;
+    QByteArray delayedType;
+    QByteArray delayedMessage;
+    QHash<int, int64_t> pendingRequests;
+    std::unique_ptr<Timer> expireTimer;
+    std::unique_ptr<Timer> delayedTimer;
+    std::unique_ptr<Timer> requestTimer;
+    QList<PublishItem> publishQueue;
+    ZhttpManager *zhttpOut;
+    std::shared_ptr<RateLimiter> filterLimiter;
+    std::unique_ptr<Filter::MessageFilter> filters;
+    Connection filtersFinishedConnection;
+    bool inProcessPublishQueue;
+    bool closed;
 
-	WsSession();
-	~WsSession();
+    WsSession();
+    ~WsSession();
 
-	void refreshExpiration();
-	void flushDelayed();
-	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
-	void ack(int reqId);
-	void publish(const PublishItem &item);
-	void sendCloseError(const QString &message);
+    void refreshExpiration();
+    void flushDelayed();
+    void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
+    void ack(int reqId);
+    void publish(const PublishItem &item);
+    void sendCloseError(const QString &message);
 
-	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
-	Signal expired;
-	Signal error;
+    boost::signals2::signal<void(const WsControlPacket::Item &)> send;
+    Signal expired;
+    Signal error;
 
 private:
-	void processPublishQueue();
-	void filtersFinished(const Filter::MessageFilter::Result &result);
-	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
-	void setupRequestTimer();
-	void expireTimer_timeout();
-	void delayedTimer_timeout();
-	void requestTimer_timeout();
+    void processPublishQueue();
+    void filtersFinished(const Filter::MessageFilter::Result &result);
+    void afterFilters(const PublishItem &item, Filter::SendAction sendAction,
+                      const QByteArray &content);
+    void setupRequestTimer();
+    void expireTimer_timeout();
+    void delayedTimer_timeout();
+    void requestTimer_timeout();
 };
 
 #endif

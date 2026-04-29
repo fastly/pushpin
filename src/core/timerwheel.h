@@ -26,40 +26,38 @@
 #include <QPair>
 
 namespace ffi {
-	struct TimerWheel;
+struct TimerWheel;
 }
 
-class TimerWheel
-{
+class TimerWheel {
 public:
-	class Expired
-	{
-	public:
-		int key; // <0 if invalid
-		size_t userData;
-	};
+    class Expired {
+    public:
+        int key; // <0 if invalid
+        size_t userData;
+    };
 
-	TimerWheel(int capacity);
-	~TimerWheel();
+    TimerWheel(int capacity);
+    ~TimerWheel();
 
-	// Disable copying
-	TimerWheel(const TimerWheel &) = delete;
-	TimerWheel & operator=(const TimerWheel &) = delete;
+    // Disable copying
+    TimerWheel(const TimerWheel &) = delete;
+    TimerWheel &operator=(const TimerWheel &) = delete;
 
-	// Returns <0 if no capacity
-	int add(uint64_t expires, size_t userData);
+    // Returns <0 if no capacity
+    int add(uint64_t expires, size_t userData);
 
-	void remove(int key);
+    void remove(int key);
 
-	// Returns <0 if no timers
-	int64_t timeout() const;
+    // Returns <0 if no timers
+    int64_t timeout() const;
 
-	void update(uint64_t curtime);
+    void update(uint64_t curtime);
 
-	Expired takeExpired();
+    Expired takeExpired();
 
 private:
-	ffi::TimerWheel *raw_;
+    ffi::TimerWheel *raw_;
 };
 
 #endif

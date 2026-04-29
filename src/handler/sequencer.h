@@ -31,27 +31,26 @@ class QString;
 class PublishLastIds;
 class PublishItem;
 
-class Sequencer
-{
+class Sequencer {
 public:
-	Sequencer(PublishLastIds *publishLastIds);
-	~Sequencer();
+    Sequencer(PublishLastIds *publishLastIds);
+    ~Sequencer();
 
-	void setWaitMax(int msecs);
-	void setIdCacheTtl(int secs);
+    void setWaitMax(int msecs);
+    void setIdCacheTtl(int secs);
 
-	// Seq = false means ID cache handling only
-	// note: may emit signals
-	void addItem(const PublishItem &item, bool seq = true);
+    // Seq = false means ID cache handling only
+    // note: may emit signals
+    void addItem(const PublishItem &item, bool seq = true);
 
-	void clearPendingForChannel(const QString &channel);
+    void clearPendingForChannel(const QString &channel);
 
-	boost::signals2::signal<void(const PublishItem&)> itemReady;
+    boost::signals2::signal<void(const PublishItem &)> itemReady;
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
+    class Private;
+    friend class Private;
+    Private *d;
 };
 
 #endif

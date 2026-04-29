@@ -17,63 +17,62 @@
 #ifndef EVENTLOOP_H
 #define EVENTLOOP_H
 
-#include <memory>
-#include <optional>
+#include "event.h"
+#include "rust/bindings.h"
 #include <functional>
 #include <list>
-#include "rust/bindings.h"
-#include "event.h"
+#include <memory>
+#include <optional>
 
-class EventLoop
-{
+class EventLoop {
 public:
-	EventLoop(int capacity);
-	~EventLoop();
+    EventLoop(int capacity);
+    ~EventLoop();
 
-	// Disable copying
-	EventLoop(const EventLoop &) = delete;
-	EventLoop & operator=(const EventLoop &) = delete;
+    // Disable copying
+    EventLoop(const EventLoop &) = delete;
+    EventLoop &operator=(const EventLoop &) = delete;
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
+    std::optional<int> step();
+    int exec();
+    void exit(int code);
 
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	std::tuple<int, std::unique_ptr<Event::SetReadiness>> registerCustom(void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
+    int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
+    int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
+    std::tuple<int, std::unique_ptr<Event::SetReadiness>>
+    registerCustom(void (*cb)(void *, uint8_t), void *ctx);
+    void deregister(int id);
 
-	void addCleanupHandler(void (*handler)(void *), void *ctx);
-	void removeCleanupHandler(void (*handler)(void *), void *ctx);
+    void addCleanupHandler(void (*handler)(void *), void *ctx);
+    void removeCleanupHandler(void (*handler)(void *), void *ctx);
 
-	static EventLoop *instance();
+    static EventLoop *instance();
 
-	/// Returns a future that constructs an event loop and executes it
-	/// asynchronously. `setup` is called just prior to executing, and `done`
-	/// is called when the event loop exits. `setup` and `done` must point
-	/// to functions that live as long as the returned future.
-	static ffi::UnitFuture *task(int capacity, std::function<void ()> *setup, std::function<void (int)> *done);
+    /// Returns a future that constructs an event loop and executes it
+    /// asynchronously. `setup` is called just prior to executing, and `done`
+    /// is called when the event loop exits. `setup` and `done` must point
+    /// to functions that live as long as the returned future.
+    static ffi::UnitFuture *task(int capacity, std::function<void()> *setup,
+                                 std::function<void(int)> *done);
 
 private:
-	class CleanupHandler
-	{
-	public:
-		void (*handler)(void *);
-		void *ctx;
+    class CleanupHandler {
+    public:
+        void (*handler)(void *);
+        void *ctx;
 
-		bool operator==(const CleanupHandler &other) const
-		{
-			return (other.handler == handler && other.ctx == ctx);
-		}
-	};
+        bool operator==(const CleanupHandler &other) const {
+            return (other.handler == handler && other.ctx == ctx);
+        }
+    };
 
-	ffi::EventLoopRaw *inner_;
-	bool taskManaged_;
-	std::list<CleanupHandler> cleanupHandlers_;
+    ffi::EventLoopRaw *inner_;
+    bool taskManaged_;
+    std::list<CleanupHandler> cleanupHandlers_;
 
-	EventLoop(ffi::EventLoopRaw *inner);
-	static void setup_cb(void *ctx, const ffi::EventLoopRaw *l);
-	static void done_cb(void *ctx, int code);
+    EventLoop(ffi::EventLoopRaw *inner);
+    static void setup_cb(void *ctx, const ffi::EventLoopRaw *l);
+    static void done_cb(void *ctx, int code);
 };
 
 #endif

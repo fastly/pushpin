@@ -35,38 +35,37 @@ class ZrpcResponsePacket;
 class ZrpcRequest;
 
 /// Manages RPC communication over ZeroMQ between Pushpin processes
-class ZrpcManager
-{
+class ZrpcManager {
 public:
-	ZrpcManager();
-	~ZrpcManager();
+    ZrpcManager();
+    ~ZrpcManager();
 
-	int timeout() const;
+    int timeout() const;
 
-	void setInstanceId(const QByteArray &instanceId);
-	void setIpcFileMode(int mode);
-	void setBind(bool enable);
-	void setTimeout(int ms);
-	void setUnavailableOnTimeout(bool enable);
+    void setInstanceId(const QByteArray &instanceId);
+    void setIpcFileMode(int mode);
+    void setBind(bool enable);
+    void setTimeout(int ms);
+    void setUnavailableOnTimeout(bool enable);
 
-	bool setClientSpecs(const QStringList &specs);
-	bool setServerSpecs(const QStringList &specs);
+    bool setClientSpecs(const QStringList &specs);
+    bool setServerSpecs(const QStringList &specs);
 
-	ZrpcRequest *takeNext();
+    ZrpcRequest *takeNext();
 
-	bool canWriteImmediately() const;
-	void write(const ZrpcRequestPacket &packet);
+    bool canWriteImmediately() const;
+    void write(const ZrpcRequestPacket &packet);
 
-	Signal requestReady;
+    Signal requestReady;
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 
-	friend class ZrpcRequest;
-	void link(ZrpcRequest *req);
-	void unlink(ZrpcRequest *req);
-	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet);
+    friend class ZrpcRequest;
+    void link(ZrpcRequest *req);
+    void unlink(ZrpcRequest *req);
+    void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet);
 };
 
 #endif

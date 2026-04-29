@@ -17,19 +17,18 @@
 #ifndef REACTOR_H
 #define REACTOR_H
 
-#include <optional>
 #include "rust/bindings.h"
+#include <optional>
 
-class Reactor
-{
+class Reactor {
 public:
-	Reactor(int registrationsMax);
-	~Reactor();
+    Reactor(int registrationsMax);
+    ~Reactor();
 
-	bool poll(std::optional<int> ms);
+    bool poll(std::optional<int> ms);
 
 private:
-	ffi::Reactor *inner_;
+    ffi::Reactor *inner_;
 };
 
 #endif

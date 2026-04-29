@@ -16,51 +16,46 @@
 
 #include "filewatcher.h"
 
-#include <assert.h>
 #include <QString>
+#include <assert.h>
 
-FileWatcher::FileWatcher() :
-	inner_(nullptr)
-{
+FileWatcher::FileWatcher() : inner_(nullptr) {}
+
+FileWatcher::~FileWatcher() {
+    sn_.reset();
+
+    if (inner_)
+        ffi::file_watcher_destroy(inner_);
 }
 
-FileWatcher::~FileWatcher()
-{
-	sn_.reset();
+bool FileWatcher::start(const QString &filePath) {
+    assert(!inner_);
 
-	if(inner_)
-		ffi::file_watcher_destroy(inner_);
+    inner_ = ffi::file_watcher_create(filePath.toUtf8().data());
+    if (!inner_)
+        return false;
+
+    int fd = ffi::file_watcher_as_raw_fd(inner_);
+
+    sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
+    sn_->activated.connect(boost::bind(&FileWatcher::sn_activated, this, boost::placeholders::_1,
+                                       boost::placeholders::_2));
+    sn_->clearReadiness(SocketNotifier::Read);
+    sn_->setReadEnabled(true);
+
+    // In case the socket was activated before registering the notifier
+    if (ffi::file_watcher_file_changed(inner_))
+        deferCall_.defer([=] { fileChanged(); });
+
+    return true;
 }
 
-bool FileWatcher::start(const QString &filePath)
-{
-	assert(!inner_);
+void FileWatcher::sn_activated(int socket, uint8_t readiness) {
+    Q_UNUSED(socket);
+    Q_UNUSED(readiness);
 
-	inner_ = ffi::file_watcher_create(filePath.toUtf8().data());
-	if(!inner_)
-		return false;
+    sn_->clearReadiness(SocketNotifier::Read);
 
-	int fd = ffi::file_watcher_as_raw_fd(inner_);
-
-	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
-	sn_->activated.connect(boost::bind(&FileWatcher::sn_activated, this, boost::placeholders::_1, boost::placeholders::_2));
-	sn_->clearReadiness(SocketNotifier::Read);
-	sn_->setReadEnabled(true);
-
-	// In case the socket was activated before registering the notifier
-	if(ffi::file_watcher_file_changed(inner_))
-		deferCall_.defer([=] { fileChanged(); });
-
-	return true;
-}
-
-void FileWatcher::sn_activated(int socket, uint8_t readiness)
-{
-	Q_UNUSED(socket);
-	Q_UNUSED(readiness);
-
-	sn_->clearReadiness(SocketNotifier::Read);
-
-	if(ffi::file_watcher_file_changed(inner_))
-		fileChanged();
+    if (ffi::file_watcher_file_changed(inner_))
+        fileChanged();
 }

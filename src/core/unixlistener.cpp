@@ -18,68 +18,54 @@
 
 #include "socketnotifier.h"
 
-UnixListener::UnixListener() :
-	inner_(nullptr)
-{
+UnixListener::UnixListener() : inner_(nullptr) {}
+
+UnixListener::~UnixListener() { reset(); }
+
+bool UnixListener::bind(const QString &path) {
+    reset();
+
+    QByteArray p = path.toUtf8();
+    errorCondition_ = 0;
+
+    inner_ = ffi::unix_listener_bind(p.data(), &errorCondition_);
+    if (!inner_)
+        return false;
+
+    int fd = ffi::unix_listener_as_raw_fd(inner_);
+
+    sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
+    sn_->activated.connect(boost::bind(&UnixListener::sn_activated, this));
+    sn_->setReadEnabled(true);
+
+    return true;
 }
 
-UnixListener::~UnixListener()
-{
-	reset();
+std::unique_ptr<UnixStream> UnixListener::accept() {
+    assert(inner_);
+
+    errorCondition_ = 0;
+
+    ffi::UnixStream *s_inner = ffi::unix_listener_accept(inner_, &errorCondition_);
+    if (!s_inner) {
+        if (errorCondition_ == EAGAIN)
+            sn_->clearReadiness(SocketNotifier::Read);
+
+        return std::unique_ptr<UnixStream>(); // Null
+    }
+
+    UnixStream *s = new UnixStream(s_inner);
+
+    return std::unique_ptr<UnixStream>(s);
 }
 
-bool UnixListener::bind(const QString &path)
-{
-	reset();
+void UnixListener::reset() {
+    sn_.reset();
 
-	QByteArray p = path.toUtf8();
-	errorCondition_ = 0;
-
-	inner_ = ffi::unix_listener_bind(p.data(), &errorCondition_);
-	if(!inner_)
-		return false;
-
-	int fd = ffi::unix_listener_as_raw_fd(inner_);
-
-	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
-	sn_->activated.connect(boost::bind(&UnixListener::sn_activated, this));
-	sn_->setReadEnabled(true);
-
-	return true;
+    if (inner_) {
+        ffi::unix_listener_destroy(inner_);
+        inner_ = nullptr;
+    }
 }
 
-std::unique_ptr<UnixStream> UnixListener::accept()
-{
-	assert(inner_);
-
-	errorCondition_ = 0;
-
-	ffi::UnixStream *s_inner = ffi::unix_listener_accept(inner_, &errorCondition_);
-	if(!s_inner)
-	{
-		if(errorCondition_ == EAGAIN)
-			sn_->clearReadiness(SocketNotifier::Read);
-
-		return std::unique_ptr<UnixStream>(); // Null
-	}
-
-	UnixStream *s = new UnixStream(s_inner);
-
-	return std::unique_ptr<UnixStream>(s);
-}
-
-void UnixListener::reset()
-{
-	sn_.reset();
-
-	if(inner_)
-	{
-		ffi::unix_listener_destroy(inner_);
-		inner_ = nullptr;
-	}
-}
-
-void UnixListener::sn_activated()
-{
-	streamsReady();
-}
+void UnixListener::sn_activated() { streamsReady(); }

@@ -25,12 +25,7 @@
 
 namespace WsControl {
 
-enum KeepAliveMode
-{
-	NoKeepAlive,
-	Idle,
-	Interval
-};
+enum KeepAliveMode { NoKeepAlive, Idle, Interval };
 
 }
 

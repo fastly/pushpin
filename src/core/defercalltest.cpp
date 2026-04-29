@@ -20,130 +20,112 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <thread>
-#include "test.h"
 #include "defercall.h"
 #include "eventloop.h"
+#include "test.h"
+#include <thread>
 
 // loop_advance should process enough events to cause the calls to run,
 // Without sleeping, in order to prove the calls are run immediately
-static std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
-{
-	DeferCall deferCall;
-	int count = 0;
+static std::tuple<int, int> runDeferCall(std::function<void()> loop_advance) {
+    DeferCall deferCall;
+    int count = 0;
 
-	deferCall.defer([&] {
-		++count;
+    deferCall.defer([&] {
+        ++count;
 
-		deferCall.defer([&] {
-			++count;
-		});
-	});
+        deferCall.defer([&] { ++count; });
+    });
 
-	loop_advance();
+    loop_advance();
 
-	return {deferCall.pendingCount(), count};
+    return {deferCall.pendingCount(), count};
 }
 
 // Spawns a thread, triggers the deferCall from it, then waits for thread to
 // finish
-static void callNonLocal(DeferCall *deferCall, std::function<void ()> handler)
-{
-	std::thread thread([=] {
-		deferCall->defer(handler);
-	});
-	thread.join();
+static void callNonLocal(DeferCall *deferCall, std::function<void()> handler) {
+    std::thread thread([=] { deferCall->defer(handler); });
+    thread.join();
 }
 
 // loop_advance should process enough events to cause the calls to run,
 // Without sleeping, in order to prove the calls are run immediately
-static std::tuple<int, int> runNonLocal(std::function<void ()> loop_advance)
-{
-	DeferCall deferCall;
-	int count = 0;
+static std::tuple<int, int> runNonLocal(std::function<void()> loop_advance) {
+    DeferCall deferCall;
+    int count = 0;
 
-	callNonLocal(&deferCall, [&] {
-		++count;
-	});
+    callNonLocal(&deferCall, [&] { ++count; });
 
-	loop_advance();
+    loop_advance();
 
-	return {deferCall.pendingCount(), count};
+    return {deferCall.pendingCount(), count};
 }
 
-static void deferCall()
-{
-	EventLoop loop(2);
+static void deferCall() {
+    EventLoop loop(2);
 
-	auto [pendingCount, count] = runDeferCall([&] {
-		// Run the first call and queue the second
-		loop.step();
+    auto [pendingCount, count] = runDeferCall([&] {
+        // Run the first call and queue the second
+        loop.step();
 
-		// Run the second
-		loop.step();
-	});
+        // Run the second
+        loop.step();
+    });
 
-	TEST_ASSERT_EQ(pendingCount, 0);
-	TEST_ASSERT_EQ(count, 2);
+    TEST_ASSERT_EQ(pendingCount, 0);
+    TEST_ASSERT_EQ(count, 2);
 }
 
-static void nonLocal()
-{
-	EventLoop loop(2);
+static void nonLocal() {
+    EventLoop loop(2);
 
-	auto [pendingCount, count] = runNonLocal([&] {
-		// Run the first call
-		loop.step();
-	});
+    auto [pendingCount, count] = runNonLocal([&] {
+        // Run the first call
+        loop.step();
+    });
 
-	TEST_ASSERT_EQ(pendingCount, 0);
-	TEST_ASSERT_EQ(count, 1);
+    TEST_ASSERT_EQ(pendingCount, 0);
+    TEST_ASSERT_EQ(count, 1);
 }
 
-static void retract()
-{
-	EventLoop loop(2);
+static void retract() {
+    EventLoop loop(2);
 
-	bool called = false;
+    bool called = false;
 
-	{
-		DeferCall deferCall;
+    {
+        DeferCall deferCall;
 
-		deferCall.defer([&] {
-			called = true;
-		});
-	}
+        deferCall.defer([&] { called = true; });
+    }
 
-	DeferCall::cleanup();
-	TEST_ASSERT(!called);
+    DeferCall::cleanup();
+    TEST_ASSERT(!called);
 }
 
-static void managerCleanup()
-{
-	EventLoop loop(2);
+static void managerCleanup() {
+    EventLoop loop(2);
 
-	int count = 0;
+    int count = 0;
 
-	DeferCall::global()->defer([&] {
-		++count;
+    DeferCall::global()->defer([&] {
+        ++count;
 
-		DeferCall::global()->defer([&] {
-			++count;
-		});
-	});
+        DeferCall::global()->defer([&] { ++count; });
+    });
 
-	// Cleanup should process deferred calls queued so far as well as
-	// those queued during processing
-	DeferCall::cleanup();
-	TEST_ASSERT_EQ(count, 2);
+    // Cleanup should process deferred calls queued so far as well as
+    // those queued during processing
+    DeferCall::cleanup();
+    TEST_ASSERT_EQ(count, 2);
 }
 
-extern "C" int defercall_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(deferCall());
-	TEST_CATCH(nonLocal());
-	TEST_CATCH(retract());
-	TEST_CATCH(managerCleanup());
+extern "C" int defercall_test(ffi::TestException *out_ex) {
+    TEST_CATCH(deferCall());
+    TEST_CATCH(nonLocal());
+    TEST_CATCH(retract());
+    TEST_CATCH(managerCleanup());
 
-	return 0;
+    return 0;
 }

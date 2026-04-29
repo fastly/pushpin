@@ -22,71 +22,58 @@
 
 #include "m2adapterservice.h"
 
-#include <QDir>
-#include <QProcess>
 #include "log.h"
 #include "template.h"
 #include "variant.h"
+#include <QDir>
+#include <QProcess>
 
-M2AdapterService::M2AdapterService(
-	const QString &binFile,
-	const QString &configTemplateFile,
-	const QString &runDir,
-	const QString &logDir,
-	const QString &ipcPrefix,
-	const QString &filePrefix,
-	int logLevel,
-	const QList<int> &ports)
-{
-	args_ += binFile;
-	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "m2adapter.conf");
+M2AdapterService::M2AdapterService(const QString &binFile, const QString &configTemplateFile,
+                                   const QString &runDir, const QString &logDir,
+                                   const QString &ipcPrefix, const QString &filePrefix,
+                                   int logLevel, const QList<int> &ports) {
+    args_ += binFile;
+    args_ += "--config=" + QDir(runDir).filePath(filePrefix + "m2adapter.conf");
 
-	if(!logDir.isEmpty())
-	{
-		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "m2adapter.log");
-		setStandardOutputFile(QProcess::nullDevice());
-	}
+    if (!logDir.isEmpty()) {
+        args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "m2adapter.log");
+        setStandardOutputFile(QProcess::nullDevice());
+    }
 
-	if(logLevel >= 0)
-		args_ += "--loglevel=" + QString::number(logLevel);
+    if (logLevel >= 0)
+        args_ += "--loglevel=" + QString::number(logLevel);
 
-	configTemplateFile_ = configTemplateFile;
-	runDir_ = runDir;
-	ipcPrefix_ = ipcPrefix;
-	filePrefix_ = filePrefix;
-	ports_ = ports;
+    configTemplateFile_ = configTemplateFile;
+    runDir_ = runDir;
+    ipcPrefix_ = ipcPrefix;
+    filePrefix_ = filePrefix;
+    ports_ = ports;
 
-	setName("m2a");
-	setPidFile(QDir(runDir).filePath(filePrefix + "m2adapter.pid"));
+    setName("m2a");
+    setPidFile(QDir(runDir).filePath(filePrefix + "m2adapter.pid"));
 }
 
-QStringList M2AdapterService::arguments() const
-{
-	return args_;
-}
+QStringList M2AdapterService::arguments() const { return args_; }
 
-bool M2AdapterService::acceptSighup() const
-{
-	return true;
-}
+bool M2AdapterService::acceptSighup() const { return true; }
 
-bool M2AdapterService::preStart()
-{
-	VariantList portStrs;
-	foreach(int port, ports_)
-		portStrs += QString::number(port);
+bool M2AdapterService::preStart() {
+    VariantList portStrs;
+    foreach (int port, ports_)
+        portStrs += QString::number(port);
 
-	VariantMap context;
-	context["ports"] = portStrs;
-	context["rundir"] = runDir_;
-	context["ipc_prefix"] = ipcPrefix_;
+    VariantMap context;
+    context["ports"] = portStrs;
+    context["rundir"] = runDir_;
+    context["ipc_prefix"] = ipcPrefix_;
 
-	QString error;
-	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath(filePrefix_ + "m2adapter.conf"), context, &error))
-	{
-		log_error("Failed to generate m2adapter config file: %s", qPrintable(error));
-		return false;
-	}
+    QString error;
+    if (!Template::renderFile(configTemplateFile_,
+                              QDir(runDir_).filePath(filePrefix_ + "m2adapter.conf"), context,
+                              &error)) {
+        log_error("Failed to generate m2adapter config file: %s", qPrintable(error));
+        return false;
+    }
 
-	return true;
+    return true;
 }

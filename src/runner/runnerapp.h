@@ -30,20 +30,19 @@ using std::map;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
-class RunnerApp
-{
+class RunnerApp {
 public:
-	RunnerApp();
-	~RunnerApp();
+    RunnerApp();
+    ~RunnerApp();
 
-	void start();
+    void start();
 
-	SignalInt quit;
+    SignalInt quit;
 
 private:
-	class Private;
-	friend class Private;
-	std::unique_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::unique_ptr<Private> d;
 };
 
 #endif

@@ -25,32 +25,25 @@
 
 #include "service.h"
 
-class M2AdapterService : public Service
-{
+class M2AdapterService : public Service {
 public:
-	M2AdapterService(
-		const QString &binFile,
-		const QString &configTemplateFile,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &ipcPrefix,
-		const QString &filePrefix,
-		int logLevel,
-		const QList<int> &ports);
+    M2AdapterService(const QString &binFile, const QString &configTemplateFile,
+                     const QString &runDir, const QString &logDir, const QString &ipcPrefix,
+                     const QString &filePrefix, int logLevel, const QList<int> &ports);
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QStringList arguments() const;
-	virtual bool acceptSighup() const;
-	virtual bool preStart();
+    virtual QStringList arguments() const;
+    virtual bool acceptSighup() const;
+    virtual bool preStart();
 
 private:
-	QStringList args_;
-	QString configTemplateFile_;
-	QString runDir_;
-	QString ipcPrefix_;
-	QString filePrefix_;
-	QList<int> ports_;
+    QStringList args_;
+    QString configTemplateFile_;
+    QString runDir_;
+    QString ipcPrefix_;
+    QString filePrefix_;
+    QList<int> ports_;
 };
 
 #endif

@@ -27,31 +27,29 @@
 #include <QVariant>
 
 namespace VariantType {
-	enum Type {
-		Invalid = QMetaType::UnknownType,
-		Bool = QMetaType::Bool,
-		Int = QMetaType::Int,
-		Double = QMetaType::Double,
-		LongLong = QMetaType::LongLong,
-		String = QMetaType::QString,
-		ByteArray = QMetaType::QByteArray,
-		Hash = QMetaType::QVariantHash,
-		Map = QMetaType::QVariantMap,
-		List = QMetaType::QVariantList
-	};
+enum Type {
+    Invalid = QMetaType::UnknownType,
+    Bool = QMetaType::Bool,
+    Int = QMetaType::Int,
+    Double = QMetaType::Double,
+    LongLong = QMetaType::LongLong,
+    String = QMetaType::QString,
+    ByteArray = QMetaType::QByteArray,
+    Hash = QMetaType::QVariantHash,
+    Map = QMetaType::QVariantMap,
+    List = QMetaType::QVariantList
+};
 }
 
-inline VariantType::Type typeId(const QVariant &v)
-{
+inline VariantType::Type typeId(const QVariant &v) {
 #if QT_VERSION >= 0x060000
-	return (VariantType::Type)v.typeId();
+    return (VariantType::Type)v.typeId();
 #else
-	return (VariantType::Type)v.type();
+    return (VariantType::Type)v.type();
 #endif
 }
 
-inline bool canConvert(const QVariant &v, VariantType::Type type)
-{
+inline bool canConvert(const QVariant &v, VariantType::Type type) {
 #if QT_VERSION >= 0x060000
     return v.canConvert(QMetaType((QMetaType::Type)type));
 #else

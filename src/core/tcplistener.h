@@ -17,38 +17,37 @@
 #ifndef TCPLISTENER_H
 #define TCPLISTENER_H
 
-#include <memory>
-#include <QHostAddress>
-#include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "tcpstream.h"
+#include <QHostAddress>
+#include <boost/signals2.hpp>
+#include <memory>
 
 class SocketNotifier;
 
-class TcpListener
-{
+class TcpListener {
 public:
-	TcpListener();
-	~TcpListener();
+    TcpListener();
+    ~TcpListener();
 
-	// Disable copying
-	TcpListener(const TcpListener &) = delete;
-	TcpListener & operator=(const TcpListener &) = delete;
+    // Disable copying
+    TcpListener(const TcpListener &) = delete;
+    TcpListener &operator=(const TcpListener &) = delete;
 
-	bool bind(const QHostAddress &addr, uint16_t port);
-	std::tuple<QHostAddress, uint16_t> localAddress() const;
-	std::unique_ptr<TcpStream> accept();
-	int errorCondition() const { return errorCondition_; }
+    bool bind(const QHostAddress &addr, uint16_t port);
+    std::tuple<QHostAddress, uint16_t> localAddress() const;
+    std::unique_ptr<TcpStream> accept();
+    int errorCondition() const { return errorCondition_; }
 
-	boost::signals2::signal<void()> streamsReady;
+    boost::signals2::signal<void()> streamsReady;
 
 private:
-	ffi::TcpListener *inner_;
-	std::unique_ptr<SocketNotifier> sn_;
-	int errorCondition_;
+    ffi::TcpListener *inner_;
+    std::unique_ptr<SocketNotifier> sn_;
+    int errorCondition_;
 
-	void reset();
-	void sn_activated();
+    void reset();
+    void sn_activated();
 };
 
 #endif

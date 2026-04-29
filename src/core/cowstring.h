@@ -17,39 +17,43 @@
 #ifndef COWSTRING_H
 #define COWSTRING_H
 
-#include <QString>
 #include "cowbytearray.h"
+#include <QString>
 
 // QString-like class that currently forwards to an inner QString, to
 // assist with reducing direct dependency on Qt. The API is designed to allow
 // cheap conversion to/from QString.
-class CowString
-{
+class CowString {
 public:
-	CowString() = default;
-	CowString(const CowString &other): inner_(other.inner_) {}
-	CowString(const char *str) : inner_(str) {}
-	CowString(const QString &other) : inner_(other) {}
-	CowString & operator=(const CowString &other) { inner_ = other.inner_; return *this; }
+    CowString() = default;
+    CowString(const CowString &other) : inner_(other.inner_) {}
+    CowString(const char *str) : inner_(str) {}
+    CowString(const QString &other) : inner_(other) {}
+    CowString &operator=(const CowString &other) {
+        inner_ = other.inner_;
+        return *this;
+    }
 
-	bool isEmpty() const { return inner_.isEmpty(); }
+    bool isEmpty() const { return inner_.isEmpty(); }
 
-	void clear() { inner_.clear(); }
+    void clear() { inner_.clear(); }
 
-	CowByteArray toUtf8() const { return inner_.toUtf8(); }
+    CowByteArray toUtf8() const { return inner_.toUtf8(); }
 
-	const QString & asQString() const { return inner_; }
-	QString & asQString() { return inner_; }
+    const QString &asQString() const { return inner_; }
+    QString &asQString() { return inner_; }
 
-	friend bool operator==(const CowString &lhs, const CowString &rhs);
-	friend bool operator==(const CowString &lhs, const char *const &rhs);
-	friend bool operator==(const char *const &lhs, const CowString &rhs);
+    friend bool operator==(const CowString &lhs, const CowString &rhs);
+    friend bool operator==(const CowString &lhs, const char *const &rhs);
+    friend bool operator==(const char *const &lhs, const CowString &rhs);
 
 private:
-	QString inner_;
+    QString inner_;
 };
 
-inline bool operator==(const CowString &lhs, const CowString &rhs) { return lhs.inner_ == rhs.inner_; }
+inline bool operator==(const CowString &lhs, const CowString &rhs) {
+    return lhs.inner_ == rhs.inner_;
+}
 inline bool operator==(const CowString &lhs, const char *const &rhs) { return lhs.inner_ == rhs; }
 inline bool operator==(const char *const &lhs, const CowString &rhs) { return lhs == rhs.inner_; }
 inline bool operator!=(const CowString &lhs, const CowString &rhs) { return !(lhs == rhs); }

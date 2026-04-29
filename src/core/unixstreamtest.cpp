@@ -20,282 +20,249 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include "unixstream.h"
+#include "eventloop.h"
+#include "test.h"
+#include "unixlistener.h"
+#include <QHostAddress>
 #include <chrono>
 #include <thread>
-#include <QHostAddress>
-#include "test.h"
-#include "eventloop.h"
-#include "unixlistener.h"
-#include "unixstream.h"
 
 using namespace std::chrono_literals;
 
-static void runAccept(std::function<void ()> loop_wait)
-{
-	// Remove existing pipe file
-	QDir outDir(qgetenv("OUT_DIR"));
-	QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-	QString path = workDir.filePath("test-cpp-unixstream");
-	QFile::remove(path);
+static void runAccept(std::function<void()> loop_wait) {
+    // Remove existing pipe file
+    QDir outDir(qgetenv("OUT_DIR"));
+    QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
+    QString path = workDir.filePath("test-cpp-unixstream");
+    QFile::remove(path);
 
-	UnixListener l;
-	TEST_ASSERT(l.bind(path));
+    UnixListener l;
+    TEST_ASSERT(l.bind(path));
 
-	// Start by assuming operations are possible
-	bool streamsReady = true;
+    // Start by assuming operations are possible
+    bool streamsReady = true;
 
-	l.streamsReady.connect([&] {
-		streamsReady = true;
-	});
+    l.streamsReady.connect([&] { streamsReady = true; });
 
-	std::unique_ptr<UnixStream> s = l.accept();
-	TEST_ASSERT(!s);
-	TEST_ASSERT_EQ(l.errorCondition(), EAGAIN);
-	streamsReady = false;
+    std::unique_ptr<UnixStream> s = l.accept();
+    TEST_ASSERT(!s);
+    TEST_ASSERT_EQ(l.errorCondition(), EAGAIN);
+    streamsReady = false;
 
-	UnixStream client;
-	TEST_ASSERT(client.connect(path));
+    UnixStream client;
+    TEST_ASSERT(client.connect(path));
 
-	// Start by assuming operations are possible
-	bool clientWriteReady = true;
+    // Start by assuming operations are possible
+    bool clientWriteReady = true;
 
-	client.writeReady.connect([&] {
-		clientWriteReady = true;
-	});
+    client.writeReady.connect([&] { clientWriteReady = true; });
 
-	while(!streamsReady)
-		loop_wait();
+    while (!streamsReady)
+        loop_wait();
 
-	s = l.accept();
-	TEST_ASSERT(s);
+    s = l.accept();
+    TEST_ASSERT(s);
 
-	while(!client.checkConnected())
-	{
-		TEST_ASSERT_EQ(client.errorCondition(), ENOTCONN);
+    while (!client.checkConnected()) {
+        TEST_ASSERT_EQ(client.errorCondition(), ENOTCONN);
 
-		clientWriteReady = false;
-		while(!clientWriteReady)
-			loop_wait();
-	}
+        clientWriteReady = false;
+        while (!clientWriteReady)
+            loop_wait();
+    }
 }
 
-static void runIo(std::function<void ()> loop_wait)
-{
-	// Remove existing pipe file
-	QDir outDir(qgetenv("OUT_DIR"));
-	QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-	QString path = workDir.filePath("test-cpp-unixstream");
-	QFile::remove(path);
+static void runIo(std::function<void()> loop_wait) {
+    // Remove existing pipe file
+    QDir outDir(qgetenv("OUT_DIR"));
+    QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
+    QString path = workDir.filePath("test-cpp-unixstream");
+    QFile::remove(path);
 
-	UnixListener l;
-	TEST_ASSERT(l.bind(path));
+    UnixListener l;
+    TEST_ASSERT(l.bind(path));
 
-	// Start by assuming operations are possible
-	bool streamsReady = true;
+    // Start by assuming operations are possible
+    bool streamsReady = true;
 
-	l.streamsReady.connect([&] {
-		streamsReady = true;
-	});
+    l.streamsReady.connect([&] { streamsReady = true; });
 
-	UnixStream client;
-	TEST_ASSERT(client.connect(path));
+    UnixStream client;
+    TEST_ASSERT(client.connect(path));
 
-	// Start by assuming operations are possible
-	bool clientReadReady = true;
-	bool clientWriteReady = true;
+    // Start by assuming operations are possible
+    bool clientReadReady = true;
+    bool clientWriteReady = true;
 
-	client.readReady.connect([&] {
-		clientReadReady = true;
-	});
+    client.readReady.connect([&] { clientReadReady = true; });
 
-	client.writeReady.connect([&] {
-		clientWriteReady = true;
-	});
+    client.writeReady.connect([&] { clientWriteReady = true; });
 
-	std::unique_ptr<UnixStream> s;
-	while(!s)
-	{
-		s = l.accept();
+    std::unique_ptr<UnixStream> s;
+    while (!s) {
+        s = l.accept();
 
-		if(!s)
-		{
-			TEST_ASSERT_EQ(l.errorCondition(), EAGAIN);
+        if (!s) {
+            TEST_ASSERT_EQ(l.errorCondition(), EAGAIN);
 
-			streamsReady = false;
-			while(!streamsReady)
-				loop_wait();
-		}
-	}
+            streamsReady = false;
+            while (!streamsReady)
+                loop_wait();
+        }
+    }
 
-	// Start by assuming operations are possible
-	bool readReady = true;
-	bool writeReady = true;
+    // Start by assuming operations are possible
+    bool readReady = true;
+    bool writeReady = true;
 
-	s->readReady.connect([&] {
-		readReady = true;
-	});
+    s->readReady.connect([&] { readReady = true; });
 
-	s->writeReady.connect([&] {
-		writeReady = true;
-	});
+    s->writeReady.connect([&] { writeReady = true; });
 
-	while(!client.checkConnected())
-	{
-		TEST_ASSERT_EQ(client.errorCondition(), ENOTCONN);
+    while (!client.checkConnected()) {
+        TEST_ASSERT_EQ(client.errorCondition(), ENOTCONN);
 
-		clientWriteReady = false;
-		while(!clientWriteReady)
-			loop_wait();
-	}
+        clientWriteReady = false;
+        while (!clientWriteReady)
+            loop_wait();
+    }
 
-	TEST_ASSERT(s->read().isNull());
-	TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
-	readReady = false;
+    TEST_ASSERT(s->read().isNull());
+    TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
+    readReady = false;
 
-	TEST_ASSERT_EQ(client.write("hello\n"), 6);
+    TEST_ASSERT_EQ(client.write("hello\n"), 6);
 
-	QByteArray received;
-	while(!received.contains('\n'))
-	{
-		QByteArray buf = s->read();
+    QByteArray received;
+    while (!received.contains('\n')) {
+        QByteArray buf = s->read();
 
-		if(buf.isNull())
-		{
-			TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
+        if (buf.isNull()) {
+            TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
 
-			readReady = false;
-			while(!readReady)
-				loop_wait();
+            readReady = false;
+            while (!readReady)
+                loop_wait();
 
-			continue;
-		}
+            continue;
+        }
 
-		TEST_ASSERT(!buf.isEmpty());
+        TEST_ASSERT(!buf.isEmpty());
 
-		received += buf;
-	}
+        received += buf;
+    }
 
-	TEST_ASSERT_EQ(received, "hello\n");
+    TEST_ASSERT_EQ(received, "hello\n");
 
-	QByteArray written;
-	received.clear();
+    QByteArray written;
+    received.clear();
 
-	// Write until we fill the system buffer
-	while(true)
-	{
-		QByteArray chunk(100000, 'a');
-		int ret = s->write(chunk);
+    // Write until we fill the system buffer
+    while (true) {
+        QByteArray chunk(100000, 'a');
+        int ret = s->write(chunk);
 
-		if(ret < 0)
-		{
-			TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
-			writeReady = false;
-			break;
-		}
+        if (ret < 0) {
+            TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
+            writeReady = false;
+            break;
+        }
 
-		written += chunk.mid(0, ret);
-	}
+        written += chunk.mid(0, ret);
+    }
 
-	// Wait for some bytes on the client side
-	while(received.isEmpty())
-	{
-		QByteArray buf = client.read(100000);
+    // Wait for some bytes on the client side
+    while (received.isEmpty()) {
+        QByteArray buf = client.read(100000);
 
-		if(buf.isNull())
-		{
-			TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
+        if (buf.isNull()) {
+            TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
 
-			clientReadReady = false;
-			while(!clientReadReady)
-				loop_wait();
+            clientReadReady = false;
+            while (!clientReadReady)
+                loop_wait();
 
-			continue;
-		}
+            continue;
+        }
 
-		received += buf;
-	}
+        received += buf;
+    }
 
-	// Now read as much as possible on the client side. This helps the
-	// server side gain writability sooner
-	while(true)
-	{
-		QByteArray buf = client.read(100000);
+    // Now read as much as possible on the client side. This helps the
+    // server side gain writability sooner
+    while (true) {
+        QByteArray buf = client.read(100000);
 
-		if(buf.isNull())
-		{
-			TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
-			clientReadReady = false;
-			break;
-		}
+        if (buf.isNull()) {
+            TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
+            clientReadReady = false;
+            break;
+        }
 
-		received += buf;
-	}
+        received += buf;
+    }
 
-	// Wait for writability
-	while(!writeReady)
-		loop_wait();
+    // Wait for writability
+    while (!writeReady)
+        loop_wait();
 
-	// Write more
-	{
-		QByteArray chunk(100000, 'a');
-		int ret = s->write(chunk);
-		TEST_ASSERT(ret > 0);
+    // Write more
+    {
+        QByteArray chunk(100000, 'a');
+        int ret = s->write(chunk);
+        TEST_ASSERT(ret > 0);
 
-		written += chunk.mid(0, ret);
-	}
+        written += chunk.mid(0, ret);
+    }
 
-	// Close the server side
-	s.reset();
+    // Close the server side
+    s.reset();
 
-	// Read until closed on the client side
-	while(true)
-	{
-		QByteArray buf = client.read(100000);
+    // Read until closed on the client side
+    while (true) {
+        QByteArray buf = client.read(100000);
 
-		if(buf.isNull())
-		{
-			TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
+        if (buf.isNull()) {
+            TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
 
-			clientReadReady = false;
-			while(!clientReadReady)
-				loop_wait();
+            clientReadReady = false;
+            while (!clientReadReady)
+                loop_wait();
 
-			continue;
-		}
+            continue;
+        }
 
-		if(buf.isEmpty())
-			break;
+        if (buf.isEmpty())
+            break;
 
-		received += buf;
-	}
+        received += buf;
+    }
 
-	TEST_ASSERT_EQ(received, written);
+    TEST_ASSERT_EQ(received, written);
 }
 
-static void accept()
-{
-	EventLoop loop(100);
+static void accept() {
+    EventLoop loop(100);
 
-	runAccept([&] {
-		std::this_thread::sleep_for(10ms);
-		loop.step();
-	});
+    runAccept([&] {
+        std::this_thread::sleep_for(10ms);
+        loop.step();
+    });
 }
 
-static void io()
-{
-	EventLoop loop(100);
+static void io() {
+    EventLoop loop(100);
 
-	runIo([&] {
-		std::this_thread::sleep_for(10ms);
-		loop.step();
-	});
+    runIo([&] {
+        std::this_thread::sleep_for(10ms);
+        loop.step();
+    });
 }
 
-extern "C" int unixstream_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(accept());
-	TEST_CATCH(io());
+extern "C" int unixstream_test(ffi::TestException *out_ex) {
+    TEST_CATCH(accept());
+    TEST_CATCH(io());
 
-	return 0;
+    return 0;
 }

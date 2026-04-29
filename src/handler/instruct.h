@@ -23,62 +23,49 @@
 #ifndef INSTRUCT_H
 #define INSTRUCT_H
 
-#include <QString>
-#include <QStringList>
-#include <QByteArray>
-#include <QList>
-#include <QHash>
 #include "packet/httpresponsedata.h"
 #include "url.h"
+#include <QByteArray>
+#include <QHash>
+#include <QList>
+#include <QString>
+#include <QStringList>
 
-class Instruct
-{
+class Instruct {
 public:
-	enum HoldMode
-	{
-		NoHold,
-		ResponseHold,
-		StreamHold
-	};
+    enum HoldMode { NoHold, ResponseHold, StreamHold };
 
-	enum KeepAliveMode
-	{
-		NoKeepAlive,
-		Idle,
-		Interval
-	};
+    enum KeepAliveMode { NoKeepAlive, Idle, Interval };
 
-	class Channel
-	{
-	public:
-		QString name;
-		QString prevId;
-		QStringList filters;
-	};
+    class Channel {
+    public:
+        QString name;
+        QString prevId;
+        QStringList filters;
+    };
 
-	HoldMode holdMode;
-	QList<Channel> channels;
-	int timeout;
-	QList<QByteArray> exposeHeaders;
-	KeepAliveMode keepAliveMode;
-	QByteArray keepAliveData;
-	int keepAliveTimeout;
-	QHash<QString, QString> meta;
-	HttpResponseData response;
-	Url nextLink;
-	int nextLinkTimeout;
-	Url goneLink;
+    HoldMode holdMode;
+    QList<Channel> channels;
+    int timeout;
+    QList<QByteArray> exposeHeaders;
+    KeepAliveMode keepAliveMode;
+    QByteArray keepAliveData;
+    int keepAliveTimeout;
+    QHash<QString, QString> meta;
+    HttpResponseData response;
+    Url nextLink;
+    int nextLinkTimeout;
+    Url goneLink;
 
-	Instruct() :
-		holdMode(NoHold),
-		timeout(-1),
-		keepAliveMode(NoKeepAlive),
-		keepAliveTimeout(-1),
-		nextLinkTimeout(-1)
-	{
-	}
+    Instruct()
+        : holdMode(NoHold),
+          timeout(-1),
+          keepAliveMode(NoKeepAlive),
+          keepAliveTimeout(-1),
+          nextLinkTimeout(-1) {}
 
-	static Instruct fromResponse(const HttpResponseData &response, bool *ok = 0, QString *errorMessage = 0);
+    static Instruct fromResponse(const HttpResponseData &response, bool *ok = 0,
+                                 QString *errorMessage = 0);
 };
 
 #endif

@@ -16,92 +16,76 @@
 
 #include "tcplistener.h"
 
-#include <assert.h>
 #include "socketnotifier.h"
+#include <assert.h>
 
-TcpListener::TcpListener() :
-	inner_(nullptr),
-	errorCondition_(0)
-{
+TcpListener::TcpListener() : inner_(nullptr), errorCondition_(0) {}
+
+TcpListener::~TcpListener() { reset(); }
+
+bool TcpListener::bind(const QHostAddress &addr, uint16_t port) {
+    reset();
+
+    QHostAddress a = addr;
+    if (a.isNull())
+        a = QHostAddress::Any;
+
+    QByteArray ip = a.toString().toUtf8();
+    errorCondition_ = 0;
+
+    inner_ = ffi::tcp_listener_bind(ip.data(), port, &errorCondition_);
+    if (!inner_)
+        return false;
+
+    int fd = ffi::tcp_listener_as_raw_fd(inner_);
+
+    sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
+    sn_->activated.connect(boost::bind(&TcpListener::sn_activated, this));
+    sn_->setReadEnabled(true);
+
+    return true;
 }
 
-TcpListener::~TcpListener()
-{
-	reset();
+std::tuple<QHostAddress, uint16_t> TcpListener::localAddress() const {
+    assert(inner_);
+
+    QByteArray ip(256, 0);
+    size_t ip_size = ip.size();
+    uint16_t port;
+    if (ffi::tcp_listener_local_addr(inner_, ip.data(), &ip_size, &port) != 0)
+        return {QHostAddress(), 0};
+
+    ip.resize(ip_size);
+    QHostAddress addr(QString::fromUtf8(ip));
+
+    return {addr, port};
 }
 
-bool TcpListener::bind(const QHostAddress &addr, uint16_t port)
-{
-	reset();
+std::unique_ptr<TcpStream> TcpListener::accept() {
+    assert(inner_);
 
-	QHostAddress a = addr;
-	if(a.isNull())
-		a = QHostAddress::Any;
+    errorCondition_ = 0;
 
-	QByteArray ip = a.toString().toUtf8();
-	errorCondition_ = 0;
+    ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &errorCondition_);
+    if (!s_inner) {
+        if (errorCondition_ == EAGAIN)
+            sn_->clearReadiness(SocketNotifier::Read);
 
-	inner_ = ffi::tcp_listener_bind(ip.data(), port, &errorCondition_);
-	if(!inner_)
-		return false;
+        return std::unique_ptr<TcpStream>(); // Null
+    }
 
-	int fd = ffi::tcp_listener_as_raw_fd(inner_);
+    TcpStream *s = new TcpStream(s_inner);
 
-	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
-	sn_->activated.connect(boost::bind(&TcpListener::sn_activated, this));
-	sn_->setReadEnabled(true);
-
-	return true;
+    return std::unique_ptr<TcpStream>(s);
 }
 
-std::tuple<QHostAddress, uint16_t> TcpListener::localAddress() const
-{
-	assert(inner_);
+void TcpListener::reset() {
+    sn_.reset();
 
-	QByteArray ip(256, 0);
-	size_t ip_size = ip.size();
-	uint16_t port;
-	if(ffi::tcp_listener_local_addr(inner_, ip.data(), &ip_size, &port) != 0)
-		return {QHostAddress(), 0};
-
-	ip.resize(ip_size);
-	QHostAddress addr(QString::fromUtf8(ip));
-
-	return {addr, port};
+    if (inner_) {
+        ffi::tcp_listener_destroy(inner_);
+        inner_ = nullptr;
+    }
 }
 
-std::unique_ptr<TcpStream> TcpListener::accept()
-{
-	assert(inner_);
-
-	errorCondition_ = 0;
-
-	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &errorCondition_);
-	if(!s_inner)
-	{
-		if(errorCondition_ == EAGAIN)
-			sn_->clearReadiness(SocketNotifier::Read);
-
-		return std::unique_ptr<TcpStream>(); // Null
-	}
-
-	TcpStream *s = new TcpStream(s_inner);
-
-	return std::unique_ptr<TcpStream>(s);
-}
-
-void TcpListener::reset()
-{
-	sn_.reset();
-
-	if(inner_)
-	{
-		ffi::tcp_listener_destroy(inner_);
-		inner_ = nullptr;
-	}
-}
-
-void TcpListener::sn_activated()
-{
-	streamsReady();
-}
+void TcpListener::sn_activated() { streamsReady(); }

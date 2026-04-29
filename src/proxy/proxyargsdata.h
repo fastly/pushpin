@@ -24,21 +24,20 @@
 #ifndef PROXYARGSDATA_H
 #define PROXYARGSDATA_H
 
+#include "rust/bindings.h"
 #include <QString>
 #include <QStringList>
-#include "rust/bindings.h"
 
 /// Stores the arguments passed into the proxy application from command line
-class ProxyArgsData
-{
+class ProxyArgsData {
 public:
-	QString configFile;
-	QString logFile;
-	int logLevel;
-	QString ipcPrefix;
-	QStringList routeLines;
+    QString configFile;
+    QString logFile;
+    int logLevel;
+    QString ipcPrefix;
+    QStringList routeLines;
 
-	ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
+    ProxyArgsData(const ffi::ProxyCliArgs *argsFfi);
 };
 
 #endif

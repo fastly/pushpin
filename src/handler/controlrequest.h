@@ -24,8 +24,8 @@
 #ifndef CONTROLREQUEST_H
 #define CONTROLREQUEST_H
 
-#include <boost/signals2.hpp>
 #include "cidset.h"
+#include <boost/signals2.hpp>
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -39,6 +39,6 @@ Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids);
 Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid);
 Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet);
 
-}
+} // namespace ControlRequest
 
 #endif

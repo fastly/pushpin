@@ -24,76 +24,68 @@
 #ifndef RETRYREQUESTPACKET_H
 #define RETRYREQUESTPACKET_H
 
+#include "httprequestdata.h"
 #include "variant.h"
 #include <QHostAddress>
-#include "httprequestdata.h"
 
-class RetryRequestPacket
-{
+class RetryRequestPacket {
 public:
-	typedef QPair<QByteArray, QByteArray> Rid;
+    typedef QPair<QByteArray, QByteArray> Rid;
 
-	class Request
-	{
-	public:
-		Rid rid;
-		bool https;
-		QHostAddress peerAddress;
-		bool debug;
-		bool autoCrossOrigin;
-		QByteArray jsonpCallback;
-		bool jsonpExtendedResponse;
-		int unreportedTime;
+    class Request {
+    public:
+        Rid rid;
+        bool https;
+        QHostAddress peerAddress;
+        bool debug;
+        bool autoCrossOrigin;
+        QByteArray jsonpCallback;
+        bool jsonpExtendedResponse;
+        int unreportedTime;
 
-		// Zhttp
-		int inSeq;
-		int outSeq;
-		int outCredits;
-		bool routerResp;
-		Variant userData;
+        // Zhttp
+        int inSeq;
+        int outSeq;
+        int outCredits;
+        bool routerResp;
+        Variant userData;
 
-		Request() :
-			https(false),
-			debug(false),
-			autoCrossOrigin(false),
-			jsonpExtendedResponse(false),
-			unreportedTime(-1),
-			inSeq(-1),
-			outSeq(-1),
-			outCredits(-1),
-			routerResp(false)
-		{
-		}
-	};
+        Request()
+            : https(false),
+              debug(false),
+              autoCrossOrigin(false),
+              jsonpExtendedResponse(false),
+              unreportedTime(-1),
+              inSeq(-1),
+              outSeq(-1),
+              outCredits(-1),
+              routerResp(false) {}
+    };
 
-	class InspectInfo
-	{
-	public:
-		bool doProxy;
-		QByteArray sharingKey;
-		QByteArray sid;
-		QHash<QByteArray, QByteArray> lastIds;
-		Variant userData;
+    class InspectInfo {
+    public:
+        bool doProxy;
+        QByteArray sharingKey;
+        QByteArray sid;
+        QHash<QByteArray, QByteArray> lastIds;
+        Variant userData;
 
-		InspectInfo() :
-			doProxy(false)
-		{
-		}
-	};
+        InspectInfo() : doProxy(false) {}
+    };
 
-	QList<Request> requests;
-	HttpRequestData requestData;
+    QList<Request> requests;
+    HttpRequestData requestData;
 
-	bool haveInspectInfo;
-	InspectInfo inspectInfo;
+    bool haveInspectInfo;
+    InspectInfo inspectInfo;
 
-	QByteArray route;
-	int retrySeq;
+    QByteArray route;
+    int retrySeq;
 
-	RetryRequestPacket();
+    RetryRequestPacket();
 
-	Variant toVariant() const;
-	bool fromVariant(const Variant &in);
+    Variant toVariant() const;
+    bool fromVariant(const Variant &in);
 };
 
 #endif

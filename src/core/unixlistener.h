@@ -17,37 +17,36 @@
 #ifndef UNIXLISTENER_H
 #define UNIXLISTENER_H
 
-#include <memory>
-#include <QHostAddress>
-#include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "unixstream.h"
+#include <QHostAddress>
+#include <boost/signals2.hpp>
+#include <memory>
 
 class SocketNotifier;
 
-class UnixListener
-{
+class UnixListener {
 public:
-	UnixListener();
-	~UnixListener();
+    UnixListener();
+    ~UnixListener();
 
-	// Disable copying
-	UnixListener(const UnixListener &) = delete;
-	UnixListener & operator=(const UnixListener &) = delete;
+    // Disable copying
+    UnixListener(const UnixListener &) = delete;
+    UnixListener &operator=(const UnixListener &) = delete;
 
-	bool bind(const QString &path);
-	std::unique_ptr<UnixStream> accept();
-	int errorCondition() const { return errorCondition_; }
+    bool bind(const QString &path);
+    std::unique_ptr<UnixStream> accept();
+    int errorCondition() const { return errorCondition_; }
 
-	boost::signals2::signal<void()> streamsReady;
+    boost::signals2::signal<void()> streamsReady;
 
 private:
-	ffi::UnixListener *inner_;
-	std::unique_ptr<SocketNotifier> sn_;
-	int errorCondition_;
+    ffi::UnixListener *inner_;
+    std::unique_ptr<SocketNotifier> sn_;
+    int errorCondition_;
 
-	void reset();
-	void sn_activated();
+    void reset();
+    void sn_activated();
 };
 
 #endif

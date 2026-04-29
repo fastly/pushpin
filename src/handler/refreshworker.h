@@ -24,12 +24,12 @@
 #ifndef REFRESHWORKER_H
 #define REFRESHWORKER_H
 
+#include "deferred.h"
+#include "zrpcrequest.h"
 #include <QByteArray>
 #include <QHash>
 #include <QSet>
 #include <boost/signals2.hpp>
-#include "deferred.h"
-#include "zrpcrequest.h"
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -37,22 +37,22 @@ class ZrpcManager;
 class StatsManager;
 class WsSession;
 
-class RefreshWorker : public Deferred
-{
+class RefreshWorker : public Deferred {
 public:
-	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel);
+    RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient,
+                  QHash<QString, QSet<WsSession *>> *wsSessionsByChannel);
 
 private:
-	QStringList cids_;
-	bool ignoreErrors_;
-	ZrpcManager *proxyControlClient_;
-	std::unique_ptr<ZrpcRequest> req_;
-	std::unique_ptr<Deferred> refresh_;
-	Connection finishedConnection_;
+    QStringList cids_;
+    bool ignoreErrors_;
+    ZrpcManager *proxyControlClient_;
+    std::unique_ptr<ZrpcRequest> req_;
+    std::unique_ptr<Deferred> refresh_;
+    Connection finishedConnection_;
 
-	void refreshNextCid();
-	void respondError(const QByteArray &condition);
-	void proxyRefresh_finished(const DeferredResult &result);
+    void refreshNextCid();
+    void respondError(const QByteArray &condition);
+    void proxyRefresh_finished(const DeferredResult &result);
 };
 
 #endif

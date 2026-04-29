@@ -23,32 +23,30 @@ class EventLoop;
 
 namespace Event {
 
-enum Interest
-{
-	Readable = ffi::READABLE,
-	Writable = ffi::WRITABLE,
+enum Interest {
+    Readable = ffi::READABLE,
+    Writable = ffi::WRITABLE,
 };
 
-class SetReadiness
-{
+class SetReadiness {
 public:
-	~SetReadiness();
+    ~SetReadiness();
 
-	// Disable copying
-	SetReadiness(const SetReadiness &) = delete;
-	SetReadiness & operator=(const SetReadiness &) = delete;
+    // Disable copying
+    SetReadiness(const SetReadiness &) = delete;
+    SetReadiness &operator=(const SetReadiness &) = delete;
 
-	// Pass a non-zero set of Interest flags
-	int setReadiness(uint8_t readiness);
+    // Pass a non-zero set of Interest flags
+    int setReadiness(uint8_t readiness);
 
 private:
-	friend class ::EventLoop;
+    friend class ::EventLoop;
 
-	SetReadiness(ffi::SetReadiness *inner);
+    SetReadiness(ffi::SetReadiness *inner);
 
-	ffi::SetReadiness *inner_;
+    ffi::SetReadiness *inner_;
 };
 
-}
+} // namespace Event
 
 #endif

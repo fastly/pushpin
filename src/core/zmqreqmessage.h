@@ -26,59 +26,48 @@
 
 #include "cowbytearray.h"
 
-class ZmqReqMessage
-{
+class ZmqReqMessage {
 public:
-	ZmqReqMessage()
-	{
-	}
+    ZmqReqMessage() {}
 
-	ZmqReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content) :
-		headers_(headers),
-		content_(content)
-	{
-	}
+    ZmqReqMessage(const CowByteArrayList &headers, const CowByteArrayList &content)
+        : headers_(headers), content_(content) {}
 
-	ZmqReqMessage(const CowByteArrayList &rawMessage)
-	{
-		bool collectHeaders = true;
-		for(CowByteArrayConstRef part : std::as_const(rawMessage))
-		{
-			if(part.isEmpty())
-			{
-				collectHeaders = false;
-				continue;
-			}
+    ZmqReqMessage(const CowByteArrayList &rawMessage) {
+        bool collectHeaders = true;
+        for (CowByteArrayConstRef part : std::as_const(rawMessage)) {
+            if (part.isEmpty()) {
+                collectHeaders = false;
+                continue;
+            }
 
-			if(collectHeaders)
-				headers_ += part;
-			else
-				content_ += part;
-		}
-	}
+            if (collectHeaders)
+                headers_ += part;
+            else
+                content_ += part;
+        }
+    }
 
-	bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
+    bool isNull() const { return headers_.isEmpty() && content_.isEmpty(); }
 
-	CowByteArrayList headers() const { return headers_; }
-	CowByteArrayList content() const { return content_; }
+    CowByteArrayList headers() const { return headers_; }
+    CowByteArrayList content() const { return content_; }
 
-	ZmqReqMessage createReply(const CowByteArrayList &content)
-	{
-		return ZmqReqMessage(headers_, content);
-	}
+    ZmqReqMessage createReply(const CowByteArrayList &content) {
+        return ZmqReqMessage(headers_, content);
+    }
 
-	CowByteArrayList toRawMessage() const
-	{
-		CowByteArrayList out;
-		out += headers_;
-		out += CowByteArray();
-		out += content_;
-		return out;
-	}
+    CowByteArrayList toRawMessage() const {
+        CowByteArrayList out;
+        out += headers_;
+        out += CowByteArray();
+        out += content_;
+        return out;
+    }
 
 private:
-	CowByteArrayList headers_;
-	CowByteArrayList content_;
+    CowByteArrayList headers_;
+    CowByteArrayList content_;
 };
 
 #endif

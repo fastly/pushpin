@@ -25,30 +25,24 @@
 
 #include "service.h"
 
-class ZurlService : public Service
-{
+class ZurlService : public Service {
 public:
-	ZurlService(
-		const QString &binFile,
-		const QString &configTemplateFile,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &ipcPrefix,
-		const QString &filePrefix,
-		int logLevel);
+    ZurlService(const QString &binFile, const QString &configTemplateFile, const QString &runDir,
+                const QString &logDir, const QString &ipcPrefix, const QString &filePrefix,
+                int logLevel);
 
-	// Reimplemented
+    // Reimplemented
 
-	virtual QStringList arguments() const;
-	virtual bool acceptSighup() const;
-	virtual bool preStart();
+    virtual QStringList arguments() const;
+    virtual bool acceptSighup() const;
+    virtual bool preStart();
 
 private:
-	QString configTemplateFile_;
-	QString runDir_;
-	QString ipcPrefix_;
-	QString filePrefix_;
-	QStringList args_;
+    QString configTemplateFile_;
+    QString runDir_;
+    QString ipcPrefix_;
+    QString filePrefix_;
+    QStringList args_;
 };
 
 #endif

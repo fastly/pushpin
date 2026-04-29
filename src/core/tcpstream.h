@@ -17,51 +17,50 @@
 #ifndef TCPSTREAM_H
 #define TCPSTREAM_H
 
-#include <memory>
-#include <variant>
+#include "readwrite.h"
+#include "rust/bindings.h"
 #include <QByteArray>
 #include <boost/signals2.hpp>
-#include "rust/bindings.h"
-#include "readwrite.h"
+#include <memory>
+#include <variant>
 
 class QHostAddress;
 
 class SocketNotifier;
 
-class TcpStream : public ReadWrite
-{
+class TcpStream : public ReadWrite {
 public:
-	TcpStream();
-	~TcpStream();
+    TcpStream();
+    ~TcpStream();
 
-	// Disable copying
-	TcpStream(const TcpStream &) = delete;
-	TcpStream & operator=(const TcpStream &) = delete;
+    // Disable copying
+    TcpStream(const TcpStream &) = delete;
+    TcpStream &operator=(const TcpStream &) = delete;
 
-	// Returns true if connection starting, false on error
-	bool connect(const QHostAddress &addr, uint16_t port);
+    // Returns true if connection starting, false on error
+    bool connect(const QHostAddress &addr, uint16_t port);
 
-	// Returns true if connected, false on error. If errorCondition() returns
-	// ENOTCONN, then it is not fatal and the socket is still connecting
-	bool checkConnected();
+    // Returns true if connected, false on error. If errorCondition() returns
+    // ENOTCONN, then it is not fatal and the socket is still connecting
+    bool checkConnected();
 
-	// Reimplemented
-	virtual QByteArray read(int size = -1);
-	virtual int write(const QByteArray &buf);
-	virtual int errorCondition() const { return errorCondition_; }
+    // Reimplemented
+    virtual QByteArray read(int size = -1);
+    virtual int write(const QByteArray &buf);
+    virtual int errorCondition() const { return errorCondition_; }
 
 private:
-	friend class TcpListener;
+    friend class TcpListener;
 
-	ffi::TcpStream *inner_;
-	std::unique_ptr<SocketNotifier> sn_;
-	int errorCondition_;
-	std::shared_ptr<std::monostate> alive_;
+    ffi::TcpStream *inner_;
+    std::unique_ptr<SocketNotifier> sn_;
+    int errorCondition_;
+    std::shared_ptr<std::monostate> alive_;
 
-	TcpStream(ffi::TcpStream *inner);
-	void reset();
-	void setupNotifier();
-	void sn_activated(int socket, uint8_t readiness);
+    TcpStream(ffi::TcpStream *inner);
+    void reset();
+    void setupNotifier();
+    void sn_activated(int socket, uint8_t readiness);
 };
 
 #endif

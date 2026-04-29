@@ -24,17 +24,16 @@
 #ifndef ZMQCONTEXT_H
 #define ZMQCONTEXT_H
 
-class ZmqContext
-{
+class ZmqContext {
 public:
-	ZmqContext(int ioThreads = 1);
-	~ZmqContext();
+    ZmqContext(int ioThreads = 1);
+    ~ZmqContext();
 
-	// The zmq context
-	void *context() { return context_; }
+    // The zmq context
+    void *context() { return context_; }
 
 private:
-	void *context_;
+    void *context_;
 };
 
 #endif

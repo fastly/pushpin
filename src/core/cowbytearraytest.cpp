@@ -20,245 +20,236 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <string.h>
-#include "test.h"
 #include "cowbytearray.h"
+#include "test.h"
+#include <string.h>
 
-static void constructors()
-{
-	// Default
-	CowByteArray a;
-	TEST_ASSERT(a.isEmpty());
+static void constructors() {
+    // Default
+    CowByteArray a;
+    TEST_ASSERT(a.isEmpty());
 
-	// Char*
-	CowByteArray b("hello");
-	TEST_ASSERT_EQ(b, "hello");
+    // Char*
+    CowByteArray b("hello");
+    TEST_ASSERT_EQ(b, "hello");
 
-	// Copy
-	CowByteArray c(b);
-	TEST_ASSERT_EQ(c, "hello");
+    // Copy
+    CowByteArray c(b);
+    TEST_ASSERT_EQ(c, "hello");
 
-	// Const ref
-	QByteArray qa("hello");
-	CowByteArrayConstRef constRef(qa);
-	CowByteArray d(constRef);
-	TEST_ASSERT_EQ(d, "hello");
+    // Const ref
+    QByteArray qa("hello");
+    CowByteArrayConstRef constRef(qa);
+    CowByteArray d(constRef);
+    TEST_ASSERT_EQ(d, "hello");
 
-	// Ref
-	CowByteArrayRef ref(qa);
-	CowByteArray e(ref);
-	TEST_ASSERT_EQ(e, "hello");
+    // Ref
+    CowByteArrayRef ref(qa);
+    CowByteArray e(ref);
+    TEST_ASSERT_EQ(e, "hello");
 
-	// QByteArray
-	CowByteArray f(qa);
-	TEST_ASSERT_EQ(f, "hello");
+    // QByteArray
+    CowByteArray f(qa);
+    TEST_ASSERT_EQ(f, "hello");
 
-	// Char* with limit
-	CowByteArray g("hello", 3);
-	TEST_ASSERT_EQ(g, "hel");
+    // Char* with limit
+    CowByteArray g("hello", 3);
+    TEST_ASSERT_EQ(g, "hel");
 
-	// Sized
-	CowByteArray h(10, 'a');
-	TEST_ASSERT_EQ(h, "aaaaaaaaaa");
+    // Sized
+    CowByteArray h(10, 'a');
+    TEST_ASSERT_EQ(h, "aaaaaaaaaa");
 }
 
-static void methods()
-{
-	// IsNull
-	CowByteArray n;
-	TEST_ASSERT(n.isNull());
-	TEST_ASSERT(n.isEmpty());
+static void methods() {
+    // IsNull
+    CowByteArray n;
+    TEST_ASSERT(n.isNull());
+    TEST_ASSERT(n.isEmpty());
 
-	// IsEmpty
-	CowByteArray empty("");
-	TEST_ASSERT(!empty.isNull());
-	TEST_ASSERT(empty.isEmpty());
+    // IsEmpty
+    CowByteArray empty("");
+    TEST_ASSERT(!empty.isNull());
+    TEST_ASSERT(empty.isEmpty());
 
-	// Size and length
-	CowByteArray a("hello");
-	TEST_ASSERT_EQ(a.size(), 5);
-	TEST_ASSERT_EQ(a.length(), 5);
+    // Size and length
+    CowByteArray a("hello");
+    TEST_ASSERT_EQ(a.size(), 5);
+    TEST_ASSERT_EQ(a.length(), 5);
 
-	// Data (const and non)
-	// data is null-terminated but the null is not counted in the size
-	TEST_ASSERT_EQ(strcmp(std::as_const(a).data(), "hello"), 0);
-	TEST_ASSERT_EQ(strcmp(a.data(), "hello"), 0);
+    // Data (const and non)
+    // data is null-terminated but the null is not counted in the size
+    TEST_ASSERT_EQ(strcmp(std::as_const(a).data(), "hello"), 0);
+    TEST_ASSERT_EQ(strcmp(a.data(), "hello"), 0);
 
-	// IndexOf
-	TEST_ASSERT_EQ(a.indexOf('l'), 2);
-	TEST_ASSERT_EQ(a.indexOf('z'), -1);
+    // IndexOf
+    TEST_ASSERT_EQ(a.indexOf('l'), 2);
+    TEST_ASSERT_EQ(a.indexOf('z'), -1);
 
-	// Mid
-	CowByteArray b = a.mid(0, 3);
-	CowByteArray c = a.mid(3);
-	TEST_ASSERT_EQ(b, "hel");
-	TEST_ASSERT_EQ(c, "lo");
+    // Mid
+    CowByteArray b = a.mid(0, 3);
+    CowByteArray c = a.mid(3);
+    TEST_ASSERT_EQ(b, "hel");
+    TEST_ASSERT_EQ(c, "lo");
 
-	// Trimmed
-	TEST_ASSERT_EQ(CowByteArray(" hel lo ").trimmed(), "hel lo");
+    // Trimmed
+    TEST_ASSERT_EQ(CowByteArray(" hel lo ").trimmed(), "hel lo");
 
-	// Clear
-	CowByteArray d("hello");
-	TEST_ASSERT(!d.isEmpty());
-	d.clear();
-	TEST_ASSERT(d.isEmpty());
+    // Clear
+    CowByteArray d("hello");
+    TEST_ASSERT(!d.isEmpty());
+    d.clear();
+    TEST_ASSERT(d.isEmpty());
 
-	// Resize down
-	a.resize(3);
-	TEST_ASSERT_EQ(a, "hel");
+    // Resize down
+    a.resize(3);
+    TEST_ASSERT_EQ(a, "hel");
 
-	// Resize up
-	a.resize(10); // Extended data is uninitialized!
-	TEST_ASSERT_EQ(a.size(), 10);
+    // Resize up
+    a.resize(10); // Extended data is uninitialized!
+    TEST_ASSERT_EQ(a.size(), 10);
 }
 
-static void operators()
-{
-	// Operator=
-	CowByteArray a;
-	a = CowByteArray("hello");
-	TEST_ASSERT_EQ(a, "hello");
+static void operators() {
+    // Operator=
+    CowByteArray a;
+    a = CowByteArray("hello");
+    TEST_ASSERT_EQ(a, "hello");
 
-	// Operator[] (const)
-	TEST_ASSERT_EQ(std::as_const(a)[1], 'e');
-	TEST_ASSERT_EQ(a[1], 'e');
+    // Operator[] (const)
+    TEST_ASSERT_EQ(std::as_const(a)[1], 'e');
+    TEST_ASSERT_EQ(a[1], 'e');
 
-	// Operator[] (non-const)
-	a[1] = 'a';
-	TEST_ASSERT_EQ(a, "hallo");
+    // Operator[] (non-const)
+    a[1] = 'a';
+    TEST_ASSERT_EQ(a, "hallo");
 
-	// Operator+
-	TEST_ASSERT_EQ(CowByteArray("hello") + CowByteArray(" world"), "hello world");
-	TEST_ASSERT_EQ(CowByteArray("hello") + " world", "hello world");
-	TEST_ASSERT_EQ("hello" + CowByteArray(" world"), "hello world");
+    // Operator+
+    TEST_ASSERT_EQ(CowByteArray("hello") + CowByteArray(" world"), "hello world");
+    TEST_ASSERT_EQ(CowByteArray("hello") + " world", "hello world");
+    TEST_ASSERT_EQ("hello" + CowByteArray(" world"), "hello world");
 
-	// Operator+=
-	a += CowByteArray(" world");
-	TEST_ASSERT_EQ(a, "hallo world");
-	a += '!';
-	TEST_ASSERT_EQ(a, "hallo world!");
-	a += "11";
-	TEST_ASSERT_EQ(a, "hallo world!11");
+    // Operator+=
+    a += CowByteArray(" world");
+    TEST_ASSERT_EQ(a, "hallo world");
+    a += '!';
+    TEST_ASSERT_EQ(a, "hallo world!");
+    a += "11";
+    TEST_ASSERT_EQ(a, "hallo world!11");
 
-	// Operator==
-	a = "hello";
-	TEST_ASSERT(CowByteArray("hello") == CowByteArray("hello"));
-	TEST_ASSERT(CowByteArray("hello") == "hello");
-	TEST_ASSERT("hello" == CowByteArray("hello"));
+    // Operator==
+    a = "hello";
+    TEST_ASSERT(CowByteArray("hello") == CowByteArray("hello"));
+    TEST_ASSERT(CowByteArray("hello") == "hello");
+    TEST_ASSERT("hello" == CowByteArray("hello"));
 
-	// Operator!=
-	TEST_ASSERT(CowByteArray("hello") != CowByteArray("world"));
-	TEST_ASSERT(CowByteArray("hello") != "world");
-	TEST_ASSERT("hello" != CowByteArray("world"));
+    // Operator!=
+    TEST_ASSERT(CowByteArray("hello") != CowByteArray("world"));
+    TEST_ASSERT(CowByteArray("hello") != "world");
+    TEST_ASSERT("hello" != CowByteArray("world"));
 }
 
-static void conversions()
-{
-	CowByteArray a("hello");
-	TEST_ASSERT_EQ(a.asQByteArray(), "hello");
+static void conversions() {
+    CowByteArray a("hello");
+    TEST_ASSERT_EQ(a.asQByteArray(), "hello");
 }
 
-static void listConstructors()
-{
-	// Default
-	CowByteArrayList a;
-	TEST_ASSERT(a.isEmpty());
+static void listConstructors() {
+    // Default
+    CowByteArrayList a;
+    TEST_ASSERT(a.isEmpty());
 
-	// QList<QByteArray>
-	QList<QByteArray> ql;
-	ql += "hello";
-	ql += "world";
-	CowByteArrayList b(ql);
-	TEST_ASSERT_EQ(b.count(), 2);
-	TEST_ASSERT_EQ(b[0], "hello");
-	TEST_ASSERT_EQ(b[1], "world");
+    // QList<QByteArray>
+    QList<QByteArray> ql;
+    ql += "hello";
+    ql += "world";
+    CowByteArrayList b(ql);
+    TEST_ASSERT_EQ(b.count(), 2);
+    TEST_ASSERT_EQ(b[0], "hello");
+    TEST_ASSERT_EQ(b[1], "world");
 }
 
-static void listMethods()
-{
-	// IsEmpty
-	CowByteArrayList a;
-	TEST_ASSERT(a.isEmpty());
+static void listMethods() {
+    // IsEmpty
+    CowByteArrayList a;
+    TEST_ASSERT(a.isEmpty());
 
-	// Count
-	a += CowByteArray("hello");
-	a += CowByteArray("world");
-	TEST_ASSERT_EQ(a.count(), 2);
+    // Count
+    a += CowByteArray("hello");
+    a += CowByteArray("world");
+    TEST_ASSERT_EQ(a.count(), 2);
 
-	// Contains
-	TEST_ASSERT(a.contains("world"));
-	TEST_ASSERT(!a.contains("foo"));
+    // Contains
+    TEST_ASSERT(a.contains("world"));
+    TEST_ASSERT(!a.contains("foo"));
 
-	// Begin/end (const)
-	CowByteArrayList::const_iterator cit = std::as_const(a).begin();
-	TEST_ASSERT_EQ(*cit, "hello");
+    // Begin/end (const)
+    CowByteArrayList::const_iterator cit = std::as_const(a).begin();
+    TEST_ASSERT_EQ(*cit, "hello");
 
-	++cit;
-	TEST_ASSERT_EQ(*cit, "world");
+    ++cit;
+    TEST_ASSERT_EQ(*cit, "world");
 
-	++cit;
-	TEST_ASSERT_EQ(cit, std::as_const(a).end());
+    ++cit;
+    TEST_ASSERT_EQ(cit, std::as_const(a).end());
 
-	// Begin/end (non-const)
-	CowByteArrayList::iterator it = a.begin();
-	TEST_ASSERT_EQ(*it, "hello");
+    // Begin/end (non-const)
+    CowByteArrayList::iterator it = a.begin();
+    TEST_ASSERT_EQ(*it, "hello");
 
-	(*it)[1] = 'a';
-	TEST_ASSERT_EQ(a[0], "hallo");
+    (*it)[1] = 'a';
+    TEST_ASSERT_EQ(a[0], "hallo");
 }
 
-static void listOperators()
-{
-	CowByteArrayList a;
+static void listOperators() {
+    CowByteArrayList a;
 
-	CowByteArrayList b;
-	b += "apple";
-	b += "banana";
+    CowByteArrayList b;
+    b += "apple";
+    b += "banana";
 
-	a += b;
-	a += CowByteArray("cherry");
-	a += QByteArray("date");
-	a += "elderberry";
+    a += b;
+    a += CowByteArray("cherry");
+    a += QByteArray("date");
+    a += "elderberry";
 
-	const CowByteArrayList &ac = a;
-	TEST_ASSERT_EQ(ac.count(), 5);
-	TEST_ASSERT_EQ(ac[0], "apple");
-	TEST_ASSERT_EQ(ac[1], "banana");
-	TEST_ASSERT_EQ(ac[2], "cherry");
-	TEST_ASSERT_EQ(ac[3], "date");
-	TEST_ASSERT_EQ(ac[4], "elderberry");
+    const CowByteArrayList &ac = a;
+    TEST_ASSERT_EQ(ac.count(), 5);
+    TEST_ASSERT_EQ(ac[0], "apple");
+    TEST_ASSERT_EQ(ac[1], "banana");
+    TEST_ASSERT_EQ(ac[2], "cherry");
+    TEST_ASSERT_EQ(ac[3], "date");
+    TEST_ASSERT_EQ(ac[4], "elderberry");
 
-	a[2] = "cantaloupe";
-	TEST_ASSERT_EQ(a[2], "cantaloupe");
+    a[2] = "cantaloupe";
+    TEST_ASSERT_EQ(a[2], "cantaloupe");
 }
 
-static void listConversions()
-{
-	CowByteArrayList a;
-	a += "hello";
-	a += "world";
+static void listConversions() {
+    CowByteArrayList a;
+    a += "hello";
+    a += "world";
 
-	const QList<QByteArray> &qlc = std::as_const(a.asQByteArrayList());
-	TEST_ASSERT_EQ(qlc.count(), 2);
-	TEST_ASSERT_EQ(qlc[0], "hello");
-	TEST_ASSERT_EQ(qlc[1], "world");
+    const QList<QByteArray> &qlc = std::as_const(a.asQByteArrayList());
+    TEST_ASSERT_EQ(qlc.count(), 2);
+    TEST_ASSERT_EQ(qlc[0], "hello");
+    TEST_ASSERT_EQ(qlc[1], "world");
 
-	QList<QByteArray> &ql = a.asQByteArrayList();
-	ql += "foo";
-	TEST_ASSERT_EQ(a.count(), 3);
-	TEST_ASSERT_EQ(a[2], "foo");
+    QList<QByteArray> &ql = a.asQByteArrayList();
+    ql += "foo";
+    TEST_ASSERT_EQ(a.count(), 3);
+    TEST_ASSERT_EQ(a[2], "foo");
 }
 
-extern "C" int cowbytearray_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(constructors());
-	TEST_CATCH(methods());
-	TEST_CATCH(operators());
-	TEST_CATCH(conversions());
-	TEST_CATCH(listConstructors());
-	TEST_CATCH(listMethods());
-	TEST_CATCH(listOperators());
-	TEST_CATCH(listConversions());
+extern "C" int cowbytearray_test(ffi::TestException *out_ex) {
+    TEST_CATCH(constructors());
+    TEST_CATCH(methods());
+    TEST_CATCH(operators());
+    TEST_CATCH(conversions());
+    TEST_CATCH(listConstructors());
+    TEST_CATCH(listMethods());
+    TEST_CATCH(listOperators());
+    TEST_CATCH(listConversions());
 
-	return 0;
+    return 0;
 }

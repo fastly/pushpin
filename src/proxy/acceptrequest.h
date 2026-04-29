@@ -31,34 +31,29 @@ class AcceptData;
 class ZrpcManager;
 
 /// Manages handoff of Accept-type HTTP request to the handler
-class AcceptRequest : public ZrpcRequest
-{
+class AcceptRequest : public ZrpcRequest {
 public:
-	class ResponseData
-	{
-	public:
-		bool accepted;
-		HttpResponseData response;
+    class ResponseData {
+    public:
+        bool accepted;
+        HttpResponseData response;
 
-		ResponseData() :
-			accepted(false)
-		{
-		}
-	};
+        ResponseData() : accepted(false) {}
+    };
 
-	AcceptRequest(ZrpcManager *manager);
-	~AcceptRequest();
+    AcceptRequest(ZrpcManager *manager);
+    ~AcceptRequest();
 
-	ResponseData result() const;
+    ResponseData result() const;
 
-	void start(const AcceptData &adata);
+    void start(const AcceptData &adata);
 
 protected:
-	virtual void onSuccess();
+    virtual void onSuccess();
 
 private:
-	class Private;
-	std::unique_ptr<Private> d;
+    class Private;
+    std::unique_ptr<Private> d;
 };
 
 #endif

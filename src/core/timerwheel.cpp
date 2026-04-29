@@ -24,43 +24,26 @@
 
 #include "rust/bindings.h"
 
-TimerWheel::TimerWheel(int capacity)
-{
-	raw_ = ffi::timer_wheel_create(capacity);
+TimerWheel::TimerWheel(int capacity) { raw_ = ffi::timer_wheel_create(capacity); }
+
+TimerWheel::~TimerWheel() { ffi::timer_wheel_destroy(raw_); }
+
+int TimerWheel::add(uint64_t expires, size_t userData) {
+    return ffi::timer_add(raw_, expires, userData);
 }
 
-TimerWheel::~TimerWheel()
-{
-	ffi::timer_wheel_destroy(raw_);
-}
+void TimerWheel::remove(int key) { ffi::timer_remove(raw_, key); }
 
-int TimerWheel::add(uint64_t expires, size_t userData)
-{
-	return ffi::timer_add(raw_, expires, userData);
-}
+int64_t TimerWheel::timeout() const { return ffi::timer_wheel_timeout(raw_); }
 
-void TimerWheel::remove(int key)
-{
-	ffi::timer_remove(raw_, key);
-}
+void TimerWheel::update(uint64_t curtime) { ffi::timer_wheel_update(raw_, curtime); }
 
-int64_t TimerWheel::timeout() const
-{
-	return ffi::timer_wheel_timeout(raw_);
-}
+TimerWheel::Expired TimerWheel::takeExpired() {
+    ffi::ExpiredTimer ret = ffi::timer_wheel_take_expired(raw_);
 
-void TimerWheel::update(uint64_t curtime)
-{
-	ffi::timer_wheel_update(raw_, curtime);
-}
+    Expired expired;
+    expired.key = ret.key;
+    expired.userData = ret.user_data;
 
-TimerWheel::Expired TimerWheel::takeExpired()
-{
-	ffi::ExpiredTimer ret = ffi::timer_wheel_take_expired(raw_);
-
-	Expired expired;
-	expired.key = ret.key;
-	expired.userData = ret.user_data;
-
-	return expired;
+    return expired;
 }

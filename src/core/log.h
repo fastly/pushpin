@@ -25,10 +25,10 @@
 
 // Really simply logging stuff
 
-#define LOG_LEVEL_ERROR   0
+#define LOG_LEVEL_ERROR 0
 #define LOG_LEVEL_WARNING 1
-#define LOG_LEVEL_INFO    2
-#define LOG_LEVEL_DEBUG   3
+#define LOG_LEVEL_INFO 2
+#define LOG_LEVEL_DEBUG 3
 
 void log_startClock();
 int log_outputLevel();

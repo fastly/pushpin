@@ -22,304 +22,265 @@
 
 #include "defercall.h"
 
-#include <QObject>
-#include <QMetaObject>
-#include <boost/signals2.hpp>
-#include "timer.h"
 #include "event.h"
 #include "eventloop.h"
+#include "timer.h"
+#include <QMetaObject>
+#include <QObject>
+#include <boost/signals2.hpp>
 
 namespace {
 
-class ThreadWake : public QObject
-{
-	Q_OBJECT
+class ThreadWake : public QObject {
+    Q_OBJECT
 
 public:
-	ThreadWake() :
-		customRegId_(-1),
-		wakeQueued_(false)
-	{
-		EventLoop *loop = EventLoop::instance();
+    ThreadWake() : customRegId_(-1), wakeQueued_(false) {
+        EventLoop *loop = EventLoop::instance();
 
-		if(loop)
-		{
-			auto [regId, sr] = loop->registerCustom(ThreadWake::cb_ready, this);
-			assert(regId >= 0);
+        if (loop) {
+            auto [regId, sr] = loop->registerCustom(ThreadWake::cb_ready, this);
+            assert(regId >= 0);
 
-			customRegId_ = regId;
-			sr_ = std::move(sr);
-		}
-	}
+            customRegId_ = regId;
+            sr_ = std::move(sr);
+        }
+    }
 
-	~ThreadWake()
-	{
-		if(customRegId_ >= 0)
-			EventLoop::instance()->deregister(customRegId_);
-	}
+    ~ThreadWake() {
+        if (customRegId_ >= 0)
+            EventLoop::instance()->deregister(customRegId_);
+    }
 
-	// Requests the awake signal to be emitted from the object's event loop
-	// at the next opportunity. This is safe to call from another thread. If
-	// this is called multiple times before the signal is emitted, the signal
-	// will only be emitted once.
-	void wake()
-	{
-		std::lock_guard<std::mutex> guard(mutex_);
+    // Requests the awake signal to be emitted from the object's event loop
+    // at the next opportunity. This is safe to call from another thread. If
+    // this is called multiple times before the signal is emitted, the signal
+    // will only be emitted once.
+    void wake() {
+        std::lock_guard<std::mutex> guard(mutex_);
 
-		if(wakeQueued_)
-			return;
+        if (wakeQueued_)
+            return;
 
-		wakeQueued_ = true;
+        wakeQueued_ = true;
 
-		if(sr_)
-			sr_->setReadiness(Event::Readable);
-		else
-			QMetaObject::invokeMethod(this, "slotReady", Qt::QueuedConnection);
-	}
+        if (sr_)
+            sr_->setReadiness(Event::Readable);
+        else
+            QMetaObject::invokeMethod(this, "slotReady", Qt::QueuedConnection);
+    }
 
-	boost::signals2::signal<void()> awake;
+    boost::signals2::signal<void()> awake;
 
 private slots:
-	void slotReady()
-	{
-		ready();
-	}
+    void slotReady() { ready(); }
 
 private:
-	int customRegId_;
-	std::unique_ptr<Event::SetReadiness> sr_;
-	std::mutex mutex_;
-	bool wakeQueued_;
+    int customRegId_;
+    std::unique_ptr<Event::SetReadiness> sr_;
+    std::mutex mutex_;
+    bool wakeQueued_;
 
-	static void cb_ready(void *ctx, uint8_t readiness)
-	{
-		Q_UNUSED(readiness);
+    static void cb_ready(void *ctx, uint8_t readiness) {
+        Q_UNUSED(readiness);
 
-		ThreadWake *self = (ThreadWake *)ctx;
+        ThreadWake *self = (ThreadWake *)ctx;
 
-		self->ready();
-	}
+        self->ready();
+    }
 
-	void ready()
-	{
-		{
-			std::lock_guard<std::mutex> guard(mutex_);
+    void ready() {
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
 
-			wakeQueued_ = false;
-		}
+            wakeQueued_ = false;
+        }
 
-		awake();
-	}
+        awake();
+    }
 };
 
-}
+} // namespace
 
-class DeferCall::Manager
-{
+class DeferCall::Manager {
 public:
-	Manager() :
-		thread_(std::this_thread::get_id())
-	{
-		timer_.setSingleShot(true);
-		timer_.timeout.connect(boost::bind(&Manager::timer_timeout, this));
+    Manager() : thread_(std::this_thread::get_id()) {
+        timer_.setSingleShot(true);
+        timer_.timeout.connect(boost::bind(&Manager::timer_timeout, this));
 
-		threadWake_.awake.connect(boost::bind(&Manager::threadWake_awake, this));
-	}
+        threadWake_.awake.connect(boost::bind(&Manager::threadWake_awake, this));
+    }
 
-	void add(const std::weak_ptr<Call> &c)
-	{
-		std::lock_guard<std::mutex> guard(callsMutex_);
+    void add(const std::weak_ptr<Call> &c) {
+        std::lock_guard<std::mutex> guard(callsMutex_);
 
-		calls_.push_back(c);
+        calls_.push_back(c);
 
-		if(std::this_thread::get_id() == thread_)
-		{
-			if(!timer_.isActive())
-				timer_.start(0);
-		}
-		else
-		{
-			threadWake_.wake();
-		}
-	}
+        if (std::this_thread::get_id() == thread_) {
+            if (!timer_.isActive())
+                timer_.start(0);
+        } else {
+            threadWake_.wake();
+        }
+    }
 
-	void flush()
-	{
-		while(!isCallsEmpty())
-			process();
-	}
+    void flush() {
+        while (!isCallsEmpty())
+            process();
+    }
 
 private:
-	std::thread::id thread_;
-	Timer timer_;
-	ThreadWake threadWake_;
-	std::mutex callsMutex_;
-	std::list<std::weak_ptr<Call>> calls_;
+    std::thread::id thread_;
+    Timer timer_;
+    ThreadWake threadWake_;
+    std::mutex callsMutex_;
+    std::list<std::weak_ptr<Call>> calls_;
 
-	// Thread-safe
-	bool isCallsEmpty()
-	{
-		std::lock_guard<std::mutex> guard(callsMutex_);
+    // Thread-safe
+    bool isCallsEmpty() {
+        std::lock_guard<std::mutex> guard(callsMutex_);
 
-		return calls_.empty();
-	}
+        return calls_.empty();
+    }
 
-	// Thread-safe
-	void process()
-	{
-		std::list<std::weak_ptr<Call>> ready;
+    // Thread-safe
+    void process() {
+        std::list<std::weak_ptr<Call>> ready;
 
-		// Lock to take list
-		{
-			std::lock_guard<std::mutex> guard(callsMutex_);
+        // Lock to take list
+        {
+            std::lock_guard<std::mutex> guard(callsMutex_);
 
-			// Process all calls queued so far, but not any that may get queued
-			// during processing
-			ready.swap(calls_);
-		}
+            // Process all calls queued so far, but not any that may get queued
+            // during processing
+            ready.swap(calls_);
+        }
 
-		// Process list while not locked
-		for(auto c : ready)
-		{
-			if(auto p = c.lock())
-			{
-				auto source = p->source.lock();
+        // Process list while not locked
+        for (auto c : ready) {
+            if (auto p = c.lock()) {
+                auto source = p->source.lock();
 
-				// If call is valid then its source will be too
-				assert(source);
+                // If call is valid then its source will be too
+                assert(source);
 
-				source->erase(p->sourceElement);
+                source->erase(p->sourceElement);
 
-				p->handler();
-			}
-		}
-	}
+                p->handler();
+            }
+        }
+    }
 
-	void timer_timeout()
-	{
-		process();
+    void timer_timeout() {
+        process();
 
-		// No need to re-arm the timer. If new calls were queued during
-		// processing, add() will have taken care of that
-	}
+        // No need to re-arm the timer. If new calls were queued during
+        // processing, add() will have taken care of that
+    }
 
-	void threadWake_awake()
-	{
-		process();
-	}
+    void threadWake_awake() { process(); }
 };
 
-std::list<std::shared_ptr<DeferCall::Call>>::size_type DeferCall::CallsList::size() const
-{
-	std::lock_guard<std::mutex> guard(mutex);
+std::list<std::shared_ptr<DeferCall::Call>>::size_type DeferCall::CallsList::size() const {
+    std::lock_guard<std::mutex> guard(mutex);
 
-	return l.size();
+    return l.size();
 }
 
-std::list<std::shared_ptr<DeferCall::Call>>::iterator DeferCall::CallsList::append(const std::shared_ptr<DeferCall::Call> &c)
-{
-	std::lock_guard<std::mutex> guard(mutex);
+std::list<std::shared_ptr<DeferCall::Call>>::iterator
+DeferCall::CallsList::append(const std::shared_ptr<DeferCall::Call> &c) {
+    std::lock_guard<std::mutex> guard(mutex);
 
-	l.push_back(c);
+    l.push_back(c);
 
-	// Get an iterator to the element that was pushed
-	auto it = l.end();
-	--it;
+    // Get an iterator to the element that was pushed
+    auto it = l.end();
+    --it;
 
-	return it;
+    return it;
 }
 
-void DeferCall::CallsList::erase(std::list<std::shared_ptr<DeferCall::Call>>::iterator position)
-{
-	std::lock_guard<std::mutex> guard(mutex);
+void DeferCall::CallsList::erase(std::list<std::shared_ptr<DeferCall::Call>>::iterator position) {
+    std::lock_guard<std::mutex> guard(mutex);
 
-	l.erase(position);
+    l.erase(position);
 }
 
-DeferCall::DeferCall() :
-	thread_(std::this_thread::get_id()),
-	deferredCalls_(std::make_shared<CallsList>())
-{
-	if(!localManager)
-	{
-		localManager = std::make_shared<Manager>();
+DeferCall::DeferCall()
+    : thread_(std::this_thread::get_id()), deferredCalls_(std::make_shared<CallsList>()) {
+    if (!localManager) {
+        localManager = std::make_shared<Manager>();
 
-		std::lock_guard<std::mutex> guard(managerByThreadMutex);
-		managerByThread[thread_] = localManager;
+        std::lock_guard<std::mutex> guard(managerByThreadMutex);
+        managerByThread[thread_] = localManager;
 
-		EventLoop *loop = EventLoop::instance();
-		if(loop)
-		{
-			// We use the manager pointer to uniquely identify the handler
-			// registration even though the handler function doesn't do
-			// anything with it
-			loop->addCleanupHandler(eventloop_cleanup_handler, localManager.get());
-		}
-	}
+        EventLoop *loop = EventLoop::instance();
+        if (loop) {
+            // We use the manager pointer to uniquely identify the handler
+            // registration even though the handler function doesn't do
+            // anything with it
+            loop->addCleanupHandler(eventloop_cleanup_handler, localManager.get());
+        }
+    }
 }
 
 DeferCall::~DeferCall() = default;
 
-void DeferCall::defer(std::function<void ()> handler)
-{
-	std::shared_ptr<Call> c = std::make_shared<Call>();
-	c->handler = handler;
-	c->source = deferredCalls_;
-	c->sourceElement = deferredCalls_->append(c);
+void DeferCall::defer(std::function<void()> handler) {
+    std::shared_ptr<Call> c = std::make_shared<Call>();
+    c->handler = handler;
+    c->source = deferredCalls_;
+    c->sourceElement = deferredCalls_->append(c);
 
-	Manager *manager = localManager.get();
+    Manager *manager = localManager.get();
 
-	if(std::this_thread::get_id() != thread_)
-	{
-		std::lock_guard<std::mutex> guard(managerByThreadMutex);
-		auto it = managerByThread.find(thread_);
-		assert(it != managerByThread.end());
+    if (std::this_thread::get_id() != thread_) {
+        std::lock_guard<std::mutex> guard(managerByThreadMutex);
+        auto it = managerByThread.find(thread_);
+        assert(it != managerByThread.end());
 
-		manager = it->second.get();
-	}
+        manager = it->second.get();
+    }
 
-	// Manager keeps a weak pointer, so we can invalidate pending calls by
-	// simply deleting them
-	manager->add(c);
+    // Manager keeps a weak pointer, so we can invalidate pending calls by
+    // simply deleting them
+    manager->add(c);
 }
 
-DeferCall *DeferCall::global()
-{
-	if(!localInstance)
-		localInstance = std::make_unique<DeferCall>();
+DeferCall *DeferCall::global() {
+    if (!localInstance)
+        localInstance = std::make_unique<DeferCall>();
 
-	return localInstance.get();
+    return localInstance.get();
 }
 
-void DeferCall::cleanup()
-{
-	if(localManager)
-		localManager->flush();
+void DeferCall::cleanup() {
+    if (localManager)
+        localManager->flush();
 
-	localInstance.reset();
+    localInstance.reset();
 
-	if(localManager)
-	{
-		EventLoop *loop = EventLoop::instance();
-		if(loop)
-			loop->removeCleanupHandler(eventloop_cleanup_handler, localManager.get());
+    if (localManager) {
+        EventLoop *loop = EventLoop::instance();
+        if (loop)
+            loop->removeCleanupHandler(eventloop_cleanup_handler, localManager.get());
 
-		std::lock_guard<std::mutex> guard(managerByThreadMutex);
-		managerByThread.erase(std::this_thread::get_id());
+        std::lock_guard<std::mutex> guard(managerByThreadMutex);
+        managerByThread.erase(std::this_thread::get_id());
 
-		localManager.reset();
-	}
+        localManager.reset();
+    }
 }
 
-void DeferCall::eventloop_cleanup_handler(void *)
-{
-	cleanup();
-}
+void DeferCall::eventloop_cleanup_handler(void *) { cleanup(); }
 
-thread_local std::shared_ptr<DeferCall::Manager> DeferCall::localManager = std::shared_ptr<DeferCall::Manager>();
+thread_local std::shared_ptr<DeferCall::Manager> DeferCall::localManager =
+    std::shared_ptr<DeferCall::Manager>();
 thread_local std::unique_ptr<DeferCall> DeferCall::localInstance = std::unique_ptr<DeferCall>();
 
-std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>> DeferCall::managerByThread = std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>>();
+std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>>
+    DeferCall::managerByThread =
+        std::unordered_map<std::thread::id, std::shared_ptr<DeferCall::Manager>>();
 std::mutex DeferCall::managerByThreadMutex = std::mutex();
 
 #include "defercall.moc"

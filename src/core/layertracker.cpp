@@ -22,53 +22,42 @@
 
 #include <assert.h>
 
-LayerTracker::LayerTracker() :
-	plain_(0)
-{
+LayerTracker::LayerTracker() : plain_(0) {}
+
+void LayerTracker::reset() {
+    plain_ = 0;
+    items_.clear();
 }
 
-void LayerTracker::reset()
-{
-	plain_ = 0;
-	items_.clear();
+void LayerTracker::addPlain(int plain) { plain_ += plain; }
+
+void LayerTracker::specifyEncoded(int encoded, int plain) {
+    // Can't specify more bytes than we have
+    assert(plain <= plain_);
+
+    plain_ -= plain;
+    Item i;
+    i.plain = plain;
+    i.encoded = encoded;
+    items_ += i;
 }
 
-void LayerTracker::addPlain(int plain)
-{
-	plain_ += plain;
-}
+int LayerTracker::finished(int encoded) {
+    int plain = 0;
 
-void LayerTracker::specifyEncoded(int encoded, int plain)
-{
-	// Can't specify more bytes than we have
-	assert(plain <= plain_);
+    for (QList<Item>::Iterator it = items_.begin(); it != items_.end();) {
+        Item &i = *it;
 
-	plain_ -= plain;
-	Item i;
-	i.plain = plain;
-	i.encoded = encoded;
-	items_ += i;
-}
+        // Not enough?
+        if (encoded < i.encoded) {
+            i.encoded -= encoded;
+            break;
+        }
 
-int LayerTracker::finished(int encoded)
-{
-	int plain = 0;
+        encoded -= i.encoded;
+        plain += i.plain;
+        it = items_.erase(it);
+    }
 
-	for(QList<Item>::Iterator it = items_.begin(); it != items_.end();)
-	{
-		Item &i = *it;
-
-		// Not enough?
-		if(encoded < i.encoded)
-		{
-			i.encoded -= encoded;
-			break;
-		}
-
-		encoded -= i.encoded;
-		plain += i.plain;
-		it = items_.erase(it);
-	}
-
-	return plain;
+    return plain;
 }

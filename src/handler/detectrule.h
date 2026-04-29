@@ -26,13 +26,12 @@
 #include <QByteArray>
 #include <QString>
 
-class DetectRule
-{
+class DetectRule {
 public:
-	QString domain;
-	QByteArray pathPrefix;
-	QString sidPtr;
-	QString jsonParam;
+    QString domain;
+    QByteArray pathPrefix;
+    QString sidPtr;
+    QString jsonParam;
 };
 
 typedef QList<DetectRule> DetectRuleList;

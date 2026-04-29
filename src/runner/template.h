@@ -23,16 +23,17 @@
 #ifndef TEMPLATE_H
 #define TEMPLATE_H
 
-#include <QString>
 #include "variant.h"
+#include <QString>
 
 namespace Template {
 
 QString render(const QString &content, const VariantMap &context, QString *error = 0);
-bool renderFile(const QString &inFile, const QString &outFile, const VariantMap &context, QString *error = 0);
+bool renderFile(const QString &inFile, const QString &outFile, const VariantMap &context,
+                QString *error = 0);
 
 void dumpTemplate(const QString &content);
 
-}
+} // namespace Template
 
 #endif

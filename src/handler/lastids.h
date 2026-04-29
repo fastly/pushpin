@@ -24,8 +24,8 @@
 #define LASTIDS_H
 
 #include <QHash>
-#include <QString>
 #include <QMetaType>
+#include <QString>
 
 typedef QHash<QString, QString> LastIds;
 Q_DECLARE_METATYPE(LastIds);

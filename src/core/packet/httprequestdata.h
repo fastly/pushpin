@@ -26,13 +26,12 @@
 #include "../httpheaders.h"
 #include "url.h"
 
-class HttpRequestData
-{
+class HttpRequestData {
 public:
-	QString method;
-	Url uri;
-	HttpHeaders headers;
-	QByteArray body;
+    QString method;
+    Url uri;
+    HttpHeaders headers;
+    QByteArray body;
 };
 
 #endif

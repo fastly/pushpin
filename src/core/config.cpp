@@ -28,22 +28,20 @@ namespace Config {
 
 static thread_local Config *g_config = 0;
 
-Config & get()
-{
-	if(!g_config)
-	{
-		Config *c = new Config;
+Config &get() {
+    if (!g_config) {
+        Config *c = new Config;
 
-		ffi::BuildConfig *bc = ffi::build_config_new();
-		c->version = QString(bc->version);
-		c->configDir = QString(bc->config_dir);
-		c->libDir = QString(bc->lib_dir);
-		ffi::build_config_destroy(bc);
+        ffi::BuildConfig *bc = ffi::build_config_new();
+        c->version = QString(bc->version);
+        c->configDir = QString(bc->config_dir);
+        c->libDir = QString(bc->lib_dir);
+        ffi::build_config_destroy(bc);
 
-		g_config = c;
-	}
+        g_config = c;
+    }
 
-	return *g_config;
+    return *g_config;
 }
 
-}
+} // namespace Config

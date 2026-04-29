@@ -29,200 +29,179 @@
 
 using namespace VariantUtil;
 
-PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channel, bool *ok, QString *errorMessage)
-{
-	QString pn = "publish item object";
+PublishItem PublishItem::fromVariant(const Variant &vitem, const QString &channel, bool *ok,
+                                     QString *errorMessage) {
+    QString pn = "publish item object";
 
-	if(!isKeyedObject(vitem))
-	{
-		setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
-		return PublishItem();
-	}
+    if (!isKeyedObject(vitem)) {
+        setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+        return PublishItem();
+    }
 
-	PublishItem item;
-	bool ok_;
+    PublishItem item;
+    bool ok_;
 
-	if(!channel.isEmpty())
-	{
-		item.channel = channel;
-	}
-	else
-	{
-		item.channel = getString(vitem, pn, "channel", true, &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishItem();
-		}
-	}
+    if (!channel.isEmpty()) {
+        item.channel = channel;
+    } else {
+        item.channel = getString(vitem, pn, "channel", true, &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return PublishItem();
+        }
+    }
 
-	item.id = getString(vitem, pn, "id", false, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return PublishItem();
-	}
+    item.id = getString(vitem, pn, "id", false, &ok_, errorMessage);
+    if (!ok_) {
+        if (ok)
+            *ok = false;
+        return PublishItem();
+    }
 
-	item.prevId = getString(vitem, pn, "prev-id", false, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return PublishItem();
-	}
+    item.prevId = getString(vitem, pn, "prev-id", false, &ok_, errorMessage);
+    if (!ok_) {
+        if (ok)
+            *ok = false;
+        return PublishItem();
+    }
 
-	Variant vformats = getKeyedObject(vitem, pn, "formats", false, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return PublishItem();
-	}
+    Variant vformats = getKeyedObject(vitem, pn, "formats", false, &ok_, errorMessage);
+    if (!ok_) {
+        if (ok)
+            *ok = false;
+        return PublishItem();
+    }
 
-	if(!vformats.isValid())
-	{
-		vformats = createSameKeyedObject(vitem);
+    if (!vformats.isValid()) {
+        vformats = createSameKeyedObject(vitem);
 
-		Variant v = keyedObjectGetValue(vitem, "http-response");
-		if(v.isValid())
-			keyedObjectInsert(&vformats, "http-response", v);
+        Variant v = keyedObjectGetValue(vitem, "http-response");
+        if (v.isValid())
+            keyedObjectInsert(&vformats, "http-response", v);
 
-		v = keyedObjectGetValue(vitem, "http-stream");
-		if(v.isValid())
-			keyedObjectInsert(&vformats, "http-stream", v);
+        v = keyedObjectGetValue(vitem, "http-stream");
+        if (v.isValid())
+            keyedObjectInsert(&vformats, "http-stream", v);
 
-		v = keyedObjectGetValue(vitem, "ws-message");
-		if(v.isValid())
-			keyedObjectInsert(&vformats, "ws-message", v);
-	}
+        v = keyedObjectGetValue(vitem, "ws-message");
+        if (v.isValid())
+            keyedObjectInsert(&vformats, "ws-message", v);
+    }
 
-	if(keyedObjectIsEmpty(vformats))
-	{
-		setError(ok, errorMessage, "no formats specified");
-		return PublishItem();
-	}
+    if (keyedObjectIsEmpty(vformats)) {
+        setError(ok, errorMessage, "no formats specified");
+        return PublishItem();
+    }
 
-	if(keyedObjectContains(vformats, "http-response"))
-	{
-		PublishFormat f = PublishFormat::fromVariant(PublishFormat::HttpResponse, keyedObjectGetValue(vformats, "http-response"), &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishItem();
-		}
+    if (keyedObjectContains(vformats, "http-response")) {
+        PublishFormat f = PublishFormat::fromVariant(PublishFormat::HttpResponse,
+                                                     keyedObjectGetValue(vformats, "http-response"),
+                                                     &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return PublishItem();
+        }
 
-		item.formats.insert(f.type, f);
-	}
+        item.formats.insert(f.type, f);
+    }
 
-	if(keyedObjectContains(vformats, "http-stream"))
-	{
-		PublishFormat f = PublishFormat::fromVariant(PublishFormat::HttpStream, keyedObjectGetValue(vformats, "http-stream"), &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishItem();
-		}
+    if (keyedObjectContains(vformats, "http-stream")) {
+        PublishFormat f = PublishFormat::fromVariant(PublishFormat::HttpStream,
+                                                     keyedObjectGetValue(vformats, "http-stream"),
+                                                     &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return PublishItem();
+        }
 
-		item.formats.insert(f.type, f);
-	}
+        item.formats.insert(f.type, f);
+    }
 
-	if(keyedObjectContains(vformats, "ws-message"))
-	{
-		PublishFormat f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, keyedObjectGetValue(vformats, "ws-message"), &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishItem();
-		}
+    if (keyedObjectContains(vformats, "ws-message")) {
+        PublishFormat f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage,
+                                                     keyedObjectGetValue(vformats, "ws-message"),
+                                                     &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return PublishItem();
+        }
 
-		item.formats.insert(f.type, f);
-	}
+        item.formats.insert(f.type, f);
+    }
 
-	Variant vmeta = getKeyedObject(vitem, pn, "meta", false, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return PublishItem();
-	}
+    Variant vmeta = getKeyedObject(vitem, pn, "meta", false, &ok_, errorMessage);
+    if (!ok_) {
+        if (ok)
+            *ok = false;
+        return PublishItem();
+    }
 
-	if(vmeta.isValid())
-	{
-		if(typeId(vmeta) == VariantType::Hash)
-		{
-			VariantHash hmeta = vmeta.toHash();
+    if (vmeta.isValid()) {
+        if (typeId(vmeta) == VariantType::Hash) {
+            VariantHash hmeta = vmeta.toHash();
 
-			for(auto it = hmeta.constBegin(); it != hmeta.constEnd(); ++it)
-			{
-				const QString &key = it.key();
-				const Variant &vval = it.value();
+            for (auto it = hmeta.constBegin(); it != hmeta.constEnd(); ++it) {
+                const QString &key = it.key();
+                const Variant &vval = it.value();
 
-				QString val = getString(vval, &ok_);
-				if(!ok_)
-				{
-					setError(ok, errorMessage, QString("'meta' contains '%1' with wrong type").arg(key));
-					return PublishItem();
-				}
+                QString val = getString(vval, &ok_);
+                if (!ok_) {
+                    setError(ok, errorMessage,
+                             QString("'meta' contains '%1' with wrong type").arg(key));
+                    return PublishItem();
+                }
 
-				item.meta[key] = val;
-			}
-		}
-		else // Map
-		{
-			VariantMap mmeta = vmeta.toMap();
+                item.meta[key] = val;
+            }
+        } else // Map
+        {
+            VariantMap mmeta = vmeta.toMap();
 
-			for(auto it = mmeta.constBegin(); it != mmeta.constEnd(); ++it)
-			{
-				const QString &key = it.key();
-				const Variant &vval = it.value();
+            for (auto it = mmeta.constBegin(); it != mmeta.constEnd(); ++it) {
+                const QString &key = it.key();
+                const Variant &vval = it.value();
 
-				QString val = getString(vval, &ok_);
-				if(!ok_)
-				{
-					setError(ok, errorMessage, QString("'meta' contains '%1' with wrong type").arg(key));
-					return PublishItem();
-				}
+                QString val = getString(vval, &ok_);
+                if (!ok_) {
+                    setError(ok, errorMessage,
+                             QString("'meta' contains '%1' with wrong type").arg(key));
+                    return PublishItem();
+                }
 
-				item.meta[key] = val;
-			}
-		}
-	}
+                item.meta[key] = val;
+            }
+        }
+    }
 
-	if(keyedObjectContains(vitem, "size"))
-	{
-		Variant vsize = keyedObjectGetValue(vitem, "size");
-		if(!canConvert(vsize, VariantType::Int))
-		{
-			setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
-			return PublishItem();
-		}
+    if (keyedObjectContains(vitem, "size")) {
+        Variant vsize = keyedObjectGetValue(vitem, "size");
+        if (!canConvert(vsize, VariantType::Int)) {
+            setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
+            return PublishItem();
+        }
 
-		item.size = vsize.toInt();
+        item.size = vsize.toInt();
 
-		if(item.size < 0)
-		{
-			setError(ok, errorMessage, QString("%1 contains 'size' with invalid value").arg(pn));
-			return PublishItem();
-		}
-	}
+        if (item.size < 0) {
+            setError(ok, errorMessage, QString("%1 contains 'size' with invalid value").arg(pn));
+            return PublishItem();
+        }
+    }
 
-	if(keyedObjectContains(vitem, "no-seq"))
-	{
-		Variant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
-		if(typeId(vnoSeq) != VariantType::Bool)
-		{
-			setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));
-			return PublishItem();
-		}
+    if (keyedObjectContains(vitem, "no-seq")) {
+        Variant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
+        if (typeId(vnoSeq) != VariantType::Bool) {
+            setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));
+            return PublishItem();
+        }
 
-		item.noSeq = vnoSeq.toBool();
-	}
+        item.noSeq = vnoSeq.toBool();
+    }
 
-	setSuccess(ok, errorMessage);
-	return item;
+    setSuccess(ok, errorMessage);
+    return item;
 }

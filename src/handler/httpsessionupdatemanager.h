@@ -29,20 +29,19 @@
 #define TIMERS_PER_UNIQUE_UPDATE_REGISTRATION 1
 class HttpSession;
 
-class HttpSessionUpdateManager
-{
+class HttpSessionUpdateManager {
 public:
-	HttpSessionUpdateManager();
-	~HttpSessionUpdateManager();
+    HttpSessionUpdateManager();
+    ~HttpSessionUpdateManager();
 
-	// No-op if session already registered and resetTimeout=false
-	void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout = false);
+    // No-op if session already registered and resetTimeout=false
+    void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout = false);
 
-	void unregisterSession(HttpSession *hs);
+    void unregisterSession(HttpSession *hs);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

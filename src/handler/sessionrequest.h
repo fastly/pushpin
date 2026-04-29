@@ -24,10 +24,10 @@
 #ifndef SESSIONREQUEST_H
 #define SESSIONREQUEST_H
 
-#include <QString>
-#include <QList>
-#include <QHash>
 #include "lastids.h"
+#include <QHash>
+#include <QList>
+#include <QString>
 #include <boost/signals2.hpp>
 
 using Connection = boost::signals2::scoped_connection;
@@ -44,6 +44,6 @@ Deferred *createOrUpdate(ZrpcManager *stateClient, const QString &sid, const Las
 Deferred *updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds);
 Deferred *getLastIds(ZrpcManager *stateClient, const QString &sid);
 
-}
+} // namespace SessionRequest
 
 #endif

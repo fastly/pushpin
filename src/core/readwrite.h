@@ -20,23 +20,22 @@
 #include <QByteArray>
 #include <boost/signals2.hpp>
 
-class ReadWrite
-{
+class ReadWrite {
 public:
-	virtual ~ReadWrite() = default;
+    virtual ~ReadWrite() = default;
 
-	// Size < 0 means default read size
-	// returns buffer of bytes read. Null buffer means error. Empty means end
-	virtual QByteArray read(int size = -1) = 0;
+    // Size < 0 means default read size
+    // returns buffer of bytes read. Null buffer means error. Empty means end
+    virtual QByteArray read(int size = -1) = 0;
 
-	// Returns amount accepted, or -1 for error
-	virtual int write(const QByteArray &buf) = 0;
+    // Returns amount accepted, or -1 for error
+    virtual int write(const QByteArray &buf) = 0;
 
-	// Returns errno of latest operation
-	virtual int errorCondition() const = 0;
+    // Returns errno of latest operation
+    virtual int errorCondition() const = 0;
 
-	boost::signals2::signal<void()> readReady;
-	boost::signals2::signal<void()> writeReady;
+    boost::signals2::signal<void()> readReady;
+    boost::signals2::signal<void()> writeReady;
 };
 
 #endif
