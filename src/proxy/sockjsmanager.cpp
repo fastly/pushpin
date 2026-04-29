@@ -49,7 +49,8 @@ const char *iframeHtmlTemplate =
     "<html>\n"
     "<head>\n"
     "  <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />\n"
-    "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n"
+    "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" "
+    "/>\n"
     "  <script src=\"%1\"></script>\n"
     "  <script>\n"
     "    document.domain = document.domain;\n"
@@ -58,7 +59,8 @@ const char *iframeHtmlTemplate =
     "</head>\n"
     "<body>\n"
     "  <h2>Don't panic!</h2>\n"
-    "  <p>This is a SockJS hidden iframe. It's used for cross domain magic.</p>\n"
+    "  <p>This is a SockJS hidden iframe. It's used for cross domain "
+    "magic.</p>\n"
     "</body>\n"
     "</html>\n";
 

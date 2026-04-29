@@ -639,7 +639,8 @@ private:
 
         if (reqClose) {
             if (nonCloseContentBytesAccepted < reqContentSize) {
-                // If server didn't accept all content before close, then don't close yet
+                // If server didn't accept all content before close, then don't close
+                // yet
                 reqClose = false;
             } else {
                 // Server accepted all content before close. In that case, we
@@ -900,7 +901,8 @@ private:
 };
 
 void WebSocketOverHttp::DisconnectManager::deleteSocket(WebSocketOverHttp *sock) {
-    // Ensure state is Idle to prevent the destructor from re-adding it to the manager
+    // Ensure state is Idle to prevent the destructor from re-adding it to the
+    // manager
     sock->d->cleanup();
 
     delete sock;

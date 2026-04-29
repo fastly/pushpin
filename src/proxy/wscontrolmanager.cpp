@@ -241,8 +241,8 @@ private:
 
         Variant data = TnetString::toVariant(req.content()[0]);
         if (data.isNull()) {
-            log_warning("wscontrol: received message with invalid format (tnetstring parse "
-                        "failed), skipping");
+            log_warning("wscontrol: received message with invalid format (tnetstring "
+                        "parse failed), skipping");
             return;
         }
 
@@ -251,7 +251,8 @@ private:
 
         WsControlPacket p;
         if (!p.fromVariant(data)) {
-            log_warning("wscontrol: received message with invalid format (parse failed), skipping");
+            log_warning("wscontrol: received message with invalid format (parse "
+                        "failed), skipping");
             return;
         }
 

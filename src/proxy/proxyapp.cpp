@@ -369,7 +369,8 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
 
     ffi::backtrace_setup_signal_handlers();
 
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
+    // QSettings doesn't inform us if the config file can't be opened, so do that
+    // ourselves
     {
         QFile file(args.configFile);
         if (!file.open(QIODevice::ReadOnly)) {
@@ -494,7 +495,8 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     foreach (const QString &s, origHeadersNeedMarkStr)
         origHeadersNeedMark += s.toUtf8();
 
-    // If routesFile is a relative path, then use it relative to the config file location
+    // If routesFile is a relative path, then use it relative to the config file
+    // location
     QFileInfo fi(routesFile);
     if (fi.isRelative())
         routesFile = QFileInfo(configDir, routesFile).filePath();
@@ -502,8 +504,9 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     if (!(!connmgr_in_specs.isEmpty() && !connmgr_in_stream_specs.isEmpty() &&
           !connmgr_out_specs.isEmpty()) &&
         !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty())) {
-        log_error("must set connmgr_in_specs, connmgr_in_stream_specs, and connmgr_out_specs, or "
-                  "m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
+        log_error("must set connmgr_in_specs, connmgr_in_stream_specs, and "
+                  "connmgr_out_specs, or m2a_in_specs, m2a_in_stream_specs, and "
+                  "m2a_out_specs");
         return 1;
     }
 
@@ -511,9 +514,9 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
           !connmgr_client_in_specs.isEmpty()) &&
         !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() &&
           !zurl_in_specs.isEmpty())) {
-        log_error(
-            "must set connmgr_client_out_specs, connmgr_client_out_stream_specs, and "
-            "connmgr_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
+        log_error("must set connmgr_client_out_specs, "
+                  "connmgr_client_out_stream_specs, and connmgr_client_in_specs, "
+                  "or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
         return 1;
     }
 

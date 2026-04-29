@@ -35,7 +35,8 @@ using Connection = boost::signals2::scoped_connection;
 
 class ZhttpManager;
 
-/// Implements WebSocket protocol over HTTP long-polling for outgoing backend connections
+/// Implements WebSocket protocol over HTTP long-polling for outgoing backend
+/// connections
 class WebSocketOverHttp : public WebSocket {
 public:
     class Event {

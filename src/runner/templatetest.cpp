@@ -43,16 +43,16 @@ static void render() {
     QString output = Template::render(content, context);
     TEST_ASSERT_EQ(output, QString("hello world!"));
 
-    content = QString("hello {% if formal %}{{ user.last }}{% endif %}{% if not formal %}{{ "
-                      "user.first }}{% endif %}!");
+    content = QString("hello {% if formal %}{{ user.last }}{% endif %}{% if not "
+                      "formal %}{{ user.first }}{% endif %}!");
     output = Template::render(content, context);
     TEST_ASSERT_EQ(output, QString("hello john!"));
     context["formal"] = true;
     output = Template::render(content, context);
     TEST_ASSERT_EQ(output, QString("hello smith!"));
 
-    content = QString("please eat {% for f in fruits %}{% if not loop.first %} and {% endif "
-                      "%}fresh {{ f }}s{% endfor %}.");
+    content = QString("please eat {% for f in fruits %}{% if not loop.first %} "
+                      "and {% endif %}fresh {{ f }}s{% endfor %}.");
     output = Template::render(content, context);
     TEST_ASSERT_EQ(output, QString("please eat fresh apples and fresh bananas."));
 }

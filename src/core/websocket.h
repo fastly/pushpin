@@ -98,7 +98,8 @@ public:
     boost::signals2::signal<void(int, int)> framesWritten;
     Signal writeBytesChanged;
     Signal peerClosed; // Emitted only if peer closes before we do
-    Signal closed;     // Emitted after peer acks our close, or immediately if we were acking
+    Signal closed;     // Emitted after peer acks our close, or immediately if we were
+                       // acking
     Signal error;
 };
 

@@ -678,8 +678,8 @@ private:
     }
 
     void rs_inspected(const InspectData &idata, RequestSession *rs) {
-        // If we get here, then the request must be proxied. If it was to be directly
-        // accepted, then finishedByAccept would have been emitted instead
+        // If we get here, then the request must be proxied. If it was to be
+        // directly accepted, then finishedByAccept would have been emitted instead
         assert(idata.doProxy);
 
         doProxy(rs, &idata);
@@ -776,8 +776,8 @@ private:
         bool ok;
         Variant data = TnetString::toVariant(req.content()[0], 0, &ok);
         if (!ok) {
-            log_warning(
-                "retry: received message with invalid format (tnetstring parse failed), skipping");
+            log_warning("retry: received message with invalid format (tnetstring "
+                        "parse failed), skipping");
             return;
         }
 
@@ -786,7 +786,8 @@ private:
 
         RetryRequestPacket p;
         if (!p.fromVariant(data)) {
-            log_warning("retry: received message with invalid format (parse failed), skipping");
+            log_warning("retry: received message with invalid format (parse failed), "
+                        "skipping");
             return;
         }
 

@@ -51,22 +51,22 @@ public:
         QString channelPrefix;
         QList<Message> messages;
 
-        static WsControlPacket fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage =
-0)
+        static WsControlPacket fromVariant(const Variant &in, bool *ok = 0,
+QString *errorMessage = 0)
         {
                 QString pn = "wscontrol packet";
 
                 if(!isKeyedObject(in))
                 {
-                        setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
-                        return WsControlPacket();
+                        setError(ok, errorMessage, QString("%1 is not an
+object").arg(pn)); return WsControlPacket();
                 }
 
                 pn = "wscontrol object";
 
                 bool ok_;
-                VariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
-                if(!ok_)
+                VariantList vitems = getList(in, pn, "items", false, &ok_,
+errorMessage); if(!ok_)
                 {
                         if(ok)
                                 *ok = false;
@@ -81,8 +81,8 @@ public:
 
                         pn = "wscontrol item";
 
-                        QString type = getString(vitem, pn, "type", true, &ok_, errorMessage);
-                        if(!ok_)
+                        QString type = getString(vitem, pn, "type", true, &ok_,
+errorMessage); if(!ok_)
                         {
                                 if(ok)
                                         *ok = false;
@@ -99,28 +99,28 @@ public:
                                 msg.type = Message::Grip;
                         else
                         {
-                                setError(ok, errorMessage, QString("'type' contains unknown value:
-%1").arg(type)); return WsControlPacket();
+                                setError(ok, errorMessage, QString("'type'
+contains unknown value: %1").arg(type)); return WsControlPacket();
                         }
 
-                        msg.cid = getString(vitem, pn, "cid", true, &ok_, errorMessage);
-                        if(!ok_)
-                        {
-                                if(ok)
-                                        *ok = false;
-                                return WsControlPacket();
-                        }
-
-                        msg.uri = Url::fromEncoded(getString(vitem, pn, "uri", false, &ok_,
-errorMessage).toUtf8(), Url::StrictMode); if(!ok_)
-                        {
-                                if(ok)
-                                        *ok = false;
-                                return WsControlPacket();
-                        }
-
-                        msg.channelPrefix = getString(vitem, pn, "channel-prefix", false, &ok_,
+                        msg.cid = getString(vitem, pn, "cid", true, &ok_,
 errorMessage); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
+
+                        msg.uri = Url::fromEncoded(getString(vitem, pn, "uri",
+false, &ok_, errorMessage).toUtf8(), Url::StrictMode); if(!ok_)
+                        {
+                                if(ok)
+                                        *ok = false;
+                                return WsControlPacket();
+                        }
+
+                        msg.channelPrefix = getString(vitem, pn,
+"channel-prefix", false, &ok_, errorMessage); if(!ok_)
                         {
                                 if(ok)
                                         *ok = false;
@@ -131,15 +131,15 @@ errorMessage); if(!ok_)
                         {
                                 if(!keyedObjectContains(vitem, "message"))
                                 {
-                                        setError(ok, errorMessage, QString("'%1' does not contain
-'message'").arg(pn)); return WsControlPacket();
+                                        setError(ok, errorMessage, QString("'%1'
+does not contain 'message'").arg(pn)); return WsControlPacket();
                                 }
 
-                                Variant vmessage = keyedObjectGetValue(vitem, "message");
-                                if(vmessage.type() != VariantType::ByteArray)
+                                Variant vmessage = keyedObjectGetValue(vitem,
+"message"); if(vmessage.type() != VariantType::ByteArray)
                                 {
-                                        setError(ok, errorMessage, QString("'%1' contains 'message'
-with wrong type").arg(pn)); return WsControlPacket();
+                                        setError(ok, errorMessage, QString("'%1'
+contains 'message' with wrong type").arg(pn)); return WsControlPacket();
                                 }
 
                                 msg.message = vmessage.toByteArray();

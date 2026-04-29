@@ -118,8 +118,8 @@ public:
             ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
 
             if (channelPendingItems.itemsByPrevId.contains(item.prevId)) {
-                log_debug("sequencer: already have item for channel [%s] depending on prev-id "
-                          "[%s], dropping",
+                log_debug("sequencer: already have item for channel [%s] depending on "
+                          "prev-id [%s], dropping",
                           qPrintable(item.channel), qPrintable(item.prevId));
                 return;
             }

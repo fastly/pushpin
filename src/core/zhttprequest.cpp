@@ -45,7 +45,8 @@ public:
         Stopped, // Response finished, error, or not even started
 
         ClientStarting,          // Prepared to send the first packet
-        ClientRequestStartWait,  // Sent the first packet of streamed input, waiting for ack
+        ClientRequestStartWait,  // Sent the first packet of streamed input, waiting
+                                 // for ack
         ClientRequesting,        // Sending the rest of streamed input
         ClientRequestFinishWait, // Completed sending the request, waiting for ack
         ClientReceiving,         // Completed sending the request, waiting on response
@@ -414,7 +415,8 @@ public:
             }
         } else if (state == ClientReceiving) {
             if (pendingInCredits > 0) {
-                // If we have no data to send but we need to send credits, do at least that
+                // If we have no data to send but we need to send credits, do at least
+                // that
                 ZhttpRequestPacket p;
                 p.type = ZhttpRequestPacket::Credit;
                 p.credits = pendingInCredits;
@@ -490,8 +492,8 @@ public:
 
         if (seq != -1) {
             if (seq != inSeq) {
-                log_warning("zhttp server: error id=%s received message out of sequence (expected "
-                            "%d, got %d), canceling",
+                log_warning("zhttp server: error id=%s received message out of "
+                            "sequence (expected %d, got %d), canceling",
                             id.data(), inSeq, seq);
 
                 // If this was not an error packet, send cancel
@@ -572,8 +574,8 @@ public:
                 errored = true;
                 errorCondition = ErrorGeneric;
                 cleanup();
-                log_warning("zhttp client: error id=%s initial ack for streamed input request did "
-                            "not contain from field",
+                log_warning("zhttp client: error id=%s initial ack for streamed input "
+                            "request did not contain from field",
                             id.data());
                 q->error();
                 return;
@@ -616,8 +618,8 @@ public:
 
         // If non-req mode, check sequencing
         if (!doReq && seq != inSeq) {
-            log_warning("zhttp client: error id=%s received message out of sequence (expected %d, "
-                        "got %d), canceling",
+            log_warning("zhttp client: error id=%s received message out of sequence "
+                        "(expected %d, got %d), canceling",
                         id.data(), inSeq, seq);
 
             // If this was not an error packet, send cancel
@@ -843,7 +845,8 @@ public:
                     return;
                 }
 
-                // For req mode, wait until request is fully supplied then send in one packet
+                // For req mode, wait until request is fully supplied then send in one
+                // packet
                 if (bodyFinished) {
                     ZhttpRequestPacket p;
                     p.type = ZhttpRequestPacket::Data;

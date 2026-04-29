@@ -63,7 +63,8 @@ static void noHold() {
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
     data.body = "{\"response\":{\"code\": "
-                "200,\"headers\":{\"Content-Type\":\"text/plain\"},\"body\":\"hello world\"}}";
+                "200,\"headers\":{\"Content-Type\":\"text/"
+                "plain\"},\"body\":\"hello world\"}}";
 
     i = Instruct::fromResponse(data, &ok);
     TEST_ASSERT(ok);
@@ -105,9 +106,11 @@ static void responseHold() {
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
-    data.body = "{\"hold\":{\"mode\":\"response\",\"channels\":[{\"name\":\"test\"}],\"timeout\":"
-                "120,\"meta\":{\"foo\":\"bar\",\"bar\":\"baz\"}},\"response\":{\"code\": "
-                "200,\"headers\":{\"Content-Type\":\"text/plain\"},\"body\":\"hello world\"}}";
+    data.body = "{\"hold\":{\"mode\":\"response\",\"channels\":[{\"name\":"
+                "\"test\"}],\"timeout\":120,\"meta\":{\"foo\":\"bar\",\"bar\":"
+                "\"baz\"}},\"response\":{\"code\": "
+                "200,\"headers\":{\"Content-Type\":\"text/"
+                "plain\"},\"body\":\"hello world\"}}";
 
     i = Instruct::fromResponse(data, &ok);
     TEST_ASSERT(ok);
@@ -159,10 +162,12 @@ static void responseHoldChannelParams() {
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
-    data.body = "{\"hold\":{\"mode\":\"response\",\"channels\":[{\"name\":\"apple\",\"prev-id\":"
-                "\"item1\",\"filters\":[\"f1\"]},{\"name\":\"banana\",\"filters\":[\"f2\"]},{"
-                "\"name\":\"cherry\",\"filters\":[\"f1\",\"f2\"]}]},\"response\":{\"code\": "
-                "200,\"headers\":{\"Content-Type\":\"text/plain\"},\"body\":\"hello world\"}}";
+    data.body = "{\"hold\":{\"mode\":\"response\",\"channels\":[{\"name\":"
+                "\"apple\",\"prev-id\":\"item1\",\"filters\":[\"f1\"]},{\"name\":"
+                "\"banana\",\"filters\":[\"f2\"]},{\"name\":\"cherry\","
+                "\"filters\":[\"f1\",\"f2\"]}]},\"response\":{\"code\": "
+                "200,\"headers\":{\"Content-Type\":\"text/"
+                "plain\"},\"body\":\"hello world\"}}";
 
     i = Instruct::fromResponse(data, &ok);
     TEST_ASSERT(ok);
@@ -212,9 +217,10 @@ static void streamHold() {
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
-    data.body =
-        "{\"hold\":{\"mode\":\"stream\",\"channels\":[{\"name\":\"test\"}]},\"response\":{\"code\":"
-        " 200,\"headers\":{\"Content-Type\":\"text/plain\"},\"body\":\"hello world\"}}";
+    data.body = "{\"hold\":{\"mode\":\"stream\",\"channels\":[{\"name\":\"test\"}"
+                "]},\"response\":{\"code\": "
+                "200,\"headers\":{\"Content-Type\":\"text/"
+                "plain\"},\"body\":\"hello world\"}}";
 
     i = Instruct::fromResponse(data, &ok);
     TEST_ASSERT(ok);

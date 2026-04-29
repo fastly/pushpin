@@ -328,20 +328,25 @@ public:
         // NOTE: per the license, this functionality may not be removed as it
         // is the interface for the copyright notice
         if (requestData.headers.contains("Pushpin-Check")) {
-            QString str =
-                "Copyright (C) 2012-2023 Fanout, Inc.\n"
+            QString str = "Copyright (C) 2012-2023 Fanout, Inc.\n"
                 "Copyright (C) 2023 Fastly, Inc.\n"
                 "\n"
-                "Pushpin is licensed under the Apache License, Version 2.0 (the \"License\");\n"
-                "you may not use this software except in compliance with the License.\n"
+                          "Pushpin is licensed under the Apache License, Version 2.0 "
+                          "(the \"License\");\n"
+                          "you may not use this software except in compliance with "
+                          "the License.\n"
                 "You may obtain a copy of the License at\n"
                 "\n"
                 "    http://www.apache.org/licenses/LICENSE-2.0\n"
                 "\n"
-                "Unless required by applicable law or agreed to in writing, software\n"
-                "distributed under the License is distributed on an \"AS IS\" BASIS,\n"
-                "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
-                "See the License for the specific language governing permissions and\n"
+                          "Unless required by applicable law or agreed to in "
+                          "writing, software\n"
+                          "distributed under the License is distributed on an \"AS "
+                          "IS\" BASIS,\n"
+                          "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either "
+                          "express or implied.\n"
+                          "See the License for the specific language governing "
+                          "permissions and\n"
                 "limitations under the License.\n";
 
             state = WaitingForResponse;
@@ -421,8 +426,8 @@ public:
                                  logicalPeerAddress, isHttps, false, reportOffset);
             stats->addActivity(route.statsRoute());
 
-            // Note: we don't call addRequestsReceived here, because we're acting for an existing
-            // request
+            // Note: we don't call addRequestsReceived here, because we're acting for
+            // an existing request
         }
     }
 
@@ -871,7 +876,8 @@ public:
             if (rdata.accepted) {
                 accepted = true;
 
-                // The request was paused, so deleting it will leave the peer session active
+                // The request was paused, so deleting it will leave the peer session
+                // active
                 zhttpReqConnections = ZhttpReqConnections();
                 delete zhttpRequest;
                 zhttpRequest = 0;
@@ -1022,7 +1028,8 @@ public:
                         else if (bodyRawBuf.endsWith("\n"))
                             bodyRawBuf.truncate(bodyRawBuf.size() - 1);
                     } else {
-                        // Response isn't finished. Keep any trailing newline in the output buffer
+                        // Response isn't finished. Keep any trailing newline in the output
+                        // buffer
                         if (bodyRawBuf.endsWith("\r\n")) {
                             bodyRawBuf.truncate(bodyRawBuf.size() - 2);
                             out += QByteArray("\r\n");
@@ -1037,8 +1044,8 @@ public:
                 if (buf.isNull()) {
                     state = RespondingInternal;
 
-                    log_warning(
-                        "requestsession: id=%s upstream response could not be JSON-P encoded",
+                    log_warning("requestsession: id=%s upstream response could not be "
+                                "JSON-P encoded",
                         rid.second.data());
 
                     // If we error while streaming, all we can do is give up

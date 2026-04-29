@@ -35,6 +35,7 @@ using VariantMap = QVariantMap;
 using VariantList = QVariantList;
 
 // Note: typeId() and canConvert() functions are already provided by qtcompat.h
-// Since Variant = QVariant (alias), those functions work directly with our types
+// Since Variant = QVariant (alias), those functions work directly with our
+// types
 
 #endif
