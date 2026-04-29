@@ -25,12 +25,13 @@
 
 #include <assert.h>
 #include <QSet>
-#include <QUrl>
+#include "url.h"
 #include <QHostAddress>
 #include "packet/statspacket.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "qtcompat.h"
+#include "variant.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "jwt.h"
@@ -278,7 +279,7 @@ public:
 			if(!route.asHost.isEmpty())
 				ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-			QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+			QByteArray path = requestData.uri.path(Url::FullyEncoded).toUtf8();
 
 			if(route.pathRemove > 0)
 				path = path.mid(route.pathRemove);
@@ -286,7 +287,7 @@ public:
 			if(!route.pathPrepend.isEmpty())
 				path = route.pathPrepend + path;
 
-			requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
+			requestData.uri.setPath(QString::fromUtf8(path), Url::StrictMode);
 
 			QByteArray sigIss = defaultSigIss;
 			Jwt::EncodingKey sigKey = defaultSigKey;
@@ -405,7 +406,7 @@ public:
 			}
 		}
 
-		QUrl uri = requestData.uri;
+		Url uri = requestData.uri;
 		if(target.ssl)
 			uri.setScheme("https");
 		else
@@ -430,7 +431,7 @@ public:
 					--pathRemove;
 
 				if(pathRemove > 0)
-					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+					uri.setPath(uri.path(Url::FullyEncoded).mid(pathRemove));
 			}
 
 			zhttpRequest = std::make_unique<TestHttpRequest>();
@@ -1466,7 +1467,7 @@ public:
 		{
 			// Wake up receivers and reject
 
-			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == QMetaType::QByteArray)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == VariantType::ByteArray)
 			{
 				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest.get())->result().toByteArray());
 				QString msg = "Error while proxying to origin.";

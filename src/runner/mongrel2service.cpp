@@ -25,10 +25,9 @@
 
 #include <QDateTime>
 #include <QDir>
-#include <QVariant>
-#include <QVariantList>
 #include <QProcess>
 #include "log.h"
+#include "variant.h"
 #include "template.h"
 
 Mongrel2Service::Mongrel2Service(
@@ -61,7 +60,7 @@ Mongrel2Service::Mongrel2Service(
 
 bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel)
 {
-	QVariantList vinterfaces;
+	VariantList vinterfaces;
 
 	foreach(const ListenPort &p, ports)
 	{
@@ -71,14 +70,14 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 			return false;
 		}
 
-		QVariantMap v;
+		VariantMap v;
 		v["addr"] = (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
 		v["port"] = p.port;
 		v["ssl"] = p.ssl;
 		vinterfaces += v;
 	}
 
-	QVariantMap context;
+	VariantMap context;
 	context["interfaces"] = vinterfaces;
 	context["rundir"] = runDir;
 	context["logdir"] = logDir;

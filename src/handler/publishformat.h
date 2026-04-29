@@ -25,7 +25,7 @@
 
 #include <QByteArray>
 #include <QString>
-#include <QVariant>
+#include "variant.h"
 #include "httpheaders.h"
 
 class PublishFormat
@@ -61,7 +61,7 @@ public:
 	HttpHeaders headers; // Response
 	QByteArray body; // Response/stream/ws
 	bool haveBodyPatch; // Response
-	QVariantList bodyPatch; // Response
+	VariantList bodyPatch; // Response
 	MessageType messageType; // Ws
 	bool haveContentFilters;
 	QStringList contentFilters; // Response/stream/ws
@@ -86,7 +86,7 @@ public:
 	{
 	}
 
-	static PublishFormat fromVariant(Type type, const QVariant &in, bool *ok = 0, QString *errorMessage = 0);
+	static PublishFormat fromVariant(Type type, const Variant &in, bool *ok = 0, QString *errorMessage = 0);
 };
 
 #endif

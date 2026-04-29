@@ -24,9 +24,10 @@
 #ifndef ZHTTPREQUEST_H
 #define ZHTTPREQUEST_H
 
-#include <QVariant>
+#include "variant.h"
 #include "httprequest.h"
 #include <boost/signals2.hpp>
+#include "url.h"
 
 #define TIMERS_PER_ZHTTPREQUEST 3
 
@@ -48,7 +49,7 @@ public:
 		Rid rid;
 		QHostAddress peerAddress;
 		QString requestMethod;
-		QUrl requestUri;
+		Url requestUri;
 		HttpHeaders requestHeaders;
 		QByteArray requestBody;
 		int responseCode;
@@ -56,7 +57,7 @@ public:
 		int outSeq;
 		int outCredits;
 		bool routerResp;
-		QVariant userData;
+		Variant userData;
 
 		ServerState() :
 			responseCode(-1),
@@ -71,10 +72,10 @@ public:
 	~ZhttpRequest();
 
 	Rid rid() const;
-	QVariant passthroughData() const;
+	Variant passthroughData() const;
 	void setIsTls(bool on); // Updates scheme
 	void setSendBodyAfterAcknowledgement(bool on); // Only works in push/sub mode
-	void setPassthroughData(const QVariant &data);
+	void setPassthroughData(const Variant &data);
 	void setQuiet(bool on);
 
 	// For server requests only
@@ -95,7 +96,7 @@ public:
 	virtual void setClientCert(const QString &cert, const QString &key);
 	virtual void setBackendData(const QString &data);
 
-	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
 	virtual void writeBody(const QByteArray &body);
@@ -111,7 +112,7 @@ public:
 	virtual ErrorCondition errorCondition() const;
 
 	virtual QString requestMethod() const;
-	virtual QUrl requestUri() const;
+	virtual Url requestUri() const;
 	virtual HttpHeaders requestHeaders() const;
 
 	virtual int responseCode() const;

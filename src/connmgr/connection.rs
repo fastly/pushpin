@@ -4833,9 +4833,9 @@ async fn client_req_connect(
     log_id: &str,
     id: Option<&[u8]>,
     zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut VecRingBuffer,
-    buf2: &mut VecRingBuffer,
-    body_buf: &mut ContiguousBuffer,
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
     packet_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
@@ -4909,6 +4909,10 @@ async fn client_req_connect(
         )
         .await?;
 
+        let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+        let mut body_buf = ContiguousBuffer::new(body_buffer_size);
+
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
                 client_req_handler(
@@ -4920,9 +4924,9 @@ async fn client_req_connect(
                     url,
                     include_body,
                     rdata.follow_redirects,
-                    buf1,
-                    buf2,
-                    body_buf,
+                    &mut buf1,
+                    &mut buf2,
+                    &mut body_buf,
                     packet_buf,
                 )
                 .await?
@@ -4937,9 +4941,9 @@ async fn client_req_connect(
                     url,
                     include_body,
                     rdata.follow_redirects,
-                    buf1,
-                    buf2,
-                    body_buf,
+                    &mut buf1,
+                    &mut buf2,
+                    &mut body_buf,
                     packet_buf,
                 )
                 .await?
@@ -5014,17 +5018,13 @@ async fn client_req_connection_inner(
 
     let (zheader, zreq) = zreq;
 
-    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
-    let mut body_buf = ContiguousBuffer::new(body_buffer_size);
-
     let handler = client_req_connect(
         log_id,
         id,
         zreq,
-        &mut buf1,
-        &mut buf2,
-        &mut body_buf,
+        buffer_size,
+        body_buffer_size,
+        rb_tmp,
         &packet_buf,
         deny,
         resolver,
@@ -5664,12 +5664,11 @@ async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
     zreq: memorypool::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut VecRingBuffer,
-    buf2: &mut VecRingBuffer,
     buffer_size: usize,
     blocks_max: usize,
     blocks_avail: &Counter,
     messages_max: usize,
+    rb_tmp: &Rc<TmpBuffer>,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5821,6 +5820,9 @@ where
             }
         };
 
+        let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+
         let mut blocks_avail = CounterDec::new(blocks_avail);
 
         let mut using_origind = false;
@@ -5835,8 +5837,8 @@ where
                     url,
                     include_body,
                     rdata.follow_redirects,
-                    buf1,
-                    buf2,
+                    &mut buf1,
+                    &mut buf2,
                     blocks_max,
                     &mut blocks_avail,
                     messages_max,
@@ -5859,8 +5861,8 @@ where
                     url,
                     include_body,
                     rdata.follow_redirects,
-                    buf1,
-                    buf2,
+                    &mut buf1,
+                    &mut buf2,
                     blocks_max,
                     &mut blocks_avail,
                     messages_max,
@@ -5885,8 +5887,8 @@ where
                     url,
                     include_body,
                     rdata.follow_redirects,
-                    buf1,
-                    buf2,
+                    &mut buf1,
+                    &mut buf2,
                     blocks_max,
                     &mut blocks_avail,
                     messages_max,
@@ -5903,8 +5905,6 @@ where
         };
 
         let stream = if !using_origind && done.is_persistent() {
-            buf2.resize(buffer_size);
-
             match pool.push(
                 peer_addr,
                 using_tls,
@@ -5997,9 +5997,6 @@ where
 {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
-
     let stream_timeout = Timeout::new(reactor.now() + stream_timeout_duration);
     let session_timeout = Timeout::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
 
@@ -6018,12 +6015,11 @@ where
             log_id,
             id,
             zreq,
-            &mut buf1,
-            &mut buf2,
             buffer_size,
             blocks_max,
             blocks_avail,
             messages_max,
+            rb_tmp,
             allow_compression,
             &packet_buf,
             &tmp_buf,

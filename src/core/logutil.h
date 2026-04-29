@@ -26,6 +26,7 @@
 
 #include <QHostAddress>
 #include "log.h"
+#include "variant.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
@@ -88,9 +89,9 @@ public:
 	}
 };
 
-void logVariant(int level, const QVariant &data, const char *fmt, ...);
+void logVariant(int level, const Variant &data, const char *fmt, ...);
 void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
-void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
+void logVariantWithContent(int level, const Variant &data, const QString &contentField, const char *fmt, ...);
 void logRequest(int level, const RequestData &data, const Config &config = Config());
 void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,19 +20,21 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef TEMPLATE_H
-#define TEMPLATE_H
+#ifndef VARIANT_H
+#define VARIANT_H
 
-#include <QString>
-#include "variant.h"
+#include <QVariant>
+#include <QHash>
+#include <QMap>
+#include <QList>
+#include "qtcompat.h"
 
-namespace Template {
+using Variant = QVariant;
+using VariantHash = QVariantHash;
+using VariantMap = QVariantMap;
+using VariantList = QVariantList;
 
-QString render(const QString &content, const VariantMap &context, QString *error = 0);
-bool renderFile(const QString &inFile, const QString &outFile, const VariantMap &context, QString *error = 0);
-
-void dumpTemplate(const QString &content);
-
-}
+// Note: typeId() and canConvert() functions are already provided by qtcompat.h
+// Since Variant = QVariant (alias), those functions work directly with our types
 
 #endif

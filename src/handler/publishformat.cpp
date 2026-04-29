@@ -24,12 +24,13 @@
 #include "publishformat.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 #include "variantutil.h"
 #include "statusreasons.h"
 
 using namespace VariantUtil;
 
-PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok, QString *errorMessage)
+PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok, QString *errorMessage)
 {
 	QString pn;
 	if(type == HttpResponse)
@@ -85,8 +86,8 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 		{
 			if(keyedObjectContains(in, "code"))
 			{
-				QVariant vcode = keyedObjectGetValue(in, "code");
-				if(!canConvert(vcode, QMetaType::Int))
+				Variant vcode = keyedObjectGetValue(in, "code");
+				if(!canConvert(vcode, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
 					return PublishFormat();
@@ -118,18 +119,18 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 
 			if(keyedObjectContains(in, "headers"))
 			{
-				QVariant vheaders = keyedObjectGetValue(in, "headers");
-				if(typeId(vheaders) == QMetaType::QVariantList)
+				Variant vheaders = keyedObjectGetValue(in, "headers");
+				if(typeId(vheaders) == VariantType::List)
 				{
-					foreach(const QVariant &vheader, vheaders.toList())
+					for(const Variant &vheader : vheaders.toList())
 					{
-						if(typeId(vheader) != QMetaType::QVariantList)
+						if(typeId(vheader) != VariantType::List)
 						{
 							setError(ok, errorMessage, "headers contains element with wrong type");
 							return PublishFormat();
 						}
 
-						QVariantList lheader = vheader.toList();
+						VariantList lheader = vheader.toList();
 						if(lheader.count() != 2)
 						{
 							setError(ok, errorMessage, "headers contains list with wrong number of elements");
@@ -155,16 +156,14 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				}
 				else if(isKeyedObject(vheaders))
 				{
-					if(typeId(vheaders) == QMetaType::QVariantHash)
+					if(typeId(vheaders) == VariantType::Hash)
 					{
-						QVariantHash hheaders = vheaders.toHash();
+						VariantHash hheaders = vheaders.toHash();
 
-						QHashIterator<QString, QVariant> it(hheaders);
-						while(it.hasNext())
+						for(auto it = hheaders.constBegin(); it != hheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
-							const QVariant &vval = it.value();
+							const Variant &vval = it.value();
 
 							QString val = getString(vval, &ok_);
 							if(!ok_)
@@ -178,14 +177,12 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 					}
 					else // Map
 					{
-						QVariantMap mheaders = vheaders.toMap();
+						VariantMap mheaders = vheaders.toMap();
 
-						QMapIterator<QString, QVariant> it(mheaders);
-						while(it.hasNext())
+						for(auto it = mheaders.constBegin(); it != mheaders.constEnd(); ++it)
 						{
-							it.next();
 							const QString &key = it.key();
-							const QVariant &vval = it.value();
+							const Variant &vval = it.value();
 
 							QString val = getString(vval, &ok_);
 							if(!ok_)
@@ -207,15 +204,15 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 
 			if(keyedObjectContains(in, "content-filters"))
 			{
-				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
-				if(typeId(vfilters) != QMetaType::QVariantList)
+				Variant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(typeId(vfilters) != VariantType::List)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
 					return PublishFormat();
 				}
 
 				QStringList filters;
-				foreach(const QVariant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -231,7 +228,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				out.contentFilters = filters;
 			}
 
-			if(typeId(in) == QMetaType::QVariantMap && keyedObjectContains(in, "body-bin")) // JSON input
+			if(typeId(in) == VariantType::Map && keyedObjectContains(in, "body-bin")) // JSON input
 			{
 				QString bodyBin = getString(in, pn, "body-bin", false, &ok_, errorMessage);
 				if(!ok_)
@@ -245,10 +242,10 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 			}
 			else if(keyedObjectContains(in, "body"))
 			{
-				QVariant vcontent = keyedObjectGetValue(in, "body");
-				if(typeId(vcontent) == QMetaType::QByteArray)
+				Variant vcontent = keyedObjectGetValue(in, "body");
+				if(typeId(vcontent) == VariantType::ByteArray)
 					out.body = vcontent.toByteArray();
-				else if(typeId(vcontent) == QMetaType::QString)
+				else if(typeId(vcontent) == VariantType::String)
 					out.body = vcontent.toString().toUtf8();
 				else
 				{
@@ -270,7 +267,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 			}
 			else
 			{
-				if(typeId(in) == QMetaType::QVariantMap) // JSON input
+				if(typeId(in) == VariantType::Map) // JSON input
 					setError(ok, errorMessage, QString("%1 does not contain 'body', 'body-bin', or 'body-patch'").arg(pn));
 				else
 					setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-patch'").arg(pn));
@@ -284,15 +281,15 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 		{
 			if(keyedObjectContains(in, "content-filters"))
 			{
-				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
-				if(typeId(vfilters) != QMetaType::QVariantList)
+				Variant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(typeId(vfilters) != VariantType::List)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
 					return PublishFormat();
 				}
 
 				QStringList filters;
-				foreach(const QVariant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -308,7 +305,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				out.contentFilters = filters;
 			}
 
-			if(typeId(in) == QMetaType::QVariantMap && keyedObjectContains(in, "content-bin")) // JSON input
+			if(typeId(in) == VariantType::Map && keyedObjectContains(in, "content-bin")) // JSON input
 			{
 				QString contentBin = getString(in, pn, "content-bin", false, &ok_, errorMessage);
 				if(!ok_)
@@ -322,10 +319,10 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 			}
 			else if(keyedObjectContains(in, "content"))
 			{
-				QVariant vcontent = keyedObjectGetValue(in, "content");
-				if(typeId(vcontent) == QMetaType::QByteArray)
+				Variant vcontent = keyedObjectGetValue(in, "content");
+				if(typeId(vcontent) == VariantType::ByteArray)
 					out.body = vcontent.toByteArray();
-				else if(typeId(vcontent) == QMetaType::QString)
+				else if(typeId(vcontent) == VariantType::String)
 					out.body = vcontent.toString().toUtf8();
 				else
 				{
@@ -335,7 +332,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 			}
 			else
 			{
-				if(typeId(in) == QMetaType::QVariantMap) // JSON input
+				if(typeId(in) == VariantType::Map) // JSON input
 					setError(ok, errorMessage, QString("%1 does not contain 'content' or 'content-bin'").arg(pn));
 				else
 					setError(ok, errorMessage, QString("%1 does not contain 'content'").arg(pn));
@@ -374,15 +371,15 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 
 			if(keyedObjectContains(in, "content-filters"))
 			{
-				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
-				if(typeId(vfilters) != QMetaType::QVariantList)
+				Variant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(typeId(vfilters) != VariantType::List)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
 					return PublishFormat();
 				}
 
 				QStringList filters;
-				foreach(const QVariant &vfilter, vfilters.toList())
+				for(const Variant &vfilter : vfilters.toList())
 				{
 					QString filter = getString(vfilter, &ok_);
 					if(!ok_)
@@ -400,11 +397,11 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 
 			if(keyedObjectContains(in, "content-bin"))
 			{
-				QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+				Variant vcontentBin = keyedObjectGetValue(in, "content-bin");
 
-				if(typeId(in) == QMetaType::QVariantMap) // JSON input
+				if(typeId(in) == VariantType::Map) // JSON input
 				{
-					if(typeId(vcontentBin) != QMetaType::QString)
+					if(typeId(vcontentBin) != VariantType::String)
 					{
 						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 						return PublishFormat();
@@ -414,7 +411,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				}
 				else
 				{
-					if(typeId(vcontentBin) != QMetaType::QByteArray)
+					if(typeId(vcontentBin) != VariantType::ByteArray)
 					{
 						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 						return PublishFormat();
@@ -428,10 +425,10 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 			}
 			else if(keyedObjectContains(in, "content"))
 			{
-				QVariant vcontent = keyedObjectGetValue(in, "content");
-				if(typeId(vcontent) == QMetaType::QByteArray)
+				Variant vcontent = keyedObjectGetValue(in, "content");
+				if(typeId(vcontent) == VariantType::ByteArray)
 					out.body = vcontent.toByteArray();
-				else if(typeId(vcontent) == QMetaType::QString)
+				else if(typeId(vcontent) == VariantType::String)
 					out.body = vcontent.toString().toUtf8();
 				else
 				{
@@ -452,8 +449,8 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 		{
 			if(keyedObjectContains(in, "code"))
 			{
-				QVariant vcode = keyedObjectGetValue(in, "code");
-				if(!canConvert(vcode, QMetaType::Int))
+				Variant vcode = keyedObjectGetValue(in, "code");
+				if(!canConvert(vcode, VariantType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
 					return PublishFormat();

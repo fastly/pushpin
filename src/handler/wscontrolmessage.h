@@ -25,8 +25,7 @@
 
 #include <QString>
 #include <QStringList>
-
-class QVariant;
+#include "variant.h"
 
 class WsControlMessage
 {
@@ -69,7 +68,7 @@ public:
 	{
 	}
 
-	static WsControlMessage fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0);
+	static WsControlMessage fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0);
 };
 
 #endif

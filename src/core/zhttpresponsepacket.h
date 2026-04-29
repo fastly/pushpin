@@ -22,7 +22,7 @@
 #ifndef ZHTTPRESPONSEPACKET_H
 #define ZHTTPRESPONSEPACKET_H
 
-#include <QVariant>
+#include "variant.h"
 #include "cowstring.h"
 #include "cowbytearray.h"
 #include "httpheaders.h"
@@ -78,7 +78,7 @@ public:
 
 	CowByteArray contentType; // WebSocket
 
-	QVariant userData;
+	Variant userData;
 
 	bool multi;
 
@@ -91,8 +91,8 @@ public:
 	{
 	}
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif

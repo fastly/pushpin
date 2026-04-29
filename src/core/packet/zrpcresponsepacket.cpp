@@ -24,10 +24,11 @@
 #include "zrpcresponsepacket.h"
 
 #include "qtcompat.h"
+#include "variant.h"
 
-QVariant ZrpcResponsePacket::toVariant() const
+Variant ZrpcResponsePacket::toVariant() const
 {
-	QVariantHash obj;
+	VariantHash obj;
 
 	if(!id.isEmpty())
 		obj["id"] = id;
@@ -36,7 +37,7 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 	if(success)
 	{
-		if(typeId(value) == QMetaType::QString)
+		if(typeId(value) == VariantType::String)
 			obj["value"] = value.toString().toUtf8();
 		else
 			obj["value"] = value;
@@ -47,7 +48,7 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 		if(value.isValid())
 		{
-			if(typeId(value) == QMetaType::QString)
+			if(typeId(value) == VariantType::String)
 				obj["value"] = value.toString().toUtf8();
 			else
 				obj["value"] = value;
@@ -57,22 +58,22 @@ QVariant ZrpcResponsePacket::toVariant() const
 	return obj;
 }
 
-bool ZrpcResponsePacket::fromVariant(const QVariant &in)
+bool ZrpcResponsePacket::fromVariant(const Variant &in)
 {
-	if(typeId(in) != QMetaType::QVariantHash)
+	if(typeId(in) != VariantType::Hash)
 		return false;
 
-	QVariantHash obj = in.toHash();
+	VariantHash obj = in.toHash();
 
 	if(obj.contains("id"))
 	{
-		if(typeId(obj["id"]) != QMetaType::QByteArray)
+		if(typeId(obj["id"]) != VariantType::ByteArray)
 			return false;
 
 		id = obj["id"].toByteArray();
 	}
 
-	if(!obj.contains("success") || typeId(obj["success"]) != QMetaType::Bool)
+	if(!obj.contains("success") || typeId(obj["success"]) != VariantType::Bool)
 		return false;
 	success = obj["success"].toBool();
 
@@ -86,7 +87,7 @@ bool ZrpcResponsePacket::fromVariant(const QVariant &in)
 	}
 	else
 	{
-		if(!obj.contains("condition") || typeId(obj["condition"]) != QMetaType::QByteArray)
+		if(!obj.contains("condition") || typeId(obj["condition"]) != VariantType::ByteArray)
 			return false;
 		condition = obj["condition"].toByteArray();
 

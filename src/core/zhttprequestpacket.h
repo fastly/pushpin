@@ -22,12 +22,12 @@
 #ifndef ZHTTPREQUESTPACKET_H
 #define ZHTTPREQUESTPACKET_H
 
-#include <QUrl>
-#include <QVariant>
+#include "url.h"
 #include <QHostAddress>
 #include "cowstring.h"
 #include "cowbytearray.h"
 #include "httpheaders.h"
+#include "variant.h"
 
 class ZhttpRequestPacket
 {
@@ -78,14 +78,14 @@ public:
 	int timeout;
 
 	CowString method;
-	QUrl uri;
+	Url uri;
 	HttpHeaders headers;
 	CowByteArray body;
 
 	CowByteArray contentType; // WebSocket
 	int code; // WebSocket
 
-	QVariant userData;
+	Variant userData;
 
 	QHostAddress peerAddress;
 	int peerPort;
@@ -99,7 +99,7 @@ public:
 	CowString clientKey;
 	bool followRedirects;
 	QString backendData;
-	QVariant passthrough; // If valid, may contain pushpin-specific passthrough info
+	Variant passthrough; // If valid, may contain pushpin-specific passthrough info
 	bool multi;
 	bool quiet;
 
@@ -123,8 +123,8 @@ public:
 	{
 	}
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif

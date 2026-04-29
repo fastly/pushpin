@@ -29,6 +29,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include "qtcompat.h"
+#include "variant.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
@@ -294,7 +295,7 @@ public:
 		state = Connecting;
 	}
 
-	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
+	void respondOk(ZhttpRequest *req, const Variant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
 		manager->respondOk(req, data, prefix, jsonpCallback);
 	}
@@ -325,7 +326,7 @@ public:
 		{
 			if(req)
 			{
-				QVariantList out;
+				VariantList out;
 				out += 2010;
 				out += QString("Another connection still open");
 
@@ -336,7 +337,7 @@ public:
 
 			if(peerClosed)
 			{
-				QVariantList out;
+				VariantList out;
 				out += 3000;
 				out += QString("Client already closed connection");
 
@@ -379,9 +380,9 @@ public:
 						if(at == -1)
 							continue;
 
-						if(QUrl::fromPercentEncoding(kv.mid(0, at)) == "d")
+						if(Url::fromPercentEncoding(kv.mid(0, at)) == "d")
 						{
-							param = QUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
+							param = Url::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
 							break;
 						}
 					}
@@ -402,13 +403,13 @@ public:
 				return;
 			}
 
-			QVariantList messages = doc.array().toVariantList();
+			VariantList messages = doc.array().toVariantList();
 
 			QList<Frame> frames;
 			int bytes = 0;
-			foreach(const QVariant &vmessage, messages)
+			for(const Variant &vmessage : messages)
 			{
-				if(typeId(vmessage) != QMetaType::QString)
+				if(typeId(vmessage) != VariantType::String)
 				{
 					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 					respondError(_req, 400, "Bad Request", "Payload expected");
@@ -463,7 +464,7 @@ public:
 
 			ri->type = RequestItem::Accept;
 			ri->responded = true;
-			respondOk(req, QVariant(), "o", ri->jsonpCallback);
+			respondOk(req, Variant(), "o", ri->jsonpCallback);
 		}
 		else
 		{
@@ -545,7 +546,7 @@ public:
 			}
 			else // WebSocketFramed
 			{
-				QVariantList messages;
+				VariantList messages;
 				messages += QString::fromUtf8(frame.data);
 
 				QByteArray arrayJson = QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact);
@@ -611,7 +612,7 @@ public:
 		if(ri->responded)
 			return;
 
-		QVariantList messages;
+		VariantList messages;
 
 		int frames = 0;
 		int bytes = 0;
@@ -666,7 +667,7 @@ public:
 		else if(state == Closing)
 		{
 			closeSent = true;
-			QVariant closeValue = applyLinger();
+			Variant closeValue = applyLinger();
 
 			ri->type = RequestItem::ReceiveClose;
 			ri->responded = true;
@@ -788,13 +789,13 @@ public:
 					break;
 				}
 
-				QVariantList messages = doc.array().toVariantList();
+				VariantList messages = doc.array().toVariantList();
 
 				QList<Frame> frames;
 				int bytes = 0;
-				foreach(const QVariant &vmessage, messages)
+				for(const Variant &vmessage : messages)
 				{
-					if(typeId(vmessage) != QMetaType::QString)
+					if(typeId(vmessage) != VariantType::String)
 					{
 						error = true;
 						break;
@@ -880,9 +881,9 @@ public:
 		q->framesWritten(count, contentBytes);
 	}
 
-	QVariant applyLinger()
+	Variant applyLinger()
 	{
-		QVariantList closeValue;
+		VariantList closeValue;
 
 		if(closeCode != -1)
 			closeValue += closeCode;
@@ -1088,7 +1089,7 @@ public:
 				assert(ri && !ri->responded);
 
 				ri->responded = true;
-				respondOk(req, QVariant(), "h", ri->jsonpCallback);
+				respondOk(req, Variant(), "h", ri->jsonpCallback);
 			}
 			else
 			{
@@ -1188,7 +1189,7 @@ void SockJsSession::setBackendData(const QString &data)
 	assert(0);
 }
 
-void SockJsSession::start(const QUrl &uri, const HttpHeaders &headers)
+void SockJsSession::start(const Url &uri, const HttpHeaders &headers)
 {
 	Q_UNUSED(uri);
 	Q_UNUSED(headers);
@@ -1212,7 +1213,7 @@ WebSocket::State SockJsSession::state() const
 	return d->state;
 }
 
-QUrl SockJsSession::requestUri() const
+Url SockJsSession::requestUri() const
 {
 	return d->requestData.uri;
 }
@@ -1311,7 +1312,7 @@ void SockJsSession::close(int code, const QString &reason)
 	d->close(code, reason);
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
 {
 	d->manager = manager;
 	d->mode = Private::Http;
@@ -1332,7 +1333,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const
 	d->setup();
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const DomainMap::Entry &route)
 {
 	d->manager = manager;
 	d->mode = Private::WebSocketPassthrough;
@@ -1345,7 +1346,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->setup();
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route)
 {
 	Q_UNUSED(lastPart);
 

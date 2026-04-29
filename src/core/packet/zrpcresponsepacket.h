@@ -24,14 +24,14 @@
 #define ZRPCRESPONSEPACKET_H
 
 #include <QByteArray>
-#include <QVariant>
+#include "variant.h"
 
 class ZrpcResponsePacket
 {
 public:
 	QByteArray id;
 	bool success;
-	QVariant value;
+	Variant value;
 	QByteArray condition;
 
 	ZrpcResponsePacket() :
@@ -39,8 +39,8 @@ public:
 	{
 	}
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+	Variant toVariant() const;
+	bool fromVariant(const Variant &in);
 };
 
 #endif
