@@ -48,10 +48,9 @@ public:
 
     static EventLoop *instance();
 
-    /// Returns a future that constructs an event loop and executes it
-    /// asynchronously. `setup` is called just prior to executing, and `done`
-    /// is called when the event loop exits. `setup` and `done` must point
-    /// to functions that live as long as the returned future.
+    /// Returns a future that constructs an event loop and executes it asynchronously. `setup` is
+    /// called just prior to executing, and `done` is called when the event loop exits. `setup` and
+    /// `done` must point to functions that live as long as the returned future.
     static ffi::UnitFuture *task(int capacity, std::function<void()> *setup,
                                  std::function<void(int)> *done);
 

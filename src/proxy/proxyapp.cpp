@@ -364,8 +364,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
 
     ffi::backtrace_setup_signal_handlers();
 
-    // QSettings doesn't inform us if the config file can't be opened, so do that
-    // ourselves
+    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
     {
         QFile file(args.configFile);
         if (!file.open(QIODevice::ReadOnly)) {
@@ -490,8 +489,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     foreach (const QString &s, origHeadersNeedMarkStr)
         origHeadersNeedMark += s.toUtf8();
 
-    // If routesFile is a relative path, then use it relative to the config file
-    // location
+    // If routesFile is a relative path, then use it relative to the config file location
     QFileInfo fi(routesFile);
     if (fi.isRelative())
         routesFile = QFileInfo(configDir, routesFile).filePath();

@@ -38,8 +38,8 @@ public:
     // Returns true if connection starting, false on error
     bool connect(const QString &path);
 
-    // Returns true if connected, false on error. If errorCondition() returns
-    // ENOTCONN, then it is not fatal and the socket is still connecting
+    // Returns true if connected, false on error. If errorCondition() returns ENOTCONN, then it is
+    // not fatal and the socket is still connecting
     bool checkConnected();
 
     // Reimplemented

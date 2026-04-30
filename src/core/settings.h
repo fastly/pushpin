@@ -28,8 +28,7 @@
 
 class QSettings;
 
-/// Stores the application settings loaded from the command line arguments and
-/// the config file
+/// Stores the application settings loaded from the command line arguments and the config file
 class Settings {
 public:
     Settings(const QString &fileName);

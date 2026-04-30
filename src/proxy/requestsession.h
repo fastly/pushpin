@@ -48,8 +48,8 @@ class ZrpcChecker;
 class StatsManager;
 class XffRule;
 
-/// Manages the lifecycle of an individual HTTP request including
-/// inspection, acceptance, and response handling
+/// Manages the lifecycle of an individual HTTP request including inspection, acceptance, and
+/// response handling
 class RequestSession {
 public:
     RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager,
@@ -113,10 +113,9 @@ public:
     Signal paused;
     SignalInt headerBytesSent;
     SignalInt bodyBytesSent;
-    // This signal means some error was encountered while responding and
-    // that you should not attempt to call further response-related
-    // methods. The object remains in an active state though, and so you
-    // should still wait for finished()
+    // This signal means some error was encountered while responding and that you should not attempt
+    // to call further response-related methods. The object remains in an active state though, and
+    // so you should still wait for finished()
     Signal errorResponding;
     Signal finished;
 

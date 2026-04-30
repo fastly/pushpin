@@ -328,8 +328,7 @@ public:
     }
 
     void fileChanged() {
-        // Inotify tends to give us extra events so let's hang around a
-        // little bit before reloading
+        // Inotify tends to give us extra events so let's hang around a little bit before reloading
         if (!t.isActive()) {
             log_info("routes file changed, reloading");
             t.start(1000);

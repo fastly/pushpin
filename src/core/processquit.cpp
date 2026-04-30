@@ -81,8 +81,7 @@ public:
     void unixWatchAdd(int sig) {
         struct sigaction sa;
         sigaction(sig, NULL, &sa);
-        // If the signal is ignored, don't take it over.  This is
-        // recommended by the glibc manual
+        // If the signal is ignored, don't take it over.  This is recommended by the glibc manual
         if (sa.sa_handler == SIG_IGN)
             return;
         sigemptyset(&(sa.sa_mask));
@@ -94,8 +93,7 @@ public:
     void unixWatchRemove(int sig) {
         struct sigaction sa;
         sigaction(sig, NULL, &sa);
-        // Ignored means we skipped it earlier, so we should
-        // skip it again
+        // Ignored means we skipped it earlier, so we should skip it again
         if (sa.sa_handler == SIG_IGN)
             return;
         sigemptyset(&(sa.sa_mask));

@@ -154,8 +154,8 @@ public:
         // Can't remove unless unlinked
         assert(!s->ext);
 
-        // Note: this method assumes the session has already been removed
-        // from pendingSessions if needed
+        // Note: this method assumes the session has already been removed from pendingSessions if
+        // needed
         if (s->req)
             sessionsByRequest.remove(s->req);
         if (s->sock)
@@ -531,8 +531,8 @@ public:
 
 private:
     void req_readyRead(ZhttpRequest *req) {
-        // For a request to have been discardable, we must have read the
-        // entire input already and handed to the session
+        // For a request to have been discardable, we must have read the entire input already and
+        // handed to the session
         assert(!discardedRequests.contains(req));
 
         Session *s = sessionsByRequest.value(req);

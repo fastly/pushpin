@@ -186,10 +186,6 @@ private:
             reqHeaders += HttpHeader(name, val);
         }
 
-        // log_debug("httpserver: IN method=[%s] uri=[%s] 1.1=%s",
-        // qPrintable(method), uri.data(), version1dot0 ? "no" : "yes");
-        // foreach(const HttpHeader &h, reqHeaders)
-        //	log_debug("httpserver:   [%s] [%s]", h.first.data(), h.second.data());
         log_debug("httpserver: IN %s %s", qPrintable(method), uri.data());
 
         return true;

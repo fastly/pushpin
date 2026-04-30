@@ -36,12 +36,10 @@ public:
     DeferCall();
     ~DeferCall();
 
-    // Queue handler to be called after returning to the event loop. If
-    // handler contains references, they must outlive DeferCall. The
-    // recommended usage is for each object needing to perform deferred calls
-    // to keep a DeferCall as a member variable, and only refer to the
-    // object's own data in the handler. That way, any references are
-    // guaranteed to live long enough.
+    // Queue handler to be called after returning to the event loop. If handler contains references,
+    // they must outlive DeferCall. The recommended usage is for each object needing to perform
+    // deferred calls to keep a DeferCall as a member variable, and only refer to the object's own
+    // data in the handler. That way, any references are guaranteed to live long enough.
     void defer(std::function<void()> handler);
 
     int pendingCount() const { return deferredCalls_->size(); }

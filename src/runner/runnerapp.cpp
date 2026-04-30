@@ -68,8 +68,7 @@ static bool ensureDir(const QString &path) {
 }
 
 static QPair<QHostAddress, int> parsePort(const QString &s) {
-    // If the string doesn't contain a colon character, assume it's a port
-    // number by itself
+    // If the string doesn't contain a colon character, assume it's a port number by itself
     if (!s.contains(':'))
         return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
 
@@ -316,8 +315,7 @@ public:
             return;
         }
 
-        // QSettings doesn't inform us if the config file can't be accessed,
-        // so do that ourselves
+        // QSettings doesn't inform us if the config file can't be accessed, so do that ourselves
         {
             QFile file(configFile);
             if (!file.open(QIODevice::ReadOnly)) {
@@ -402,8 +400,8 @@ public:
         // If default log level not provided, use info level
         int defaultLevel = logLevels.value("", 2);
 
-        // NOTE: since we only finally set the log level here, earlier
-        // log messages outside the default level will be lost (if any)
+        // NOTE: since we only finally set the log level here, earlier log messages outside the
+        // default level will be lost (if any)
         log_setOutputLevel(logLevels.value("runner", defaultLevel));
 
         int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();

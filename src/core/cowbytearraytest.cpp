@@ -77,8 +77,7 @@ static void methods() {
     TEST_ASSERT_EQ(a.size(), 5);
     TEST_ASSERT_EQ(a.length(), 5);
 
-    // Data (const and non)
-    // data is null-terminated but the null is not counted in the size
+    // Data (const and non). The data is null-terminated but the null is not counted in the size
     TEST_ASSERT_EQ(strcmp(std::as_const(a).data(), "hello"), 0);
     TEST_ASSERT_EQ(strcmp(a.data(), "hello"), 0);
 

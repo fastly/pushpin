@@ -30,8 +30,7 @@ class HttpRequestData;
 class InspectData;
 class ZrpcManager;
 
-/// Requests handler decision on whether to proxy HTTP request to backend or
-/// accept it
+/// Requests handler decision on whether to proxy HTTP request to backend or accept it
 class InspectRequest : public ZrpcRequest {
 public:
     InspectRequest(ZrpcManager *manager);

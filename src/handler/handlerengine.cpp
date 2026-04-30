@@ -290,10 +290,9 @@ private:
         result["no-proxy"] = false;
 
         if (autoShare && requestData.method == "GET") {
-            // Auto share matches requests based on URI path (not query) and
-            // Grip-Last headers. The reason the query part is not
-            // considered is because it may vary per client and Grip-Last
-            // supersedes whatever is in the query
+            // Auto share matches requests based on URI path (not query) and Grip-Last headers. The
+            // reason the query part is not considered is because it may vary per client and
+            // Grip-Last supersedes whatever is in the query
 
             Url uri = requestData.uri;
             uri.setQuery(QString()); // Remove the query part
@@ -479,10 +478,9 @@ public:
             stats->removeConnection(cid, false);
     }
 
-    // NOTE: to ensure sequential processing of conn-max packets, this
-    // method must process any such packets contained within the accept
-    // request before returning. The conn-max packets must not be processed
-    // asynchronously
+    // NOTE: to ensure sequential processing of conn-max packets, this method must process any such
+    // packets contained within the accept request before returning. The conn-max packets must not
+    // be processed asynchronously
     void start() {
         VariantHash args = req->args();
 
@@ -756,10 +754,9 @@ public:
             lastIds.insert(params[0].first.asQByteArray(), params.get("last-id").asQByteArray());
         }
 
-        // We need to "atomically" process conn-max packets and add
-        // connections to the stats manager. We do this by processing the
-        // conn-max packets above and adding to the stats manager below,
-        // without returning to the event loop in between
+        // We need to "atomically" process conn-max packets and add connections to the stats
+        // manager. We do this by processing the conn-max packets above and adding to the stats
+        // manager below, without returning to the event loop in between
         foreach (const RequestState &rs, requestStates) {
             QByteArray cid = rs.rid.first + ':' + rs.rid.second;
 
@@ -791,8 +788,7 @@ public:
     }
 
     QList<std::shared_ptr<HttpSession>> takeSessions() {
-        // Swap instead of std::move since sessions is a member and should have a
-        // known state
+        // Swap instead of std::move since sessions is a member and should have a known state
         QList<std::shared_ptr<HttpSession>> out;
         out.swap(sessions);
         return out;
@@ -873,8 +869,8 @@ private:
             return;
         }
 
-        // Don't relay these headers. Their meaning is handled by
-        // zurl and they only apply to the outgoing hop.
+        // Don't relay these headers. Their meaning is handled by zurl and they only apply to the
+        // outgoing hop.
         instruct.response.headers.removeAll("Connection");
         instruct.response.headers.removeAll("Keep-Alive");
         instruct.response.headers.removeAll("Content-Encoding");
@@ -952,8 +948,8 @@ private:
                         cs->publishLastIds.remove(name);
                         conflict = true;
 
-                        // NOTE: don't exit loop here. We want to clear
-                        // the last ids of all conflicting channels
+                        // NOTE: don't exit loop here. We want to clear the last ids of all
+                        // conflicting channels
                     }
                 }
             }
@@ -998,8 +994,8 @@ private:
                     rp.inspectInfo.userData = inspectInfo.userData;
                 }
 
-                // If prev-id set on channels, set as inspect lastids so the proxy
-                // will pass as Grip-Last in the next request
+                // If prev-id set on channels, set as inspect lastids so the proxy will pass as
+                // Grip-Last in the next request
                 foreach (const Instruct::Channel &c, instruct.channels) {
                     if (!c.prevId.isNull()) {
                         if (!rp.haveInspectInfo) {
@@ -1082,8 +1078,8 @@ private:
                 &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax);
         }
 
-        // Engine should directly connect to this and register the holds
-        // immediately, to avoid a race with the lastId check
+        // Engine should directly connect to this and register the holds immediately, to avoid a
+        // race with the lastId check
         sessionsReady();
 
         setFinished(true);
@@ -1353,8 +1349,7 @@ public:
             }
 
             if (config.pushInSubConnect) {
-                // Some sane TCP keep-alive settings
-                // idle=30, cnt=6, intvl=5
+                // Some sane TCP keep-alive settings: idle=30, cnt=6, intvl=5
                 inSubSock->setTcpKeepAliveEnabled(true);
                 inSubSock->setTcpKeepAliveParameters(30, 6, 5);
             }
@@ -1537,9 +1532,8 @@ public:
 
 private:
     void handlePublishItem(const PublishItem &item) {
-        // Only sequence if someone is listening, because we
-        // clear lastId on unsubscribe and don't want it to
-        // be set again until after a subscription returns
+        // Only sequence if someone is listening, because we clear lastId on unsubscribe and don't
+        // want it to be set again until after a subscription returns
 
         bool seq = (!item.noSeq && cs.subs.contains(item.channel));
 
@@ -1795,10 +1789,9 @@ private:
             return;
 
         if (req->method() == "accept") {
-            // NOTE: to ensure sequential processing of conn-max packets,
-            // we need to process any such packets contained within the
-            // accept request immediately before returning to the event loop.
-            // the start() call will do this
+            // NOTE: to ensure sequential processing of conn-max packets, we need to process any
+            // such packets contained within the accept request immediately before returning to the
+            // event loop. the start() call will do this
 
             AcceptWorker *w =
                 new AcceptWorker(req, stateClient.get(), &cs, zhttpIn.get(), zhttpOut.get(),
@@ -1955,12 +1948,10 @@ private:
 
             QSet<HttpSession *> sessions = cs.streamSessionsByChannel.value(item.channel);
             foreach (HttpSession *hs, sessions) {
-                // Note: we used to assert that the session was currently a
-                // stream hold and subscribed to the target channel,
-                // however with the new grip-link stuff it is possible for
-                // the session to temporarily switch to NoHold, and for
-                // channels to become unsubscribed. So we'll do a
-                // conditional statement instead
+                // Note: we used to assert that the session was currently a stream hold and
+                // subscribed to the target channel, however with the new grip-link stuff it is
+                // possible for the session to temporarily switch to NoHold, and for channels to
+                // become unsubscribed. So we'll do a conditional statement instead
                 if (!hs->channels().contains(item.channel))
                     continue;
 
@@ -2012,8 +2003,8 @@ private:
 
             log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
-            // FIXME: if bodyPatch is used then body is empty. We should
-            // really be calculating blocks after applying patch
+            // FIXME: if bodyPatch is used then body is empty. We should really be calculating
+            // blocks after applying patch
 
             int blocks;
             if (item.size >= 0)
@@ -2196,8 +2187,8 @@ private:
     void acceptWorker_sessionsReady(AcceptWorker *w) {
         QList<std::shared_ptr<HttpSession>> sessions = w->takeSessions();
         foreach (const std::shared_ptr<HttpSession> &hs, sessions) {
-            // NOTE: for performance reasons we do not call hs->setParent and
-            // instead leave the object unparented
+            // NOTE: for performance reasons we do not call hs->setParent and instead leave the
+            // object unparented
 
             hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
             hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
@@ -2242,8 +2233,8 @@ private:
     }
 
     void stats_unsubscribed(const QString &mode, const QString &channel) {
-        // NOTE: this callback may be invoked while looping over certain structures,
-        // so be careful what you touch
+        // NOTE: this callback may be invoked while looping over certain structures, so be careful
+        // what you touch
 
         Q_UNUSED(mode);
 
@@ -2458,8 +2449,8 @@ private:
             // Any other type must be for a known cid
             WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid)).get();
             if (!s) {
-                // Send cancel, causing the proxy to close the connection. Client
-                // will need to retry to repair
+                // Send cancel, causing the proxy to close the connection. Client will need to retry
+                // to repair
                 WsControlPacket::Item i;
                 i.cid = item.cid;
                 i.type = WsControlPacket::Item::Cancel;
@@ -2740,8 +2731,7 @@ private:
                 bool localReplaced = stats->processExternalPacket(p, false);
 
                 if (!localReplaced) {
-                    // Forward the packet. This will stamp the from field and keep the
-                    // rest
+                    // Forward the packet. This will stamp the from field and keep the rest
                     stats->sendPacket(p);
                 }
             }

@@ -37,9 +37,9 @@ class ZhttpRequest;
 class ZWebSocket;
 class SockJsManager;
 
-/// SockJS session for incoming client connections that converts XHR-polling,
-/// JSONP, and native WebSocket into unified WebSocket-style messaging with
-/// session state management, keepalive handling, and request queueing
+/// SockJS session for incoming client connections that converts XHR-polling, JSONP, and native
+/// WebSocket into unified WebSocket-style messaging with session state management, keepalive
+/// handling, and request queueing
 class SockJsSession : public WebSocket {
 public:
     ~SockJsSession();

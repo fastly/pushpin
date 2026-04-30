@@ -39,7 +39,7 @@ public:
     void setWaitMax(int msecs);
     void setIdCacheTtl(int secs);
 
-    // Seq = false means ID cache handling only
+    // Seq = false means ID cache handling only.
     // note: may emit signals
     void addItem(const PublishItem &item, bool seq = true);
 
