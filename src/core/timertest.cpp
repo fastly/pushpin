@@ -24,7 +24,7 @@
 #include "eventloop.h"
 #include "test.h"
 
-// loop_advance should process enough events to cause the timers to Activate, without sleeping, in
+// loop_advance should process enough events to cause the timers to activate, without sleeping, in
 // order to prove timeouts of zero are processed immediately
 static int runZeroTimeout(std::function<void()> loop_advance) {
     Timer t;

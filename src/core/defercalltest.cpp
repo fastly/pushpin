@@ -25,7 +25,7 @@
 #include "test.h"
 #include <thread>
 
-// loop_advance should process enough events to cause the calls to run, Without sleeping, in order
+// loop_advance should process enough events to cause the calls to run, without sleeping, in order
 // to prove the calls are run immediately
 static std::tuple<int, int> runDeferCall(std::function<void()> loop_advance) {
     DeferCall deferCall;
@@ -48,7 +48,7 @@ static void callNonLocal(DeferCall *deferCall, std::function<void()> handler) {
     thread.join();
 }
 
-// loop_advance should process enough events to cause the calls to run, Without sleeping, in order
+// loop_advance should process enough events to cause the calls to run, without sleeping, in order
 // to prove the calls are run immediately
 static std::tuple<int, int> runNonLocal(std::function<void()> loop_advance) {
     DeferCall deferCall;

@@ -1298,7 +1298,7 @@ public:
             }
 
             if (config.pushInSubConnect) {
-                // Some sane TCP keep-alive settings idle=30, cnt=6, intvl=5
+                // Some sane TCP keep-alive settings: idle=30, cnt=6, intvl=5
                 inSubSock->setTcpKeepAliveEnabled(true);
                 inSubSock->setTcpKeepAliveParameters(30, 6, 5);
             }

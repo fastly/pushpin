@@ -603,8 +603,9 @@ public:
         Url uri = requestData.uri;
         QUrlQuery query(uri);
 
-        // Two ways to activate JSON-P: 1) callback param present 2) default callback specified in
-        // configuration and body param present
+        // Two ways to activate JSON-P:
+        // 1) callback param present
+        // 2) default callback specified in configuration and body param present
         if (!query.hasQueryItem(callbackParam) &&
             (config.defaultCallback.isEmpty() || bodyParam.isEmpty() ||
              !query.hasQueryItem(bodyParam))) {
