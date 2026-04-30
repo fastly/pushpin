@@ -102,8 +102,8 @@ static void logPacket(int level, const Variant &data, const QString &contentFiel
         hdata.remove(contentField);
         meta = hdata;
     } else {
-        // If data isn't a hash, then we can't extract content, so
-        // the meta part will be the entire data
+        // If data isn't a hash, then we can't extract content, so the meta part will be the entire
+        // data
         meta = data;
     }
 

@@ -25,8 +25,8 @@
 #include "test.h"
 #include <thread>
 
-// loop_advance should process enough events to cause the calls to run,
-// Without sleeping, in order to prove the calls are run immediately
+// loop_advance should process enough events to cause the calls to run, Without sleeping, in order
+// to prove the calls are run immediately
 static std::tuple<int, int> runDeferCall(std::function<void()> loop_advance) {
     DeferCall deferCall;
     int count = 0;
@@ -42,15 +42,14 @@ static std::tuple<int, int> runDeferCall(std::function<void()> loop_advance) {
     return {deferCall.pendingCount(), count};
 }
 
-// Spawns a thread, triggers the deferCall from it, then waits for thread to
-// finish
+// Spawns a thread, triggers the deferCall from it, then waits for thread to finish
 static void callNonLocal(DeferCall *deferCall, std::function<void()> handler) {
     std::thread thread([=] { deferCall->defer(handler); });
     thread.join();
 }
 
-// loop_advance should process enough events to cause the calls to run,
-// Without sleeping, in order to prove the calls are run immediately
+// loop_advance should process enough events to cause the calls to run, Without sleeping, in order
+// to prove the calls are run immediately
 static std::tuple<int, int> runNonLocal(std::function<void()> loop_advance) {
     DeferCall deferCall;
     int count = 0;
@@ -115,8 +114,7 @@ static void managerCleanup() {
         DeferCall::global()->defer([&] { ++count; });
     });
 
-    // Cleanup should process deferred calls queued so far as well as
-    // those queued during processing
+    // Cleanup should process deferred calls queued so far as well as those queued during processing
     DeferCall::cleanup();
     TEST_ASSERT_EQ(count, 2);
 }

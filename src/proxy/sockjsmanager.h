@@ -36,8 +36,7 @@ class ZhttpRequest;
 class ZWebSocket;
 class SockJsSession;
 
-/// Manages SockJS sessions and routes clients using WebSocket, XHR, or JSONP
-/// comms
+/// Manages SockJS sessions and routes clients using WebSocket, XHR, or JSONP comms
 class SockJsManager {
 public:
     SockJsManager(const QString &sockJsUrl);

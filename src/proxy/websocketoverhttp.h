@@ -35,8 +35,7 @@ using Connection = boost::signals2::scoped_connection;
 
 class ZhttpManager;
 
-/// Implements WebSocket protocol over HTTP long-polling for outgoing backend
-/// connections
+/// Implements WebSocket protocol over HTTP for outgoing backend connections
 class WebSocketOverHttp : public WebSocket {
 public:
     class Event {
@@ -100,23 +99,19 @@ public:
     Signal aboutToSendRequest;
     Signal disconnected;
 
-    // Creates events from `frames`. The returned events are guaranteed to
-    // represent 0 or more full messages from `frames`, where the first
-    // represented frame is a non-continuation frame. This matches the
-    // expectations of `removeContentFromFrames()`, in order to enable
-    // removing the frames afterwards.
+    // Creates events from `frames`. The returned events are guaranteed to represent 0 or more full
+    // messages from `frames`, where the first represented frame is a non-continuation frame. This
+    // matches the expectations of `removeContentFromFrames()`, in order to enable removing the
+    // frames afterwards.
     static QList<Event> framesToEvents(const QList<Frame> &frames, int eventsMax, int contentMax,
                                        bool *ok, int *framesRepresented, int *contentRepresented);
 
-    // Remove `count` content bytes from the beginning of `frames`, removing
-    // frames (including 0-sized frames) when their content is entirely removed.
-    // when a frame is removed from a multipart message, the original type is
-    // carried over into the next frame, which means the first frame can't be a
-    // continuation.
-    // returns the actual number of content bytes removed, which may be less than
-    // `count` if there are not enough content bytes available, or if a frame in
-    // a multipart message needs to be removed and there is no frame after it to
-    // retain the type.
+    // Remove `count` content bytes from the beginning of `frames`, removing frames (including
+    // 0-sized frames) when their content is entirely removed. when a frame is removed from a
+    // multipart message, the original type is carried over into the next frame, which means the
+    // first frame can't be a continuation. returns the actual number of content bytes removed,
+    // which may be less than `count` if there are not enough content bytes available, or if a frame
+    // in a multipart message needs to be removed and there is no frame after it to retain the type.
     static int removeContentFromFrames(QList<WebSocket::Frame> *frames, int count);
 
 private:

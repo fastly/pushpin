@@ -204,8 +204,8 @@ public:
     void startKeepAlive() {
         if (multi) {
             if (keepAliveTimer->isActive()) {
-                // Need to flush the current keepalive, since the
-                // manager registration may extend the timeout
+                // Need to flush the current keepalive, since the manager registration may extend
+                // the timeout
                 keepAlive_timeout();
 
                 keepAliveTimer->stop();
@@ -327,8 +327,8 @@ public:
                     break;
                 }
 
-                // If we have data to send, and the credits to do so, then send data.
-                // also send credits if we need to.
+                // If we have data to send, and the credits to do so, then send data. also send
+                // credits if we need to.
 
                 Frame f = nextFrame;
                 bool outFrameDone = false;

@@ -327,8 +327,7 @@ public:
 
     void cleanupOutSock() {
         if (outSock) {
-            // Ensure the socket has an updated Grip-Sig to use during its
-            // destruction process
+            // Ensure the socket has an updated Grip-Sig to use during its destruction process
             updateGripSig();
 
             outWSConnection = WSConnections();
@@ -953,9 +952,8 @@ public:
         if (type == WebSocket::Frame::Continuation)
             return;
 
-        // If we have no socket to write to, say the data was written anyway.
-        // this is not quite correct but better than leaving the send event
-        // dangling
+        // If we have no socket to write to, say the data was written anyway. this is not quite
+        // correct but better than leaving the send event dangling
         if (!inSock || inSock->state() != WebSocket::Connected) {
             wsControl->sendEventWritten();
             return;

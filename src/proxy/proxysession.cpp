@@ -185,8 +185,8 @@ public:
 
     void cleanup() {
         foreach (SessionItem *si, sessionItems) {
-            // Emitting a signal here is gross, but this way the engine cleans up the
-            // request sessions
+            // Emitting a signal here is gross, but this way the engine cleans up the request
+            // sessions
             q->requestSessionDestroyed(si->rs, false);
             delete si->rs;
             delete si;
@@ -212,8 +212,7 @@ public:
         if (rs->isRetry())
             si->countClientReceivedBytes = false;
 
-        // Internal requests originate internally and should not have client bytes
-        // counted
+        // Internal requests originate internally and should not have client bytes counted
         if (rs->request()->passthroughData().isValid()) {
             si->countClientReceivedBytes = false;
             si->countClientSentBytes = false;
@@ -473,8 +472,7 @@ public:
     }
 
     void tryRequestRead() {
-        // If the state changed before input finished, then
-        // stop reading input
+        // If the state changed before input finished, then stop reading input
         if (state != Requesting)
             return;
 
@@ -545,21 +543,19 @@ public:
 
                     si->rs->respondCannotAccept();
                 } else {
-                    // If we already started responding, then only provide an
-                    // error message in debug mode
+                    // If we already started responding, then only provide an error message in debug
+                    // mode
 
                     if (si->rs->debugEnabled()) {
-                        // If debug enabled, append the message at the end.
-                        // this may ruin the content, but hey it's debug
-                        // mode
+                        // If debug enabled, append the message at the end. this may ruin the
+                        // content, but hey it's debug mode
                         QByteArray buf = "\n\nAccept service unavailable\n";
 
                         si->bytesToWrite += buf.size();
                         si->rs->writeResponseBody(buf);
                         si->rs->endResponseBody();
                     } else {
-                        // If debug not enabled, then the best we can do is
-                        // disconnect
+                        // If debug not enabled, then the best we can do is disconnect
                         si->state = SessionItem::Responded;
                         si->unclean = true;
                         si->bytesToWrite = -1;
@@ -603,21 +599,19 @@ public:
                                          si->rs->debugEnabled() ? debugErrorMessage : errorMessage);
                 } else // Responding
                 {
-                    // If we already started responding, then only provide a
-                    // rejection message in debug mode
+                    // If we already started responding, then only provide a rejection message in
+                    // debug mode
 
                     if (si->rs->debugEnabled()) {
-                        // If debug enabled, append the message at the end.
-                        // this may ruin the content, but hey it's debug
-                        // mode
+                        // If debug enabled, append the message at the end. this may ruin the
+                        // content, but hey it's debug mode
                         QByteArray buf = "\n\n" + debugErrorMessage.toUtf8() + '\n';
 
                         si->bytesToWrite += buf.size();
                         si->rs->writeResponseBody(buf);
                         si->rs->endResponseBody();
                     } else {
-                        // If debug not enabled, then the best we can do is
-                        // disconnect
+                        // If debug not enabled, then the best we can do is disconnect
                         si->state = SessionItem::Responded;
                         si->unclean = true;
                         si->bytesToWrite = -1;
@@ -673,8 +667,8 @@ public:
 
     // This method emits signals
     void tryResponseRead() {
-        // If we're not buffering, then don't read (instead, sync to slowest
-        // receiver before reading again)
+        // If we're not buffering, then don't read (instead, sync to slowest receiver before reading
+        // again)
         if (!buffering && pendingWrites())
             return;
 
@@ -715,13 +709,12 @@ public:
                     (gripHold == "stream" ||
                      (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())) &&
                     !usingBuildIdFilter) {
-                    // Sending the initial response from the proxy means
-                    // we need to do some of the handler's job here
+                    // Sending the initial response from the proxy means we need to do some of the
+                    // handler's job here
 
-                    // NOTE: if we ever need to do more than what's
-                    // below, we should consider querying the handler
-                    // to perform these things while still letting
-                    // the proxy send the response body
+                    // NOTE: if we ever need to do more than what's below, we should consider
+                    // querying the handler to perform these things while still letting the proxy
+                    // send the response body
 
                     // No content length
                     responseData.headers.removeAll("Content-Length");
@@ -885,8 +878,8 @@ public:
     void startResponse() {
         state = Responding;
 
-        // Don't relay these headers. Their meaning is handled by
-        // zurl and they only apply to the outgoing hop.
+        // Don't relay these headers. Their meaning is handled by zurl and they only apply to the
+        // outgoing hop.
         responseData.headers.removeAll("Connection");
         responseData.headers.removeAll("Keep-Alive");
         responseData.headers.removeAll("Content-Encoding");
@@ -1104,8 +1097,8 @@ public:
             log_debug("proxysession: %p finished by passthrough", q);
             q->finished();
         } else if (wasInputRequest) {
-            // This should never happen. For there to be more than
-            // one SessionItem, inRequest must be 0.
+            // This should never happen. For there to be more than one SessionItem, inRequest must
+            // be 0.
             assert(0);
 
             rejectAll(500, "Internal Server Error", "Input request failed.");
@@ -1197,8 +1190,7 @@ public:
             adata.responseSent = acceptAfterResponding;
 
             if (!statsManager->connectionSendEnabled()) {
-                // Flush max. The count will include the connections we just
-                // unregistered
+                // Flush max. The count will include the connections we just unregistered
                 adata.connMaxPackets +=
                     statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
@@ -1226,8 +1218,7 @@ public:
         si->state = SessionItem::Errored;
         si->bytesToWrite = -1;
 
-        // Don't destroy the RequestSession here. A finished signal will arrive
-        // next.
+        // Don't destroy the RequestSession here. A finished signal will arrive next.
     }
 
     void rs_headerBytesSent(int count, RequestSession *rs) {
@@ -1257,8 +1248,7 @@ public:
                 foreach (SessionItem *si, sessionItems)
                     logFinished(si, true);
 
-                // The requests were paused, so deleting them will leave the peer
-                // sessions active
+                // The requests were paused, so deleting them will leave the peer sessions active
 
                 QList<RequestSession *> toDestroy;
                 foreach (SessionItem *si, sessionItems) {

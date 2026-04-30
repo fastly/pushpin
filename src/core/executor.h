@@ -28,10 +28,10 @@ public:
 
     bool run(std::function<bool(std::optional<int>)> park);
 
-    /// Spawns `fut` on the executor in the current thread. Returns true on
-    /// success or false on error. An error can occur if there is no executor in
-    /// the current thread or if the executor is at capacity. This function takes
-    /// ownership of `fut` regardless of whether spawning is successful.
+    /// Spawns `fut` on the executor in the current thread. Returns true on success or false on
+    /// error. An error can occur if there is no executor in the current thread or if the executor
+    /// is at capacity. This function takes ownership of `fut` regardless of whether spawning is
+    /// successful.
     static bool currentSpawn(ffi::UnitFuture *fut);
 
 private:

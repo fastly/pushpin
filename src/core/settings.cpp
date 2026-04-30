@@ -56,16 +56,15 @@ Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
 
     QString includeFile = valueRaw("global/include").toString();
 
-    // if include is exactly "internal.conf", rewrite relative to libdir
-    // TODO: remove this hack at next major version
+    // if include is exactly "internal.conf", rewrite relative to libdir. TODO: remove this hack at
+    // next major version
     if (includeFile == "internal.conf")
         includeFile = "{libdir}/internal.conf";
 
     includeFile = resolveVars(includeFile);
 
     if (!includeFile.isEmpty()) {
-        // If include is a relative path, then use it relative to the config file
-        // location
+        // If include is a relative path, then use it relative to the config file location
         QFileInfo fi(includeFile);
         if (fi.isRelative())
             includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();

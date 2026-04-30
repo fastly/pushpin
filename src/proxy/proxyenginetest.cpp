@@ -402,10 +402,9 @@ private:
                     } else {
                         zresp.headers += HttpHeader("Content-Type", "text/plain");
                         if (large) {
-                            // Grip-Link required to trigger accept after
-                            // sending large response. Note that the link
-                            // won't be followed in this test since that's
-                            // not a proxy issue
+                            // Grip-Link required to trigger accept after sending large response.
+                            // Note that the link won't be followed in this test since that's not a
+                            // proxy issue
                             zresp.headers += HttpHeader("Grip-Link", "</path3>; rel=next");
                             zresp.body =
                                 QByteArray(PROXY_MAX_ACCEPT_RESPONSE_BODY + 10000, 'a') + '\n';
@@ -1209,12 +1208,12 @@ static void acceptWithRetry(TestState &state, std::function<void(int)> loop_wait
     TEST_ASSERT_EQ(p.serverContentBytesSent, contentBytes);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    101); // "200" + "OK + "Content-Type" + "application/grip-instruct" +
-                         // "Content-Length": "94" + "200" + "OK" + "Content-Type" +
-                         // "text/plain" + "Content-Length" + "11"
-    TEST_ASSERT_EQ(p.serverContentBytesReceived,
-                   105); // "{ \"hold\": { \"mode\": \"response\", \"channels\": [
-                         // { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] }
-                         // }" + "hello world"
+                         // "Content-Length": "94" + "200" + "OK" + "Content-Type" + "text/plain" +
+                         // "Content-Length" + "11"
+    TEST_ASSERT_EQ(
+        p.serverContentBytesReceived,
+        105); // "{ \"hold\": { \"mode\": \"response\", \"channels\": [
+              // { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }" + "hello world"
 }
 
 static void passthroughShared(TestState &state, std::function<void(int)> loop_wait) {
@@ -1271,8 +1270,8 @@ static void passthroughShared(TestState &state, std::function<void(int)> loop_wa
     TEST_ASSERT_EQ(p.clientContentBytesReceived, 0);
     TEST_ASSERT_EQ(p.clientHeaderBytesSent,
                    86); // "200" + "OK" + "Content-Type" + "text/plain" +
-                        // "Content-Length" + "11" + "200" + "OK" + "Content-Type"
-                        // + "text/plain" + "Content-Length" + "11"
+                        // "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" +
+                        // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 22); // "hello world" + "hello world"
     TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
                                                 reqData.method, reqData.uri, reqData.headers));
@@ -1369,8 +1368,8 @@ static void passthroughSharedPost(TestState &state, std::function<void(int)> loo
                    22); // "hello world" + "hello world"
     TEST_ASSERT_EQ(p.clientHeaderBytesSent,
                    86); // "200" + "OK" + "Content-Type" + "text/plain" +
-                        // "Content-Length" + "11" + "200" + "OK" + "Content-Type"
-                        // + "text/plain" + "Content-Length" + "11"
+                        // "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" +
+                        // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 22); // "hello world" + "hello world"
     TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
                                                 reqData.method, reqData.uri, reqData.headers));

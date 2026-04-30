@@ -189,8 +189,8 @@ static void runIo(std::function<void()> loop_wait) {
         received += buf;
     }
 
-    // Now read as much as possible on the client side. This helps the
-    // server side gain writability sooner
+    // Now read as much as possible on the client side. This helps the server side gain writability
+    // sooner
     while (true) {
         QByteArray buf = client.read(100000);
 

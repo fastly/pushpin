@@ -56,10 +56,9 @@ public:
             EventLoop::instance()->deregister(customRegId_);
     }
 
-    // Requests the awake signal to be emitted from the object's event loop
-    // at the next opportunity. This is safe to call from another thread. If
-    // this is called multiple times before the signal is emitted, the signal
-    // will only be emitted once.
+    // Requests the awake signal to be emitted from the object's event loop at the next opportunity.
+    // This is safe to call from another thread. If this is called multiple times before the signal
+    // is emitted, the signal will only be emitted once.
     void wake() {
         std::lock_guard<std::mutex> guard(mutex_);
 
@@ -155,8 +154,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(callsMutex_);
 
-            // Process all calls queued so far, but not any that may get queued
-            // during processing
+            // Process all calls queued so far, but not any that may get queued during processing
             ready.swap(calls_);
         }
 
@@ -178,8 +176,8 @@ private:
     void timer_timeout() {
         process();
 
-        // No need to re-arm the timer. If new calls were queued during
-        // processing, add() will have taken care of that
+        // No need to re-arm the timer. If new calls were queued during processing, add() will have
+        // taken care of that
     }
 
     void threadWake_awake() { process(); }
@@ -220,9 +218,8 @@ DeferCall::DeferCall()
 
         EventLoop *loop = EventLoop::instance();
         if (loop) {
-            // We use the manager pointer to uniquely identify the handler
-            // registration even though the handler function doesn't do
-            // anything with it
+            // We use the manager pointer to uniquely identify the handler registration even though
+            // the handler function doesn't do anything with it
             loop->addCleanupHandler(eventloop_cleanup_handler, localManager.get());
         }
     }
@@ -246,8 +243,7 @@ void DeferCall::defer(std::function<void()> handler) {
         manager = it->second.get();
     }
 
-    // Manager keeps a weak pointer, so we can invalidate pending calls by
-    // simply deleting them
+    // Manager keeps a weak pointer, so we can invalidate pending calls by simply deleting them
     manager->add(c);
 }
 

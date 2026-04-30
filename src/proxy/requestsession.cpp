@@ -325,8 +325,8 @@ public:
             }
         }
 
-        // NOTE: per the license, this functionality may not be removed as it
-        // is the interface for the copyright notice
+        // NOTE: per the license, this functionality may not be removed as it is the interface for
+        // the copyright notice
         if (requestData.headers.contains("Pushpin-Check")) {
             QString str = "Copyright (C) 2012-2023 Fanout, Inc.\n"
                           "Copyright (C) 2023 Fastly, Inc.\n"
@@ -426,8 +426,8 @@ public:
                                  logicalPeerAddress, isHttps, false, reportOffset);
             stats->addActivity(route.statsRoute());
 
-            // Note: we don't call addRequestsReceived here, because we're acting for
-            // an existing request
+            // Note: we don't call addRequestsReceived here, because we're acting for an existing
+            // request
         }
     }
 
@@ -473,10 +473,9 @@ public:
             in += zhttpRequest->readBody(MAX_SHARED_REQUEST_BODY - in.size());
 
             if (in.size() >= MAX_SHARED_REQUEST_BODY || zhttpRequest->isInputFinished()) {
-                // We've read as much as we can for now. If there is still
-                // more to read, then the engine will notice this and
-                // disallow sharing before passing to proxysession. At that
-                // point, proxysession will read the remainder of the data
+                // We've read as much as we can for now. If there is still more to read, then the
+                // engine will notice this and disallow sharing before passing to proxysession. At
+                // that point, proxysession will read the remainder of the data
 
                 zhttpReqConnections.readyReadConnection.disconnect();
 
@@ -604,9 +603,8 @@ public:
         Url uri = requestData.uri;
         QUrlQuery query(uri);
 
-        // Two ways to activate JSON-P:
-        // 1) callback param present
-        // 2) default callback specified in configuration and body param present
+        // Two ways to activate JSON-P: 1) callback param present 2) default callback specified in
+        // configuration and body param present
         if (!query.hasQueryItem(callbackParam) &&
             (config.defaultCallback.isEmpty() || bodyParam.isEmpty() ||
              !query.hasQueryItem(bodyParam))) {
@@ -844,15 +842,15 @@ public:
         if (!idata.doProxy) {
             state = ReceivingForAccept;
 
-            // Successful inspect indicated we should not proxy. In that case,
-            // collect the body and accept
+            // Successful inspect indicated we should not proxy. In that case, collect the body and
+            // accept
             zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(
                 boost::bind(&Private::zhttpRequest_readyRead, this));
             processIncomingRequest();
         } else {
             if (!idata.sharingKey.isEmpty()) {
-                // A request can only be shared if we've read the entire
-                // request body, so let's try to read it now
+                // A request can only be shared if we've read the entire request body, so let's try
+                // to read it now
                 state = Receiving;
 
                 zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(
@@ -876,8 +874,7 @@ public:
             if (rdata.accepted) {
                 accepted = true;
 
-                // The request was paused, so deleting it will leave the peer session
-                // active
+                // The request was paused, so deleting it will leave the peer session active
                 zhttpReqConnections = ZhttpReqConnections();
                 delete zhttpRequest;
                 zhttpRequest = 0;
@@ -1028,8 +1025,7 @@ public:
                         else if (bodyRawBuf.endsWith("\n"))
                             bodyRawBuf.truncate(bodyRawBuf.size() - 1);
                     } else {
-                        // Response isn't finished. Keep any trailing newline in the output
-                        // buffer
+                        // Response isn't finished. Keep any trailing newline in the output buffer
                         if (bodyRawBuf.endsWith("\r\n")) {
                             bodyRawBuf.truncate(bodyRawBuf.size() - 2);
                             out += QByteArray("\r\n");

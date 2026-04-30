@@ -717,8 +717,8 @@ public:
                 if (error)
                     break;
 
-                // note: inBytes may exceed BUFFER_SIZE at this point, but
-                // It shouldn't be by more than double
+                // note: inBytes may exceed BUFFER_SIZE at this point, but it shouldn't be by more
+                // than double
 
                 inFrames += frames;
                 inBytes += bytes;

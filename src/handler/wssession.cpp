@@ -126,9 +126,9 @@ void WsSession::processPublishQueue() {
         filtersFinishedConnection = filters->finished.connect(
             boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
 
-        // Websocket sessions currently don't support previous IDs on
-        // subscriptions, but we still need to populate the channel names in
-        // in the filter context even if all the values will be null
+        // Websocket sessions currently don't support previous IDs on subscriptions, but we still
+        // need to populate the channel names in in the filter context even if all the values will
+        // be null
         QHash<QString, QString> prevIds;
         QHashIterator<QString, Instruct::Channel> it(channels);
         while (it.hasNext()) {
@@ -147,9 +147,8 @@ void WsSession::processPublishQueue() {
         fc.trusted = targetTrusted;
         fc.limiter = filterLimiter;
 
-        // May call filtersFinished immediately. If it does, queue processing
-        // will continue. Else, the loop will end and queue processing will
-        // resume after the filters finish
+        // May call filtersFinished immediately. If it does, queue processing will continue. Else,
+        // the loop will end and queue processing will resume after the filters finish
         filters->start(fc, f.body);
     }
 

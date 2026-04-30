@@ -610,10 +610,9 @@ public:
             RetryInfo &ri = retryInfoBySource[c->from];
             ri.connectionInfoBySeq.remove(c->retrySeq);
 
-            // FIXME: we keep the source entry even when there are no more
-            // connections, to avoid resetting the seq value. If there is
-            // a lot of proxy instance churn, retryInfoBySource could
-            // fill up with unused entries that will never be cleaned up.
+            // FIXME: we keep the source entry even when there are no more connections, to avoid
+            // resetting the seq value. If there is a lot of proxy instance churn, retryInfoBySource
+            // could fill up with unused entries that will never be cleaned up.
         }
 
         if (c->lastRefresh >= 0) {
@@ -957,15 +956,14 @@ public:
                 ConnectionInfo *c = static_cast<ConnectionInfo *>(obj);
 
                 if (c->linger) {
-                    // In linger mode, next refresh is set to the time we should
-                    // delete the connection rather than refresh
+                    // In linger mode, next refresh is set to the time we should delete the
+                    // connection rather than refresh
 
                     connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
                     c->lastRefresh = -1;
 
-                    // Note: we don't send a disconnect message when the
-                    // linger expires. The assumption is that the handler
-                    // owns the connection now
+                    // Note: we don't send a disconnect message when the linger expires. The
+                    // assumption is that the handler owns the connection now
 
                     removeConnection(c);
                     delete c;
@@ -995,8 +993,8 @@ public:
                 Subscription *s = static_cast<Subscription *>(obj);
 
                 if (s->linger) {
-                    // In linger mode, next refresh is set to the time we should
-                    // delete the subscription rather than refresh
+                    // In linger mode, next refresh is set to the time we should delete the
+                    // subscription rather than refresh
 
                     subscriptionRefreshBuckets[s->refreshBucket].remove(s);
                     s->lastRefresh = -1;
@@ -1306,9 +1304,8 @@ private:
         QList<StatsPacket> reportPackets;
         QList<Report *> toDelete;
 
-        // Note: here we iterate over all reports, which will be one per
-        // route ID. This could become a problem if there are thousands
-        // of route IDs (at which point we can consider bucketing)
+        // Note: here we iterate over all reports, which will be one per route ID. This could become
+        // a problem if there are thousands of route IDs (at which point we can consider bucketing)
         QHashIterator<QByteArray, Report *> it(reports);
         while (it.hasNext()) {
             it.next();
@@ -1478,10 +1475,9 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
         lastReport -= reportOffset;
 
     if (d->reportInterval > 0) {
-        // Check if this connection should replace a lingering external one
-        // note: this iterates over all the known external sources, which at
-        // at the time of this writing is almost certainly just 1 (a single
-        // pushpin-proxy source).
+        // Check if this connection should replace a lingering external one note: this iterates over
+        // all the known external sources, which at at the time of this writing is almost certainly
+        // just 1 (a single pushpin-proxy source).
         QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);
         while (it.hasNext()) {
@@ -1501,10 +1497,9 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
         }
     }
 
-    // If we already had an entry, silently overwrite it. This can
-    // happen if we sent an accepted connection off to the handler,
-    // kept it lingering in our table, and then the handler passed
-    // it back to us for retrying
+    // If we already had an entry, silently overwrite it. This can happen if we sent an accepted
+    // connection off to the handler, kept it lingering in our table, and then the handler passed it
+    // back to us for retrying
     Private::ConnectionInfo *c = d->connectionInfoById.value(id);
     if (c) {
         replacing = true;
@@ -1528,8 +1523,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
     d->updateConnectionsMax(c->routeId, now);
 
     if (d->reportInterval > 0) {
-        // Only immediately count a minute if an offset wasn't set and we weren't
-        // replacing
+        // Only immediately count a minute if an offset wasn't set and we weren't replacing
         if (reportOffset < 0 && !replacing) {
             Private::Report *report = d->getOrCreateReport(c->routeId);
 
@@ -1737,8 +1731,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
                     return false;
                 }
 
-                // Otherwise, remove local connection and it will be replaced with
-                // external
+                // Otherwise, remove local connection and it will be replaced with external
 
                 replacing = true;
                 lastReport = c->lastReport;
@@ -1748,10 +1741,9 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             }
         }
 
-        // If the connection exists under a different from address, remove it.
-        // note: this iterates over all the known external sources, which at
-        // at the time of this writing is almost certainly just 1 (a single
-        // pushpin-proxy source).
+        // If the connection exists under a different from address, remove it. note: this iterates
+        // over all the known external sources, which at at the time of this writing is almost
+        // certainly just 1 (a single pushpin-proxy source).
         QList<Private::ConnectionInfo *> toDelete;
         QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);

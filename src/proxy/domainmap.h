@@ -35,8 +35,8 @@
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-/// Offers fast access to the routes file. The table is maintained
-/// by a background thread so that file access doesn't cause blocking.
+/// Offers fast access to the routes file. The table is maintained by a background thread so that
+/// file access doesn't cause blocking.
 class DomainMap {
 public:
     class JsonpConfig {
@@ -147,8 +147,8 @@ public:
     DomainMap(const QString &fileName);
     ~DomainMap();
 
-    // Shouldn't really ever need to call this, but it's here in case the
-    // underlying file watching doesn't work
+    // Shouldn't really ever need to call this, but it's here in case the underlying file watching
+    // doesn't work
     void reload();
 
     bool isIdShared(const QString &id) const;

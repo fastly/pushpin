@@ -30,8 +30,7 @@
 
 class QHostAddress;
 
-/// Collects and reports statistics via ZeroMQ (internal) and Prometheus
-/// (external) on:
+/// Collects and reports statistics via ZeroMQ (internal) and Prometheus (external) on:
 /// - Connections
 /// - Subscriptions
 /// - Messages sent/received
@@ -72,8 +71,8 @@ public:
     int removeConnection(const QByteArray &id, bool linger,
                          const QByteArray &source = QByteArray()); // Return unreported time
 
-    // Manager automatically refreshes, but it may be useful to force a
-    // send before removing with linger
+    // Manager automatically refreshes, but it may be useful to force a send before removing with
+    // linger
     void refreshConnection(const QByteArray &id);
 
     void addSubscription(const QString &mode, const QString &channel, uint32_t subscriberCount);
@@ -91,9 +90,8 @@ public:
 
     bool checkConnection(const QByteArray &id) const;
 
-    // Conn, conn-max, and report packets received from the proxy should be
-    // passed into this method. returns true if the packet should not also be
-    // forwarded on
+    // Conn, conn-max, and report packets received from the proxy should be passed into this method.
+    // returns true if the packet should not also be forwarded on
     bool processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport);
 
     // Directly send, for proxy->handler pass-through
