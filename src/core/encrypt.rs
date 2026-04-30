@@ -111,7 +111,7 @@ mod ffi {
         out_plain.len = plain.len();
         out_plain.data = Box::into_raw(plain) as *const u8;
 
-        return 0;
+        0
     }
 
     #[allow(clippy::missing_safety_doc)]

@@ -380,7 +380,7 @@ impl App {
                 config.stream_timeout,
                 config.allow_compression,
                 &config.deny,
-                config.origind_path.as_ref().map(|p| Path::new(p)),
+                config.origind_path.as_ref().map(Path::new),
                 config.origind_rate,
                 zsockman.clone(),
                 handle_bound,

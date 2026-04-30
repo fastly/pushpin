@@ -201,7 +201,7 @@ where
 
         flag.value.set(true);
 
-        if let Some(msg) = flag.err_msg_on_poll.take().take() {
+        if let Some(msg) = flag.err_msg_on_poll.take() {
             error!("{}", msg);
         }
 

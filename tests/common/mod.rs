@@ -14,7 +14,9 @@ use tokio::time::sleep;
 
 #[derive(Debug)]
 pub struct RequestRecord {
+    #[allow(dead_code)]
     pub method: String,
+
     pub path: String,
     pub headers: HeaderMap,
 }

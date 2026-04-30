@@ -22,12 +22,12 @@ use std::time::Duration;
 use tokio;
 use tracing::{debug, error, info, warn};
 
-const BILLING_ENDPOINT_SUFFIX: &'static str = "fst-stats-json";
-const BILLING_SCHEMA_NAME: &'static str = "billing";
-const ORIGIN_ENDPOINT_SUFFIX: &'static str = "ori-stats-json";
-const ORIGIN_SCHEMA_NAME: &'static str = "origin";
-const EMITTER_NAME: &'static str = "pushpin";
-const EDGE_CONFIGLY_PATH: &'static str = "/etc/fastly/edge-configly.json";
+const BILLING_ENDPOINT_SUFFIX: &str = "fst-stats-json";
+const BILLING_SCHEMA_NAME: &str = "billing";
+const ORIGIN_ENDPOINT_SUFFIX: &str = "ori-stats-json";
+const ORIGIN_SCHEMA_NAME: &str = "origin";
+const EMITTER_NAME: &str = "pushpin";
+const EDGE_CONFIGLY_PATH: &str = "/etc/fastly/edge-configly.json";
 
 const QUEUE_SIZE: usize = 120;
 
@@ -337,8 +337,8 @@ fn process_stats(spec: &str, aggregators: Aggregators) -> Result<(), Box<dyn Err
         let route = report.route.as_str();
 
         // interpret gr: prefix
-        let (route, grip_enabled) = if route.starts_with("gr:") {
-            (&route[3..], true)
+        let (route, grip_enabled) = if let Some(route) = route.strip_prefix("gr:") {
+            (route, true)
         } else {
             (route, false)
         };
@@ -370,7 +370,7 @@ fn process_stats(spec: &str, aggregators: Aggregators) -> Result<(), Box<dyn Err
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let aggregators = spawn_aggregators(&config).unwrap();
+        let aggregators = spawn_aggregators(config).unwrap();
 
         let process_stats_task = {
             let spec = config.spec.clone();
