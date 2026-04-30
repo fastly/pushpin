@@ -1,6 +1,5 @@
 #include "encrypt.h"
 
-#include "rust/bindings.h"
 #include <QDir>
 #include <QString>
 
@@ -26,7 +25,7 @@ QByteArray keyFromConfigString(const QString &s, const QDir &baseDir) {
 }
 
 QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *error) {
-    if (key.size() != ENCRYPT_KEY_SIZE) {
+    if (key.size() != ffi::ENCRYPT_KEY_SIZE) {
         if (error)
             *error = InvalidInput;
         return QByteArray();
@@ -41,13 +40,13 @@ QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *
             Error e = InvalidInput;
 
             switch (ret) {
-            case 2:
+            case ffi::ENCRYPT_ERROR_UNSUPPORTED_ALGORITHM:
                 e = UnsupportedAlgorithm;
                 break;
-            case 3:
+            case ffi::ENCRYPT_ERROR_BAD_FORMAT:
                 e = BadFormat;
                 break;
-            case 4:
+            case ffi::ENCRYPT_ERROR_INVALID_DATA:
                 e = InvalidData;
                 break;
             }

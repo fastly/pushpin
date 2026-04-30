@@ -62,8 +62,17 @@ pub fn decrypt_message(data: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, DecryptEr
 
 mod ffi {
     use super::*;
+    use std::ffi::c_int;
     use std::ptr;
     use std::slice;
+
+    pub const ENCRYPT_ERROR_INVALID_INPUT: c_int = 1;
+    pub const ENCRYPT_ERROR_UNSUPPORTED_ALGORITHM: c_int = 2;
+    pub const ENCRYPT_ERROR_BAD_FORMAT: c_int = 3;
+    pub const ENCRYPT_ERROR_INVALID_DATA: c_int = 4;
+
+    #[allow(dead_code)]
+    pub const ENCRYPT_KEY_SIZE: c_int = 16;
 
     #[repr(C)]
     pub struct EncryptBuffer {
@@ -80,7 +89,7 @@ mod ffi {
         out_plain: *mut EncryptBuffer,
     ) -> libc::c_int {
         if data.is_null() || key.is_null() {
-            return 1; // null pointers
+            return ENCRYPT_ERROR_INVALID_INPUT; // null pointers
         }
 
         let data = slice::from_raw_parts(data, len);
@@ -96,14 +105,14 @@ mod ffi {
 
         let out_plain = match out_plain.as_mut() {
             Some(r) => r,
-            None => return 1, // null pointer
+            None => return ENCRYPT_ERROR_INVALID_INPUT, // null pointer
         };
 
         let plain = match decrypt_message(data, &key) {
             Ok(v) => v,
-            Err(DecryptError::UnsupportedAlgorithm) => return 2,
-            Err(DecryptError::BadFormat) => return 3,
-            Err(DecryptError::InvalidData) => return 4,
+            Err(DecryptError::UnsupportedAlgorithm) => return ENCRYPT_ERROR_UNSUPPORTED_ALGORITHM,
+            Err(DecryptError::BadFormat) => return ENCRYPT_ERROR_BAD_FORMAT,
+            Err(DecryptError::InvalidData) => return ENCRYPT_ERROR_INVALID_DATA,
         };
 
         let plain = plain.into_boxed_slice();

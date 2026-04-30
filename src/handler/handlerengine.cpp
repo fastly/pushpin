@@ -51,8 +51,7 @@
 #include "ratelimiter.h"
 #include "refreshworker.h"
 #include "requeststate.h"
-#include "rust/log.h"
-#include "rust/security.h"
+#include "rust/bindings.h"
 #include "sequencer.h"
 #include "sessionrequest.h"
 #include "simplehttpserver.h"
@@ -1516,12 +1515,7 @@ public:
                      config.pushInHttpPort);
         }
 
-        // NOTE: this enables the rust logger which always logs to stdout,
-        // which is fine because we don't log to a file in production and
-        // we also plan to remove file logging capability
-        log_set_level(log_outputLevel());
-
-        security_limit_permissions();
+        ffi::security_limit_permissions();
 
         if (inPullValve)
             inPullValve->open();

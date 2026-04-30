@@ -360,11 +360,6 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     else
         ffi::log_set_level(LOG_LEVEL_INFO);
 
-    // NOTE: this enables the rust logger which always logs to stdout,
-    // which is fine because we don't log to a file in production and
-    // we also plan to remove file logging capability
-    ffi::log_set_level(log_outputLevel());
-
     log_debug("starting...");
 
     ffi::backtrace_setup_signal_handlers();
