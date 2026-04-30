@@ -1170,8 +1170,8 @@ public:
 
                 handleConnectionBytesWritten(conn, written, true);
 
-                // If we had any pending writes to make, now's the time. note: this might delete the
-                // connection but that's fine
+                // If we had any pending writes to make, now's the time.
+                // note: this might delete the connection but that's fine
                 m2_tryWriteQueued(conn);
             }
         }

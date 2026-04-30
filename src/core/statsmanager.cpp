@@ -1475,9 +1475,9 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
         lastReport -= reportOffset;
 
     if (d->reportInterval > 0) {
-        // Check if this connection should replace a lingering external one note: this iterates over
-        // all the known external sources, which at at the time of this writing is almost certainly
-        // just 1 (a single pushpin-proxy source).
+        // Check if this connection should replace a lingering external one.
+        // Note: this iterates over all the known external sources, which at at the time of this
+        // writing is almost certainly just 1 (a single pushpin-proxy source).
         QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);
         while (it.hasNext()) {
@@ -1741,9 +1741,9 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             }
         }
 
-        // If the connection exists under a different from address, remove it. note: this iterates
-        // over all the known external sources, which at at the time of this writing is almost
-        // certainly just 1 (a single pushpin-proxy source).
+        // If the connection exists under a different from address, remove it.
+        // note: this iterates over all the known external sources, which at at the time of this
+        // writing is almost certainly just 1 (a single pushpin-proxy source).
         QList<Private::ConnectionInfo *> toDelete;
         QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);

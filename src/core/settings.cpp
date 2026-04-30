@@ -56,8 +56,8 @@ Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
 
     QString includeFile = valueRaw("global/include").toString();
 
-    // if include is exactly "internal.conf", rewrite relative to libdir. TODO: remove this hack at
-    // next major version
+    // If include is exactly "internal.conf", rewrite relative to libdir.
+    // TODO: remove this hack at next major version
     if (includeFile == "internal.conf")
         includeFile = "{libdir}/internal.conf";
 

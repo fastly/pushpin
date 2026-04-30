@@ -397,7 +397,8 @@ public:
         } else
             log_debug("reusing proxysession");
 
-        // ProxySession will take it from here. TODO: use callbacks for performance
+        // ProxySession will take it from here.
+        // TODO: use callbacks for performance
         reqSessionConnectionMap.erase(rs);
 
         ps->add(rs);
