@@ -240,9 +240,8 @@ public:
         if (!instruct.nextLink.isEmpty())
             nextUri = currentUri.resolved(instruct.nextLink);
 
-        // Only work with a gone link provided at initialization time. This
-        // way each request can have a unique gone link, and still share
-        // instructions from next link fetches
+        // Only work with a gone link provided at initialization time. This way each request can
+        // have a unique gone link, and still share instructions from next link fetches
         if (!instruct.goneLink.isEmpty())
             goneUri = currentUri.resolved(instruct.goneLink);
     }
@@ -325,12 +324,11 @@ public:
 
     void update(Priority priority) {
         if (state == Proxying || state == SendingQueue) {
-            // If we are already in the process of updating, flag to update
-            // again after current one finishes
+            // If we are already in the process of updating, flag to update again after current one
+            // finishes
 
             if (needUpdate) {
-                // If needUpdate was already flagged, then raise
-                // priority if needed
+                // If needUpdate was already flagged, then raise priority if needed
                 if (priority == HighPriority)
                     needUpdatePriority = priority;
             } else {
@@ -598,9 +596,8 @@ private:
             }
         } else // StreamHold
         {
-            // If conflict on first hold, immediately recover. We don't
-            // do this on subsequent holds because there may be queued
-            // messages available to resolve the conflict
+            // If conflict on first hold, immediately recover. We don't do this on subsequent holds
+            // because there may be queued messages available to resolve the conflict
             if (first) {
                 bool conflict = false;
                 foreach (const Instruct::Channel &c, instruct.channels) {
@@ -615,8 +612,8 @@ private:
                             publishLastIds->remove(name);
                             conflict = true;
 
-                            // NOTE: don't exit loop here. We want to clear
-                            // the last ids of all conflicting channels
+                            // NOTE: don't exit loop here. We want to clear the last ids of all
+                            // conflicting channels
                         }
                     }
                 }
@@ -652,8 +649,8 @@ private:
                 break;
             }
 
-            // If there are items to send, this will send them. If there are
-            // no items to send, this will end up changing state to Holding
+            // If there are items to send, this will send them. If there are no items to send, this
+            // will end up changing state to Holding
             sendQueue();
         }
     }
@@ -748,9 +745,9 @@ private:
             fc.trusted = adata.trusted;
             fc.limiter = filterLimiter;
 
-            // May call messageFiltersFinished immediately. If it does, queue
-            // processing will continue. Else, the loop will end and queue
-            // processing will resume after the filters finish
+            // May call messageFiltersFinished immediately. If it does, queue processing will
+            // continue. Else, the loop will end and queue processing will resume after the filters
+            // finish
             messageFilters->start(fc, body);
         }
 
@@ -764,10 +761,9 @@ private:
                 // Client buffer can only be full in stream mode
                 assert(instruct.holdMode == Instruct::StreamHold);
 
-                // NOTE: we can end up here multiple times in a single pass
-                // of the queue if the client buffer becomes full multiple
-                // times. So, whatever happens here should be idempotent and
-                // cheap.
+                // NOTE: we can end up here multiple times in a single pass of the queue if the
+                // client buffer becomes full multiple times. So, whatever happens here should be
+                // idempotent and cheap.
 
                 // Turn off timers until we're able to send again
                 timer->stop();
@@ -779,8 +775,8 @@ private:
     }
 
     void sendQueueDone() {
-        // if the state changed during queue processing (e.g. to Closing),
-        // Then we want to leave the state alone and do nothing else
+        // if the state changed during queue processing (e.g. to Closing), Then we want to leave the
+        // state alone and do nothing else
         if (state != SendingQueue)
             return;
 
@@ -822,8 +818,8 @@ private:
                     // Need to compact headers into a map
                     VariantMap vheaders;
                     foreach (const HttpHeader &h, headers) {
-                        // Don't add the same header name twice. We'll collect all values
-                        // for a single header
+                        // Don't add the same header name twice. We'll collect all values for a
+                        // single header
                         bool found = false;
                         for (auto it = vheaders.constBegin(); it != vheaders.constEnd(); ++it) {
                             const QString &name = it.key();
@@ -971,8 +967,8 @@ private:
                 rp.inspectInfo.userData = adata.inspectInfo.userData;
             }
 
-            // If prev-id set on channels, set as inspect lastids so the proxy
-            // will pass as Grip-Last in the next request
+            // If prev-id set on channels, set as inspect lastids so the proxy will pass as
+            // Grip-Last in the next request
             QHashIterator<QString, Instruct::Channel> it(channels);
             while (it.hasNext()) {
                 it.next();
@@ -1036,16 +1032,14 @@ private:
 
         passthroughData["route"] = adata.route.toUtf8();
 
-        // If next link points to the same service as the current request,
-        // then we can assume the network would send the request back to
-        // us, so we can handle it internally. If the link points to a
-        // different service, then we can't make this assumption and need
-        // to make the request over the network. Note that such a request
-        // could still end up looping back to us
+        // If next link points to the same service as the current request, then we can assume the
+        // network would send the request back to us, so we can handle it internally. If the link
+        // points to a different service, then we can't make this assumption and need to make the
+        // request over the network. Note that such a request could still end up looping back to us
         if (destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() &&
             destPort == currentPort) {
-            // Tell the proxy that we prefer the request to be handled
-            // internally, using the same route
+            // Tell the proxy that we prefer the request to be handled internally, using the same
+            // route
             passthroughData["prefer-internal"] = true;
         }
 
@@ -1094,8 +1088,8 @@ private:
 
             if (state == Proxying) {
                 if (outReq->bytesAvailable() > 0) {
-                    // Stop keep alive timer only if we have to send data. If the
-                    // response body is empty, then the timer is left alone
+                    // Stop keep alive timer only if we have to send data. If the response body is
+                    // empty, then the timer is left alone
                     timer->stop();
 
                     int avail = req->writeBytesAvailable();
@@ -1292,8 +1286,8 @@ private:
             if (sendAction == Filter::Drop)
                 return;
 
-            // NOTE: http-response mode doesn't support a close
-            // action since it's better to send a real response
+            // NOTE: http-response mode doesn't support a close action since it's better to send a
+            // real response
 
             if (f.action == PublishFormat::Send) {
                 respond(f.code, f.reason, f.headers, content, exposeHeaders);
@@ -1369,8 +1363,8 @@ private:
         } else if (state == Proxying) {
             tryProcessOutReq();
         } else if (state == SendingQueue) {
-            // In this state, the writeBytesChanged signal is only
-            // interesting if it indicates write bytes are available
+            // In this state, the writeBytesChanged signal is only interesting if it indicates write
+            // bytes are available
 
             if (req->writeBytesAvailable() > 0)
                 processPublishQueue();
@@ -1407,10 +1401,9 @@ private:
                     return;
                 }
 
-                // Accept the instruct as soon as it's available, so we can
-                // use its filters. If response processing ends up failing
-                // later on, the session will error out and the instruct
-                // won't be used for anything else
+                // Accept the instruct as soon as it's available, so we can use its filters. If
+                // response processing ends up failing later on, the session will error out and the
+                // instruct won't be used for anything else
                 instruct = i;
 
                 // Apply ResponseContent filters of all channels

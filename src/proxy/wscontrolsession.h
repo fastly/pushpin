@@ -35,9 +35,9 @@ using Signal = boost::signals2::signal<void()>;
 
 class WsControlManager;
 
-/// Handles communication with the handler for controlling an active WebSocket
-/// connection including sending GRIP control messages, managing channel
-/// subscriptions, and coordinating keepalives
+/// Handles communication with the handler for controlling an active WebSocket connection
+/// including sending GRIP control messages, managing channel subscriptions, and coordinating
+/// keepalives
 class WsControlSession {
 public:
     ~WsControlSession();

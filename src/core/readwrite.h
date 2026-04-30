@@ -24,8 +24,8 @@ class ReadWrite {
 public:
     virtual ~ReadWrite() = default;
 
-    // Size < 0 means default read size
-    // returns buffer of bytes read. Null buffer means error. Empty means end
+    // Size < 0 means default read size returns buffer of bytes read. Null buffer means error. Empty
+    // means end
     virtual QByteArray read(int size = -1) = 0;
 
     // Returns amount accepted, or -1 for error

@@ -20,9 +20,8 @@
 #include "cowbytearray.h"
 #include <QString>
 
-// QString-like class that currently forwards to an inner QString, to
-// assist with reducing direct dependency on Qt. The API is designed to allow
-// cheap conversion to/from QString.
+// QString-like class that currently forwards to an inner QString, to assist with reducing direct
+// dependency on Qt. The API is designed to allow cheap conversion to/from QString.
 class CowString {
 public:
     CowString() = default;

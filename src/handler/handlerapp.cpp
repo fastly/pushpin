@@ -88,8 +88,8 @@ static int runLoop(const HandlerEngine::Configuration &config) {
     // Enough timers for sessions, plus an extra 100 for misc
     int timersMax = (config.connectionsMax * timersPerSession) + 100;
 
-    // Enough for control requests and prometheus requests, plus an
-    // extra 100 for misc. Client sessions don't use socket notifiers
+    // Enough for control requests and prometheus requests, plus an extra 100 for misc. Client
+    // sessions don't use socket notifiers
     int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST *
                               (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) +
                              100;
@@ -173,8 +173,7 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
 
     log_debug("starting...");
 
-    // QSettings doesn't inform us if the config file can't be opened, so do that
-    // ourselves
+    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
     {
         QFile file(args.configFile);
         if (!file.open(QIODevice::ReadOnly)) {

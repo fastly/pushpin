@@ -394,8 +394,8 @@ private:
         bool cscm = canSendCompleteMessage();
 
         if (!cscm && writeBytesAvailable() == 0) {
-            // Write buffer maxed with incomplete message. This is
-            // unrecoverable. Update to throw error right away.
+            // Write buffer maxed with incomplete message. This is unrecoverable. Update to throw
+            // error right away.
             return true;
         }
 
@@ -614,37 +614,33 @@ private:
         int contentRemoved = removeContentFromFrames(&outFrames, nonCloseContentBytesAccepted);
         int framesRemoved = outFramesCountOrig - outFrames.count();
 
-        // Guaranteed to succeed, since reqContentSize represents the initial
-        // data in outFrames and we guard against too large of an input
+        // Guaranteed to succeed, since reqContentSize represents the initial data in outFrames and
+        // we guard against too large of an input
         assert(contentRemoved == nonCloseContentBytesAccepted);
 
         outContentSize -= contentRemoved;
 
-        // If we couldn't fit all pending data in the request, then require
-        // progress to be made
+        // If we couldn't fit all pending data in the request, then require progress to be made
         if (reqMaxed && framesRemoved == 0 && contentRemoved == 0) {
             updating = false;
             queueError(ErrorGeneric);
             return;
         }
 
-        // FramesRemoved could exceed reqFrames if any zero-sized frames are
-        // appended to outFrames before acceptance, causing them to be
-        // removed even though they weren't in the request
+        // FramesRemoved could exceed reqFrames if any zero-sized frames are appended to outFrames
+        // before acceptance, causing them to be removed even though they weren't in the request
         outFramesReplay = qMax(reqFrames - framesRemoved, 0);
 
         outContentReplay = reqContentSize - contentRemoved;
 
         if (reqClose) {
             if (nonCloseContentBytesAccepted < reqContentSize) {
-                // If server didn't accept all content before close, then don't close
-                // yet
+                // If server didn't accept all content before close, then don't close yet
                 reqClose = false;
             } else {
-                // Server accepted all content before close. In that case, we
-                // require the server to also accept the close. Partial
-                // acceptance is meant for waiting for more data and from
-                // this point there won't be any more data.
+                // Server accepted all content before close. In that case, we require the server to
+                // also accept the close. Partial acceptance is meant for waiting for more data and
+                // from this point there won't be any more data.
                 if (contentBytesAccepted < reqContentSizeWithClose) {
                     cleanup();
                     q->error();
@@ -798,9 +794,8 @@ private:
                 q->peerClosed();
             }
         } else if (closeSent && keepAliveInterval == -1) {
-            // If there are no keep alives, then the server has only one
-            // chance to respond to a close. If it doesn't, then
-            // consider the connection uncleanly disconnected.
+            // If there are no keep alives, then the server has only one chance to respond to a
+            // close. If it doesn't, then consider the connection uncleanly disconnected.
             disconnected = true;
         }
 
@@ -843,8 +838,8 @@ private:
             break;
         case ZhttpRequest::ErrorGeneric:
         case ZhttpRequest::ErrorTimeout:
-            // These errors mean the server may have been reached, so
-            // only retry if the request body wasn't completely sent
+            // These errors mean the server may have been reached, so only retry if the request body
+            // wasn't completely sent
             if (reqPendingBytes > 0)
                 retry = true;
             break;
@@ -899,8 +894,7 @@ private:
 };
 
 void WebSocketOverHttp::DisconnectManager::deleteSocket(WebSocketOverHttp *sock) {
-    // Ensure state is Idle to prevent the destructor from re-adding it to the
-    // manager
+    // Ensure state is Idle to prevent the destructor from re-adding it to the manager
     sock->d->cleanup();
 
     delete sock;
@@ -1117,15 +1111,13 @@ int WebSocketOverHttp::removeContentFromFrames(QList<WebSocket::Frame> *frames, 
         WebSocket::Frame::Type ftype = f.type;
         bool more = f.more;
 
-        // Only remove frame of a multipart message if we can carry over
-        // the type
+        // Only remove frame of a multipart message if we can carry over the type
         if (more && frames->count() < 2)
             break;
 
         frames->removeFirst();
 
-        // If removed frame was part of a multipart message, carry over
-        // the type
+        // If removed frame was part of a multipart message, carry over the type
         if (more) {
             assert(!frames->isEmpty());
             frames->first().type = ftype;

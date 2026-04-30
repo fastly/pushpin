@@ -553,8 +553,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
                     return Instruct();
                 }
 
-                // If code was supplied in json instruct, then
-                // we need to clear the default reason
+                // If code was supplied in json instruct, then we need to clear the default reason
                 newResponse.reason.clear();
             }
 

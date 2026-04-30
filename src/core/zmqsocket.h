@@ -47,13 +47,11 @@ public:
     // 0 means drop queue and don't block, -1 means infinite (default = -1)
     void setShutdownWaitTime(int msecs);
 
-    // If enabled, messages are queued internally until the socket is able
-    // to accept them. The messagesWritten signal is emitted once writes
-    // have succeeded. Otherwise, messages are passed directly to
-    // zmq_send and dropped if they can't be written. Default enabled.
-    // disabling the queue is good for socket types where the HWM has a
-    // drop policy. Enabling the queue is good when the HWM has a
-    // blocking policy.
+    // If enabled, messages are queued internally until the socket is able to accept them. The
+    // messagesWritten signal is emitted once writes have succeeded. Otherwise, messages are passed
+    // directly to zmq_send and dropped if they can't be written. Default enabled. disabling the
+    // queue is good for socket types where the HWM has a drop policy. Enabling the queue is good
+    // when the HWM has a blocking policy.
     void setWriteQueueEnabled(bool enable);
 
     void subscribe(const CowByteArray &filter);
@@ -83,10 +81,9 @@ public:
 
     bool canRead() const;
 
-    // Returns true if this object believes the next write to zmq will
-    // succeed immediately. Note that it starts out false until the
-    // value is discovered. Also note that the write could still end up
-    // needing to be queued, if the conditions change in between.
+    // Returns true if this object believes the next write to zmq will succeed immediately. Note
+    // that it starts out false until the value is discovered. Also note that the write could still
+    // end up needing to be queued, if the conditions change in between.
     bool canWriteImmediately() const;
 
     CowByteArrayList read();

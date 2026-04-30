@@ -310,8 +310,8 @@ public:
     void startKeepAlive() {
         if (multi) {
             if (keepAliveTimer->isActive()) {
-                // Need to flush the current keepalive, since the
-                // manager registration may extend the timeout
+                // Need to flush the current keepalive, since the manager registration may extend
+                // the timeout
                 keepAlive_timeout();
 
                 keepAliveTimer->stop();
@@ -387,8 +387,8 @@ public:
 
                 q->bytesWritten(0);
             } else if (!requestBodyBuf.isEmpty() && outCredits > 0) {
-                // If we have data to send, and the credits to do so, then send data.
-                // also send credits if we need to.
+                // If we have data to send, and the credits to do so, then send data. also send
+                // credits if we need to.
 
                 QByteArray buf = requestBodyBuf.take(outCredits);
 
@@ -414,8 +414,7 @@ public:
             }
         } else if (state == ClientReceiving) {
             if (pendingInCredits > 0) {
-                // If we have no data to send but we need to send credits, do at least
-                // that
+                // If we have no data to send but we need to send credits, do at least that
                 ZhttpRequestPacket p;
                 p.type = ZhttpRequestPacket::Credit;
                 p.credits = pendingInCredits;
@@ -844,8 +843,7 @@ public:
                     return;
                 }
 
-                // For req mode, wait until request is fully supplied then send in one
-                // packet
+                // For req mode, wait until request is fully supplied then send in one packet
                 if (bodyFinished) {
                     ZhttpRequestPacket p;
                     p.type = ZhttpRequestPacket::Data;
@@ -875,8 +873,7 @@ public:
                     q->bytesWritten(p.body.size());
                 }
             } else {
-                // NOTE: not quite sure why we do this. Maybe to avoid a
-                // zhttp PUSH/SUB race?
+                // NOTE: not quite sure why we do this. Maybe to avoid a zhttp PUSH/SUB race?
                 if (!manager->canWriteImmediately()) {
                     state = Stopped;
                     errored = true;
@@ -893,9 +890,8 @@ public:
                 p.headers = requestHeaders;
 
                 if (!sendBodyAfterAck) {
-                    // Even though we don't have credits yet, we can act
-                    // like we do on the first packet. We'll still cap
-                    // our potential size though.
+                    // Even though we don't have credits yet, we can act like we do on the first
+                    // packet. We'll still cap our potential size though.
                     p.body = requestBodyBuf.take(IDEAL_CREDITS);
                 }
 

@@ -128,8 +128,8 @@ public:
     ~Private() {
         destroying = true;
 
-        // Need to delete all objects that may have connections before
-        // deleting zhttpmanagers/zroutes
+        // Need to delete all objects that may have connections before deleting
+        // zhttpmanagers/zroutes
 
         QHashIterator<ProxySession *, ProxyItem *> it(proxyItemsBySession);
         while (it.hasNext()) {
@@ -397,7 +397,7 @@ public:
         } else
             log_debug("reusing proxysession");
 
-        // ProxySession will take it from here
+        // ProxySession will take it from here.
         // TODO: use callbacks for performance
         reqSessionConnectionMap.erase(rs);
 
@@ -508,9 +508,8 @@ public:
                                inspectChecker.get(), accept.get(), stats.get());
 
         if (passthroughData.isValid() && !preferInternal) {
-            // Passthrough request with preferInternal=false. In this case,
-            // set up a direct route, using some settings from the original
-            // route
+            // Passthrough request with preferInternal=false. In this case, set up a direct route,
+            // using some settings from the original route
 
             DomainMap::Entry originalRoute;
             if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
@@ -538,9 +537,9 @@ public:
 
             rs->setRoute(route);
         } else {
-            // Regular request (with or without a route ID), or a passthrough
-            // request with preferInternal=true. In that case, use domainmap
-            // for lookup, with route ID if available
+            // Regular request (with or without a route ID), or a passthrough request with
+            // preferInternal=true. In that case, use domainmap for lookup, with route ID if
+            // available
 
             rs->setRouteId(routeId);
         }
@@ -677,8 +676,8 @@ private:
     }
 
     void rs_inspected(const InspectData &idata, RequestSession *rs) {
-        // If we get here, then the request must be proxied. If it was to be
-        // directly accepted, then finishedByAccept would have been emitted instead
+        // If we get here, then the request must be proxied. If it was to be directly accepted, then
+        // finishedByAccept would have been emitted instead
         assert(idata.doProxy);
 
         doProxy(rs, &idata);
@@ -832,9 +831,9 @@ private:
             if (!p.route.isEmpty())
                 rs->setRouteId(QString::fromUtf8(p.route));
 
-            // Note: if the routing table was changed, there's a chance the request
-            // might get a different route id this time around. This could confuse
-            // stats processors tracking route+connection mappings.
+            // Note: if the routing table was changed, there's a chance the request might get a
+            // different route id this time around. This could confuse stats processors tracking
+            // route+connection mappings.
             rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback,
                            req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 

@@ -288,8 +288,7 @@ public:
                 if (outCredits > 0)
                     return true;
             } else {
-                // If we aren't using outCredits, then limit pending packets
-                // to hardcoded m2 value
+                // If we aren't using outCredits, then limit pending packets to hardcoded m2 value
                 if (packetsPending < M2_PENDING_MAX)
                     return true;
             }
@@ -496,8 +495,7 @@ public:
         if (configFile.isEmpty())
             configFile = QDir(Config::get().configDir).filePath("m2adapter.conf");
 
-        // QSettings doesn't inform us if the config file doesn't exist, so do that
-        // ourselves
+        // QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
         {
             QFile file(configFile);
             if (!file.open(QIODevice::ReadOnly)) {
@@ -1066,14 +1064,12 @@ public:
     }
 
     void m2_writeErrorClose(const QByteArray &sender, const QByteArray &id) {
-        // Same as closing. In the future we may want to send something interesting
-        // first.
+        // Same as closing. In the future we may want to send something interesting first.
         m2_writeClose(sender, id);
     }
 
     void m2_writeErrorClose(M2Connection *conn) {
-        // Same as closing. In the future we may want to send something interesting
-        // first.
+        // Same as closing. In the future we may want to send something interesting first.
         m2_writeClose(conn);
     }
 
@@ -1147,8 +1143,7 @@ public:
 
         Variant rows = vhash["rows"];
 
-        // Once we get at least one successful response then we flag the port as
-        // working
+        // Once we get at least one successful response then we flag the port as working
         if (!controlPorts[index].works) {
             controlPorts[index].works = true;
             log_debug("control port index=%d works", index);
@@ -1242,8 +1237,7 @@ public:
         if (s->inHandoff)
             return;
 
-        // Address could be empty here if we're handling write of non-sequenced
-        // response
+        // Address could be empty here if we're handling write of non-sequenced response
         if (giveCredits && !s->zhttpAddress.isEmpty()) {
             ZhttpRequestPacket zreq;
             zreq.type = ZhttpRequestPacket::Credit;
@@ -1254,8 +1248,7 @@ public:
     }
 
     void endSession(Session *s, const QByteArray &errorCondition = QByteArray()) {
-        // If we are in handoff or haven't received a worker ack, then queue the
-        // state
+        // If we are in handoff or haven't received a worker ack, then queue the state
         if (s->inHandoff || s->zhttpAddress.isEmpty()) {
             if (!errorCondition.isEmpty())
                 s->errorCondition = errorCondition;
@@ -1441,8 +1434,8 @@ public:
 
         // A session without a connection is just waiting to report error
         if (!s->conn) {
-            // If we were in handoff, it's okay to send right now since we'd
-            // be clearing the handoff state later on in this method anyway
+            // If we were in handoff, it's okay to send right now since we'd be clearing the handoff
+            // state later on in this method anyway
             if (!s->zhttpAddress.isEmpty()) {
                 ZhttpRequestPacket zreq;
                 if (!s->errorCondition.isEmpty()) {
@@ -1475,9 +1468,8 @@ public:
             s->refreshBucket = smallestSessionRefreshBucket();
             sessionRefreshBuckets[s->refreshBucket] += s;
 
-            // In order to have been in a handoff state, we would have
-            // had to receive a from address sometime earlier, so it
-            // should be safe to call zhttp_out_write with session.
+            // In order to have been in a handoff state, we would have had to receive a from address
+            // sometime earlier, so it should be safe to call zhttp_out_write with session.
 
             if (multiWasTurnedOn) {
                 // Acknowledge the feature
@@ -1492,10 +1484,9 @@ public:
                     ZhttpRequestPacket zreq;
                     zreq.type = ZhttpRequestPacket::Data;
 
-                    // Send credits too, if needed (though this probably can't happen,
-                    // since http data flows only in one direction at a time. We
-                    // can't have pending request body data while at the same
-                    // time be acking received response body data).
+                    // Send credits too, if needed (though this probably can't happen, since http
+                    // data flows only in one direction at a time. We can't have pending request
+                    // body data while at the same time be acking received response body data).
                     if (s->pendingInCredits > 0) {
                         zreq.credits = s->pendingInCredits;
                         s->pendingInCredits = 0;
@@ -1547,8 +1538,8 @@ public:
                 // Respond with data if we have body data or this is the first packet
                 if (!zresp.body.isEmpty() || firstDataPacket) {
                     if (firstDataPacket) {
-                        // Use flow control if the control port works and the response is
-                        // more than one packet
+                        // Use flow control if the control port works and the response is more than
+                        // one packet
                         if ((s->conn->outCreditsEnabled ||
                              controlPorts[s->conn->identIndex].works) &&
                             zresp.more)
@@ -2173,14 +2164,12 @@ public:
                         statusTimer->start();
                 }
 
-                // If we were in the middle of requesting control info when this
-                // http request arrived, then there's a chance the control
-                // response won't account for this request (for example if the
-                // control response was generated and was in the middle of being
-                // delivered when this http request arrived). We'll flag the
-                // connection as "new" in this case, so in the control response
-                // handler we know to skip over it until the next control
-                // request.
+                // If we were in the middle of requesting control info when this http request
+                // arrived, then there's a chance the control response won't account for this
+                // request (for example if the control response was generated and was in the middle
+                // of being delivered when this http request arrived). We'll flag the connection as
+                // "new" in this case, so in the control response handler we know to skip over it
+                // until the next control request.
                 if (controlPorts[index].state == ControlPort::ExpectingResponse)
                     conn->isNew = true;
             }
