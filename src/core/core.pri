@@ -21,6 +21,7 @@ HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp
 
 HEADERS += \
+	$$PWD/rustthread.h \
 	$$PWD/test.h \
 	$$PWD/tnetstring.h \
 	$$PWD/httpheaders.h \
@@ -31,6 +32,7 @@ HEADERS += \
 	$$PWD/layertracker.h
 
 SOURCES += \
+	$$PWD/rustthread.cpp \
 	$$PWD/test.cpp \
 	$$PWD/tnetstring.cpp \
 	$$PWD/httpheaders.cpp \

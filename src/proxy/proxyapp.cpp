@@ -30,6 +30,7 @@
 #include "proxyargsdata.h"
 #include "proxyengine.h"
 #include "rust/bindings.h"
+#include "rustthread.h"
 #include "settings.h"
 #include "simplehttpserver.h"
 #include "timer.h"
@@ -42,9 +43,7 @@
 #include <QWaitCondition>
 #include <assert.h>
 #include <boost/algorithm/string.hpp>
-#include <pthread.h>
 #include <string>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -136,7 +135,7 @@ private:
 /// Wraps an Engine instance to run in its own thread
 class EngineThread {
 public:
-    std::thread thread;
+    RustThread::JoinHandle thread;
     QMutex m;
     QWaitCondition w;
     Engine::Configuration config;
@@ -156,15 +155,7 @@ public:
 
         QMutexLocker locker(&m);
 
-        thread = std::thread([=] {
-#ifdef Q_OS_MAC
-            pthread_setname_np(name.toUtf8().data());
-#else
-            pthread_setname_np(pthread_self(), name.toUtf8().data());
-#endif
-
-            run();
-        });
+        thread = RustThread::spawn([=] { run(); }, name.toStdString());
 
         w.wait(&m);
         return (bool)worker;
