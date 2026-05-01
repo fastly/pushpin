@@ -105,8 +105,8 @@ mod ffi {
         assert!(!handle.is_null());
 
         // SAFETY: We assume `handle` is valid.
-        let handle = unsafe { Box::from_raw(handle).0 };
+        let thread = unsafe { Box::from_raw(handle).0 };
 
-        drop(handle);
+        drop(thread);
     }
 }
