@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef PUSHPIN_THREAD_H
-#define PUSHPIN_THREAD_H
+#ifndef RUST_THREAD_H
+#define RUST_THREAD_H
 
 #include "rust/bindings.h"
 #include <functional>
