@@ -67,22 +67,20 @@ inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, in
     }
 }
 
-// If cond is false, throws an exception with similar message as rust's assert
-// macro
+// If cond is false, throws an exception with similar message as rust's assert macro
 #define TEST_ASSERT(cond)                                                                          \
     do {                                                                                           \
         test_assert(static_cast<bool>(cond), #cond, __FILE__, __LINE__);                           \
     } while (false)
 
-// if left != right, throws an exception with similar message as rust's
-// assert_eq macro
+// if left != right, throws an exception with similar message as rust's assert_eq macro
 #define TEST_ASSERT_EQ(left, right)                                                                \
     do {                                                                                           \
         test_assert_eq(left, right, __FILE__, __LINE__);                                           \
     } while (false)
 
-// for running a test and catching an exception if any. expects local variable
-// ffi::TestException* out_ex to exist
+// for running a test and catching an exception if any. expects local variable ffi::TestException*
+// out_ex to exist
 #define TEST_CATCH(statement)                                                                      \
     try {                                                                                          \
         statement;                                                                                 \
@@ -91,9 +89,8 @@ inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, in
         return 1;                                                                                  \
     }
 
-// Expects a test function that takes a wait function as an argument. The wait
-// function can be used by the test to wait for a number of milliseconds while
-// the event loop runs.
+// Expects a test function that takes a wait function as an argument. The wait function can be used
+// by the test to wait for a number of milliseconds while the event loop runs.
 void test_with_event_loop(std::function<void(std::function<void(int)>)> f);
 
 #endif

@@ -111,9 +111,8 @@ public:
             // Take over ownership
             i->owned = true;
         } else {
-            // If we aren't watching (or were watching, but no
-            // longer watching), then just delete what we were
-            // given
+            // If we aren't watching (or were watching, but no longer watching), then just delete
+            // what we were given
             reqConnectionMap.erase(req);
             delete req;
         }

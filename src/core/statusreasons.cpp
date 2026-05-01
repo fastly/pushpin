@@ -27,8 +27,7 @@
 
 namespace StatusReasons {
 
-// IANA assignments
-// http://www.iana.org/assignments/http-status-codes/http-status-codes.xml
+// IANA assignments http://www.iana.org/assignments/http-status-codes/http-status-codes.xml
 
 const char *getReasonRaw(int code) {
     switch (code) {

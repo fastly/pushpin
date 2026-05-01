@@ -35,10 +35,9 @@
 static void setupChild() {
     signal(SIGINT, SIG_IGN);
 
-    // subprocesses hopefully respect SIG_IGN, but are not required
-    // To. In case subprocess might reinstate a SIGINT handler,
-    // detach from process group to ensure ctrl-c in a shell
-    // doesn't cause SIGINT to be sent directly to subprocesses
+    // subprocesses hopefully respect SIG_IGN, but are not required To. In case subprocess might
+    // reinstate a SIGINT handler, detach from process group to ensure ctrl-c in a shell doesn't
+    // cause SIGINT to be sent directly to subprocesses
     setpgid(0, 0);
 }
 
@@ -241,8 +240,7 @@ private slots:
 
             q->error("Error running: " + program);
         } else {
-            // Other errors are followed by finished(), so we don't
-            // need to handle them here
+            // Other errors are followed by finished(), so we don't need to handle them here
         }
     }
 

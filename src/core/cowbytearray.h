@@ -71,9 +71,8 @@ private:
     QByteArray &inner_;
 };
 
-// QByteArray-like class that currently forwards to an inner QByteArray, to
-// assist with reducing direct dependency on Qt. The API is designed to allow
-// cheap conversion to/from QByteArray.
+// QByteArray-like class that currently forwards to an inner QByteArray, to assist with reducing
+// direct dependency on Qt. The API is designed to allow cheap conversion to/from QByteArray.
 class CowByteArray {
 public:
     CowByteArray() = default;
@@ -164,10 +163,9 @@ inline CowByteArray CowByteArrayRef::mid(ssize_t pos, ssize_t len) const {
     return inner_.mid(pos, len);
 }
 
-// QList-like class for working with CowByteArray that currently forwards to
-// an inner QList<QByteArray>, to assist with reducing direct dependency on
-// Qt. The API is designed to allow cheap conversion to/from
-// QList<QByteArray> and to allow cheap conversions of inserts/lookups
+// QList-like class for working with CowByteArray that currently forwards to an inner
+// QList<QByteArray>, to assist with reducing direct dependency on Qt. The API is designed to allow
+// cheap conversion to/from QList<QByteArray> and to allow cheap conversions of inserts/lookups
 // to/from QByteArray.
 class CowByteArrayList {
 public:
