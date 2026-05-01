@@ -19,6 +19,7 @@
 
 #include "rust/bindings.h"
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace RustThread {
