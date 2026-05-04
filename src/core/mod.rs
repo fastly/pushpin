@@ -35,6 +35,7 @@ pub mod select;
 pub mod shuffle;
 pub mod task;
 pub mod test;
+pub mod thread;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;

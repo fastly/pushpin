@@ -28,6 +28,7 @@
 #include "filewatcher.h"
 #include "log.h"
 #include "routesfile.h"
+#include "rustthread.h"
 #include "timer.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -38,8 +39,6 @@
 #include <QTextStream>
 #include <QWaitCondition>
 #include <assert.h>
-#include <pthread.h>
-#include <thread>
 
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
@@ -708,7 +707,7 @@ private:
 class DomainMap::Thread {
 public:
     QString fileName;
-    std::thread thread;
+    RustThread::JoinHandle thread;
     std::unique_ptr<EventLoop> loop;
     std::unique_ptr<Worker> worker;
     QMutex m;
@@ -730,15 +729,7 @@ public:
     void start() {
         QMutexLocker locker(&m);
 
-        thread = std::thread([=] {
-#ifdef Q_OS_MAC
-            pthread_setname_np("domainmap");
-#else
-            pthread_setname_np(pthread_self(), "domainmap");
-#endif
-
-            run();
-        });
+        thread = RustThread::spawn([=] { run(); }, "domainmap");
 
         w.wait(&m);
     }
