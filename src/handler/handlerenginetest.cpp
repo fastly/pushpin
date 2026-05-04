@@ -283,9 +283,6 @@ public:
     Wrapper *wrapper;
 
     TestState(std::function<void(int)> loop_wait) {
-        log_setOutputLevel(LOG_LEVEL_WARNING);
-        // log_setOutputLevel(LOG_LEVEL_DEBUG);
-
         QDir outDir(qgetenv("OUT_DIR"));
         QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 

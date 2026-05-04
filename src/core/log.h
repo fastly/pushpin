@@ -35,11 +35,9 @@ enum LogLevel {
 
 bool log_init(const QString &outputFile = QString());
 
-void log_startClock();
 int log_outputLevel();
 void log_setOutputLevel(int level);
-bool log_setFile(const QString &fname);
-bool log_rotate();
+bool log_rotate(const QString &outputFile);
 
 void log(int level, const char *fmt, ...);
 void log_error(const char *fmt, ...);

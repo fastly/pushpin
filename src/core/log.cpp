@@ -21,88 +21,11 @@
 
 #include "log.h"
 
-#include <QDateTime>
-#include <QElapsedTimer>
-#include <QMutex>
-#include <QString>
 #include <stdarg.h>
-#include <stdio.h>
-
-#include "rust/bindings.h"
-
-Q_GLOBAL_STATIC(QMutex, g_mutex)
-static int g_level = LOG_LEVEL_DEBUG;
-static QElapsedTimer g_time;
-static QString *g_filename;
-static FILE *g_file;
-
-static void log(const char *s) {
-    FILE *out;
-    if (g_file)
-        out = g_file;
-    else
-        out = stdout;
-    fprintf(out, "%s\n", s);
-    fflush(out);
-}
 
 static void log(int level, const char *fmt, va_list ap) {
-    // Check if Rust logger is initialized
-    if (ffi::log_initialized()) {
-        // Send formatted message directly to Rust logger
-        QString str = QString::vasprintf(fmt, ap);
-        ffi::log_log(level, str.toUtf8().data());
-        return;
-    }
-
-    // Fall back to C++ logging system
-
-    g_mutex()->lock();
-    int current_level = g_level;
-    int elapsed;
-    if (g_time.isValid())
-        elapsed = g_time.elapsed();
-    else
-        elapsed = -1;
-    g_mutex()->unlock();
-
-    if (level <= current_level) {
-        QString str = QString::vasprintf(fmt, ap);
-
-        const char *lstr;
-        switch (level) {
-        case LOG_LEVEL_ERROR:
-            lstr = "ERR";
-            break;
-        case LOG_LEVEL_WARNING:
-            lstr = "WARN";
-            break;
-        case LOG_LEVEL_INFO:
-            lstr = "INFO";
-            break;
-        case LOG_LEVEL_DEBUG:
-        default:
-            lstr = "DEBUG";
-            break;
-        }
-
-        QString tstr;
-        if (elapsed != -1) {
-            QTime t(0, 0);
-            t = t.addMSecs(elapsed);
-            tstr = t.toString("HH:mm:ss.zzz");
-        } else {
-            tstr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
-        }
-
-        FILE *out;
-        if (g_file)
-            out = g_file;
-        else
-            out = stdout;
-        fprintf(out, "[%s] %s %s\n", lstr, qPrintable(tstr), qPrintable(str));
-        fflush(out);
-    }
+    QString str = QString::vasprintf(fmt, ap);
+    ffi::log_log(level, str.toUtf8().data());
 }
 
 bool log_init(const QString &outputFile) {
@@ -116,57 +39,12 @@ bool log_init(const QString &outputFile) {
     return (ret == 0);
 }
 
-void log_startClock() {
-    QMutexLocker locker(g_mutex());
-    g_time.start();
-}
+int log_outputLevel() { return ffi::log_get_level(); }
 
-int log_outputLevel() {
-    if (ffi::log_initialized()) {
-        return ffi::log_get_level();
-    }
+void log_setOutputLevel(int level) { ffi::log_set_level(level); }
 
-    QMutexLocker locker(g_mutex());
-    return g_level;
-}
-
-void log_setOutputLevel(int level) {
-    if (ffi::log_initialized()) {
-        ffi::log_set_level(level);
-        return;
-    }
-
-    QMutexLocker locker(g_mutex());
-    g_level = level;
-}
-
-bool log_setFile(const QString &fname) {
-    QMutexLocker locker(g_mutex());
-    if (g_file) {
-        fclose(g_file);
-        delete g_filename;
-        g_filename = 0;
-        g_file = 0;
-    }
-    if (fname.isEmpty())
-        return true;
-    FILE *f = fopen(fname.toLocal8Bit().data(), "a");
-    if (!f)
-        return false;
-    setbuf(f, NULL);
-    g_filename = new QString(fname);
-    g_file = f;
-    return true;
-}
-
-bool log_rotate() {
-    QMutexLocker locker(g_mutex());
-    if (!g_file)
-        return true;
-    if (!freopen(g_filename->toLocal8Bit().data(), "a", g_file))
-        return false;
-    setbuf(g_file, NULL);
-    return true;
+bool log_rotate(const QString &outputFile) {
+    return (ffi::log_rotate(outputFile.toUtf8().data()) == 0);
 }
 
 void log(int level, const char *fmt, ...) {
@@ -204,14 +82,4 @@ void log_debug(const char *fmt, ...) {
     va_end(ap);
 }
 
-void log_raw(const char *s) {
-    // Check if Rust logger is initialized
-    if (ffi::log_initialized()) {
-        // Send raw message to Rust logger (already formatted with level, timestamp, etc.)
-        ffi::log_log_raw(s);
-        return;
-    }
-
-    // Fall back to C++ logging system
-    log(s);
-}
+void log_raw(const char *s) { ffi::log_log_raw(s); }
