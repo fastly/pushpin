@@ -105,7 +105,7 @@ impl fmt::Write for SharedOutput<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let ret = match self {
             Self::Stdout(o) => o.write_all(s.as_bytes()),
-            Self::File(o) => o.lock().unwrap().write_all(s.as_bytes()),
+            Self::File(o) => (*o).lock().unwrap().write_all(s.as_bytes()),
         };
 
         ret.map_err(|_| fmt::Error)
@@ -114,7 +114,7 @@ impl fmt::Write for SharedOutput<'_> {
     fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
         let ret = match self {
             Self::Stdout(o) => o.write_fmt(args),
-            Self::File(o) => o.lock().unwrap().write_fmt(args),
+            Self::File(o) => (*o).lock().unwrap().write_fmt(args),
         };
 
         ret.map_err(|_| fmt::Error)
