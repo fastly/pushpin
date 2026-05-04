@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -104,17 +105,37 @@ static void log(int level, const char *fmt, va_list ap) {
     }
 }
 
+bool log_init(const QString &outputFile) {
+    int ret;
+
+    if (!outputFile.isEmpty())
+        ret = ffi::log_init(outputFile.toUtf8().data());
+    else
+        ret = ffi::log_init(nullptr);
+
+    return (ret == 0);
+}
+
 void log_startClock() {
     QMutexLocker locker(g_mutex());
     g_time.start();
 }
 
 int log_outputLevel() {
+    if (ffi::log_initialized()) {
+        return ffi::log_get_level();
+    }
+
     QMutexLocker locker(g_mutex());
     return g_level;
 }
 
 void log_setOutputLevel(int level) {
+    if (ffi::log_initialized()) {
+        ffi::log_set_level(level);
+        return;
+    }
+
     QMutexLocker locker(g_mutex());
     g_level = level;
 }
