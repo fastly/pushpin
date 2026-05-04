@@ -348,15 +348,13 @@ extern "C" {
 int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     ProxyArgsData args(argsFfi);
 
-    if (!args.logFile.isEmpty())
-        ffi::log_init(args.logFile.toUtf8().data());
-    else
-        ffi::log_init(nullptr);
+    if (!log_init(args.logFile))
+        return 1;
 
     if (args.logLevel != -1)
-        ffi::log_set_level(args.logLevel);
+        log_setOutputLevel(args.logLevel);
     else
-        ffi::log_set_level(LOG_LEVEL_INFO);
+        log_setOutputLevel(LOG_LEVEL_INFO);
 
     log_debug("starting...");
 

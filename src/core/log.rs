@@ -24,11 +24,12 @@ use crate::core::select::{select_2, Select2};
 use crate::core::task::{get_reactor, CancellationSender, CancellationToken};
 use log::{debug, error, warn, LevelFilter, Log, Metadata, Record};
 use mio::net::UnixListener;
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Write as _};
 use std::mem;
 use std::pin::pin;
+use std::ptr;
 use std::rc::Rc;
 use std::str;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -53,24 +54,70 @@ pub fn local_offset_check() {
     }
 }
 
+fn write_record<W: fmt::Write>(record: &Record, dest: &mut W) {
+    let now = OffsetDateTime::now_utc().to_offset(local_offset().unwrap_or(UtcOffset::UTC));
+
+    let format =
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]");
+
+    let mut ts = [0u8; 64];
+
+    let size = {
+        let mut ts = io::Cursor::new(&mut ts[..]);
+
+        now.format_into(&mut ts, &format)
+            .expect("failed to write timestamp");
+
+        ts.position() as usize
+    };
+
+    let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
+
+    let lname = match record.level() {
+        log::Level::Error => "ERR",
+        log::Level::Warn => "WARN",
+        log::Level::Info => "INFO",
+        log::Level::Debug => "DEBUG",
+        log::Level::Trace => "TRACE",
+    };
+
+    if record.level() <= log::Level::Info || record.target().is_empty() {
+        writeln!(dest, "[{}] {} {}", lname, ts, record.args()).expect("failed to write log output");
+    } else {
+        writeln!(
+            dest,
+            "[{}] {} [{}] {}",
+            lname,
+            ts,
+            record.target(),
+            record.args()
+        )
+        .expect("failed to write log output");
+    }
+}
+
 enum SharedOutput<'a> {
     Stdout(io::Stdout),
     File(&'a Mutex<File>),
 }
 
-impl Write for SharedOutput<'_> {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        match self {
-            Self::Stdout(g) => g.write(buf),
-            Self::File(g) => (*g).lock().unwrap().write(buf),
-        }
+impl fmt::Write for SharedOutput<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let ret = match self {
+            Self::Stdout(o) => o.write_all(s.as_bytes()),
+            Self::File(o) => (*o).lock().unwrap().write_all(s.as_bytes()),
+        };
+
+        ret.map_err(|_| fmt::Error)
     }
 
-    fn flush(&mut self) -> Result<(), io::Error> {
-        match self {
-            Self::Stdout(g) => g.flush(),
-            Self::File(g) => (*g).lock().unwrap().flush(),
-        }
+    fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
+        let ret = match self {
+            Self::Stdout(o) => o.write_fmt(args),
+            Self::File(o) => (*o).lock().unwrap().write_fmt(args),
+        };
+
+        ret.map_err(|_| fmt::Error)
     }
 }
 
@@ -100,6 +147,19 @@ pub struct SimpleLogger {
 }
 
 impl SimpleLogger {
+    pub fn is_active(&self) -> bool {
+        let logger = log::logger();
+
+        ptr::eq(
+            self as *const Self as *const (),
+            logger as *const dyn Log as *const (),
+        )
+    }
+
+    pub fn max_level(&self) -> LevelFilter {
+        self.max_level.get()
+    }
+
     pub fn set_max_level(&self, level: LevelFilter) {
         self.max_level.set(level);
     }
@@ -139,47 +199,7 @@ impl Log for SimpleLogger {
             return;
         }
 
-        let now = OffsetDateTime::now_utc().to_offset(local_offset().unwrap_or(UtcOffset::UTC));
-
-        let format = format_description!(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-        );
-
-        let mut ts = [0u8; 64];
-
-        let size = {
-            let mut ts = io::Cursor::new(&mut ts[..]);
-
-            now.format_into(&mut ts, &format)
-                .expect("failed to write timestamp");
-
-            ts.position() as usize
-        };
-
-        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
-
-        let lname = match record.level() {
-            log::Level::Error => "ERR",
-            log::Level::Warn => "WARN",
-            log::Level::Info => "INFO",
-            log::Level::Debug => "DEBUG",
-            log::Level::Trace => "TRACE",
-        };
-
-        if record.level() <= log::Level::Info || record.target().is_empty() {
-            writeln!(&mut output, "[{}] {} {}", lname, ts, record.args())
-                .expect("failed to write log output");
-        } else {
-            writeln!(
-                &mut output,
-                "[{}] {} [{}] {}",
-                lname,
-                ts,
-                record.target(),
-                record.args()
-            )
-            .expect("failed to write log output");
-        }
+        write_record(record, &mut output);
     }
 
     fn flush(&self) {}
@@ -513,49 +533,9 @@ impl Log for DebugLogger {
             return;
         }
 
-        let now = OffsetDateTime::now_utc().to_offset(local_offset().unwrap_or(UtcOffset::UTC));
-
-        let format = format_description!(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-        );
-
-        let mut ts = [0u8; 64];
-
-        let size = {
-            let mut ts = io::Cursor::new(&mut ts[..]);
-
-            now.format_into(&mut ts, &format)
-                .expect("failed to write timestamp");
-
-            ts.position() as usize
-        };
-
-        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
-
-        let lname = match record.level() {
-            log::Level::Error => "ERR",
-            log::Level::Warn => "WARN",
-            log::Level::Info => "INFO",
-            log::Level::Debug => "DEBUG",
-            log::Level::Trace => "TRACE",
-        };
-
         let mut output = String::new();
 
-        if record.level() <= log::Level::Info {
-            writeln!(&mut output, "[{}] {} {}", lname, ts, record.args())
-                .expect("failed to write log output");
-        } else {
-            writeln!(
-                &mut output,
-                "[{}] {} [{}] {}",
-                lname,
-                ts,
-                record.target(),
-                record.args()
-            )
-            .expect("failed to write log output");
-        }
+        write_record(record, &mut output);
 
         self.inner.broadcaster.send(output);
     }
@@ -568,6 +548,22 @@ mod ffi {
     use std::ffi::{c_char, c_int, CStr};
     use std::fs::OpenOptions;
 
+    pub const LOG_LEVEL_ERROR: c_int = 0;
+    pub const LOG_LEVEL_WARN: c_int = 1;
+    pub const LOG_LEVEL_INFO: c_int = 2;
+    pub const LOG_LEVEL_DEBUG: c_int = 3;
+    pub const LOG_LEVEL_TRACE: c_int = 4;
+
+    fn int_to_level(level: c_int) -> log::Level {
+        match level {
+            core::i32::MIN..=0 => log::Level::Error,
+            1 => log::Level::Warn,
+            2 => log::Level::Info,
+            3 => log::Level::Debug,
+            4..=core::i32::MAX => log::Level::Trace,
+        }
+    }
+
     /// If `output_file` is non-null, attempt to configure logging to the
     /// specified file. If `output_file` is null, log to stdout.
     ///
@@ -575,8 +571,10 @@ mod ffi {
     /// the log file. In the latter case, the logging system will still be
     /// initialized, but will be configured log to stdout instead of a file,
     /// and a file error message will be logged.
+    ///
+    /// SAFETY: `output_file` must be valid if non-null.
     #[no_mangle]
-    pub extern "C" fn log_init(output_file: *const c_char) -> c_int {
+    pub unsafe extern "C" fn log_init(output_file: *const c_char) -> c_int {
         let (output_file, file_error) = if !output_file.is_null() {
             let f = unsafe {
                 CStr::from_ptr(output_file)
@@ -621,23 +619,31 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn log_set_level(level: c_int) {
-        let level = match level {
-            core::i32::MIN..=0 => log::LevelFilter::Error,
-            1 => log::LevelFilter::Warn,
-            2 => log::LevelFilter::Info,
-            3 => log::LevelFilter::Debug,
-            4..=core::i32::MAX => log::LevelFilter::Trace,
+    pub extern "C" fn log_get_level() -> c_int {
+        let level = match LOGGER.get() {
+            Some(logger) if logger.is_active() => logger.max_level(),
+            _ => log::max_level(),
         };
 
-        get_simple_logger().set_max_level(level);
+        match level {
+            log::LevelFilter::Off => -1,
+            log::LevelFilter::Error => LOG_LEVEL_ERROR,
+            log::LevelFilter::Warn => LOG_LEVEL_WARN,
+            log::LevelFilter::Info => LOG_LEVEL_INFO,
+            log::LevelFilter::Debug => LOG_LEVEL_DEBUG,
+            log::LevelFilter::Trace => LOG_LEVEL_TRACE,
+        }
     }
 
     #[no_mangle]
-    pub extern "C" fn log_log(level: c_int, message: *const c_char) {
-        if message.is_null() {
-            return;
-        }
+    pub extern "C" fn log_set_level(level: c_int) {
+        get_simple_logger().set_max_level(int_to_level(level).to_level_filter());
+    }
+
+    /// SAFETY: `message` must be valid.
+    #[no_mangle]
+    pub unsafe extern "C" fn log_log(level: c_int, message: *const c_char) {
+        assert!(!message.is_null());
 
         let message = unsafe {
             match CStr::from_ptr(message).to_str() {
@@ -646,24 +652,15 @@ mod ffi {
             }
         };
 
-        let rust_level = match level {
-            0 => log::Level::Error, // LOG_LEVEL_ERROR
-            1 => log::Level::Warn,  // LOG_LEVEL_WARNING
-            2 => log::Level::Info,  // LOG_LEVEL_INFO
-            3 => log::Level::Debug, // LOG_LEVEL_DEBUG
-            _ => log::Level::Debug, // Default to debug for unknown levels
-        };
-
         // The default log target is the current Rust module, but this isn't
         // meaningful when logging via FFI, so let's set an empty target.
-        log::log!(target: "", rust_level, "{}", message);
+        log::log!(target: "", int_to_level(level), "{}", message);
     }
 
+    /// SAFETY: `message` must be valid.
     #[no_mangle]
-    pub extern "C" fn log_log_raw(message: *const c_char) {
-        if message.is_null() {
-            return;
-        }
+    pub unsafe extern "C" fn log_log_raw(message: *const c_char) {
+        assert!(!message.is_null());
 
         let message = unsafe {
             match CStr::from_ptr(message).to_str() {
