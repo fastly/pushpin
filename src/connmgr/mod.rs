@@ -16,7 +16,6 @@
  */
 
 mod batch;
-mod counter;
 mod listener;
 mod pool;
 mod track;

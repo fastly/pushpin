@@ -17,6 +17,7 @@
 pub mod buffer;
 pub mod channel;
 pub mod config;
+pub mod counter;
 pub mod defer;
 pub mod event;
 pub mod eventloop;

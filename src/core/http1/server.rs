@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, BufferBudget, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
@@ -581,8 +581,6 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponseHeaderSent<'a, 'b, R, W> {
         let state = self.state.take().unwrap();
 
         let wbuf = state.wbuf.into_inner();
-        let block_size = wbuf.inner.capacity();
-
         ResponseBody {
             inner: RefCell::new(Some(ResponseBodyInner {
                 r: RefCell::new(ResponseBodyRead {
@@ -594,7 +592,6 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponseHeaderSent<'a, 'b, R, W> {
                     buf: wbuf.inner,
                     protocol: state.protocol,
                     end: state.end.get(),
-                    block_size,
                 }),
             })),
         }
@@ -611,7 +608,6 @@ struct ResponseBodyWrite<'a, W: AsyncWrite> {
     buf: &'a mut VecRingBuffer,
     protocol: protocol::ServerProtocol,
     end: bool,
-    block_size: usize,
 }
 
 struct ResponseBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
@@ -651,19 +647,11 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
         }
     }
 
-    pub fn expand_write_buffer<F>(&self, blocks_max: usize, reserve: F) -> Result<usize, Error>
-    where
-        F: FnMut() -> bool,
-    {
+    pub fn expand_write_buffer(&self, budget: &mut BufferBudget) -> Result<usize, Error> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
 
-            Ok(resize_write_buffer_if_full(
-                w.buf,
-                w.block_size,
-                blocks_max,
-                reserve,
-            ))
+            Ok(budget.expand_buffer_if_needed(w.buf))
         } else {
             Err(Error::Unusable)
         }

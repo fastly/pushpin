@@ -20,13 +20,13 @@ use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, make_zhttp_response, ConnectionPool,
     StreamSharedData,
 };
-use crate::connmgr::counter::Counter;
 use crate::connmgr::resolver::Resolver;
 use crate::connmgr::tls::TlsConfigCache;
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
+use crate::core::counter::Counter;
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::list::{SlabList, SlabNode};
