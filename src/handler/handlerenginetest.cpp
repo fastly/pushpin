@@ -239,6 +239,8 @@ public:
             return;
         }
 
+        bool preferInternal = zreq.passthrough.toHash().value("prefer-internal").toBool();
+
         ZhttpResponsePacket zresp;
         zresp.from = "test-server";
         zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
@@ -249,7 +251,11 @@ public:
         QByteArray encPath = zreq.uri.path(Url::FullyEncoded).toUtf8();
 
         zresp.headers += HttpHeader("Content-Type", "text/plain");
-        zresp.body = "this is what's next\n";
+
+        if (preferInternal)
+            zresp.body = "this is what's next\n";
+        else
+            zresp.body = "this is what's next (non-internal)\n";
 
         zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
         QByteArray buf =
@@ -565,6 +571,65 @@ static void acceptNoHoldNextResponseSent(Wrapper *wrapper, std::function<void(in
     TEST_ASSERT_EQ(wrapper->responses.value(id).body, QByteArray("this is what's next\n"));
 }
 
+static void acceptNoHoldNextExternal(Wrapper *wrapper, std::function<void(int)> loop_wait) {
+    wrapper->reset();
+
+    QByteArray id = "3";
+
+    VariantHash rid;
+    rid["sender"] = QByteArray("test-client");
+    rid["id"] = id;
+
+    VariantHash reqState;
+    reqState["rid"] = rid;
+    reqState["in-seq"] = 1;
+    reqState["out-seq"] = 1;
+    reqState["out-credits"] = 1000;
+    reqState["router-resp"] = true;
+
+    VariantHash req;
+    req["method"] = QByteArray("GET");
+    req["uri"] = QByteArray("http://example.com/path");
+    VariantList reqHeaders;
+    req["headers"] = reqHeaders;
+    req["body"] = QByteArray();
+
+    VariantHash resp;
+    resp["code"] = 200;
+    resp["reason"] = QByteArray("OK");
+    VariantList respHeaders;
+    respHeaders += Variant(VariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+    respHeaders += Variant(VariantList() << QByteArray("Grip-Link")
+                                         << QByteArray("<http://external/next>; rel=next"));
+    resp["headers"] = respHeaders;
+    resp["body"] = QByteArray("hello world\n");
+
+    VariantHash args;
+    args["requests"] = VariantList() << reqState;
+    args["request-data"] = req;
+    args["orig-request-data"] = req;
+    args["response"] = resp;
+
+    VariantHash data;
+    data["id"] = id;
+    data["method"] = QByteArray("accept");
+    data["args"] = args;
+
+    QByteArray buf = TnetString::fromVariant(data);
+    wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+    while (!wrapper->acceptSuccess)
+        loop_wait(10);
+
+    TEST_ASSERT(wrapper->acceptValue.value("accepted").toBool());
+
+    while (!wrapper->finished)
+        loop_wait(10);
+
+    TEST_ASSERT(wrapper->responses.contains(id));
+    TEST_ASSERT_EQ(wrapper->responses.value(id).body,
+                   QByteArray("hello world\nthis is what's next (non-internal)\n"));
+}
+
 static void publishResponse(Wrapper *wrapper, std::function<void(int)> loop_wait) {
     wrapper->reset();
 
@@ -873,6 +938,7 @@ extern "C" int handlerengine_test(ffi::TestException *out_ex) {
     TEST_CATCH(runWithEventLoop(acceptNoHoldResponseSent));
     TEST_CATCH(runWithEventLoop(acceptNoHoldNext));
     TEST_CATCH(runWithEventLoop(acceptNoHoldNextResponseSent));
+    TEST_CATCH(runWithEventLoop(acceptNoHoldNextExternal));
     TEST_CATCH(runWithEventLoop(publishResponse));
     TEST_CATCH(runWithEventLoop(publishStream));
     TEST_CATCH(runWithEventLoop(publishStreamReorder));
