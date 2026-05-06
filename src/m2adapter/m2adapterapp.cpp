@@ -477,17 +477,13 @@ public:
     }
 
     bool init() {
+        if (!log_init(args.logFile))
+            return false;
+
         if (args.logLevel != -1)
             log_setOutputLevel(args.logLevel);
         else
             log_setOutputLevel(LOG_LEVEL_INFO);
-
-        if (!args.logFile.isEmpty()) {
-            if (!log_setFile(args.logFile)) {
-                log_error("failed to open log file: %s", qPrintable(args.logFile));
-                return false;
-            }
-        }
 
         log_info("starting...");
 
@@ -2550,7 +2546,7 @@ private slots:
 
     void reload() {
         log_info("reloading");
-        log_rotate();
+        log_rotate(args.logFile);
     }
 
     void doQuit() {

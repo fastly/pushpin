@@ -98,14 +98,17 @@ fn write_record<W: fmt::Write>(record: &Record, dest: &mut W) {
 
 enum SharedOutput<'a> {
     Stdout(io::Stdout),
-    File(&'a Mutex<File>),
+    File(&'a Mutex<Option<File>>),
 }
 
 impl fmt::Write for SharedOutput<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let ret = match self {
             Self::Stdout(o) => o.write_all(s.as_bytes()),
-            Self::File(o) => (*o).lock().unwrap().write_all(s.as_bytes()),
+            Self::File(o) => match &mut *(*o).lock().unwrap() {
+                Some(o) => o.write_all(s.as_bytes()),
+                None => Ok(()),
+            },
         };
 
         ret.map_err(|_| fmt::Error)
@@ -114,7 +117,10 @@ impl fmt::Write for SharedOutput<'_> {
     fn write_fmt(&mut self, args: fmt::Arguments) -> fmt::Result {
         let ret = match self {
             Self::Stdout(o) => o.write_fmt(args),
-            Self::File(o) => (*o).lock().unwrap().write_fmt(args),
+            Self::File(o) => match &mut *(*o).lock().unwrap() {
+                Some(o) => o.write_fmt(args),
+                None => Ok(()),
+            },
         };
 
         ret.map_err(|_| fmt::Error)
@@ -142,7 +148,12 @@ impl Default for AtomicLevelFilter {
 
 pub struct SimpleLogger {
     max_level: AtomicLevelFilter,
-    output_file: Option<Mutex<File>>,
+
+    // The outer Option is read-only, for quick detection of the output mode. The inner Option
+    // should be Some unless a log rotation fails, in which case it can be set to None to disable
+    // output.
+    output_file: Option<Mutex<Option<File>>>,
+
     runner_mode: bool,
 }
 
@@ -210,7 +221,7 @@ static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
     LOGGER.get_or_init(|| SimpleLogger {
         max_level: AtomicLevelFilter::default(),
-        output_file: output_file.map(Mutex::new),
+        output_file: output_file.map(|f| Mutex::new(Some(f))),
         runner_mode,
     });
 }
@@ -610,15 +621,6 @@ mod ffi {
     }
 
     #[no_mangle]
-    pub extern "C" fn log_initialized() -> c_int {
-        if LOGGER.get().is_some() {
-            1
-        } else {
-            0
-        }
-    }
-
-    #[no_mangle]
     pub extern "C" fn log_get_level() -> c_int {
         let level = match LOGGER.get() {
             Some(logger) if logger.is_active() => logger.max_level(),
@@ -638,6 +640,51 @@ mod ffi {
     #[no_mangle]
     pub extern "C" fn log_set_level(level: c_int) {
         get_simple_logger().set_max_level(int_to_level(level).to_level_filter());
+    }
+
+    /// Returns 0 on success or if file output was not configured.
+    ///
+    /// SAFETY: `output_file` must be valid.
+    #[no_mangle]
+    pub extern "C" fn log_rotate(output_file: *const c_char) -> c_int {
+        assert!(!output_file.is_null());
+
+        let f = unsafe {
+            CStr::from_ptr(output_file)
+                .to_str()
+                .expect("output_file must be utf-8")
+        };
+
+        let logger = get_simple_logger();
+
+        let Some(output_file) = &logger.output_file else {
+            return 0;
+        };
+
+        let mut output_file = output_file.lock().unwrap();
+
+        // Close the file, if any
+        *output_file = None;
+
+        let new_output_file = match OpenOptions::new().create(true).append(true).open(f) {
+            Ok(f) => f,
+            Err(e) => {
+                // Log to standard output since we can't log to the file
+                write_record(
+                    &Record::builder()
+                        .args(format_args!("failed to reopen log file {f}: {e}"))
+                        .level(log::Level::Error)
+                        .build(),
+                    &mut SharedOutput::Stdout(io::stdout()),
+                );
+
+                return -1;
+            }
+        };
+
+        *output_file = Some(new_output_file);
+
+        0
     }
 
     /// SAFETY: `message` must be valid.

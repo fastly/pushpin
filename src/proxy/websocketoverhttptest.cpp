@@ -150,8 +150,6 @@ public:
     std::unique_ptr<ZhttpManager> zhttpOut;
 
     TestState(std::function<void(int)> loop_wait) {
-        log_setOutputLevel(LOG_LEVEL_WARNING);
-
         QDir outDir(qgetenv("OUT_DIR"));
         QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 

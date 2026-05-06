@@ -237,8 +237,8 @@ public:
     }
 };
 
-static int runLoop(const Engine::Configuration &config, const QStringList &routeLines,
-                   const QString &routesFile, int workerCount) {
+static int runLoop(const QString &logFile, const Engine::Configuration &config,
+                   const QStringList &routeLines, const QString &routesFile, int workerCount) {
     // Plenty for the main thread
     int timersMax = 100;
 
@@ -286,7 +286,7 @@ static int runLoop(const Engine::Configuration &config, const QStringList &route
 
         ProcessQuit::instance()->hup.connect([&] {
             log_info("reloading");
-            log_rotate();
+            log_rotate(logFile);
             domainMap->reload();
         });
 
@@ -564,6 +564,6 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     config.prometheusPort = prometheusPort;
     config.prometheusPrefix = prometheusPrefix;
 
-    return runLoop(config, args.routeLines, routesFile, workerCount);
+    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount);
 }
 }
