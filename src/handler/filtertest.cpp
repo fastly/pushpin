@@ -109,6 +109,7 @@ public:
 
         Url uri = req->requestUri();
         QByteArray body = req->readBody();
+        bool preferInternal = req->passthroughData().toMap().value("prefer-internal").toBool();
 
         if (uri.path() == "/filter/accept") {
             respondOk(req, 200, true, "");
@@ -130,8 +131,17 @@ public:
             QString prepend = subMeta["prepend"].toString();
             QString append = pubMeta["append"].toString();
 
-            if (!prepend.isEmpty() || !append.isEmpty())
-                respondOk(req, 200, true, prepend.toUtf8() + body + append.toUtf8());
+            QByteArray respBody;
+
+            if (!prepend.isEmpty() || !append.isEmpty()) {
+                respBody = prepend.toUtf8() + body + append.toUtf8();
+
+                if (!preferInternal)
+                    respBody += " (non-internal)";
+            }
+
+            if (!respBody.isEmpty())
+                respondOk(req, 200, true, respBody);
             else
                 respondOk(req, 204, true, "");
         } else if (uri.path() == "/filter/large") {
@@ -236,6 +246,7 @@ static void httpCheck(std::function<void(int)> loop_wait) {
     Filter::Context context;
     context.subscriptionMeta["url"] = "/filter/accept";
     context.zhttpOut = state.zhttpOut.get();
+    context.requestUri = "http://localhost/";
     context.currentUri = "http://localhost/";
     context.limiter = state.limiter;
 
@@ -273,6 +284,7 @@ static void httpModify(std::function<void(int)> loop_wait) {
     context.prevIds["test"] = "a";
     context.subscriptionMeta["url"] = "/filter/modify";
     context.zhttpOut = state.zhttpOut.get();
+    context.requestUri = "http://localhost/";
     context.currentUri = "http://localhost/";
     context.limiter = state.limiter;
 
@@ -306,10 +318,54 @@ static void httpModify(std::function<void(int)> loop_wait) {
     }
 }
 
+static void httpModifyExternal(std::function<void(int)> loop_wait) {
+    TestState state(loop_wait);
+
+    QStringList filterNames = QStringList() << "http-modify";
+
+    Filter::Context context;
+    context.prevIds["test"] = "a";
+    context.subscriptionMeta["url"] = "http://external/filter/modify";
+    context.zhttpOut = state.zhttpOut.get();
+    context.requestUri = "http://localhost/";
+    context.currentUri = "http://localhost/";
+    context.limiter = state.limiter;
+
+    QByteArray content = "hello world";
+
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "hello world");
+    }
+
+    context.subscriptionMeta["prepend"] = "<<<";
+    context.publishMeta["append"] = ">>>";
+
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT(r.errorMessage.isNull());
+        TEST_ASSERT_EQ(r.sendAction, Filter::Send);
+        TEST_ASSERT_EQ(r.content, "<<<hello world>>> (non-internal)");
+    }
+
+    context.subscriptionMeta.clear();
+    context.publishMeta.clear();
+    context.subscriptionMeta["url"] = "/filter/large";
+    context.responseSizeMax = 1000;
+
+    {
+        auto r = runMessageFilters(filterNames, context, content, loop_wait);
+        TEST_ASSERT_EQ(r.errorMessage, "network response exceeded 1000 bytes");
+    }
+}
+
 extern "C" int filter_test(ffi::TestException *out_ex) {
     TEST_CATCH(test_with_event_loop(messageFilters));
     TEST_CATCH(test_with_event_loop(httpCheck));
     TEST_CATCH(test_with_event_loop(httpModify));
+    TEST_CATCH(test_with_event_loop(httpModifyExternal));
 
     return 0;
 }
