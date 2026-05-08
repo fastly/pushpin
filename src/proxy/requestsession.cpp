@@ -329,16 +329,16 @@ public:
         // the copyright notice
         if (requestData.headers.contains("Pushpin-Check")) {
             QString str = "Copyright (C) 2012-2023 Fanout, Inc.\n"
-                "Copyright (C) 2023 Fastly, Inc.\n"
-                "\n"
+                          "Copyright (C) 2023 Fastly, Inc.\n"
+                          "\n"
                           "Pushpin is licensed under the Apache License, Version 2.0 "
                           "(the \"License\");\n"
                           "you may not use this software except in compliance with "
                           "the License.\n"
-                "You may obtain a copy of the License at\n"
-                "\n"
-                "    http://www.apache.org/licenses/LICENSE-2.0\n"
-                "\n"
+                          "You may obtain a copy of the License at\n"
+                          "\n"
+                          "    http://www.apache.org/licenses/LICENSE-2.0\n"
+                          "\n"
                           "Unless required by applicable law or agreed to in "
                           "writing, software\n"
                           "distributed under the License is distributed on an \"AS "
@@ -347,7 +347,7 @@ public:
                           "express or implied.\n"
                           "See the License for the specific language governing "
                           "permissions and\n"
-                "limitations under the License.\n";
+                          "limitations under the License.\n";
 
             state = WaitingForResponse;
             respondSuccess(str);
@@ -1043,7 +1043,7 @@ public:
 
                     log_warning("requestsession: id=%s upstream response could not be "
                                 "JSON-P encoded",
-                        rid.second.data());
+                                rid.second.data());
 
                     // If we error while streaming, all we can do is give up
                     zhttpRequest->endBody();

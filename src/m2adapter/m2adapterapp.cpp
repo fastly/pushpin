@@ -1301,7 +1301,7 @@ public:
         if (data.isNull()) {
             log_warning("%s: received message with invalid format (tnetstring parse "
                         "failed), skipping",
-                logprefix);
+                        logprefix);
             return;
         }
 
@@ -1353,7 +1353,7 @@ public:
                 if (zresp.from.isEmpty()) {
                     log_warning("%s: received first response of sequence with no from "
                                 "address, canceling",
-                        logprefix);
+                                logprefix);
                     destroySessionAndErrorConnection(s);
                     return;
                 }
@@ -1363,7 +1363,7 @@ public:
                 if (seq != 0) {
                     log_warning("%s: received first response of sequence without valid "
                                 "seq, canceling",
-                        logprefix);
+                                logprefix);
                     ZhttpRequestPacket zreq;
                     zreq.type = ZhttpRequestPacket::Cancel;
                     zhttp_out_write(s, zreq);
@@ -1379,7 +1379,7 @@ public:
                 if (seq != -1 && seq != 0) {
                     log_warning("%s: received response out of sequence (got=%d, "
                                 "expected=-1,0), canceling",
-                        logprefix, seq);
+                                logprefix, seq);
 
                     if (!s->zhttpAddress.isEmpty()) {
                         ZhttpRequestPacket zreq;
@@ -1395,7 +1395,7 @@ public:
             if (seq != -1 && seq != s->inSeq) {
                 log_warning("%s: received response out of sequence (got=%d, "
                             "expected=%d), canceling",
-                    logprefix, seq, s->inSeq);
+                            logprefix, seq, s->inSeq);
                 ZhttpRequestPacket zreq;
                 zreq.type = ZhttpRequestPacket::Cancel;
                 zhttp_out_write(s, zreq);
