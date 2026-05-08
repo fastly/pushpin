@@ -18,7 +18,6 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use pushpin::core::list::{RcList, RcNode, SlabList, SlabNode};
 use pushpin::core::memorypool;
 use slab::Slab;
-use std::rc::Rc;
 
 fn criterion_benchmark(c: &mut Criterion) {
     const NODE_KCOUNT: usize = 10;
@@ -56,7 +55,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let node_count = NODE_KCOUNT * 1000;
 
         // Preallocate the nodes memory
-        let nodes_memory = Rc::new(memorypool::RcMemory::new(node_count));
+        let nodes_memory = memorypool::RcMemoryPool::new(node_count);
 
         c.bench_function(&format!("mp-push-pop-x{NODE_KCOUNT}k"), |b| {
             b.iter(|| {
@@ -107,7 +106,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let node_count = NODE_KCOUNT * 1000;
 
         // Preallocate the nodes
-        let nodes_memory = Rc::new(memorypool::RcMemory::new(node_count));
+        let nodes_memory = memorypool::RcMemoryPool::new(node_count);
         let mut nodes = Vec::new();
         let mut next_value: u64 = 0;
         while nodes_memory.len() < nodes_memory.capacity() {

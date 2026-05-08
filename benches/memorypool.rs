@@ -23,7 +23,7 @@ use std::rc::Rc;
 fn bench_memorypool_rc_new<const N: usize>(c: &mut Criterion, op_kcount: usize) {
     let op_count = op_kcount * 1000;
     let bytes = mem::size_of::<[u64; N]>();
-    let memory = Rc::new(memorypool::RcMemory::new(op_count));
+    let memory = memorypool::RcMemoryPool::new(op_count);
     let instances = RefCell::new(Vec::with_capacity(op_count));
 
     c.bench_function(&format!("mp-rc-new-{bytes}b-x{op_kcount}k"), |b| {
@@ -90,7 +90,7 @@ fn bench_std_rc_new<const N: usize>(c: &mut Criterion, op_kcount: usize) {
 fn bench_memorypool_rc_drop<const N: usize>(c: &mut Criterion, op_kcount: usize) {
     let op_count = op_kcount * 1000;
     let bytes = mem::size_of::<[u64; N]>();
-    let memory = Rc::new(memorypool::RcMemory::new(op_count));
+    let memory = memorypool::RcMemoryPool::new(op_count);
     let instances = RefCell::new(Vec::with_capacity(op_count));
 
     c.bench_function(&format!("mp-rc-drp-{bytes}b-x{op_kcount}k"), |b| {
@@ -160,7 +160,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the instances
-        let memory = Rc::new(memorypool::RcMemory::new(OP_COUNT));
+        let memory = memorypool::RcMemoryPool::new(OP_COUNT);
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {
@@ -213,7 +213,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the instances
-        let memory = Rc::new(memorypool::RcMemory::new(OP_COUNT));
+        let memory = memorypool::RcMemoryPool::new(OP_COUNT);
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {
@@ -266,7 +266,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // Preallocate the instances
-        let memory = Rc::new(memorypool::RcMemory::new(OP_COUNT));
+        let memory = memorypool::RcMemoryPool::new(OP_COUNT);
         let mut instances = Vec::new();
         let mut next_value: u64 = 0;
         while next_value < OP_COUNT as u64 {

@@ -20,7 +20,6 @@ use crate::core::memorypool;
 use crate::core::reactor::{CustomEvented, Reactor, Registration};
 use std::future::Future;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 pub struct PollFuture<F> {
@@ -82,7 +81,7 @@ pub struct CancellationToken {
 
 impl CancellationToken {
     pub fn new(
-        memory: &Rc<memorypool::RcMemory<event::LocalRegistrationEntry>>,
+        memory: &memorypool::RcMemoryPool<event::LocalRegistrationEntry>,
     ) -> (CancellationSender, Self) {
         let (read_reg, read_sr) = event::LocalRegistration::new(memory);
 

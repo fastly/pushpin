@@ -6346,8 +6346,8 @@ pub mod testutil {
 
     pub struct BenchServerReqHandler {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6357,8 +6357,8 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6503,8 +6503,8 @@ pub mod testutil {
 
     pub struct BenchServerReqConnection {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6514,8 +6514,8 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6664,9 +6664,9 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandler {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
+        shared_mem: memorypool::RcMemoryPool<StreamSharedData>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -6677,9 +6677,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
-                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
+                shared_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -6838,9 +6838,9 @@ pub mod testutil {
 
     pub struct BenchServerStreamConnection {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
+        shared_mem: memorypool::RcMemoryPool<StreamSharedData>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -6851,9 +6851,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
-                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
+                shared_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -7076,8 +7076,8 @@ mod tests {
     fn server_req_without_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7193,8 +7193,8 @@ mod tests {
     fn server_req_with_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7344,8 +7344,8 @@ mod tests {
     fn server_req_pipeline() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7511,8 +7511,8 @@ mod tests {
     fn server_req_secure() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7651,7 +7651,7 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
-        let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+        let shared_mem = memorypool::RcMemoryPool::new(1);
         let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
 
         server_stream_connection_inner(
@@ -7683,8 +7683,8 @@ mod tests {
     fn server_stream_without_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7806,8 +7806,8 @@ mod tests {
     fn server_stream_with_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7971,8 +7971,8 @@ mod tests {
     fn server_stream_chunked() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8116,8 +8116,8 @@ mod tests {
     fn server_stream_early_response() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8245,8 +8245,8 @@ mod tests {
     fn server_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8393,8 +8393,8 @@ mod tests {
     fn server_stream_disconnect() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8527,8 +8527,8 @@ mod tests {
     fn server_websocket() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8701,8 +8701,8 @@ mod tests {
     fn server_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8898,8 +8898,8 @@ mod tests {
     fn server_websocket_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9105,8 +9105,8 @@ mod tests {
     fn client_req_without_id() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let req_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let req_mem = memorypool::RcMemoryPool::new(1);
 
         let data = concat!(
             "T74:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9214,8 +9214,8 @@ mod tests {
     fn client_req_with_id() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let req_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let req_mem = memorypool::RcMemoryPool::new(1);
 
         let data = concat!(
             "T83:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9405,8 +9405,8 @@ mod tests {
     fn client_stream() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9439,7 +9439,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -9616,8 +9616,8 @@ mod tests {
     fn client_stream_router_resp() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T187:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9651,7 +9651,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -9831,8 +9831,8 @@ mod tests {
     fn client_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9865,7 +9865,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -9993,8 +9993,8 @@ mod tests {
     fn client_websocket() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -10026,7 +10026,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -10245,8 +10245,8 @@ mod tests {
     fn client_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -10278,7 +10278,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
