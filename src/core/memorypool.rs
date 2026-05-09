@@ -190,7 +190,13 @@ impl<T> Rc<T> {
                 memory: Cell::new(Some(ManuallyDrop::new(std::rc::Rc::clone(memory)))),
                 value: ManuallyDrop::new(v),
             })
-            .map_err(|_| AllocError)?;
+            .map_err(|inner| {
+                // If inserting into the pool fails, we need to manually drop these fields
+                ManuallyDrop::into_inner(inner.0.value);
+                ManuallyDrop::into_inner(inner.0.memory.take().unwrap());
+
+                AllocError
+            })?;
 
         // SAFETY: ptr is not null and we promise to only use it immutably
         // despite casting it to *mut in order to construct NonNull
@@ -406,21 +412,26 @@ mod tests {
     fn test_rc_in() {
         let memory = std::rc::Rc::new(RcMemory::new(2));
         assert_eq!(memory.len(), 0);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 1);
 
         let e0a = Rc::try_new_in(123 as i32, &memory).unwrap();
         assert_eq!(memory.len(), 1);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
         let p = memory.addr_of(0).unwrap();
 
         let e0b = Rc::clone(&e0a);
         assert_eq!(memory.len(), 1);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
         assert_eq!(memory.addr_of(0).unwrap(), p);
 
         let e1a = Rc::try_new_in(456 as i32, &memory).unwrap();
         assert_eq!(memory.len(), 2);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
         assert_eq!(memory.addr_of(0).unwrap(), p);
 
         // No room
         assert!(Rc::try_new_in(789 as i32, &memory).is_err());
+        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
 
         assert_eq!(*e0a, 123);
         assert_eq!(*e0b, 123);
@@ -428,13 +439,16 @@ mod tests {
 
         mem::drop(e0b);
         assert_eq!(memory.len(), 2);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
         assert_eq!(memory.addr_of(0).unwrap(), p);
 
         mem::drop(e0a);
         assert_eq!(memory.len(), 1);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
 
         mem::drop(e1a);
         assert_eq!(memory.len(), 0);
+        assert_eq!(std::rc::Rc::strong_count(&memory), 1);
     }
 
     #[test]
