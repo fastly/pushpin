@@ -719,6 +719,9 @@ mod tests {
         assert_eq!(be.clone_link(n1.to_ref(), Relation::Next), Some(n2.clone()));
         assert_eq!(be.clone_link(n2.to_ref(), Relation::Prev), Some(n1));
         assert_eq!(be.clone_link(n2.to_ref(), Relation::Next), None);
+
+        // Cleanup
+        while a.pop_front(&mut be).is_some() {}
     }
 
     fn generic_iter<B, A>(mut b: B, mut l: List<B>, add: A)
@@ -739,6 +742,9 @@ mod tests {
         assert_eq!(it.next(), Some(n2));
         assert_eq!(it.next(), Some(n3));
         assert_eq!(it.next(), None);
+
+        // Cleanup
+        while l.pop_front(&mut b).is_some() {}
     }
 
     #[test]
