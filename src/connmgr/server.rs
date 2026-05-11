@@ -632,7 +632,7 @@ struct ConnectionStreamOpts {
     allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
     sender_stream: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    stream_shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
+    stream_shared_mem: memorypool::RcMemoryPool<StreamSharedData>,
 }
 
 enum ConnectionModeOpts {
@@ -834,7 +834,7 @@ impl Worker {
             zsockman.client_stream_handle(format!("{}-", id).as_bytes()),
         );
 
-        let stream_shared_mem = Rc::new(memorypool::RcMemory::new(stream_maxconn));
+        let stream_shared_mem = memorypool::RcMemoryPool::new(stream_maxconn);
 
         let zreceiver_pool = Rc::new(ChannelPool::new(maxconn));
         for _ in 0..maxconn {
@@ -1299,8 +1299,8 @@ impl Worker {
     ) {
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * req_maxconn);
 
-        let req_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
-        let req_resp_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let req_scratch_mem = memorypool::RcMemoryPool::new(msg_retained_max);
+        let req_resp_mem = memorypool::RcMemoryPool::new(msg_retained_max);
 
         let resume_waker = task::create_resume_waker();
 
@@ -1437,8 +1437,8 @@ impl Worker {
     ) {
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * stream_maxconn);
 
-        let stream_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
-        let stream_resp_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let stream_scratch_mem = memorypool::RcMemoryPool::new(msg_retained_max);
+        let stream_resp_mem = memorypool::RcMemoryPool::new(msg_retained_max);
 
         let resume_waker = task::create_resume_waker();
 
@@ -2175,7 +2175,7 @@ impl Server {
                 10000,
             ));
 
-            let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let stream_shared_mem = memorypool::RcMemoryPool::new(1);
 
             let shared =
                 memorypool::Rc::try_new_in(StreamSharedData::new(), &stream_shared_mem).unwrap();

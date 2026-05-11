@@ -38,17 +38,17 @@ impl<T> fmt::Debug for InsertError<T> {
 // This is essentially a sharable slab for use within a single thread.
 // Operations are protected by a RefCell, however lookup operations return
 // pointers that can be used without RefCell protection.
-pub struct Memory<T> {
-    entries: RefCell<Slab<T>>,
+pub struct MemoryPool<T> {
+    entries: std::rc::Rc<RefCell<Slab<T>>>,
 }
 
-impl<T> Memory<T> {
+impl<T> MemoryPool<T> {
     pub fn new(capacity: usize) -> Self {
         // Allocate the slab with fixed capacity
         let s = Slab::with_capacity(capacity);
 
         Self {
-            entries: RefCell::new(s),
+            entries: std::rc::Rc::new(RefCell::new(s)),
         }
     }
 
@@ -64,11 +64,16 @@ impl<T> Memory<T> {
         self.entries.borrow().capacity()
     }
 
-    // Returns a pointer to the inserted entry.
-    //
-    // SAFETY: The returned pointer is guaranteed to be valid until the entry
-    // is removed or the Memory is dropped.
-    fn insert(&self, e: T) -> Result<*const T, InsertError<T>> {
+    pub fn refs(&self) -> usize {
+        std::rc::Rc::strong_count(&self.entries)
+    }
+
+    /// Returns a pointer to the inserted entry.
+    ///
+    /// # Safety
+    /// The returned pointer is guaranteed to be valid until the entry is removed or the memory
+    /// is dropped.
+    pub fn insert(&self, e: T) -> Result<*const T, InsertError<T>> {
         let mut entries = self.entries.borrow_mut();
 
         // Out of capacity. By preventing inserts beyond the capacity, we
@@ -89,9 +94,11 @@ impl<T> Memory<T> {
         Ok(entry as *const T)
     }
 
-    // SAFETY: `ptr` must be a valid pointer returned by `insert` that has
-    // not yet been removed.
-    unsafe fn remove(&self, ptr: *const T) {
+    /// Removes an entry.
+    ///
+    /// # Safety
+    /// `ptr` must be a valid pointer returned by `insert` that has not yet been removed.
+    pub unsafe fn remove(&self, ptr: *const T) {
         let mut entries = self.entries.borrow_mut();
 
         let key = entries.key_of(&*ptr);
@@ -102,7 +109,7 @@ impl<T> Memory<T> {
     // Returns a pointer to an entry if it exists.
     //
     // SAFETY: The returned pointer is guaranteed to be valid until the entry
-    // is removed or the Memory is dropped.
+    // is removed or the `MemoryPool` is dropped.
     #[cfg(test)]
     fn addr_of(&self, key: usize) -> Option<*const T> {
         let entries = self.entries.borrow();
@@ -117,6 +124,15 @@ impl<T> Memory<T> {
     }
 }
 
+impl<T> Clone for MemoryPool<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            entries: std::rc::Rc::clone(&self.entries),
+        }
+    }
+}
+
 #[cold]
 fn unlikely_abort() {
     abort();
@@ -125,7 +141,7 @@ fn unlikely_abort() {
 #[repr(C, align(2))]
 pub struct RcInner<T> {
     refs: Cell<usize>,
-    memory: Cell<Option<ManuallyDrop<std::rc::Rc<RcMemory<T>>>>>,
+    pool: Cell<Option<ManuallyDrop<RcMemoryPool<T>>>>,
     value: ManuallyDrop<T>,
 }
 
@@ -162,7 +178,7 @@ impl<T> RcInner<T> {
     }
 }
 
-pub type RcMemory<T> = Memory<RcInner<T>>;
+pub type RcMemoryPool<T> = MemoryPool<RcInner<T>>;
 
 pub struct Rc<T> {
     ptr: NonNull<RcInner<T>>,
@@ -173,7 +189,7 @@ impl<T> Rc<T> {
     pub fn new(v: T) -> Self {
         let ptr = Box::leak(Box::new(RcInner {
             refs: Cell::new(1),
-            memory: Cell::new(None),
+            pool: Cell::new(None),
             value: ManuallyDrop::new(v),
         }));
 
@@ -183,17 +199,17 @@ impl<T> Rc<T> {
         }
     }
 
-    pub fn try_new_in(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, AllocError> {
-        let ptr = memory
+    pub fn try_new_in(v: T, pool: &RcMemoryPool<T>) -> Result<Self, AllocError> {
+        let ptr = pool
             .insert(RcInner {
                 refs: Cell::new(1),
-                memory: Cell::new(Some(ManuallyDrop::new(std::rc::Rc::clone(memory)))),
+                pool: Cell::new(Some(ManuallyDrop::new(pool.clone()))),
                 value: ManuallyDrop::new(v),
             })
             .map_err(|inner| {
                 // If inserting into the pool fails, we need to manually drop these fields
                 ManuallyDrop::into_inner(inner.0.value);
-                ManuallyDrop::into_inner(inner.0.memory.take().unwrap());
+                ManuallyDrop::into_inner(inner.0.pool.take().unwrap());
 
                 AllocError
             })?;
@@ -228,19 +244,19 @@ impl<T> Rc<T> {
         // SAFETY: This is the only time we drop the value
         unsafe { ManuallyDrop::drop(&mut self.ptr.as_mut().value) };
 
-        if let Some(memory) = self.inner().memory.take() {
-            // Slab allocations contain a std::rc::Rc to the Memory they are
-            // contained in, and we need to be careful the Memory is not
-            // dropped while an entry is being removed. To ensure this, the
-            // Rc is moved out of the entry above, and it is dropped only
-            // after the entry is removed.
+        if let Some(pool) = self.inner().pool.take() {
+            // Slab-based allocations contain a ref-counted copy of the
+            // `MemoryPool` they were allocated in, and we need to be careful
+            // the pool is not dropped while an entry is being removed. To
+            // ensure this, the pool is moved out of the entry above, and it
+            // is dropped only after the entry is removed.
 
-            let memory = ManuallyDrop::into_inner(memory);
+            let pool = ManuallyDrop::into_inner(pool);
 
             // SAFETY: While this Rc is alive, ptr is always valid
-            unsafe { memory.remove(self.ptr.as_ref()) };
+            unsafe { pool.remove(self.ptr.as_ref()) };
         } else {
-            // If there is no reference to slab memory, then the memory is
+            // If there is no handle to a `MemoryPool` then the memory is
             // managed by the system allocator. To free it, we simply convert
             // the pointer back to a Box and drop it.
 
@@ -410,45 +426,45 @@ mod tests {
 
     #[test]
     fn test_rc_in() {
-        let memory = std::rc::Rc::new(RcMemory::new(2));
-        assert_eq!(memory.len(), 0);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 1);
+        let pool = RcMemoryPool::new(2);
+        assert_eq!(pool.len(), 0);
+        assert_eq!(pool.refs(), 1);
 
-        let e0a = Rc::try_new_in(123 as i32, &memory).unwrap();
-        assert_eq!(memory.len(), 1);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
-        let p = memory.addr_of(0).unwrap();
+        let e0a = Rc::try_new_in(123 as i32, &pool).unwrap();
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.refs(), 2);
+        let p = pool.addr_of(0).unwrap();
 
         let e0b = Rc::clone(&e0a);
-        assert_eq!(memory.len(), 1);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
-        assert_eq!(memory.addr_of(0).unwrap(), p);
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.refs(), 2);
+        assert_eq!(pool.addr_of(0).unwrap(), p);
 
-        let e1a = Rc::try_new_in(456 as i32, &memory).unwrap();
-        assert_eq!(memory.len(), 2);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
-        assert_eq!(memory.addr_of(0).unwrap(), p);
+        let e1a = Rc::try_new_in(456 as i32, &pool).unwrap();
+        assert_eq!(pool.len(), 2);
+        assert_eq!(pool.refs(), 3);
+        assert_eq!(pool.addr_of(0).unwrap(), p);
 
         // No room
-        assert!(Rc::try_new_in(789 as i32, &memory).is_err());
-        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
+        assert!(Rc::try_new_in(789 as i32, &pool).is_err());
+        assert_eq!(pool.refs(), 3);
 
         assert_eq!(*e0a, 123);
         assert_eq!(*e0b, 123);
         assert_eq!(*e1a, 456);
 
         mem::drop(e0b);
-        assert_eq!(memory.len(), 2);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 3);
-        assert_eq!(memory.addr_of(0).unwrap(), p);
+        assert_eq!(pool.len(), 2);
+        assert_eq!(pool.refs(), 3);
+        assert_eq!(pool.addr_of(0).unwrap(), p);
 
         mem::drop(e0a);
-        assert_eq!(memory.len(), 1);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 2);
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.refs(), 2);
 
         mem::drop(e1a);
-        assert_eq!(memory.len(), 0);
-        assert_eq!(std::rc::Rc::strong_count(&memory), 1);
+        assert_eq!(pool.len(), 0);
+        assert_eq!(pool.refs(), 1);
     }
 
     #[test]

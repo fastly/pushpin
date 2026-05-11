@@ -1794,7 +1794,6 @@ impl OwnedResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
     use std::sync::Arc;
 
     #[test]
@@ -2042,7 +2041,7 @@ mod tests {
         )
         .as_bytes();
 
-        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_memory = memorypool::RcMemoryPool::new(1);
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =
@@ -2068,7 +2067,7 @@ mod tests {
         )
         .as_bytes();
 
-        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_memory = memorypool::RcMemoryPool::new(1);
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =

@@ -726,7 +726,7 @@ impl Reactor {
 
     pub fn local_registration_memory(
         &self,
-    ) -> Rc<memorypool::RcMemory<event::LocalRegistrationEntry>> {
+    ) -> memorypool::RcMemoryPool<event::LocalRegistrationEntry> {
         self.inner.poll.borrow().local_registration_memory().clone()
     }
 
