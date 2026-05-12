@@ -196,6 +196,9 @@ Variant WsControlPacket::toVariant() const {
         case Item::Refresh:
             typeStr = "refresh";
             break;
+        case Item::AutoRespond:
+            typeStr = "auto-respond";
+            break;
         case Item::Close:
             typeStr = "close";
             break;
@@ -261,6 +264,15 @@ Variant WsControlPacket::toVariant() const {
         if (!item.keepAliveMode.isEmpty())
             vitem["keep-alive-mode"] = item.keepAliveMode;
 
+        if (!item.matchContentType.isEmpty())
+            vitem["match-content-type"] = item.matchContentType;
+
+        if (!item.matchContent.isNull())
+            vitem["match-content"] = item.matchContent;
+
+        if (!item.matchContentPtr.isEmpty())
+            vitem["match-content-ptr"] = item.matchContentPtr;
+
         vitems += vitem;
     }
 
@@ -321,6 +333,8 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             item.type = Item::Subscribe;
         else if (typeStr == "refresh")
             item.type = Item::Refresh;
+        else if (typeStr == "auto-respond")
+            item.type = Item::AutoRespond;
         else if (typeStr == "close")
             item.type = Item::Close;
         else if (typeStr == "detach")
@@ -461,6 +475,31 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
             if (!keepAliveMode.isEmpty())
                 item.keepAliveMode = keepAliveMode;
+        }
+
+        if (vitem.contains("match-content-type")) {
+            if (typeId(vitem["match-content-type"]) != VariantType::ByteArray)
+                return false;
+
+            QByteArray matchContentType = vitem["match-content-type"].toByteArray();
+            if (!matchContentType.isEmpty())
+                item.matchContentType = matchContentType;
+        }
+
+        if (vitem.contains("match-content")) {
+            if (typeId(vitem["match-content"]) != VariantType::ByteArray)
+                return false;
+
+            item.matchContent = vitem["match-content"].toByteArray();
+        }
+
+        if (vitem.contains("match-content-ptr")) {
+            if (typeId(vitem["match-content-ptr"]) != VariantType::ByteArray)
+                return false;
+
+            QByteArray matchContentPtr = vitem["match-content-ptr"].toByteArray();
+            if (!matchContentPtr.isEmpty())
+                item.matchContentPtr = matchContentPtr;
         }
 
         items += item;

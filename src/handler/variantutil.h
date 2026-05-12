@@ -46,6 +46,9 @@ VariantList getList(const Variant &in, const QString &parentName, const QString 
 QString getString(const Variant &in, bool *ok = 0);
 QString getString(const Variant &in, const QString &parentName, const QString &childName,
                   bool required, bool *ok = 0, QString *errorMessage = 0);
+QByteArray getBytes(const Variant &in, const QString &parentName, const QString &childName,
+                    const QString &childBinName, bool required, bool *ok = 0,
+                    QString *errorMessage = 0, bool *isBin = 0);
 
 // Return true if item modified
 bool convertToJsonStyleInPlace(Variant *in);

@@ -110,6 +110,21 @@ static QList<PublishItem> parseItems(const VariantList &vitems, bool *ok = 0,
     return out;
 }
 
+static QByteArray messageTypeToContentType(WsControlMessage::MessageType t) {
+    switch (t) {
+    case WsControlMessage::Text:
+        return "text";
+    case WsControlMessage::Binary:
+        return "binary";
+    case WsControlMessage::Ping:
+        return "ping";
+    case WsControlMessage::Pong:
+        return "pong";
+    default:
+        return QByteArray();
+    }
+}
+
 class InspectWorker : public Deferred {
 public:
     std::unique_ptr<ZrpcRequest> req;
@@ -2486,23 +2501,9 @@ private:
                     i.type = WsControlPacket::Item::KeepAliveSetup;
 
                     if (!cm.content.isNull()) {
-                        QByteArray contentType;
-                        switch (cm.messageType) {
-                        case WsControlMessage::Text:
-                            contentType = "text";
-                            break;
-                        case WsControlMessage::Binary:
-                            contentType = "binary";
-                            break;
-                        case WsControlMessage::Ping:
-                            contentType = "ping";
-                            break;
-                        case WsControlMessage::Pong:
-                            contentType = "pong";
-                            break;
-                        default:
+                        QByteArray contentType = messageTypeToContentType(cm.messageType);
+                        if (contentType.isNull())
                             continue; // Unrecognized type, ignore
-                        }
 
                         s->keepAliveType = contentType;
                         s->keepAliveMessage = cm.content;
@@ -2520,29 +2521,42 @@ private:
 
                     outItems += i;
                 } else if (cm.type == WsControlMessage::SendDelayed) {
-                    QByteArray contentType;
-                    switch (cm.messageType) {
-                    case WsControlMessage::Text:
-                        contentType = "text";
-                        break;
-                    case WsControlMessage::Binary:
-                        contentType = "binary";
-                        break;
-                    case WsControlMessage::Ping:
-                        contentType = "ping";
-                        break;
-                    case WsControlMessage::Pong:
-                        contentType = "pong";
-                        break;
-                    default:
+                    QByteArray contentType = messageTypeToContentType(cm.messageType);
+                    if (contentType.isNull())
                         continue; // Unrecognized type, ignore
-                    }
 
                     int timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_SENDDELAYED_TIMEOUT);
 
                     s->sendDelayed(contentType, cm.content, timeout);
                 } else if (cm.type == WsControlMessage::FlushDelayed) {
                     s->flushDelayed();
+                } else if (cm.type == WsControlMessage::AutoRespond) {
+                    WsControlPacket::Item i;
+                    i.cid = item.cid;
+                    i.type = WsControlPacket::Item::AutoRespond;
+
+                    QByteArray matchContentType;
+                    QByteArray contentType;
+
+                    if (cm.matchMessageType >= 0) {
+                        matchContentType = messageTypeToContentType(cm.matchMessageType);
+                        if (matchContentType.isNull())
+                            continue; // Unrecognized type, ignore
+                    }
+
+                    if (cm.messageType >= 0) {
+                        contentType = messageTypeToContentType(cm.messageType);
+                        if (contentType.isNull())
+                            continue; // Unrecognized type, ignore
+                    }
+
+                    i.matchContentType = matchContentType;
+                    i.matchContentPtr = cm.matchContentPtr.toUtf8();
+                    i.matchContent = cm.matchContent;
+                    i.contentType = contentType;
+                    i.message = cm.content;
+
+                    outItems += i;
                 }
             } else if (item.type == WsControlPacket::Item::NeedKeepAlive) {
                 if (!s->keepAliveMessage.isNull()) {

@@ -37,7 +37,8 @@ public:
         SetMeta,
         KeepAlive,
         SendDelayed,
-        FlushDelayed
+        FlushDelayed,
+        AutoRespond,
     };
 
     enum MessageType { Text, Binary, Ping, Pong };
@@ -52,8 +53,15 @@ public:
     QByteArray content;
     int timeout;
     QByteArray keepAliveMode;
+    MessageType matchMessageType;
+    QByteArray matchContent;
+    QString matchContentPtr;
 
-    WsControlMessage() : type((Type)-1), messageType((MessageType)-1), timeout(-1) {}
+    WsControlMessage()
+        : type((Type)-1),
+          messageType((MessageType)-1),
+          timeout(-1),
+          matchMessageType((MessageType)-1) {}
 
     static WsControlMessage fromVariant(const Variant &in, bool *ok = 0, QString *errorMessage = 0);
 };
