@@ -131,20 +131,18 @@ QHostAddress TestWebSocket::peerAddress() const {
     return QHostAddress();
 }
 
-void TestWebSocket::setConnectHost(const QString &host) { Q_UNUSED(host); }
+void TestWebSocket::setConnectHost([[maybe_unused]] const QString &host) {}
 
-void TestWebSocket::setConnectPort(int port) { Q_UNUSED(port); }
+void TestWebSocket::setConnectPort([[maybe_unused]] int port) {}
 
-void TestWebSocket::setIgnorePolicies(bool on) { Q_UNUSED(on); }
+void TestWebSocket::setIgnorePolicies([[maybe_unused]] bool on) {}
 
-void TestWebSocket::setTrustConnectHost(bool on) { Q_UNUSED(on); }
+void TestWebSocket::setTrustConnectHost([[maybe_unused]] bool on) {}
 
-void TestWebSocket::setIgnoreTlsErrors(bool on) { Q_UNUSED(on); }
+void TestWebSocket::setIgnoreTlsErrors([[maybe_unused]] bool on) {}
 
-void TestWebSocket::setClientCert(const QString &cert, const QString &key) {
-    Q_UNUSED(cert);
-    Q_UNUSED(key);
-}
+void TestWebSocket::setClientCert([[maybe_unused]] const QString &cert,
+                                  [[maybe_unused]] const QString &key) {}
 
 void TestWebSocket::start(const Url &uri, const HttpHeaders &headers) {
     d->request.uri = uri;
@@ -155,21 +153,16 @@ void TestWebSocket::start(const Url &uri, const HttpHeaders &headers) {
     d->deferCall.defer([=] { d->handleConnect(); });
 }
 
-void TestWebSocket::respondSuccess(const QByteArray &reason, const HttpHeaders &headers) {
-    Q_UNUSED(reason);
-    Q_UNUSED(headers);
-
+void TestWebSocket::respondSuccess([[maybe_unused]] const QByteArray &reason,
+                                   [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }
 
-void TestWebSocket::respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                                 const QByteArray &body) {
-    Q_UNUSED(code);
-    Q_UNUSED(reason);
-    Q_UNUSED(headers);
-    Q_UNUSED(body);
-
+void TestWebSocket::respondError([[maybe_unused]] int code,
+                                 [[maybe_unused]] const QByteArray &reason,
+                                 [[maybe_unused]] const HttpHeaders &headers,
+                                 [[maybe_unused]] const QByteArray &body) {
     // This class is client only
     assert(0);
 }

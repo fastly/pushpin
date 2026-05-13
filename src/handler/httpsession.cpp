@@ -1350,9 +1350,7 @@ private:
         }
     }
 
-    void req_bytesWritten(int count) {
-        Q_UNUSED(count);
-
+    void req_bytesWritten([[maybe_unused]] int count) {
         if (req->isFinished()) {
             doFinish();
             return;

@@ -108,18 +108,14 @@ void SocketNotifier::clearReadiness(uint8_t readiness) {
         writeInner_->setEnabled(true);
 }
 
-void SocketNotifier::innerReadActivated(int socket) {
-    Q_UNUSED(socket);
-
+void SocketNotifier::innerReadActivated([[maybe_unused]] int socket) {
     // QSocketNotifier is level-triggered. Disable until readiness cleared
     readInner_->setEnabled(false);
 
     apply(Read);
 }
 
-void SocketNotifier::innerWriteActivated(int socket) {
-    Q_UNUSED(socket);
-
+void SocketNotifier::innerWriteActivated([[maybe_unused]] int socket) {
     // QSocketNotifier is level-triggered. Disable until readiness cleared
     writeInner_->setEnabled(false);
 

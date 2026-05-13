@@ -209,9 +209,7 @@ void Timer::stop() {
     }
 }
 
-void Timer::cb_timer_activated(void *ctx, uint8_t readiness) {
-    Q_UNUSED(readiness);
-
+void Timer::cb_timer_activated(void *ctx, [[maybe_unused]] uint8_t readiness) {
     Timer *self = (Timer *)ctx;
 
     self->timerReady();
