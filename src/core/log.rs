@@ -434,7 +434,7 @@ impl LogBroadcaster {
         // when the channel closes or the token is cancelled.
         while let Ok((msg, drop_count)) = msgs.recv().await {
             if drop_count > 0 {
-                Self::write_to_stream(stream, &format!("** dropped {drop_count} logs"), token)
+                Self::write_to_stream(stream, &format!("** dropped {drop_count} logs\n"), token)
                     .await?;
             }
 
