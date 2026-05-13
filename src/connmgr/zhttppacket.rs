@@ -1749,7 +1749,7 @@ where
         //
         // further, it is safe for T::parse() to write references to src_ref
         // into scratch_mut, because src_ref and scratch_mut have the same
-        // Lifetime
+        // lifetime
         let scratch_mut: &'static mut ParseScratch<'static> =
             unsafe { scratch.as_ptr().as_mut().unwrap() };
 

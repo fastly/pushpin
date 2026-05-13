@@ -307,7 +307,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                     let req_body = w.req_body.take().unwrap();
 
                     // req_body.send() expects the input to leave room for at
-                    // Least two more buffers in case chunked encoding is
+                    // least two more buffers in case chunked encoding is
                     // used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);

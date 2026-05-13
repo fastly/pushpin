@@ -1524,8 +1524,8 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
-    // be consumed by discard_header(). be careful with early returns from
-    // This function and do not use the ?-operator
+    // be consumed by discard_header(). Be careful with early returns from
+    // this function and do not use the ?-operator
     let (req_header, mut req_body) = {
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
@@ -3383,8 +3383,8 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
-    // be consumed by discard_header(). be careful with early returns from
-    // This function and do not use the ?-operator
+    // be consumed by discard_header(). Be careful with early returns from
+    // this function and do not use the ?-operator
     let (req_header, req_body) = {
         // ABR: discard_while
         match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
