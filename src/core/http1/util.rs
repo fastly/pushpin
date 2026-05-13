@@ -25,33 +25,6 @@ use std::task::{Context, Poll};
 // Some reasonable number
 pub const HEADERS_MAX: usize = 64;
 
-// Return the capacity increase
-pub fn resize_write_buffer_if_full<F>(
-    buf: &mut VecRingBuffer,
-    block_size: usize,
-    blocks_max: usize,
-    mut reserve: F,
-) -> usize
-where
-    F: FnMut() -> bool,
-{
-    assert!(blocks_max >= 2);
-
-    // All but one block can be used for writing
-    let allowed = blocks_max - 1;
-
-    if buf.remaining_capacity() == 0
-        && buf.capacity() < block_size.checked_mul(allowed).unwrap()
-        && reserve()
-    {
-        buf.resize(buf.capacity() + block_size);
-
-        block_size
-    } else {
-        0
-    }
-}
-
 pub async fn recv_nonzero<R: AsyncRead>(
     r: &mut R,
     buf: &mut VecRingBuffer,

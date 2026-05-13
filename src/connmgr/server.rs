@@ -19,7 +19,6 @@ use crate::connmgr::batch::{Batch, BatchGroupWithIds, BatchKey};
 use crate::connmgr::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
-use crate::connmgr::counter::Counter;
 use crate::connmgr::listener::Listener;
 use crate::connmgr::tls::{AsyncTlsStream, IdentityCache, TlsAcceptor, TlsStream, TlsWaker};
 use crate::connmgr::zhttppacket;
@@ -27,6 +26,7 @@ use crate::connmgr::zhttpsocket;
 use crate::connmgr::{ListenConfig, ListenSpec};
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
+use crate::core::counter::Counter;
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::fs::{set_group, set_user};
