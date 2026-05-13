@@ -2080,11 +2080,7 @@ private:
     }
 
 private:
-    void report_finished(const DeferredResult &result) {
-        Q_UNUSED(result);
-
-        report.reset();
-    }
+    void report_finished([[maybe_unused]] const DeferredResult &result) { report.reset(); }
 
     void sessionUpdateMany_finished(Deferred *d, const DeferredResult &result) {
         deferreds.erase(d);
@@ -2100,9 +2096,7 @@ private:
             log_error("couldn't create/update session: condition=%d", result.value.toInt());
     }
 
-    void inspectWorker_finished(InspectWorker *w, const DeferredResult &result) {
-        Q_UNUSED(result);
-
+    void inspectWorker_finished(InspectWorker *w, [[maybe_unused]] const DeferredResult &result) {
         inspectWorkers.remove(w);
         delete w;
 
@@ -2110,9 +2104,7 @@ private:
         inspectServer_requestReady();
     }
 
-    void acceptWorker_finished(AcceptWorker *w, const DeferredResult &result) {
-        Q_UNUSED(result);
-
+    void acceptWorker_finished(AcceptWorker *w, [[maybe_unused]] const DeferredResult &result) {
         acceptWorkers.remove(w);
         delete w;
 
@@ -2120,9 +2112,7 @@ private:
         acceptServer_requestReady();
     }
 
-    void deferred_finished(Deferred *d, const DeferredResult &result) {
-        Q_UNUSED(result);
-
+    void deferred_finished(Deferred *d, [[maybe_unused]] const DeferredResult &result) {
         deferreds.erase(d);
     }
 
@@ -2179,11 +2169,9 @@ private:
         }
     }
 
-    void stats_unsubscribed(const QString &mode, const QString &channel) {
+    void stats_unsubscribed([[maybe_unused]] const QString &mode, const QString &channel) {
         // NOTE: this callback may be invoked while looping over certain structures, so be careful
         // what you touch
-
-        Q_UNUSED(mode);
 
         if (!cs.responseSessionsByChannel.contains(channel) &&
             !cs.streamSessionsByChannel.contains(channel) &&

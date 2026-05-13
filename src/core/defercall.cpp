@@ -84,9 +84,7 @@ private:
     std::mutex mutex_;
     bool wakeQueued_;
 
-    static void cb_ready(void *ctx, uint8_t readiness) {
-        Q_UNUSED(readiness);
-
+    static void cb_ready(void *ctx, [[maybe_unused]] uint8_t readiness) {
         ThreadWake *self = (ThreadWake *)ctx;
 
         self->ready();

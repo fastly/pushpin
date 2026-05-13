@@ -756,9 +756,7 @@ public:
             tryReadIn();
     }
 
-    void in_framesWritten(int count, int contentBytes) {
-        Q_UNUSED(contentBytes);
-
+    void in_framesWritten(int count, [[maybe_unused]] int contentBytes) {
         for (int n = 0; n < count; ++n) {
             bool fromSendEvent = inPendingFrames.takeFirst();
             if (fromSendEvent)

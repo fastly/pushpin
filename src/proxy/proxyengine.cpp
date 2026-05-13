@@ -739,8 +739,6 @@ private:
     }
 
     static void wsps_finishedByPassthrough_cb(void *data, std::tuple<WsProxySession *> value) {
-        Q_UNUSED(value);
-
         Private *self = (Private *)data;
 
         self->wsps_finishedByPassthrough(std::get<0>(value));

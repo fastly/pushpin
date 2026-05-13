@@ -792,9 +792,7 @@ public:
         return closeValue;
     }
 
-    void req_bytesWritten(int count, ZhttpRequest *_req) {
-        Q_UNUSED(count);
-
+    void req_bytesWritten([[maybe_unused]] int count, ZhttpRequest *_req) {
         RequestItem *ri = requests.value(_req);
         assert(ri);
 
@@ -970,53 +968,39 @@ DomainMap::Entry SockJsSession::route() const { return d->route; }
 
 QHostAddress SockJsSession::peerAddress() const { return d->peerAddress; }
 
-void SockJsSession::setConnectHost(const QString &host) {
-    Q_UNUSED(host);
-
+void SockJsSession::setConnectHost([[maybe_unused]] const QString &host) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::setConnectPort(int port) {
-    Q_UNUSED(port);
-
+void SockJsSession::setConnectPort([[maybe_unused]] int port) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::setIgnorePolicies(bool on) {
-    Q_UNUSED(on);
-
+void SockJsSession::setIgnorePolicies([[maybe_unused]] bool on) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::setTrustConnectHost(bool on) {
-    Q_UNUSED(on);
-
+void SockJsSession::setTrustConnectHost([[maybe_unused]] bool on) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::setIgnoreTlsErrors(bool on) {
-    Q_UNUSED(on);
-
+void SockJsSession::setIgnoreTlsErrors([[maybe_unused]] bool on) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::setClientCert(const QString &cert, const QString &key) {
-    Q_UNUSED(cert);
-    Q_UNUSED(key);
-
+void SockJsSession::setClientCert([[maybe_unused]] const QString &cert,
+                                  [[maybe_unused]] const QString &key) {
     // This class is server only
     assert(0);
 }
 
-void SockJsSession::start(const Url &uri, const HttpHeaders &headers) {
-    Q_UNUSED(uri);
-    Q_UNUSED(headers);
-
+void SockJsSession::start([[maybe_unused]] const Url &uri,
+                          [[maybe_unused]] const HttpHeaders &headers) {
     // This class is server only
     assert(0);
 }
@@ -1132,10 +1116,8 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri,
-                                const QByteArray &sid, const QByteArray &lastPart,
+                                const QByteArray &sid, [[maybe_unused]] const QByteArray &lastPart,
                                 const DomainMap::Entry &route) {
-    Q_UNUSED(lastPart);
-
     d->manager = manager;
     d->mode = Private::WebSocketFramed;
     d->sid = sid;

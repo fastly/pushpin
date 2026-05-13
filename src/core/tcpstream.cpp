@@ -119,9 +119,7 @@ void TcpStream::setupNotifier() {
     sn_->setWriteEnabled(true);
 }
 
-void TcpStream::sn_activated(int socket, uint8_t readiness) {
-    Q_UNUSED(socket);
-
+void TcpStream::sn_activated([[maybe_unused]] int socket, uint8_t readiness) {
     std::weak_ptr<std::monostate> self = alive_;
 
     if (readiness & SocketNotifier::Read)

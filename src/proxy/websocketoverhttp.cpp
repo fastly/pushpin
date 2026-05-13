@@ -965,21 +965,16 @@ void WebSocketOverHttp::start(const Url &uri, const HttpHeaders &headers) {
     d->start();
 }
 
-void WebSocketOverHttp::respondSuccess(const QByteArray &reason, const HttpHeaders &headers) {
-    Q_UNUSED(reason);
-    Q_UNUSED(headers);
-
+void WebSocketOverHttp::respondSuccess([[maybe_unused]] const QByteArray &reason,
+                                       [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }
 
-void WebSocketOverHttp::respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                                     const QByteArray &body) {
-    Q_UNUSED(code);
-    Q_UNUSED(reason);
-    Q_UNUSED(headers);
-    Q_UNUSED(body);
-
+void WebSocketOverHttp::respondError([[maybe_unused]] int code,
+                                     [[maybe_unused]] const QByteArray &reason,
+                                     [[maybe_unused]] const HttpHeaders &headers,
+                                     [[maybe_unused]] const QByteArray &body) {
     // This class is client only
     assert(0);
 }

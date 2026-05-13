@@ -126,22 +126,20 @@ QHostAddress TestHttpRequest::peerAddress() const {
     return QHostAddress();
 }
 
-void TestHttpRequest::setConnectHost(const QString &host) { Q_UNUSED(host); }
+void TestHttpRequest::setConnectHost([[maybe_unused]] const QString &host) {}
 
-void TestHttpRequest::setConnectPort(int port) { Q_UNUSED(port); }
+void TestHttpRequest::setConnectPort([[maybe_unused]] int port) {}
 
-void TestHttpRequest::setIgnorePolicies(bool on) { Q_UNUSED(on); }
+void TestHttpRequest::setIgnorePolicies([[maybe_unused]] bool on) {}
 
-void TestHttpRequest::setTrustConnectHost(bool on) { Q_UNUSED(on); }
+void TestHttpRequest::setTrustConnectHost([[maybe_unused]] bool on) {}
 
-void TestHttpRequest::setIgnoreTlsErrors(bool on) { Q_UNUSED(on); }
+void TestHttpRequest::setIgnoreTlsErrors([[maybe_unused]] bool on) {}
 
-void TestHttpRequest::setTimeout(int msecs) { Q_UNUSED(msecs); }
+void TestHttpRequest::setTimeout([[maybe_unused]] int msecs) {}
 
-void TestHttpRequest::setClientCert(const QString &cert, const QString &key) {
-    Q_UNUSED(cert);
-    Q_UNUSED(key);
-}
+void TestHttpRequest::setClientCert([[maybe_unused]] const QString &cert,
+                                    [[maybe_unused]] const QString &key) {}
 
 void TestHttpRequest::start(const QString &method, const Url &uri, const HttpHeaders &headers) {
     assert(d->state == Private::Idle);
@@ -153,12 +151,9 @@ void TestHttpRequest::start(const QString &method, const Url &uri, const HttpHea
     d->request.headers = headers;
 }
 
-void TestHttpRequest::beginResponse(int code, const QByteArray &reason,
-                                    const HttpHeaders &headers) {
-    Q_UNUSED(code);
-    Q_UNUSED(reason);
-    Q_UNUSED(headers);
-
+void TestHttpRequest::beginResponse([[maybe_unused]] int code,
+                                    [[maybe_unused]] const QByteArray &reason,
+                                    [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }

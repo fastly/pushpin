@@ -133,15 +133,15 @@ bool check(const QByteArray &in, int offset, Type *type, int *dataOffset, int *d
     return true;
 }
 
-QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
+QByteArray toByteArray(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset,
+                       int dataSize, bool *ok) {
     if (ok)
         *ok = true;
     return in.mid(dataOffset, dataSize);
 }
 
-int64_t toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
+int64_t toInt(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+              bool *ok) {
     QByteArray val = in.mid(dataOffset, dataSize);
     bool ok_;
     int64_t x = val.toLongLong(&ok_);
@@ -152,8 +152,8 @@ int64_t toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bo
     return x;
 }
 
-double toDouble(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
+double toDouble(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+                bool *ok) {
     QByteArray val = in.mid(dataOffset, dataSize);
     bool ok_;
     double x = val.toDouble(&ok_);
@@ -164,8 +164,8 @@ double toDouble(const QByteArray &in, int offset, int dataOffset, int dataSize, 
     return x;
 }
 
-bool toBool(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
+bool toBool(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+            bool *ok) {
     QByteArray val = in.mid(dataOffset, dataSize);
     if (val == "true") {
         if (ok)
@@ -182,11 +182,8 @@ bool toBool(const QByteArray &in, int offset, int dataOffset, int dataSize, bool
     return false;
 }
 
-void toNull(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(in);
-    Q_UNUSED(offset);
-    Q_UNUSED(dataOffset);
-    Q_UNUSED(dataSize);
+void toNull([[maybe_unused]] const QByteArray &in, [[maybe_unused]] int offset,
+            [[maybe_unused]] int dataOffset, [[maybe_unused]] int dataSize, bool *ok) {
     *ok = true;
 }
 
@@ -246,9 +243,8 @@ Variant toVariant(const CowByteArray &in, int offset, bool *ok) {
     return toVariant(in.asQByteArray(), offset, ok);
 }
 
-VariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
-
+VariantHash toHash(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+                   bool *ok) {
     VariantHash out;
 
     int at = dataOffset;
@@ -300,9 +296,8 @@ VariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSiz
     return out;
 }
 
-VariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok) {
-    Q_UNUSED(offset);
-
+VariantList toList(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+                   bool *ok) {
     VariantList out;
 
     int at = dataOffset;

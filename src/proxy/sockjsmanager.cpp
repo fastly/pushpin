@@ -541,9 +541,7 @@ private:
         processRequestInput(s);
     }
 
-    void req_bytesWritten(int count, ZhttpRequest *req) {
-        Q_UNUSED(count);
-
+    void req_bytesWritten([[maybe_unused]] int count, ZhttpRequest *req) {
         if (discardedRequests.contains(req)) {
             if (req->isFinished()) {
                 discardedRequests.remove(req);
