@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::counter::{Counter, CounterDec};
+use crate::core::counter::Counter;
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
@@ -881,7 +881,7 @@ pub type SliceRingBuffer<'a> = RingBuffer<&'a mut [u8]>;
 /// // Blocks are automatically returned to shared counter when budget is dropped
 /// ```
 pub struct BufferBudget<'a> {
-    blocks_avail: CounterDec<'a>,
+    blocks_avail: &'a Counter,
     blocks_max: Option<usize>,
     block_size: usize,
     blocks_used: usize,
@@ -894,7 +894,7 @@ impl<'a> BufferBudget<'a> {
         // allowing connections to start successfully even when the shared pool is empty. The shared
         // counter should only contain excess blocks available for expansion.
         Self {
-            blocks_avail: CounterDec::new(blocks_avail),
+            blocks_avail,
             blocks_max: None, // No local limit by default
             block_size: 1,    // Default to 1-byte expansion
             blocks_used: 0,   // Start at 0 (tracks expansion blocks only)
@@ -915,6 +915,10 @@ impl<'a> BufferBudget<'a> {
         self.blocks_used
     }
 
+    pub fn block_size(&self) -> usize {
+        self.block_size
+    }
+
     pub fn blocks_max(&self) -> Option<usize> {
         self.blocks_max
     }
@@ -930,6 +934,30 @@ impl<'a> BufferBudget<'a> {
         }
 
         0
+    }
+
+    /// Release blocks back to the shared counter immediately
+    ///
+    /// This should be called when buffer memory is freed (e.g., when connection buffers are
+    /// resized down) but the BufferBudget is still needed for potential future expansions.
+    pub fn release_blocks(&mut self, count: usize) -> usize {
+        let count = cmp::min(count, self.blocks_used);
+
+        self.blocks_used -= count;
+        self.blocks_avail
+            .inc(count)
+            .expect("reverting decrements should always succeed");
+
+        count
+    }
+}
+
+impl Drop for BufferBudget<'_> {
+    fn drop(&mut self) {
+        // Release all used blocks to the shared counter
+        self.blocks_avail
+            .inc(self.blocks_used)
+            .expect("reverting decrements should always succeed");
     }
 }
 
@@ -1443,6 +1471,9 @@ mod tests {
         write_buf2.write_all(&data).unwrap();
         assert!(budget2.expand_buffer_if_needed(&mut write_buf2) > 0); // Uses the last expansion block
 
+        assert_eq!(budget1.blocks_used(), 2);
+        assert_eq!(budget2.blocks_used(), 1);
+
         // Now all 3 excess blocks are used - no more expansion should be possible
 
         // Confirm no more expansion is possible for either budget
@@ -1481,5 +1512,101 @@ mod tests {
         assert_eq!(expanded2, 1); // Should expand by another 1 byte
         assert_eq!(buf.capacity(), 66); // 65 + 1
         assert_eq!(budget.blocks_used(), 2); // 2 expansions
+    }
+
+    #[test]
+    fn test_buffer_budget_release_blocks() {
+        let counter = Counter::new(5); // 5 blocks available for expansion
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        let mut budget1 = BufferBudget::new(&counter)
+            .with_blocks_max(10) // High local limit
+            .with_block_size(64);
+
+        // Use 3 blocks via expansion
+        let mut buf = VecRingBuffer::new(64, &tmp);
+        for _ in 0..3 {
+            let data = vec![b'x'; buf.remaining_capacity()];
+            buf.write_all(&data).unwrap(); // Fill buffer
+            assert!(budget1.expand_buffer_if_needed(&mut buf) > 0);
+        }
+
+        // At this point, shared counter should have 2 blocks left (5 - 3 = 2)
+        // Verify by trying to create another budget that uses 3 blocks (should fail on 3rd)
+        let mut budget2 = BufferBudget::new(&counter)
+            .with_blocks_max(10)
+            .with_block_size(64);
+        let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+        // Should be able to use 2 more blocks
+        for _ in 0..2 {
+            buf2.write_all(&vec![b'y'; buf2.remaining_capacity()])
+                .unwrap();
+            assert!(budget2.expand_buffer_if_needed(&mut buf2) > 0);
+        }
+
+        // Should fail on the 3rd block (would exceed shared counter limit)
+        buf2.write_all(&vec![b'z'; buf2.remaining_capacity()])
+            .unwrap();
+        assert_eq!(budget2.expand_buffer_if_needed(&mut buf2), 0);
+
+        // Now release 2 blocks from budget1 (simulating connection buffer downsizing)
+        let released = budget1.release_blocks(2);
+        assert_eq!(released, 2);
+        assert_eq!(budget1.blocks_used(), 1); // 3 - 2 = 1
+
+        // Now budget2 should be able to expand (using the 2 released blocks)
+        assert!(budget2.expand_buffer_if_needed(&mut buf2) > 0);
+        assert_eq!(budget2.blocks_used(), 3);
+
+        // Try to release more blocks than available
+        let released = budget1.release_blocks(5); // Only 1 block left
+        assert_eq!(released, 1); // Should only release 1
+        assert_eq!(budget1.blocks_used(), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_drop_releases_blocks() {
+        let counter = Counter::new(3); // 3 blocks available for expansion
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Use all 3 blocks in a budget, then drop it
+        {
+            let mut budget = BufferBudget::new(&counter)
+                .with_blocks_max(5)
+                .with_block_size(64);
+            let mut buf = VecRingBuffer::new(64, &tmp);
+
+            // Use 3 blocks via expansion
+            for _ in 0..3 {
+                let data = vec![b'x'; buf.remaining_capacity()];
+                buf.write_all(&data).unwrap();
+                assert!(budget.expand_buffer_if_needed(&mut buf) > 0);
+            }
+
+            assert_eq!(budget.blocks_used(), 3);
+
+            // At this point, no more blocks should be available
+            let mut budget2 = BufferBudget::new(&counter).with_block_size(64);
+            let mut buf2 = VecRingBuffer::new(64, &tmp);
+            buf2.write_all(&vec![b'y'; 64]).unwrap();
+            assert_eq!(budget2.expand_buffer_if_needed(&mut buf2), 0); // Should fail
+
+            // budget drops here, should return all 3 blocks to counter
+        }
+
+        // After budget is dropped, all 3 blocks should be available again
+        let mut budget3 = BufferBudget::new(&counter).with_block_size(64);
+        let mut buf3 = VecRingBuffer::new(64, &tmp);
+
+        // Should be able to use all 3 blocks again
+        for i in 0..3 {
+            let data = vec![b'z'; buf3.remaining_capacity()];
+            buf3.write_all(&data).unwrap();
+            let expanded = budget3.expand_buffer_if_needed(&mut buf3);
+            assert!(expanded > 0, "Should expand on iteration {}", i);
+        }
+
+        assert_eq!(budget3.blocks_used(), 3);
     }
 }
