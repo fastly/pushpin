@@ -403,7 +403,7 @@ impl Future for TcpConnectFuture<'_> {
         }
 
         // mio documentation says to use take_error() and peer_addr() to
-        // Check for connected
+        // check for connected
 
         if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
@@ -448,7 +448,7 @@ impl Future for UnixConnectFuture<'_> {
         }
 
         // mio documentation says to use take_error() and peer_addr() to
-        // Check for connected
+        // check for connected
 
         if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
@@ -1000,7 +1000,7 @@ mod ffi {
         assert!(!out_errno.is_null());
 
         // mio documentation says to use take_error() and peer_addr() to
-        // Check for connected
+        // check for connected
 
         if let Ok(Some(e)) | Err(e) = s.0.take_error() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);
@@ -1171,7 +1171,7 @@ mod ffi {
         assert!(!out_errno.is_null());
 
         // mio documentation says to use take_error() and peer_addr() to
-        // Check for connected
+        // check for connected
 
         if let Ok(Some(e)) | Err(e) = s.0.take_error() {
             let code = e.raw_os_error().unwrap_or(libc::EINVAL);

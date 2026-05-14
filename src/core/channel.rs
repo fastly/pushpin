@@ -310,7 +310,7 @@ impl<T> LocalSender<T> {
     }
 
     // if this returns true, then the next call to try_send() by any sender
-    // Is guaranteed to not return TrySendError::Full.
+    // is guaranteed to not return TrySendError::Full.
     // if this returns false, the sender is added to the wait list
     pub fn check_send(&self) -> bool {
         let queue = self.channel.queue.borrow();
@@ -609,7 +609,7 @@ impl<T> AsyncLocalSender<T> {
     }
 
     // after polling/awaiting the returned future, you must call try_send()
-    // Or cancel(), or drop the sender, in order to ensure proper
+    // or cancel(), or drop the sender, in order to ensure proper
     // coordination when there are multiple senders. Prefer using
     // wait_sendable() which guards against misuse.
     // it's okay to run multiple instances of this future within the same
@@ -712,8 +712,8 @@ impl<T> Future for WaitWritableFuture<'_, T> {
             .registration()
             .set_waker(cx.waker(), mio::Interest::WRITABLE);
 
-        // if can_send() returns false, then we know we can't write. this
-        // Check prevents spurious wakups of a rendezvous channel from
+        // If can_send() returns false, then we know we can't write. This
+        // check prevents spurious wakups of a rendezvous channel from
         // indicating writability when the channel is not actually writable
         if !f.s.inner.can_send() {
             f.s.evented.registration().set_ready(false);
@@ -762,7 +762,7 @@ where
         let t = f.t.take().unwrap();
 
         // try_send will update the registration readiness, so we don't need
-        // To do that here
+        // to do that here
         match f.s.try_send(t) {
             Ok(()) => Poll::Ready(Ok(())),
             Err(mpsc::TrySendError::Full(t)) => {

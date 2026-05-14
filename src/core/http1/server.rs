@@ -750,7 +750,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
                     }
 
                     // protocol.send_body() expects the input to leave room
-                    // For at least two more buffers in case chunked encoding
+                    // for at least two more buffers in case chunked encoding
                     // is used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);

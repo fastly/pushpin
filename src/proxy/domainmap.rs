@@ -81,7 +81,7 @@ impl Drop for DomainMap {
     }
 }
 
-// Ensure the handle type is Send and Sync since DomainMap uses internal locking
+// Ensure the handle type is Send and Sync since DomainMap uses internal locking.
 // The C++ DomainMap is thread-safe with internal QMutex locking
 unsafe impl Send for DomainMap {}
 unsafe impl Sync for DomainMap {}

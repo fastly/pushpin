@@ -663,19 +663,19 @@ impl<const N: usize> OwnedResponse<'_, N> {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ServerState {
-    // call: recv_request
+    // Call: recv_request
     // Next: ReceivingRequest, ReceivingBody, AwaitingResponse
     ReceivingRequest,
 
-    // call: recv_body
+    // Call: recv_body
     // Next: ReceivingBody, AwaitingResponse
     ReceivingBody,
 
-    // call: send_response
+    // Call: send_response
     // Next: SendingBody
     AwaitingResponse,
 
-    // call: send_body
+    // Call: send_body
     // Next: SendingBody, Finished
     SendingBody,
 
