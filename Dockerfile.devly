@@ -1,18 +1,14 @@
-FROM container-registry.secretcdn.net/fastly/base-noble:latest
+FROM artifacts.secretcdn.net/fastly-docker/fastly/base-noble:latest
 
-ARG DESTDIR=/build
-ARG SSH_AUTH_SOCK
-ARG PKG_VERSION=0.0.0
-
-WORKDIR /build
+WORKDIR /pushpin
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUST_BACKTRACE=1
 
-# install main build dependencies first (does not need ddebs repo)
+# install build dependencies
 RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
-# set up debug packages repo and install debug symbols (optional, best-effort)
+# debug symbols (best-effort)
 RUN apt-get -y install ubuntu-dbgsym-keyring && \
     printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list && \
     apt-get update && apt-get -y install libqt6core6t64-dbgsym libqt6network6t64-dbgsym || \
@@ -30,45 +26,12 @@ ENV RUST_TOOLCHAIN=/opt/fst-rust/1.86.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make && make DESTDIR=/ install
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
-# copy dependency manifests first for cargo fetch caching
-COPY .ssh/id_* /root/.ssh/
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir -p src/bin benches && touch src/lib.rs build.rs \
-    && for bin in pushpin-connmgr m2adapter pushpin-proxy pushpin-handler pushpin-legacy pushpin pushpin-publish; do \
-       echo "fn main(){}" > src/bin/${bin}.rs; done \
-    && for bench in server client; do echo "fn main(){}" > benches/${bench}.rs; done \
-    && cargo fetch && rm -rf /root/.ssh/id_*
+# build zmq (only external lib needed at compile + runtime)
+RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make && make DESTDIR=/ install && rm -rf /build/libzmq
 
-# now copy the full source — only this and below rebuild on code changes
-COPY . .
+COPY fastly-build/devly/devly-entrypoint.sh /usr/local/bin/devly-entrypoint.sh
+RUN chmod +x /usr/local/bin/devly-entrypoint.sh
 
-RUN make RELEASE=1 PREFIX=/opt/fst-pushpin CARGO_ARGS="--features no-seccomp"
-# RUN env LD_LIBRARY_PATH=/usr/local/lib make RELEASE=1 PREFIX=/opt/fst-pushpin check
-RUN make RELEASE=1 PREFIX=/opt/fst-pushpin CARGO_ARGS="--features no-seccomp" install
-RUN cd pushpin-healthcheck && cargo build --release && cp ./target/release/pushpin-healthcheck /opt/fst-pushpin/bin
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-legacy
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-handler
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-proxy
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-publish
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-stats-emitter
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-connmgr
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
-RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
-RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
-RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
-COPY pushpin-devly.conf /opt/fst-pushpin/etc/pushpin/pushpin-devly.conf
-RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-connmgr-in.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-connmgr-out.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-proxy.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-handler.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-loader.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-stats-emitter.service /opt/fst-pushpin/etc
-RUN cp ./scripts/pushpin-sandbox.sh /opt/fst-pushpin/bin
-RUN cp ./scripts/pushpin-starter.sh /opt/fst-pushpin/bin
-RUN cp ./scripts/pushpin-iptables.sh /opt/fst-pushpin/bin
-RUN cp ./scripts/get-from-chef-vault /opt/fst-pushpin/bin
-RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin --config-files /opt/fst-pushpin/etc/pushpin/routes --post-install ./fastly-build/deb-postinstall.sh --post-uninstall ./fastly-build/deb-postuninstall.sh -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
+ENTRYPOINT ["/usr/local/bin/devly-entrypoint.sh"]
