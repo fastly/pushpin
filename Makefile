@@ -3,7 +3,7 @@ nullstring :=
 space := $(nullstring) # end of the line
 
 ifdef RELEASE
-cargo_flags = $(space)--offline --locked --release
+cargo_flags = $(space)--offline --locked --release $(CARGO_ARGS)
 endif
 
 ifdef TOOLCHAIN
@@ -13,7 +13,7 @@ endif
 all: postbuild
 
 build: FORCE
-	cargo$(cargo_toolchain) build$(cargo_flags) $(CARGO_ARGS)
+	cargo$(cargo_toolchain) build$(cargo_flags)
 
 cargo-test: FORCE
 	cargo$(cargo_toolchain) test$(cargo_flags) --all-features
