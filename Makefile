@@ -3,7 +3,7 @@ nullstring :=
 space := $(nullstring) # end of the line
 
 ifdef RELEASE
-cargo_flags = $(space)--offline --locked --release
+cargo_flags = $(space)--offline --locked --release $(CARGO_ARGS)
 endif
 
 ifdef TOOLCHAIN

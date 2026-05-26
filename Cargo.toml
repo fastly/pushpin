@@ -14,6 +14,7 @@ default-run = "pushpin"
 default = ["do-qmake", "do-cpp-build"]
 do-qmake = []
 do-cpp-build = []
+no-seccomp = []
 
 [profile.dev]
 panic = "abort"
@@ -157,7 +158,7 @@ test = false
 bench = false
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))', 'cfg(feature, values("no-seccomp"))'] }
 
 [lints.clippy]
 uninlined_format_args = "allow"

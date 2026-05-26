@@ -1,0 +1,8 @@
+# Socket files - cannot be archived in tarball
+metrics
+origind-test
+run/
+
+# Build artifacts - huge and not needed in image
+target/
+.venv/

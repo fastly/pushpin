@@ -1,0 +1,37 @@
+FROM artifacts.secretcdn.net/fastly-docker/fastly/base-noble:latest
+
+WORKDIR /pushpin
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RUST_BACKTRACE=1
+
+# install build dependencies
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python3 patchelf gawk fst-gcc-9.1.0 qt6-base-dev fst-rustc-1.86.0=1.86.0-289 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+
+# debug symbols (best-effort)
+RUN apt-get -y install ubuntu-dbgsym-keyring && \
+    printf "deb http://ddebs.ubuntu.com noble main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com noble-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list && \
+    apt-get update && apt-get -y install libqt6core6t64-dbgsym libqt6network6t64-dbgsym || \
+    echo "WARNING: debug symbol packages unavailable (mirror sync?), skipping"
+
+RUN mkdir -p ~/.ssh && \
+  ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
+ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
+ENV LDFLAGS="-Wl,-z,now -Wl,-z,relro"
+ENV CC=/opt/fst-gcc/9.1.0/bin/gcc
+ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
+ENV RUST_TOOLCHAIN=/opt/fst-rust/1.86.0
+ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
+ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+# build zmq (only external lib needed at compile + runtime)
+RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make && make DESTDIR=/ install && rm -rf /pushpin/libzmq
+
+COPY fastly-build/devly/devly-entrypoint.sh /usr/local/bin/devly-entrypoint.sh
+RUN chmod +x /usr/local/bin/devly-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/devly-entrypoint.sh"]
