@@ -354,12 +354,11 @@ public:
             return;
         }
 
-        log_debug("requestsession: %p %s has %d routes", q, qPrintable(host),
-                  route.targets.count());
+        log_debug("requestsession: %p route has %d targets", q, route.targets.count());
 
         if (route.isNull()) {
             state = WaitingForResponse;
-            respondError(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+            respondError(502, "Bad Gateway", "Route not found");
             return;
         }
 
@@ -405,12 +404,11 @@ public:
         else
             route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
-        log_debug("requestsession: %p %s has %d routes", q, qPrintable(host),
-                  route.targets.count());
+        log_debug("requestsession: %p route has %d targets", q, route.targets.count());
 
         if (route.isNull()) {
             state = WaitingForResponse;
-            respondError(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+            respondError(502, "Bad Gateway", "Route not found");
             return;
         }
 
