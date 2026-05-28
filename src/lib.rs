@@ -142,6 +142,7 @@ pub mod ffi {
         pub fn domainmap_entry_params(
             handle: *mut DomainMap,
             route_id: *const libc::c_char,
+            path: *const libc::c_char,
             params: *mut DomainMapRouteParams,
         ) -> libc::c_int;
     }
