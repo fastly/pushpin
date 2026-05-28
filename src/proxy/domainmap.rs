@@ -48,16 +48,35 @@ impl DomainMap {
     }
 
     /// Look up route parameters by route ID
-    pub fn lookup(&self, route_id: &str) -> Option<RouteParams> {
+    pub fn lookup(&self, route_id: &str, path: Option<&str>) -> Option<RouteParams> {
         let c_route_id = match CString::new(route_id) {
             Ok(s) => s,
             Err(_) => return None,
         };
 
+        let c_path = if let Some(path) = path {
+            match CString::new(path) {
+                Ok(s) => Some(s),
+                Err(_) => return None,
+            }
+        } else {
+            None
+        };
+
+        let c_path_ptr = match c_path {
+            Some(s) => s.as_ptr(),
+            None => ptr::null(),
+        };
+
         let mut ffi_params = crate::ffi::DomainMapRouteParams { log_level: 0 };
 
         let result = unsafe {
-            crate::ffi::domainmap_entry_params(self.handle, c_route_id.as_ptr(), &mut ffi_params)
+            crate::ffi::domainmap_entry_params(
+                self.handle,
+                c_route_id.as_ptr(),
+                c_path_ptr,
+                &mut ffi_params,
+            )
         };
 
         if result == 0 {

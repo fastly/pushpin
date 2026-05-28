@@ -281,7 +281,7 @@ public:
 
             // Look up the route
             if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-                route = domainMap->entry(routeId);
+                route = domainMap->entry(routeId, encPath);
             else
                 route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
@@ -400,7 +400,7 @@ public:
 
         // Look up the route
         if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-            route = domainMap->entry(routeId);
+            route = domainMap->entry(routeId, encPath);
         else
             route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 

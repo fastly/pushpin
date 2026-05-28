@@ -125,6 +125,8 @@ public:
 
         bool isNull() const { return targets.isEmpty(); }
 
+        bool matchesPath(const QByteArray &path) { return path.startsWith(pathBeg); }
+
         QByteArray statsRoute() const {
             if (separateStats)
                 return id;
@@ -153,7 +155,11 @@ public:
 
     bool isIdShared(const QString &id) const;
     Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
-    Entry entry(const QString &id) const;
+
+    /// Look up entry by ID, optionally constrained by a request path. If a request path is not
+    /// provided, then the caller must call `entry.matchesPath()` before attempting to process a
+    /// request. This is necessary for path-rewriting rules to work properly.
+    Entry entry(const QString &id, const QByteArray &path = QByteArray()) const;
 
     QList<ZhttpRoute> zhttpRoutes() const;
 

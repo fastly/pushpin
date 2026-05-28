@@ -863,7 +863,7 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
     return best->toEntry();
 }
 
-DomainMap::Entry DomainMap::entry(const QString &id) const {
+DomainMap::Entry DomainMap::entry(const QString &id, const QByteArray &path) const {
     QMutexLocker locker(&d->thread->worker->m);
 
     if (!d->thread->worker->rulesById.contains(id))
@@ -873,6 +873,10 @@ DomainMap::Entry DomainMap::entry(const QString &id) const {
 
     // This can happen if there were duplicate route IDs
     if (r->id.isEmpty())
+        return Entry();
+
+    // If a request path was provided, check it against the route's path prefix.
+    if (!path.isNull() && !path.startsWith(r->pathBeg))
         return Entry();
 
     return r->toEntry();
@@ -917,13 +921,15 @@ DomainMap *domainmap_create(const char *filename) {
 
 void domainmap_destroy(DomainMap *handle) { delete handle; }
 
-int domainmap_entry_params(DomainMap *handle, const char *route_id, DomainMapRouteParams *params) {
+int domainmap_entry_params(DomainMap *handle, const char *route_id, const char *path,
+                           DomainMapRouteParams *params) {
     if (!handle || !route_id || !params) {
         return -1;
     }
 
     QString qroute_id = QString::fromUtf8(route_id);
-    DomainMap::Entry entry = handle->entry(qroute_id);
+    QByteArray qpath(path);
+    DomainMap::Entry entry = handle->entry(qroute_id, path);
 
     if (entry.isNull()) {
         return -1;
