@@ -506,45 +506,56 @@ public:
         Url uri = req->requestUri();
         bool isSecure = (uri.scheme() == "https");
         QString host = uri.host();
+        QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
 
         DomainMap::Entry route;
 
-        if (passthroughData.isValid() && !preferInternal) {
-            // Passthrough request with preferInternal=false. In this case, set up a direct route,
-            // using some settings from the original route
+        // Look up the route by ID?
+        if (!routeId.isEmpty() && !domainMap->isIdShared(routeId)) {
+            // NOTE: This lookup is not constrained by request path. Must check
+            // route.matchesPath() before actually routing the current request to it.
+            route = domainMap->entry(routeId);
+        }
 
-            DomainMap::Entry originalRoute;
-            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-                originalRoute = domainMap->entry(routeId);
+        if (passthroughData.isValid()) {
+            // Passthrough request (always with a route ID)
 
-            const VariantHash data = passthroughData.toHash();
+            // If a route is found by ID, but the request is not meant for internal routing or
+            // it doesn't match the route, then route externally.
+            if (!route.isNull() && (!preferInternal || !route.matchesPath(encPath))) {
+                DomainMap::Entry externalRoute;
 
-            // Use sig settings from the original route, if available
-            if (!originalRoute.isNull()) {
-                route.sigIss = originalRoute.sigIss;
-                route.sigKey = originalRoute.sigKey;
+                const VariantHash data = passthroughData.toHash();
+
+                // Use sig settings from the original route
+                externalRoute.sigIss = route.sigIss;
+                externalRoute.sigKey = route.sigKey;
+
+                DomainMap::Target target;
+                target.connectHost = host;
+                target.connectPort = uri.port(isSecure ? 443 : 80);
+                target.ssl = isSecure;
+                target.trusted = data["trusted"].toBool();
+
+                externalRoute.targets += target;
+
+                // Replace with the external route
+                route = externalRoute;
             }
-
-            DomainMap::Target target;
-            target.connectHost = host;
-            target.connectPort = uri.port(isSecure ? 443 : 80);
-            target.ssl = isSecure;
-            target.trusted = data["trusted"].toBool();
-
-            route.targets += target;
         } else {
-            // Regular request (with or without a route ID), or a passthrough request with
-            // preferInternal=true. In that case, use domainmap for lookup, with route ID if
-            // available
+            // Regular request (with or without a route ID)
 
-            QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
+            // Invalidate route if path doesn't match
+            if (!route.isNull() && !route.matchesPath(encPath))
+                route = DomainMap::Entry();
 
-            // Look up the route
-            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-                route = domainMap->entry(routeId, encPath);
-            else
+            // Perform a regular lookup if there wasn't a route ID
+            if (route.isNull() && routeId.isEmpty())
                 route = domainMap->entry(DomainMap::Http, isSecure, host, encPath);
         }
+
+        // At this point, `route` may be null if a passthrough request's route no longer
+        // exists, or if a regular request's route was not found.
 
         RequestSession *rs = new RequestSession(config.id, sockJsManager.get(), inspect.get(),
                                                 inspectChecker.get(), accept.get(), stats.get());
