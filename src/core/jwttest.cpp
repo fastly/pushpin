@@ -112,6 +112,30 @@ static void invalidKey() {
     TEST_ASSERT(vclaim.isNull());
 }
 
+static void loadKey() {
+    {
+        Jwt::EncodingKey k;
+        TEST_ASSERT(k.isNull());
+
+        k = Jwt::EncodingKey::fromConfigString("secret");
+        TEST_ASSERT(!k.isNull());
+
+        k = Jwt::EncodingKey::fromConfigString("");
+        TEST_ASSERT(k.isNull());
+    }
+
+    {
+        Jwt::DecodingKey k;
+        TEST_ASSERT(k.isNull());
+
+        k = Jwt::DecodingKey::fromConfigString("secret");
+        TEST_ASSERT(!k.isNull());
+
+        k = Jwt::DecodingKey::fromConfigString("");
+        TEST_ASSERT(k.isNull());
+    }
+}
+
 static void es256EncodeDecode() {
     Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_ec_private_key_pem));
     TEST_ASSERT(!privateKey.isNull());
@@ -178,6 +202,7 @@ extern "C" int jwt_test(ffi::TestException *out_ex) {
     TEST_CATCH(validToken());
     TEST_CATCH(validTokenBinaryKey());
     TEST_CATCH(invalidKey());
+    TEST_CATCH(loadKey());
     TEST_CATCH(es256EncodeDecode());
     TEST_CATCH(rs256EncodeDecode());
 
