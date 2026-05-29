@@ -52,9 +52,8 @@ class XffRule;
 /// response handling
 class RequestSession {
 public:
-    RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager,
-                   ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept,
-                   StatsManager *stats);
+    RequestSession(int workerId, SockJsManager *sockJsManager, ZrpcManager *inspectManager,
+                   ZrpcChecker *inspectChecker, ZrpcManager *accept, StatsManager *stats);
     ~RequestSession();
 
     bool isRetry() const;
@@ -80,7 +79,6 @@ public:
     void setAutoCrossOrigin(bool enabled);
     void setPrefetchSize(int size);
     void setRoute(const DomainMap::Entry &route);
-    void setRouteId(const QString &routeId);
     void setAutoShare(bool enabled);
     void setAccepted(bool enabled);
     void setDefaultUpstreamKey(const Jwt::DecodingKey &key);

@@ -493,7 +493,7 @@ public:
             if (data.contains("auto-share"))
                 autoShare = data["auto-share"].toBool();
         } else {
-            // Regular request
+            // Regular request, from client
 
             if (config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
                 req->setIsTls(true);
@@ -503,9 +503,11 @@ public:
                     QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
         }
 
-        RequestSession *rs =
-            new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(),
-                               inspectChecker.get(), accept.get(), stats.get());
+        Url uri = req->requestUri();
+        bool isSecure = (uri.scheme() == "https");
+        QString host = uri.host();
+
+        DomainMap::Entry route;
 
         if (passthroughData.isValid() && !preferInternal) {
             // Passthrough request with preferInternal=false. In this case, set up a direct route,
@@ -517,8 +519,6 @@ public:
 
             const VariantHash data = passthroughData.toHash();
 
-            DomainMap::Entry route;
-
             // Use sig settings from the original route, if available
             if (!originalRoute.isNull()) {
                 route.sigIss = originalRoute.sigIss;
@@ -526,23 +526,30 @@ public:
             }
 
             DomainMap::Target target;
-            Url uri = req->requestUri();
-            bool isHttps = (uri.scheme() == "https");
-            target.connectHost = uri.host();
-            target.connectPort = uri.port(isHttps ? 443 : 80);
-            target.ssl = isHttps;
+            target.connectHost = host;
+            target.connectPort = uri.port(isSecure ? 443 : 80);
+            target.ssl = isSecure;
             target.trusted = data["trusted"].toBool();
 
             route.targets += target;
-
-            rs->setRoute(route);
         } else {
             // Regular request (with or without a route ID), or a passthrough request with
             // preferInternal=true. In that case, use domainmap for lookup, with route ID if
             // available
 
-            rs->setRouteId(routeId);
+            QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
+
+            // Look up the route
+            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+                route = domainMap->entry(routeId, encPath);
+            else
+                route = domainMap->entry(DomainMap::Http, isSecure, host, encPath);
         }
+
+        RequestSession *rs = new RequestSession(config.id, sockJsManager.get(), inspect.get(),
+                                                inspectChecker.get(), accept.get(), stats.get());
+
+        rs->setRoute(route);
 
         if (!passthroughData.isValid()) {
             // These only make sense on regular requests
@@ -587,7 +594,6 @@ public:
 
         bool isSecure = (requestUri.scheme() == "wss");
         QString host = requestUri.host();
-
         QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
 
         QString routeId;
@@ -818,7 +824,7 @@ private:
             ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
             RequestSession *rs =
-                new RequestSession(config.id, domainMap, sockJsManager.get(), inspect.get(),
+                new RequestSession(config.id, sockJsManager.get(), inspect.get(),
                                    inspectChecker.get(), accept.get(), stats.get());
 
             requestSessions += rs;
@@ -826,8 +832,20 @@ private:
             rs->setDefaultUpstreamKey(config.upstreamKey);
             rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
-            if (!p.route.isEmpty())
-                rs->setRouteId(QString::fromUtf8(p.route));
+            bool isSecure = req.https;
+            QString host = p.requestData.uri.host();
+            QByteArray encPath = p.requestData.uri.path(Url::FullyEncoded).toUtf8();
+
+            QString routeId = QString::fromUtf8(p.route);
+
+            // Look up the route
+            DomainMap::Entry route;
+            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+                route = domainMap->entry(routeId, encPath);
+            else
+                route = domainMap->entry(DomainMap::Http, isSecure, host, encPath);
+
+            rs->setRoute(route);
 
             // Note: if the routing table was changed, there's a chance the request might get a
             // different route id this time around. This could confuse stats processors tracking

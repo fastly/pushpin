@@ -147,7 +147,6 @@ public:
     int workerId;
     State state;
     ZhttpRequest::Rid rid;
-    DomainMap *domainMap;
     SockJsManager *sockJsManager;
     ZrpcManager *inspectManager;
     ZrpcChecker *inspectChecker;
@@ -160,7 +159,6 @@ public:
     QHostAddress peerAddress;
     QHostAddress logicalPeerAddress;
     DomainMap::Entry route;
-    QString routeId;
     bool debug;
     bool autoCrossOrigin;
     std::unique_ptr<InspectRequest> inspectRequest;
@@ -191,14 +189,12 @@ public:
     Connection acceptFinishedConnection;
     DeferCall deferCall;
 
-    Private(RequestSession *_q, int _workerId, DomainMap *_domainMap = 0,
-            SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0,
-            ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0,
-            StatsManager *_stats = 0)
+    Private(RequestSession *_q, int _workerId, SockJsManager *_sockJsManager = 0,
+            ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0,
+            ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0)
         : q(_q),
           workerId(_workerId),
           state(Stopped),
-          domainMap(_domainMap),
           sockJsManager(_sockJsManager),
           inspectManager(_inspectManager),
           inspectChecker(_inspectChecker),
@@ -275,26 +271,17 @@ public:
 
         bool isHttps = (requestData.uri.scheme() == "https");
         QString host = requestData.uri.host();
+        QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
 
-        if (route.isNull() && domainMap) {
-            QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
-
-            // Look up the route
-            if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-                route = domainMap->entry(routeId, encPath);
-            else
-                route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
-
-            // Before we do anything else, see if this is a sockjs request
-            if (!route.isNull() && !route.sockJsPath.isEmpty() &&
-                encPath.startsWith(route.sockJsPath)) {
-                isSockJs = true;
-                sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(),
-                                           route.sockJsAsPath, route);
-                zhttpRequest = 0;
-                deferCall.defer([=] { doFinished(); });
-                return;
-            }
+        // Before we do anything else, see if this is a sockjs request
+        if (!route.isNull() && !route.sockJsPath.isEmpty() &&
+            encPath.startsWith(route.sockJsPath)) {
+            isSockJs = true;
+            sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath,
+                                       route);
+            zhttpRequest = 0;
+            deferCall.defer([=] { doFinished(); });
+            return;
         }
 
         zhttpReqConnections.pausedConnection =
@@ -394,15 +381,6 @@ public:
         state = WaitingForResponse;
 
         bool isHttps = (requestData.uri.scheme() == "https");
-        QString host = requestData.uri.host();
-
-        QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
-
-        // Look up the route
-        if (!routeId.isEmpty() && !domainMap->isIdShared(routeId))
-            route = domainMap->entry(routeId, encPath);
-        else
-            route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
         log_debug("requestsession: %p route has %d targets", q, route.targets.count());
 
@@ -1088,11 +1066,11 @@ public:
     void doFinished() { q->finished(); }
 };
 
-RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager,
+RequestSession::RequestSession(int workerId, SockJsManager *sockJsManager,
                                ZrpcManager *inspectManager, ZrpcChecker *inspectChecker,
                                ZrpcManager *acceptManager, StatsManager *stats) {
-    d = std::make_shared<Private>(this, workerId, domainMap, sockJsManager, inspectManager,
-                                  inspectChecker, acceptManager, stats);
+    d = std::make_shared<Private>(this, workerId, sockJsManager, inspectManager, inspectChecker,
+                                  acceptManager, stats);
 }
 
 RequestSession::~RequestSession() = default;
@@ -1140,8 +1118,6 @@ void RequestSession::setAutoCrossOrigin(bool enabled) { d->autoCrossOrigin = ena
 void RequestSession::setPrefetchSize(int size) { d->prefetchSize = size; }
 
 void RequestSession::setRoute(const DomainMap::Entry &route) { d->route = route; }
-
-void RequestSession::setRouteId(const QString &routeId) { d->routeId = routeId; }
 
 void RequestSession::setAutoShare(bool enabled) { d->autoShare = enabled; }
 
