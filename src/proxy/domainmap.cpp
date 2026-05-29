@@ -244,9 +244,6 @@ public:
                 continue;
             }
 
-            if (r.id.isEmpty())
-                r.id = r.idFromCondition();
-
             AddRuleResult ret = addRule(r, &all, &domainMap, &idMap);
             if (ret != AddRuleOk) {
                 if (ret == AddRuleNoDomainOrId)
@@ -641,6 +638,9 @@ private:
 
         if (!ok)
             return false;
+
+        if (r.id.isEmpty())
+            r.id = r.idFromCondition();
 
         *rule = r;
         return true;
