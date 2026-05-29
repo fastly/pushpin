@@ -72,7 +72,7 @@ EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
             keyFile = QFileInfo(baseDir, keyFile).filePath();
 
         return fromFile(keyFile);
-    } else {
+    } else if (!s.isEmpty()) {
         QByteArray secret;
 
         if (s.startsWith("base64:"))
@@ -81,6 +81,8 @@ EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
             secret = s.toUtf8();
 
         return fromSecret(secret);
+    } else {
+        return EncodingKey();
     }
 }
 
@@ -124,7 +126,7 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
             keyFile = QFileInfo(baseDir, keyFile).filePath();
 
         return fromFile(keyFile);
-    } else {
+    } else if (!s.isEmpty()) {
         QByteArray secret;
 
         if (s.startsWith("base64:"))
@@ -133,6 +135,8 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
             secret = s.toUtf8();
 
         return fromSecret(secret);
+    } else {
+        return DecodingKey();
     }
 }
 
