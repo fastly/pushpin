@@ -274,6 +274,10 @@ impl ConnmgrService {
         ));
         args.push("--deny-out-internal".to_string());
 
+        if !settings.otel_endpoint.is_empty() {
+            args.push(format!("--otel-endpoint={}", settings.otel_endpoint));
+        }
+
         if !settings.ports.is_empty() {
             // Server mode
             let mut using_ssl = false;

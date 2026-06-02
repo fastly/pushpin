@@ -36,6 +36,7 @@ use self::server::Server;
 use crate::core::fs::{set_group, set_user};
 use crate::core::log::DebugLogger;
 use crate::core::zmq::SpecInfo;
+use crate::observability;
 use ipnet::IpNet;
 use log::{debug, info};
 use mio::net::UnixListener;
@@ -138,6 +139,7 @@ pub struct Config {
     pub debug_socket: Option<DebugSocketConfig>,
     pub origind_path: Option<String>,
     pub origind_rate: u8,
+    pub otel_endpoint: Option<String>,
 }
 
 pub struct App {
@@ -484,6 +486,9 @@ impl App {
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     debug!("starting...");
 
+    observability::init_tracing("pushpin-connmgr", config.otel_endpoint.as_deref())
+        .unwrap_or_else(|e| panic!("failed to initialize tracing: {}", e));
+
     {
         let a = match App::new(config) {
             Ok(a) => a,
@@ -498,6 +503,8 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
 
         info!("stopping...");
     }
+
+    observability::shutdown_tracing();
 
     debug!("stopped");
 

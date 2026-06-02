@@ -66,6 +66,7 @@ struct Args {
     debug_socket: Option<String>,
     origind: Option<String>,
     origind_rate: u8,
+    otel_endpoint: Option<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -115,6 +116,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         debug_socket: None,
         origind_path: args.origind,
         origind_rate: args.origind_rate,
+        otel_endpoint: args.otel_endpoint,
     };
 
     for v in args.listen.iter() {
@@ -445,6 +447,13 @@ fn main() {
                 .default_value("0"),
         )
         .arg(
+            Arg::new("otel-endpoint")
+                .long("otel-endpoint")
+                .num_args(1)
+                .value_name("URL")
+                .help("OpenTelemetry collector endpoint (e.g. http://localhost:4318)"),
+        )
+        .arg(
             Arg::new("sizes")
                 .long("sizes")
                 .action(ArgAction::SetTrue)
@@ -481,6 +490,8 @@ fn main() {
     get_simple_logger().set_max_level(level);
 
     local_offset_check();
+
+    let otel_endpoint = matches.get_one::<String>("otel-endpoint").cloned();
 
     if *matches.get_one("sizes").unwrap() {
         for (name, size) in App::sizes() {
@@ -696,6 +707,7 @@ fn main() {
         debug_socket,
         origind: origind.cloned(),
         origind_rate,
+        otel_endpoint,
     };
 
     if let Err(e) = process_args_and_run(args) {

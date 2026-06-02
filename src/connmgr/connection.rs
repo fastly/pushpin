@@ -37,6 +37,7 @@
 use crate::connmgr::counter::{Counter, CounterDec};
 use crate::connmgr::origind;
 use crate::connmgr::pool::Pool;
+use crate::observability::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use crate::connmgr::resolver;
 use crate::connmgr::tls::{AsyncTlsStream, TlsConfigCache, TlsStream, TlsWaker, VerifyMode};
 use crate::connmgr::track::{
@@ -87,6 +88,13 @@ use std::task::Context;
 use std::task::Poll;
 use std::thread;
 use std::time::{Duration, Instant};
+
+fn fmt_addr(addr: Option<&SocketAddr>) -> String {
+    match addr {
+        Some(a) => a.to_string(),
+        None => String::new(),
+    }
+}
 
 const URI_SIZE_MAX: usize = 4096;
 const HEADERS_MAX: usize = 64;
@@ -1387,6 +1395,7 @@ where
     }
 }
 
+#[tracing::instrument(name = "error_response", skip_all, fields(http.status_code, error = ?e))]
 async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     mut resp: server::Response<'_, R, W>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -1448,6 +1457,8 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
             500
         }
     };
+
+    trace_status_code(code);
 
     let reason = match code {
         400 => "Bad Request",
@@ -1602,10 +1613,15 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
 
     let req_ref = req_header.get();
 
-    // Log request
+    // record HTTP attributes on the current span
+    tracing::Span::current().record("http.method", req_ref.method);
+    tracing::Span::current().record("http.target", req_ref.uri.to_string().as_str());
+
+    // log request
 
     {
         let host = get_host(req_ref.headers);
+        tracing::Span::current().record("http.host", host);
         let scheme = if secure { "https" } else { "http" };
 
         debug!(
@@ -1957,6 +1973,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     }
 }
 
+#[tracing::instrument(name = "accept_handoff", skip_all)]
 async fn accept_handoff<R>(
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
@@ -2071,6 +2088,7 @@ where
     }
 }
 
+#[tracing::instrument(name = "stream_recv_body", skip_all)]
 async fn stream_recv_body<R1, R2, R, W>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2250,6 +2268,7 @@ where
     }
 }
 
+#[tracing::instrument(name = "stream_send_body", skip_all)]
 async fn stream_send_body<R1, R2, R, W>(
     bytes_read: &R1,
     resp_body: server::ResponseBody<'_, R, W>,
@@ -2595,6 +2614,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(name = "stream_websocket", skip_all, fields(connection.id = %log_id, ws.client_close_code, ws.server_close_code))]
 async fn stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
@@ -2740,6 +2760,10 @@ where
                             None
                         };
 
+                        if let Some((code, _)) = &status {
+                            trace_ws_close_code(*code, WsCloseSource::Client);
+                        }
+
                         zhttppacket::Request::new_close(b"", &[], status)
                     }
                     websocket::OPCODE_PING => zhttppacket::Request::new_ping(b"", &[], body),
@@ -2819,6 +2843,7 @@ where
                     zhttppacket::ResponsePacket::Close(cdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
                             let (code, reason) = cdata.status.unwrap_or((1000, ""));
+                            trace_ws_close_code(code, WsCloseSource::Server);
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
@@ -3433,6 +3458,11 @@ fn server_stream_process_req_header(
 // Read request header and prepare outgoing zmq message.
 // return Ok(None) if client disconnects before providing a complete request header
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(
+    name = "stream_read_header",
+    skip_all,
+    fields(connection.id = %id, http.method, http.target, http.host)
+)]
 async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     id: &str,
     req_header: server::RequestHeader<'a, 'b, R, W>,
@@ -3470,6 +3500,10 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     };
 
     let req_ref = req_header.get();
+
+    tracing::Span::current().record("http.method", req_ref.method);
+    tracing::Span::current().record("http.target", req_ref.uri.to_string().as_str());
+    tracing::Span::current().record("http.host", get_host(req_ref.headers));
 
     let result = server_stream_process_req_header(
         id,
@@ -3514,6 +3548,11 @@ enum StreamRespond<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
 
 // Consumes resp if successful
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(
+    name = "stream_respond",
+    skip_all,
+    fields(connection.id = %id, http.status_code)
+)]
 async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     id: &'zs str,
     req: server::Request,
@@ -3641,6 +3680,8 @@ where
 
                 let rdata = edata.rejected_info.as_ref().unwrap();
 
+                trace_status_code(rdata.code);
+
                 if rdata.body.len() > recv_buf_size {
                     return Err(Error::WebSocketRejectionTooLarge(recv_buf_size));
                 }
@@ -3717,6 +3758,8 @@ where
         }
         _ => unreachable!(), // We confirmed the type above
     };
+
+    trace_status_code(rdata.code);
 
     if rdata.body.len() > recv_buf_size {
         return Err(Error::BufferExceeded);
@@ -3850,6 +3893,11 @@ where
 
 // Return true if persistent
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(
+    name = "stream_request",
+    skip_all,
+    fields(connection.id = %id, tls = secure, peer.addr = %fmt_addr(peer_addr))
+)]
 async fn server_stream_handler<S, R1, R2>(
     id: &str,
     stream: &mut S,
@@ -4038,6 +4086,11 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(
+    name = "stream_connection",
+    skip_all,
+    fields(connection.id = %cid, tls = secure, peer.addr = %fmt_addr(peer_addr), error.type)
+)]
 async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
     cid: &mut ArrayString<32>,
@@ -4117,14 +4170,25 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
             .await
             {
                 Select4::R1(ret) => ret,
-                Select4::R2(_) => Err(Error::StreamTimeout),
-                Select4::R3(_) => return Err(Error::SessionTimeout),
-                Select4::R4(_) => return Err(Error::Stopped),
+                Select4::R2(_) => {
+                    tracing::Span::current().record("error.type", "stream_timeout");
+                    Err(Error::StreamTimeout)
+                }
+                Select4::R3(_) => {
+                    tracing::Span::current().record("error.type", "session_timeout");
+                    return Err(Error::SessionTimeout);
+                }
+                Select4::R4(_) => {
+                    tracing::Span::current().record("error.type", "stopped");
+                    return Err(Error::Stopped);
+                }
             };
 
             match ret {
                 Ok(reuse) => reuse,
                 Err(e) => {
+                    tracing::Span::current().record("error.type", format!("{:?}", e).as_str());
+
                     let handler_caused = matches!(
                         &e,
                         Error::BadMessage | Error::Handler | Error::HandlerCancel

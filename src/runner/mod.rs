@@ -220,6 +220,7 @@ pub struct Settings {
     pub file_prefix: String,
     pub log_levels: HashMap<String, u8>,
     pub route_lines: Vec<String>,
+    pub otel_endpoint: String,
 }
 
 impl Settings {
@@ -412,6 +413,7 @@ impl Settings {
             file_prefix,
             log_levels,
             route_lines: args_data.route_lines,
+            otel_endpoint: config.global.otel_endpoint,
         })
     }
 }
@@ -887,6 +889,7 @@ mod tests {
                 file_prefix: String::new(),
                 log_levels: log_map,
                 route_lines: vec![],
+                otel_endpoint: String::new(),
             }),
         }];
 
