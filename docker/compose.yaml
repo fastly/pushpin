@@ -1,0 +1,7 @@
+services:
+  pushpin:
+    build:
+      context: .
+      args:
+        VERSION: 1.41.0
+    image: fanout/pushpin:1.41.0-1
