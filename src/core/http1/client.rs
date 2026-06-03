@@ -402,17 +402,20 @@ pub struct Response<'a, R: AsyncRead> {
 }
 
 impl<'a, R: AsyncRead> Response<'a, R> {
-    pub async fn recv_header<'b, const N: usize>(
+    pub async fn recv_header<'b, 'budget, 'counter, const N: usize>(
         mut self,
         mut scratch: &'b mut ParseScratch<N>,
+        mut budget: Option<&'budget mut BufferBudget<'counter>>,
     ) -> Result<
         (
             protocol::OwnedResponse<'b, N>,
-            ResponseBodyKeepHeader<'a, R>,
+            ResponseBodyKeepHeader<'a, 'budget, 'counter, R>,
         ),
         Error,
     > {
         let mut resp = self.inner;
+
+        let original_rbuf_capacity = self.rbuf.capacity();
 
         let (resp, resp_body) = loop {
             {
@@ -442,6 +445,13 @@ impl<'a, R: AsyncRead> Response<'a, R> {
 
             if let Err(e) = recv_nonzero(&mut self.r, self.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
+                    // Try to expand the buffer before failing
+                    if let Some(budget) = budget.as_mut() {
+                        let expanded = budget.expand_buffer_if_needed(self.rbuf);
+                        if expanded > 0 {
+                            continue; // Retry reading with the expanded buffer
+                        }
+                    }
                     return Err(Error::BufferExceeded);
                 }
 
@@ -452,7 +462,7 @@ impl<'a, R: AsyncRead> Response<'a, R> {
         // At this point, resp has taken rbuf's inner buffer, such that
         // rbuf has no inner buffer
 
-        // Put remaining readable bytes in wbuf
+        // Put remaining readable bytes in wbuf, which should always fit
         self.wbuf.write_all(resp.remaining_bytes())?;
 
         // Swap inner buffers, such that rbuf now contains the remaining
@@ -471,6 +481,8 @@ impl<'a, R: AsyncRead> Response<'a, R> {
                     })),
                 },
                 wbuf: RefCell::new(Some(self.wbuf)),
+                original_rbuf_capacity,
+                budget,
             },
         ))
     }
@@ -574,19 +586,27 @@ impl<R: AsyncRead> ResponseBody<'_, R> {
     }
 }
 
-pub struct ResponseBodyKeepHeader<'a, R: AsyncRead> {
+pub struct ResponseBodyKeepHeader<'a, 'budget, 'counter, R: AsyncRead> {
     inner: ResponseBody<'a, R>,
     wbuf: RefCell<Option<&'a mut VecRingBuffer>>,
+    // Track original capacity for shrinking back after header discard
+    original_rbuf_capacity: usize,
+    budget: Option<&'budget mut BufferBudget<'counter>>,
 }
 
-impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
+impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, '_, '_, R> {
     pub fn discard_header<const N: usize>(
-        self,
+        mut self,
         resp: protocol::OwnedResponse<N>,
     ) -> Result<ResponseBody<'a, R>, Error> {
         if let Some(wbuf) = self.wbuf.borrow_mut().take() {
             wbuf.set_inner(resp.into_buf());
             wbuf.clear();
+
+            // Shrink buffer back to original size if expansion occurred
+            if let Some(budget) = self.budget.as_mut() {
+                budget.shrink_buffer(wbuf, self.original_rbuf_capacity);
+            }
 
             Ok(self.inner)
         } else {
@@ -645,5 +665,268 @@ impl FinishedKeepHeader<'_> {
 
     pub fn is_persistent(&self) -> bool {
         self.inner.is_persistent()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::buffer::TmpBuffer;
+    use crate::core::counter::Counter;
+    use crate::core::http1::protocol::ParseScratch;
+    use crate::core::io::{AsyncRead, AsyncWrite};
+    use std::cell::RefCell;
+    use std::future::Future;
+    use std::io::{self, Read, Write};
+    use std::pin::Pin;
+    use std::rc::Rc;
+    use std::task::{Context, Poll};
+
+    struct NoopWaker;
+
+    impl std::task::Wake for NoopWaker {
+        fn wake(self: std::sync::Arc<Self>) {}
+    }
+
+    struct FakeStream {
+        in_data: std::io::Cursor<Vec<u8>>,
+        out_data: Vec<u8>,
+    }
+
+    impl FakeStream {
+        fn new() -> Self {
+            Self {
+                in_data: std::io::Cursor::new(Vec::new()),
+                out_data: Vec::new(),
+            }
+        }
+    }
+
+    impl AsyncRead for FakeStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            Poll::Ready(self.in_data.read(buf))
+        }
+
+        fn cancel(&mut self) {}
+    }
+
+    impl AsyncWrite for FakeStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            Poll::Ready(self.out_data.write(buf))
+        }
+
+        fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn is_writable(&self) -> bool {
+            true
+        }
+
+        fn cancel(&mut self) {}
+    }
+
+    const HEADERS_MAX: usize = 32;
+
+    #[test]
+    fn response_header_expansion_enabled() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a response with headers larger than the initial buffer
+            let mut large_headers = String::from("HTTP/1.1 200 OK\r\n");
+            // Add many headers to exceed the small buffer size
+            for i in 0..15 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream
+                .in_data
+                .get_mut()
+                .extend_from_slice(large_headers.as_bytes());
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Small buffer to force expansion
+                let mut buf2 = VecRingBuffer::new(32, &tmp);
+
+                // Set up budget for expansion
+                let counter = Counter::new(1000);
+                let mut budget = BufferBudget::new(&counter).with_block_size(64);
+
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let (resp_header, resp_body) = resp
+                    .recv_header(&mut scratch, Some(&mut budget))
+                    .await
+                    .unwrap();
+
+                let resp_ref = resp_header.get();
+                assert_eq!(resp_ref.code, 200);
+                assert_eq!(resp_ref.reason, "OK");
+
+                // Verify that expansion was used (original rbuf was small)
+                assert_eq!(resp_body.original_rbuf_capacity, 32);
+
+                // The fact that parsing succeeded with large headers and small initial buffer
+                // proves that buffer expansion worked (would have failed without expansion)
+
+                let resp_body_final = resp_body.discard_header(resp_header).unwrap();
+
+                // After discard_header, verify buffer was shrunk back to original size
+                let final_capacity = {
+                    let inner = resp_body_final.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    final_capacity, 32,
+                    "Buffer should be shrunk back to original size (32), got {}",
+                    final_capacity
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn response_header_expansion_disabled() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a response with headers larger than the buffer
+            let mut large_headers = String::from("HTTP/1.1 200 OK\r\n");
+            // Add many headers to exceed buffer size
+            for i in 0..15 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream
+                .in_data
+                .get_mut()
+                .extend_from_slice(large_headers.as_bytes());
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Small buffer
+                let mut buf2 = VecRingBuffer::new(32, &tmp);
+
+                // No budget provided - expansion disabled
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let result = resp.recv_header(&mut scratch, None).await;
+
+                // Should fail due to buffer being too small and no expansion available
+                assert!(result.is_err());
+
+                // Verify buffer capacity remained unchanged (no expansion occurred)
+                assert_eq!(
+                    buf1.capacity(),
+                    32,
+                    "Buffer capacity should remain 32 when expansion is disabled, got {}",
+                    buf1.capacity()
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn response_header_basic() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Simple response that fits in buffer
+            stream.in_data.get_mut().extend_from_slice(
+                "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nhello\n".as_bytes(),
+            );
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(64));
+                let mut buf1 = VecRingBuffer::new(64, &tmp);
+                let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let (resp_header, resp_body) = resp.recv_header(&mut scratch, None).await.unwrap();
+
+                let resp_ref = resp_header.get();
+                assert_eq!(resp_ref.code, 200);
+                assert_eq!(resp_ref.reason, "OK");
+
+                // Verify no expansion occurred - buffer should still be original size
+                let current_rbuf_capacity = {
+                    let inner = resp_body.inner.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    current_rbuf_capacity, 64,
+                    "Expected no expansion, rbuf capacity should remain 64, got {}",
+                    current_rbuf_capacity
+                );
+
+                let resp_body_final = resp_body.discard_header(resp_header).unwrap();
+
+                // After discard_header, verify buffer capacity is still unchanged
+                let final_capacity = {
+                    let inner = resp_body_final.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    final_capacity, 64,
+                    "Buffer capacity should remain 64 after discard_header, got {}",
+                    final_capacity
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
     }
 }
