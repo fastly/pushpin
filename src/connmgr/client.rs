@@ -642,7 +642,12 @@ impl Worker {
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
         // Large enough to fit anything
-        let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
+        let packet_buf = Rc::new(RefCell::new(vec![
+            0;
+            (buffer_size * connection_blocks_max)
+                + body_buffer_size
+                + 4096
+        ]));
 
         // Same size as working buffers
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
