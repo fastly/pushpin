@@ -1,8 +1,12 @@
 name: CI
 on:
   pull_request:
-    branches: 
+    branches:
       - main
+    paths-ignore:
+      - 'docker/**'
+      - '**/*.md'
+      - '.github/workflows/docker-publish.yml'
 defaults:
   run:
      shell: bash -leo pipefail {0}
