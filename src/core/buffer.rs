@@ -950,6 +950,28 @@ impl<'a> BufferBudget<'a> {
 
         count
     }
+
+    /// Shrink buffer to target capacity
+    ///
+    /// If the buffer was expanded beyond target_capacity, it will be resized back
+    /// to the target size and the corresponding blocks will be released.
+    pub fn shrink_buffer(&mut self, buf: &mut VecRingBuffer, target_capacity: usize) {
+        let capacity = buf.capacity();
+
+        if capacity > target_capacity {
+            // Expansion should be in whole blocks
+            assert_eq!(
+                (capacity - target_capacity) % self.block_size,
+                0,
+                "expansion size must be multiple of block size"
+            );
+
+            buf.resize(target_capacity);
+
+            let blocks_freed = (capacity - target_capacity) / self.block_size;
+            self.release_blocks(blocks_freed);
+        }
+    }
 }
 
 impl Drop for BufferBudget<'_> {
@@ -1304,6 +1326,64 @@ mod tests {
         let size = r.read(&mut buf).unwrap();
         assert_eq!(size, 8);
         assert_eq!(&buf[..size], b"12345678");
+    }
+
+    #[test]
+    fn test_buffer_budget_shrink() {
+        let counter = Counter::new(10);
+        let mut budget = BufferBudget::new(&counter)
+            .with_block_size(64)
+            .with_blocks_max(5);
+
+        let tmp = std::rc::Rc::new(TmpBuffer::new(512));
+        let mut buf = VecRingBuffer::new(128, &tmp);
+        let original_capacity = buf.capacity();
+
+        // Fill buffer so remaining_capacity() == 0
+        buf.write_all(&vec![0u8; 128]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Expand the buffer
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 64);
+        assert_eq!(budget.blocks_used(), 1);
+
+        // Fill again to trigger another expansion
+        buf.write_all(&vec![0u8; 64]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Expand again
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 128);
+        assert_eq!(budget.blocks_used(), 2);
+
+        // Shrink back to original
+        budget.shrink_buffer(&mut buf, original_capacity);
+        assert_eq!(buf.capacity(), original_capacity);
+        assert_eq!(budget.blocks_used(), 0);
+
+        // Verify shrinking a non-expanded buffer is safe (no-op)
+        budget.shrink_buffer(&mut buf, original_capacity);
+        assert_eq!(buf.capacity(), original_capacity);
+        assert_eq!(budget.blocks_used(), 0);
+
+        // Test shrinking to a different target size
+        buf.clear(); // Clear buffer after previous shrinking
+        buf.write_all(&vec![0u8; 128]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        budget.expand_buffer_if_needed(&mut buf);
+        buf.write_all(&vec![0u8; 64]).unwrap(); // Fill the expansion space
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 128);
+        assert_eq!(budget.blocks_used(), 2);
+
+        // Shrink to intermediate size
+        budget.shrink_buffer(&mut buf, original_capacity + 64);
+        assert_eq!(buf.capacity(), original_capacity + 64);
+        assert_eq!(budget.blocks_used(), 1);
     }
 
     #[test]

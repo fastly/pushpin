@@ -1429,7 +1429,7 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
 async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     id: &str,
     req: &http1::Request<'_, '_>,
-    req_body: &mut server::RequestBodyKeepHeader<'_, '_, R, W>,
+    req_body: &mut server::RequestBodyKeepHeader<'_, '_, '_, '_, R, W>,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
     body_buf: &mut ContiguousBuffer,
@@ -1528,7 +1528,7 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     // this function and do not use the ?-operator
     let (req_header, mut req_body) = {
         // ABR: discard_while
-        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, None))).await {
             Ok(ret) => ret,
             Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
@@ -3387,7 +3387,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     // this function and do not use the ?-operator
     let (req_header, req_body) = {
         // ABR: discard_while
-        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, None))).await {
             Ok(ret) => ret,
             Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
@@ -4611,7 +4611,7 @@ where
 
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
-    let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
+    let (resp, resp_body) = resp.recv_header(&mut scratch, None).await?;
 
     let (zresp, finished) = {
         let resp_ref = resp.get();
@@ -5193,7 +5193,7 @@ where
 
     let (resp_body, ws_config) = {
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-        let mut recv_header = pin!(resp.recv_header(&mut scratch));
+        let mut recv_header = pin!(resp.recv_header(&mut scratch, None));
 
         let (resp, resp_body) = loop {
             // ABR: select contains read

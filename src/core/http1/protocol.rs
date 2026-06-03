@@ -1393,6 +1393,13 @@ pub struct ClientResponse {
 }
 
 impl ClientResponse {
+    #[cfg(test)]
+    pub fn new() -> Self {
+        Self {
+            state: ClientState::new(),
+        }
+    }
+
     pub fn recv_header<const N: usize>(
         mut self,
         rbuf: FilledBuf,

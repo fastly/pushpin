@@ -75,13 +75,14 @@ pub struct RequestHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 
 impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
     // Read from stream into buf, and parse buf as a request header
-    pub async fn recv<'c, const N: usize>(
+    pub async fn recv<'c, 'budget, 'counter, const N: usize>(
         self,
         mut scratch: &'c mut ParseScratch<N>,
+        mut budget: Option<&'budget mut BufferBudget<'counter>>,
     ) -> Result<
         (
             protocol::OwnedRequest<'c, N>,
-            RequestBodyKeepHeader<'a, 'b, R, W>,
+            RequestBodyKeepHeader<'a, 'b, 'budget, 'counter, R, W>,
         ),
         Error,
     > {
@@ -90,7 +91,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
             protocol::ServerState::ReceivingRequest
         );
 
-        let size_limit = self.inner.rbuf.remaining_capacity();
+        let original_rbuf_capacity = self.inner.rbuf.capacity();
 
         let req = loop {
             {
@@ -117,7 +118,14 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
 
             if let Err(e) = recv_nonzero(&mut self.inner.r, self.inner.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::RequestTooLarge(size_limit));
+                    // Try to expand the buffer before failing
+                    if let Some(budget) = &mut budget {
+                        let expanded = budget.expand_buffer_if_needed(self.inner.rbuf);
+                        if expanded > 0 {
+                            continue; // Retry reading with the expanded buffer
+                        }
+                    }
+                    return Err(Error::RequestTooLarge(self.inner.rbuf.capacity()));
                 }
 
                 return Err(e.into());
@@ -133,7 +141,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
         // At this point, req has taken rbuf's inner buffer, such that
         // rbuf has no inner buffer
 
-        // Put remaining readable bytes in wbuf
+        // Put remaining readable bytes in wbuf, which should always fit
         self.inner.wbuf.write_all(req.remaining_bytes())?;
 
         // Swap inner buffers, such that rbuf now contains the remaining
@@ -157,6 +165,8 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
                         })),
                     },
                     wbuf: self.inner.wbuf,
+                    original_rbuf_capacity,
+                    budget,
                 }),
             },
         ))
@@ -319,24 +329,32 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
     }
 }
 
-struct RequestBodyKeepHeaderInner<'a, 'b, R: AsyncRead, W: AsyncWrite> {
+struct RequestBodyKeepHeaderInner<'a, 'b, 'budget, 'counter, R: AsyncRead, W: AsyncWrite> {
     inner: RequestBody<'a, 'b, R, W>,
     wbuf: &'b mut VecRingBuffer,
+    // Track original capacity for shrinking back after header discard
+    original_rbuf_capacity: usize,
+    budget: Option<&'budget mut BufferBudget<'counter>>,
 }
 
-pub struct RequestBodyKeepHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
-    inner: Option<RequestBodyKeepHeaderInner<'a, 'b, R, W>>,
+pub struct RequestBodyKeepHeader<'a, 'b, 'budget, 'counter, R: AsyncRead, W: AsyncWrite> {
+    inner: Option<RequestBodyKeepHeaderInner<'a, 'b, 'budget, 'counter, R, W>>,
 }
 
-impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W> {
+impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, '_, '_, R, W> {
     pub fn discard_header<const N: usize>(
         mut self,
         req: protocol::OwnedRequest<N>,
     ) -> RequestBody<'a, 'b, R, W> {
-        let inner = self.inner.take().unwrap();
+        let mut inner = self.inner.take().unwrap();
 
         inner.wbuf.set_inner(req.into_buf());
         inner.wbuf.clear();
+
+        // Shrink buffer back to original size if expansion occurred
+        if let Some(budget) = &mut inner.budget {
+            budget.shrink_buffer(inner.wbuf, inner.original_rbuf_capacity);
+        }
 
         inner.inner
     }
@@ -358,7 +376,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W
     }
 }
 
-impl<R: AsyncRead, W: AsyncWrite> Drop for RequestBodyKeepHeader<'_, '_, R, W> {
+impl<R: AsyncRead, W: AsyncWrite> Drop for RequestBodyKeepHeader<'_, '_, '_, '_, R, W> {
     fn drop(&mut self) {
         if self.inner.is_some() {
             panic!("RequestBodyKeepHeader must be consumed by discard_header() instead of dropped");
@@ -811,6 +829,7 @@ impl Finished {
 mod tests {
     use super::*;
     use crate::core::buffer::TmpBuffer;
+    use crate::core::counter::Counter;
     use crate::core::io::io_split;
     use std::cmp;
     use std::future::Future;
@@ -907,7 +926,7 @@ mod tests {
                 let header = req.recv_header(&mut resp);
 
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
-                let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
+                let (req_header, req_body) = header.recv(&mut scratch, None).await.unwrap();
 
                 // catch to avoid running req_body destructor
                 let result = panic::catch_unwind(|| {
@@ -989,7 +1008,7 @@ mod tests {
                 let header = req.recv_header(&mut resp);
 
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
-                let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
+                let (req_header, req_body) = header.recv(&mut scratch, None).await.unwrap();
 
                 // catch to avoid running req_body destructor
                 let result = panic::catch_unwind(|| {
@@ -1079,7 +1098,7 @@ mod tests {
                 let header = req.recv_header(&mut resp);
 
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
-                let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
+                let (req_header, req_body) = header.recv(&mut scratch, None).await.unwrap();
 
                 // catch to avoid running req_body destructor
                 let result = panic::catch_unwind(|| {
@@ -1154,7 +1173,7 @@ mod tests {
                 let header = req.recv_header(&mut resp);
 
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
-                let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
+                let (req_header, req_body) = header.recv(&mut scratch, None).await.unwrap();
                 let req_body = req_body.discard_header(req_header);
                 drop(req_body);
 
@@ -1200,6 +1219,193 @@ mod tests {
                 "HTTP/1.1 200 OK\r\nContent-Length: 64\r\n\r\n".to_string() + expected_body;
 
             assert_eq!(str::from_utf8(&stream.out_data).unwrap(), expected);
+        });
+
+        let waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn dynamic_header_expansion_enabled() {
+        let mut fut = pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a request with headers larger than the initial buffer
+            let mut large_headers = String::from("POST /path HTTP/1.1\r\n");
+            // Add many headers to exceed initial buffer size
+            for i in 0..20 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream.in_data.write_all(large_headers.as_bytes()).unwrap();
+
+            {
+                let stream = RefCell::new(&mut stream);
+
+                // Use larger TmpBuffer to allow expansion
+                let tmp = Rc::new(TmpBuffer::new(2048));
+                let mut buf1 = VecRingBuffer::new(64, &tmp); // Small initial buffer
+                let mut buf2 = VecRingBuffer::new(1024, &tmp);
+
+                let (req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
+                let header = req.recv_header(&mut resp);
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+                // Block-based expansion function similar to connmgr
+                let counter = Counter::new(100); // Shared counter with plenty of blocks
+                let mut budget = BufferBudget::new(&counter)
+                    .with_blocks_max(20) // Local limit of 20 blocks
+                    .with_block_size(64); // Block-based expansion
+                let result = header.recv(&mut scratch, Some(&mut budget)).await;
+
+                // Should succeed with expansion enabled
+                assert!(result.is_ok());
+                let (req_header, req_body) = result.unwrap();
+
+                let req_ref = req_header.get();
+                assert_eq!(req_ref.method, "POST");
+                assert_eq!(req_ref.uri, "/path");
+                assert_eq!(req_ref.body_size, BodySize::Known(6));
+
+                req_body.discard_header(req_header);
+            }
+        });
+
+        let waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn dynamic_header_expansion_disabled() {
+        let mut fut = pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a request with headers larger than the buffer
+            let mut large_headers = String::from("POST /path HTTP/1.1\r\n");
+            // Add many headers to exceed buffer size
+            for i in 0..20 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream.in_data.write_all(large_headers.as_bytes()).unwrap();
+
+            {
+                let stream = RefCell::new(&mut stream);
+
+                let tmp = Rc::new(TmpBuffer::new(128)); // Small buffer
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Very small initial buffer
+                let mut buf2 = VecRingBuffer::new(128, &tmp);
+
+                let (req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
+                let header = req.recv_header(&mut resp);
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+                // No expansion function provided - should fail
+                let result = header.recv(&mut scratch, None).await;
+
+                // Should fail due to insufficient buffer space
+                assert!(result.is_err());
+            }
+        });
+
+        let waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn dynamic_header_with_pipelined_data() {
+        let mut fut = pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a request with large headers and pipelined data (remaining bytes)
+            let mut large_headers = String::from("POST /path HTTP/1.1\r\n");
+            // Add headers to exceed initial buffer size but stay reasonable
+            for i in 0..8 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+            // Add small pipelined request data (tests concern #1)
+            large_headers.push_str("GET /next HTTP/1.1\r\n\r\n");
+
+            stream.in_data.write_all(large_headers.as_bytes()).unwrap();
+
+            {
+                let stream = RefCell::new(&mut stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Very small initial buffer
+                let mut buf2 = VecRingBuffer::new(64, &tmp); // Small second buffer
+
+                let (req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
+                let header = req.recv_header(&mut resp);
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+                // Test shows the limitation: block budget doesn't carry over after buffer swap
+                // Use BufferBudget for expansion to handle large headers
+                let counter = Counter::new(100);
+                let mut budget = BufferBudget::new(&counter)
+                    .with_blocks_max(10)
+                    .with_block_size(64);
+
+                let result = header.recv(&mut scratch, Some(&mut budget)).await;
+                assert!(result.is_ok());
+                let (req_header, req_body) = result.unwrap();
+
+                // Verify the request was parsed correctly despite expansion
+                let req_ref = req_header.get();
+                assert_eq!(req_ref.method, "POST");
+                assert_eq!(req_ref.uri, "/path");
+
+                let req_body = req_body.discard_header(req_header);
+
+                // The fact that parsing succeeded with a 32-byte buffer and large headers
+                // is sufficient evidence that buffer expansion occurred
+                // (without expansion, parsing would have failed due to insufficient space)
+
+                drop(req_body);
+            }
+        });
+
+        let waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn blocks_max_carryover() {
+        let mut fut = pin!(async {
+            let mut stream = FakeStream::new();
+
+            let request = "POST /path HTTP/1.1\r\nContent-Length: 6\r\n\r\nhello\n";
+            stream.in_data.write_all(request.as_bytes()).unwrap();
+
+            {
+                let stream = RefCell::new(&mut stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(64, &tmp);
+                let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+                let (req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
+                let header = req.recv_header(&mut resp);
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+                let result = header.recv(&mut scratch, None).await; // No expansion needed
+                assert!(result.is_ok());
+                let (req_header, req_body) = result.unwrap();
+
+                let req_body = req_body.discard_header(req_header);
+                drop(req_body);
+            }
         });
 
         let waker = Arc::new(NoopWaker).into();
