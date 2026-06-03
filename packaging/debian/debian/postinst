@@ -1,0 +1,49 @@
+#!/bin/sh
+# postinst script for pushpin
+#
+# see: dh_installdeb(1)
+
+set -e
+
+# summary of how this script can be called:
+#        * <postinst> `configure' <most-recently-configured-version>
+#        * <old-postinst> `abort-upgrade' <new version>
+#        * <conflictor's-postinst> `abort-remove' `in-favour' <package>
+#          <new-version>
+#        * <postinst> `abort-remove'
+#        * <deconfigured's-postinst> `abort-deconfigure' `in-favour'
+#          <failed-install-package> <version> `removing'
+#          <conflicting-package> <version>
+# for details, see http://www.debian.org/doc/debian-policy/ or
+# the debian-policy package
+
+
+case "$1" in
+    configure)
+	ucf --three-way /usr/share/pushpin/pushpin.conf /etc/pushpin/pushpin.conf
+	ucfr pushpin /etc/pushpin/pushpin.conf
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+    ;;
+esac
+
+if ! getent passwd pushpin >/dev/null; then
+    adduser --quiet --system --no-create-home --home /run/pushpin pushpin
+fi
+
+mkdir -p /var/log/pushpin
+chown pushpin /var/log/pushpin
+
+# Originally added by dh_installdeb/13.6ubuntu1
+dpkg-maintscript-helper rm_conffile /etc/pushpin/internal.conf 1.8.0-1\~ -- "$@"
+dpkg-maintscript-helper rm_conffile /etc/default/pushpin 1.9.0-2\~ -- "$@"
+
+#DEBHELPER#
+
+exit 0

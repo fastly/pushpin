@@ -1,0 +1,62 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" (C) Copyright 2013 Jan Niehusmann <jan@debian.org>,
+.\"
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH PUSHPIN 1 "July  12, 2016"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.de URL
+\\$2 \(laURL: \\$1 \(ra\\$3
+..
+.if \n[.g] .mso www.tmac
+.\"
+.SH NAME
+pushpin \- HTTP reverse proxy server supporting streaming and long-polling services.
+.SH SYNOPSIS
+.B pushpin
+.RI [--verbose] " " [--config= CONFIG ] " " [--id= ID ] " " [--port= PORT ] " " [--route= ROUTE ] " " [--merge-output]
+
+.SH DESCRIPTION
+This starts
+.B pushpin
+using the specified configuration (pushpin.conf).
+
+In the default configuration, this also starts condure, pushpin-proxy, pushpin-handler.
+
+.TP
+\fB\-\-config\fR \fICONFIG\fR
+Specify configuration file. Default: /etc/pushpin/pushpin.conf.
+.TP
+\fB\-\-id\fR \fIID\fR
+Unique numeric ID to allow for multiple pushpin instances at the same time.
+.TP
+\fB\-\-port\fR \fIPORT\fR
+TCP port to listen on. Usually configured in pushpin.conf.
+.TP
+\fB\-\-route\fR \fIROUTE\fR
+Connection forwarding specification. Usually configured in /etc/pushpin/routes.
+.TP
+\fB\-\-merge\-output\fR
+Merge output of subprocessess with pushpin's output, instead of letting them
+write their own log files.
+
+.SH "SEE ALSO"
+\&\fImongrel2\fR\|(1)
+\&\fIm2adapter\fR\|(1)
+\&\fIpushpin-proxy\fR\|(1)
+\&\fIpushpin-handler\fR\|(1)
+\&\fIzurl\fR\|(1)
+.sp 1
+More documentation can be found at <http://pushpin.org/docs/>

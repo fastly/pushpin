@@ -7,6 +7,7 @@ on:
       - 'docker/**'
       - '**/*.md'
       - '.github/workflows/docker-publish.yml'
+      - 'packaging/**'
 defaults:
   run:
      shell: bash -leo pipefail {0}
@@ -144,7 +145,7 @@ jobs:
     - name: Cache
       uses: Swatinem/rust-cache@v2
       with:
-        shared-key: "CI-Suite"      
+        shared-key: "CI-Suite"
     - name: bench
       run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
   build-full:
