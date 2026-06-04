@@ -3363,6 +3363,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     req_header: server::RequestHeader<'a, 'b, R, W>,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
+    budget: &mut BufferBudget<'_>,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
@@ -3387,7 +3388,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     // this function and do not use the ?-operator
     let (req_header, req_body) = {
         // ABR: discard_while
-        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, None))).await {
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, Some(budget)))).await {
             Ok(ret) => ret,
             Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
@@ -3448,6 +3449,7 @@ async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     secure: bool,
     send_buf_size: usize,
     recv_buf_size: usize,
+    budget: &mut BufferBudget<'_>,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -3477,6 +3479,7 @@ where
         req_header,
         peer_addr,
         secure,
+        budget,
         allow_compression,
         packet_buf,
         instance_id,
@@ -3822,6 +3825,7 @@ where
             secure,
             send_buf_size,
             recv_buf_size,
+            budget,
             allow_compression,
             packet_buf,
             tmp_buf,
@@ -5193,7 +5197,7 @@ where
 
     let (resp_body, ws_config) = {
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-        let mut recv_header = pin!(resp.recv_header(&mut scratch, None));
+        let mut recv_header = pin!(resp.recv_header(&mut scratch, Some(budget)));
 
         let (resp, resp_body) = loop {
             // ABR: select contains read
@@ -6924,6 +6928,7 @@ mod tests {
     use super::testutil::*;
     use super::*;
     use crate::connmgr::websocket::Decoder;
+    use crate::connmgr::zhttppacket::PacketParse;
     use crate::core::buffer::TmpBuffer;
     use crate::core::channel;
     use std::rc::Rc;
@@ -7609,8 +7614,8 @@ mod tests {
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
         let buffer_size = 1024;
 
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let packet_buf = Rc::new(RefCell::new(vec![0; 2048]));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * 8));
+        let packet_buf = Rc::new(RefCell::new(vec![0; (buffer_size * 8) + 1024]));
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let timeout = Duration::from_millis(5_000);
@@ -8205,6 +8210,79 @@ mod tests {
         );
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
+    }
+
+    #[test]
+    fn server_stream_expand_header_buffer() {
+        let reactor = Reactor::new(100);
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (_s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (s_stream_from_conn, _r_stream_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            server_stream_fut(
+                token,
+                sock,
+                false,
+                false,
+                s_from_conn,
+                s_stream_from_conn,
+                r_to_conn,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // Create a request with headers larger than the default buffer size (1024 bytes)
+        // This will test the server's ability to expand buffers for large request headers
+        let mut large_req = String::from("GET /path HTTP/1.1\r\nHost: example.com\r\n");
+        for i in 0..18 {
+            large_req.push_str(&format!("X-Long-Request-Header-Name-{}: long-request-header-value-that-exceeds-buffer-{}\r\n", i, i));
+        }
+        large_req.push_str("\r\n");
+
+        // Verify the request is large enough to exceed the 1024-byte buffer and trigger expansion
+        let req_size = large_req.len();
+        assert!(
+            req_size > 1024,
+            "Request headers should exceed 1024 bytes to test expansion, got {} bytes",
+            req_size
+        );
+
+        sock.borrow_mut().add_readable(large_req.as_bytes());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // Should receive the request successfully
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // No other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let mut scratch = zhttppacket::ParseScratch::new();
+        let zreq = zhttppacket::Request::parse(&msg, &mut scratch).unwrap();
+
+        let zhttppacket::RequestPacket::Data(rdata) = zreq.ptype else {
+            panic!("unexpected packet type");
+        };
+
+        // Verify the request was parsed successfully
+        assert_eq!(rdata.uri, "http://example.com/path");
+
+        // The fact that we reach this point without a BufferExceeded error proves
+        // that server header buffer expansion is working correctly.
     }
 
     #[test]
@@ -9302,11 +9380,11 @@ mod tests {
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
 
-        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * 8));
 
         let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
         let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
-        let packet_buf = RefCell::new(vec![0; 2048]);
+        let packet_buf = RefCell::new(vec![0; (buffer_size * 8) + 1024]);
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let mut response_received = false;
@@ -9795,6 +9873,126 @@ mod tests {
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn client_stream_expand_header_buffer() {
+        let reactor = Reactor::new(100);
+
+        let scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>> =
+            memorypool::RcMemoryPool::new(2);
+        let req_mem: memorypool::RcMemoryPool<zhttppacket::OwnedRequest> =
+            memorypool::RcMemoryPool::new(2);
+
+        // Create a client request to test response header buffer expansion
+        let data = concat!(
+            "T172:7:credits,4:1024#7:headers,34:30:12:Content-Type,10:text",
+            "/plain,]]3:uri,24:https://example.com/path,6:method,3:GET,3:s",
+            "eq,1:0#2:id,1:1,4:from,7:handler,11:router-resp,4:true!}",
+        )
+        .as_bytes();
+
+        let msg = Arc::new(zmq::Message::from(data));
+
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (_s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = memorypool::RcMemoryPool::new(1);
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.set_to_addr(Some(addr));
+            shared.set_router_resp(true);
+
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected_addr = b"handler".as_slice();
+
+        // Start the client connection - first message is keep-alive
+        let (addr, _msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // Allow the client to write the HTTP request
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // The HTTP request should have been written
+        let request_data = sock.borrow_mut().take_writable();
+        assert!(!request_data.is_empty());
+
+        // Create a response with headers larger than the default buffer size (1024 bytes)
+        // This will test the client's ability to expand buffers for large response headers
+        let mut large_resp = String::from("HTTP/1.1 200 OK\r\n");
+        for i in 0..30 {
+            large_resp.push_str(&format!("X-Very-Long-Response-Header-Name-{}: very-long-response-header-value-that-takes-up-space-{}\r\n", i, i));
+        }
+        large_resp.push_str("Content-Length: 13\r\n\r\nHello, world!");
+
+        // Verify the response is large enough to exceed the 1024-byte buffer and trigger expansion
+        let resp_size = large_resp.len();
+        assert!(
+            resp_size > 1024,
+            "Response headers should exceed 1024 bytes to test expansion, got {} bytes",
+            resp_size
+        );
+
+        sock.borrow_mut().add_readable(large_resp.as_bytes());
+
+        // Process the large response headers - client_stream_handler uses BufferBudget for expansion
+        assert_eq!(check_poll(executor.step()), None);
+
+        let mut code = None;
+
+        // Look for a response data message
+        while let Ok((addr, msg)) = r_from_conn.try_recv() {
+            assert_eq!(addr.as_deref(), Some(expected_addr));
+
+            let mut scratch = zhttppacket::ParseScratch::new();
+            let zresp = zhttppacket::Response::parse(&msg, &mut scratch).unwrap();
+
+            let zhttppacket::ResponsePacket::Data(rdata) = zresp.ptype else {
+                continue;
+            };
+
+            code.get_or_insert(rdata.code);
+        }
+
+        assert_eq!(code, Some(200));
+
+        // The fact that we reach this point without a BufferExceeded error proves
+        // that client header buffer expansion is working correctly.
     }
 
     #[test]
