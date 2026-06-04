@@ -34,10 +34,8 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::connmgr::counter::{Counter, CounterDec};
 use crate::connmgr::origind;
 use crate::connmgr::pool::Pool;
-use crate::observability::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use crate::connmgr::resolver;
 use crate::connmgr::tls::{AsyncTlsStream, TlsConfigCache, TlsStream, TlsWaker, VerifyMode};
 use crate::connmgr::track::{
@@ -46,9 +44,10 @@ use crate::connmgr::track::{
 use crate::connmgr::websocket;
 use crate::connmgr::zhttppacket;
 use crate::core::buffer::{
-    Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
+    Buffer, BufferBudget, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
 use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
+use crate::core::counter::Counter;
 use crate::core::defer::Defer;
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
@@ -65,6 +64,7 @@ use crate::core::task::{poll_async, CancellationToken};
 use crate::core::time::Timeout;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
+use crate::observability::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
@@ -322,28 +322,6 @@ fn make_zhttp_request(
 }
 
 // Return the capacity increase
-fn resize_write_buffer_if_full(
-    buf: &mut VecRingBuffer,
-    block_size: usize,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec,
-) -> usize {
-    assert!(blocks_max >= 2);
-
-    // All but one block can be used for writing
-    let allowed = blocks_max - 1;
-
-    if buf.remaining_capacity() == 0
-        && buf.capacity() < block_size * allowed
-        && blocks_avail.dec(1).is_ok()
-    {
-        buf.resize(buf.capacity() + block_size);
-
-        block_size
-    } else {
-        0
-    }
-}
 
 #[derive(Debug)]
 enum Error {
@@ -752,7 +730,6 @@ struct WebSocketRead<'a, R: AsyncRead> {
 struct WebSocketWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
     buf: &'a mut VecRingBuffer,
-    block_size: usize,
 }
 
 struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
@@ -815,8 +792,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     ) -> Self {
         buf2.clear();
 
-        let block_size = buf2.capacity();
-
         Self {
             r: RefCell::new(WebSocketRead {
                 stream: stream.0,
@@ -825,7 +800,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
             w: RefCell::new(WebSocketWrite {
                 stream: stream.1,
                 buf: buf2,
-                block_size,
             }),
             protocol: websocket::Protocol::new(deflate_config),
         }
@@ -884,10 +858,10 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         Ok(())
     }
 
-    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &mut CounterDec) -> usize {
+    fn expand_write_buffer(&self, budget: &mut BufferBudget) -> usize {
         let w = &mut *self.w.borrow_mut();
 
-        resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
+        budget.expand_buffer_if_needed(w.buf)
     }
 
     fn is_sending_message(&self) -> bool {
@@ -1505,7 +1479,7 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
 async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
     id: &str,
     req: &http1::Request<'_, '_>,
-    req_body: &mut server::RequestBodyKeepHeader<'_, '_, R, W>,
+    req_body: &mut server::RequestBodyKeepHeader<'_, '_, '_, '_, R, W>,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
     body_buf: &mut ContiguousBuffer,
@@ -1600,11 +1574,11 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
-    // be consumed by discard_header(). be careful with early returns from
-    // This function and do not use the ?-operator
+    // be consumed by discard_header(). Be careful with early returns from
+    // this function and do not use the ?-operator
     let (req_header, mut req_body) = {
         // ABR: discard_while
-        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, None))).await {
             Ok(ret) => ret,
             Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
@@ -2274,8 +2248,7 @@ async fn stream_send_body<R1, R2, R, W>(
     resp_body: server::ResponseBody<'_, R, W>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
 ) -> Result<server::Finished, Error>
 where
     R1: Fn(),
@@ -2354,9 +2327,7 @@ where
                         }
 
                         if rdata.more {
-                            out_credits += resp_body
-                                .expand_write_buffer(blocks_max, || blocks_avail.dec(1).is_ok())?
-                                as u32;
+                            out_credits += resp_body.expand_write_buffer(budget)? as u32;
                         } else {
                             prepare_done = true;
                         }
@@ -2427,8 +2398,7 @@ async fn server_stream_send_body<'a, R1, R2, R, W>(
     recv_buf_size: usize,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
 ) -> Result<client::Response<'a, R>, Error>
 where
     R1: Fn(),
@@ -2553,9 +2523,7 @@ where
                         }
 
                         if rdata.more {
-                            out_credits += req_body
-                                .expand_write_buffer(blocks_max, || blocks_avail.dec(1).is_ok())?
-                                as u32;
+                            out_credits += req_body.expand_write_buffer(budget)? as u32;
                         } else {
                             prepare_done = true;
                         }
@@ -2620,8 +2588,7 @@ async fn stream_websocket<S, R1, R2>(
     stream: RefCell<&mut S>,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2818,8 +2785,7 @@ where
                                 return Err(e);
                             }
 
-                            out_credits +=
-                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
+                            out_credits += handler.expand_write_buffer(budget) as u32;
 
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
@@ -2971,8 +2937,7 @@ async fn server_stream_websocket<S, R1, R2>(
     stream: RefCell<&mut S>,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3165,8 +3130,7 @@ where
                                 return Err(e);
                             }
 
-                            out_credits +=
-                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
+                            out_credits += handler.expand_write_buffer(budget) as u32;
 
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
@@ -3468,6 +3432,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     req_header: server::RequestHeader<'a, 'b, R, W>,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
+    budget: &mut BufferBudget<'_>,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
@@ -3488,11 +3453,11 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     // Receive request header
 
     // WARNING: the returned req_header must not be dropped and instead must
-    // be consumed by discard_header(). be careful with early returns from
-    // This function and do not use the ?-operator
+    // be consumed by discard_header(). Be careful with early returns from
+    // this function and do not use the ?-operator
     let (req_header, req_body) = {
         // ABR: discard_while
-        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch, Some(budget)))).await {
             Ok(ret) => ret,
             Err(e) if e.is_eof() => return Ok(None),
             Err(e) => return Err(e),
@@ -3562,6 +3527,7 @@ async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     secure: bool,
     send_buf_size: usize,
     recv_buf_size: usize,
+    budget: &mut BufferBudget<'_>,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -3591,6 +3557,7 @@ where
         req_header,
         peer_addr,
         secure,
+        budget,
         allow_compression,
         packet_buf,
         instance_id,
@@ -3905,8 +3872,7 @@ async fn server_stream_handler<S, R1, R2>(
     secure: bool,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -3946,6 +3912,7 @@ where
             secure,
             send_buf_size,
             recv_buf_size,
+            budget,
             allow_compression,
             packet_buf,
             tmp_buf,
@@ -4055,8 +4022,7 @@ where
             stream,
             buf1,
             buf2,
-            blocks_max,
-            blocks_avail,
+            budget,
             messages_max,
             tmp_buf,
             refresh_stream_timeout,
@@ -4076,8 +4042,7 @@ where
             resp_body,
             &mut zsess_in,
             &zsess_out,
-            blocks_max,
-            blocks_avail,
+            budget,
         )
         .await?;
 
@@ -4137,7 +4102,9 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 session_timeout.set_deadline(reactor.now() + ZHTTP_SESSION_TIMEOUT);
             };
 
-            let mut blocks_avail = CounterDec::new(blocks_avail);
+            let mut budget = BufferBudget::new(blocks_avail)
+                .with_blocks_max(blocks_max.saturating_sub(2)) // Subtract 2 for implied read+write base allocation
+                .with_block_size(buffer_size);
 
             let handler = pin!(server_stream_handler(
                 cid.as_ref(),
@@ -4146,8 +4113,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 secure,
                 &mut buf1,
                 &mut buf2,
-                blocks_max,
-                &mut blocks_avail,
+                &mut budget,
                 messages_max,
                 allow_compression,
                 &packet_buf,
@@ -4812,7 +4778,7 @@ where
 
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
-    let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
+    let (resp, resp_body) = resp.recv_header(&mut scratch, None).await?;
 
     let (zresp, finished) = {
         let resp_ref = resp.get();
@@ -5182,8 +5148,7 @@ async fn client_stream_handler<S, R1, R2>(
     mut follow_redirects: bool,
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
-    blocks_max: usize,
-    blocks_avail: &mut CounterDec<'_>,
+    budget: &mut BufferBudget<'_>,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5397,8 +5362,7 @@ where
         recv_buf_size,
         zsess_in,
         zsess_out,
-        blocks_max,
-        blocks_avail,
+        budget,
     )
     .await?;
 
@@ -5408,7 +5372,7 @@ where
         shared.set_state("receiving response header");
 
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-        let mut recv_header = pin!(resp.recv_header(&mut scratch));
+        let mut recv_header = pin!(resp.recv_header(&mut scratch, Some(budget)));
 
         let (resp, resp_body) = loop {
             // ABR: select contains read
@@ -5692,8 +5656,7 @@ where
             stream,
             buf1,
             buf2,
-            blocks_max,
-            blocks_avail,
+            budget,
             messages_max,
             tmp_buf,
             refresh_stream_timeout,
@@ -5887,7 +5850,9 @@ where
         let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
         let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
 
-        let mut blocks_avail = CounterDec::new(blocks_avail);
+        let mut budget = BufferBudget::new(blocks_avail)
+            .with_blocks_max(blocks_max.saturating_sub(2)) // Subtract 2 for implied read+write base allocation
+            .with_block_size(buffer_size);
 
         let mut using_origind = false;
 
@@ -5903,8 +5868,7 @@ where
                     rdata.follow_redirects,
                     &mut buf1,
                     &mut buf2,
-                    blocks_max,
-                    &mut blocks_avail,
+                    &mut budget,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -5927,8 +5891,7 @@ where
                     rdata.follow_redirects,
                     &mut buf1,
                     &mut buf2,
-                    blocks_max,
-                    &mut blocks_avail,
+                    &mut budget,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -5953,8 +5916,7 @@ where
                     rdata.follow_redirects,
                     &mut buf1,
                     &mut buf2,
-                    blocks_max,
-                    &mut blocks_avail,
+                    &mut budget,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -6580,8 +6542,8 @@ pub mod testutil {
 
     pub struct BenchServerReqHandler {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6591,8 +6553,8 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6737,8 +6699,8 @@ pub mod testutil {
 
     pub struct BenchServerReqConnection {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
@@ -6748,8 +6710,8 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
             }
@@ -6866,6 +6828,10 @@ pub mod testutil {
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
 
+        let counter = Counter::new(2);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(2)
+            .with_block_size(buf1.capacity());
         server_stream_handler(
             "1",
             &mut sock,
@@ -6873,8 +6839,7 @@ pub mod testutil {
             secure,
             buf1,
             buf2,
-            2,
-            &mut CounterDec::new(&Counter::new(0)),
+            &mut budget,
             10,
             false,
             &packet_buf,
@@ -6898,9 +6863,9 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandler {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
+        shared_mem: memorypool::RcMemoryPool<StreamSharedData>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -6911,9 +6876,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
-                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
+                shared_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -7045,6 +7010,8 @@ pub mod testutil {
 
         let timeout = Duration::from_millis(5_000);
 
+        let counter = Counter::new(2);
+
         server_stream_connection_inner(
             token,
             &mut cid,
@@ -7054,7 +7021,7 @@ pub mod testutil {
             secure,
             buffer_size,
             2,
-            &Counter::new(0),
+            &counter,
             10,
             &rb_tmp,
             packet_buf,
@@ -7072,9 +7039,9 @@ pub mod testutil {
 
     pub struct BenchServerStreamConnection {
         reactor: Reactor,
-        scratch_mem: Rc<memorypool::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
-        resp_mem: Rc<memorypool::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<memorypool::RcMemory<StreamSharedData>>,
+        scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>>,
+        resp_mem: memorypool::RcMemoryPool<zhttppacket::OwnedResponse>,
+        shared_mem: memorypool::RcMemoryPool<StreamSharedData>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -7085,9 +7052,9 @@ pub mod testutil {
         pub fn new() -> Self {
             Self {
                 reactor: Reactor::new(100),
-                scratch_mem: Rc::new(memorypool::RcMemory::new(1)),
-                resp_mem: Rc::new(memorypool::RcMemory::new(1)),
-                shared_mem: Rc::new(memorypool::RcMemory::new(1)),
+                scratch_mem: memorypool::RcMemoryPool::new(1),
+                resp_mem: memorypool::RcMemoryPool::new(1),
+                shared_mem: memorypool::RcMemoryPool::new(1),
                 rb_tmp: Rc::new(TmpBuffer::new(1024)),
                 packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
                 tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
@@ -7194,6 +7161,7 @@ mod tests {
     use super::testutil::*;
     use super::*;
     use crate::connmgr::websocket::Decoder;
+    use crate::connmgr::zhttppacket::PacketParse;
     use crate::core::buffer::TmpBuffer;
     use crate::core::channel;
     use std::rc::Rc;
@@ -7310,8 +7278,8 @@ mod tests {
     fn server_req_without_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7427,8 +7395,8 @@ mod tests {
     fn server_req_with_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7578,8 +7546,8 @@ mod tests {
     fn server_req_pipeline() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7745,8 +7713,8 @@ mod tests {
     fn server_req_secure() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -7879,14 +7847,16 @@ mod tests {
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
         let buffer_size = 1024;
 
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let packet_buf = Rc::new(RefCell::new(vec![0; 2048]));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * 8));
+        let packet_buf = Rc::new(RefCell::new(vec![0; (buffer_size * 8) + 1024]));
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let timeout = Duration::from_millis(5_000);
 
-        let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+        let shared_mem = memorypool::RcMemoryPool::new(1);
         let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
+
+        let counter = Counter::new(3);
 
         server_stream_connection_inner(
             token,
@@ -7897,7 +7867,7 @@ mod tests {
             secure,
             buffer_size,
             3,
-            &Counter::new(1),
+            &counter,
             10,
             &rb_tmp,
             packet_buf,
@@ -7917,8 +7887,8 @@ mod tests {
     fn server_stream_without_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8040,8 +8010,8 @@ mod tests {
     fn server_stream_with_body() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8205,8 +8175,8 @@ mod tests {
     fn server_stream_chunked() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8350,8 +8320,8 @@ mod tests {
     fn server_stream_early_response() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8476,11 +8446,84 @@ mod tests {
     }
 
     #[test]
+    fn server_stream_expand_header_buffer() {
+        let reactor = Reactor::new(100);
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (_s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (s_stream_from_conn, _r_stream_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            server_stream_fut(
+                token,
+                sock,
+                false,
+                false,
+                s_from_conn,
+                s_stream_from_conn,
+                r_to_conn,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // Create a request with headers larger than the default buffer size (1024 bytes)
+        // This will test the server's ability to expand buffers for large request headers
+        let mut large_req = String::from("GET /path HTTP/1.1\r\nHost: example.com\r\n");
+        for i in 0..18 {
+            large_req.push_str(&format!("X-Long-Request-Header-Name-{}: long-request-header-value-that-exceeds-buffer-{}\r\n", i, i));
+        }
+        large_req.push_str("\r\n");
+
+        // Verify the request is large enough to exceed the 1024-byte buffer and trigger expansion
+        let req_size = large_req.len();
+        assert!(
+            req_size > 1024,
+            "Request headers should exceed 1024 bytes to test expansion, got {} bytes",
+            req_size
+        );
+
+        sock.borrow_mut().add_readable(large_req.as_bytes());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // Should receive the request successfully
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // No other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let mut scratch = zhttppacket::ParseScratch::new();
+        let zreq = zhttppacket::Request::parse(&msg, &mut scratch).unwrap();
+
+        let zhttppacket::RequestPacket::Data(rdata) = zreq.ptype else {
+            panic!("unexpected packet type");
+        };
+
+        // Verify the request was parsed successfully
+        assert_eq!(rdata.uri, "http://example.com/path");
+
+        // The fact that we reach this point without a BufferExceeded error proves
+        // that server header buffer expansion is working correctly.
+    }
+
+    #[test]
     fn server_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8627,8 +8670,8 @@ mod tests {
     fn server_stream_disconnect() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let resp_mem = memorypool::RcMemoryPool::new(1);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8761,8 +8804,8 @@ mod tests {
     fn server_websocket() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -8935,8 +8978,8 @@ mod tests {
     fn server_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9132,8 +9175,8 @@ mod tests {
     fn server_websocket_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let resp_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 
@@ -9339,8 +9382,8 @@ mod tests {
     fn client_req_without_id() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let req_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let req_mem = memorypool::RcMemoryPool::new(1);
 
         let data = concat!(
             "T74:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9448,8 +9491,8 @@ mod tests {
     fn client_req_with_id() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-        let req_mem = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_mem = memorypool::RcMemoryPool::new(1);
+        let req_mem = memorypool::RcMemoryPool::new(1);
 
         let data = concat!(
             "T83:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
@@ -9570,11 +9613,11 @@ mod tests {
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
 
-        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * 8));
 
         let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
         let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
-        let packet_buf = RefCell::new(vec![0; 2048]);
+        let packet_buf = RefCell::new(vec![0; (buffer_size * 8) + 1024]);
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
         let mut response_received = false;
@@ -9610,6 +9653,11 @@ mod tests {
             &refresh_session_timeout,
         );
 
+        let counter = Counter::new(3);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(3)
+            .with_block_size(buffer_size);
+
         let _persistent = client_stream_handler(
             "test",
             &mut sock,
@@ -9620,8 +9668,7 @@ mod tests {
             false,
             &mut buf1,
             &mut buf2,
-            3,
-            &mut CounterDec::new(&Counter::new(1)),
+            &mut budget,
             10,
             allow_compression,
             &tmp_buf,
@@ -9640,8 +9687,8 @@ mod tests {
     fn client_stream() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9674,7 +9721,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -9851,8 +9898,8 @@ mod tests {
     fn client_stream_router_resp() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T187:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9886,7 +9933,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -10063,11 +10110,131 @@ mod tests {
     }
 
     #[test]
+    fn client_stream_expand_header_buffer() {
+        let reactor = Reactor::new(100);
+
+        let scratch_mem: memorypool::RcMemoryPool<RefCell<zhttppacket::ParseScratch<'static>>> =
+            memorypool::RcMemoryPool::new(2);
+        let req_mem: memorypool::RcMemoryPool<zhttppacket::OwnedRequest> =
+            memorypool::RcMemoryPool::new(2);
+
+        // Create a client request to test response header buffer expansion
+        let data = concat!(
+            "T172:7:credits,4:1024#7:headers,34:30:12:Content-Type,10:text",
+            "/plain,]]3:uri,24:https://example.com/path,6:method,3:GET,3:s",
+            "eq,1:0#2:id,1:1,4:from,7:handler,11:router-resp,4:true!}",
+        )
+        .as_bytes();
+
+        let msg = Arc::new(zmq::Message::from(data));
+
+        let scratch = memorypool::Rc::try_new_in(
+            RefCell::new(zhttppacket::ParseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = memorypool::Rc::try_new_in(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (_s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = memorypool::RcMemoryPool::new(1);
+            let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.set_to_addr(Some(addr));
+            shared.set_router_resp(true);
+
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected_addr = b"handler".as_slice();
+
+        // Start the client connection - first message is keep-alive
+        let (addr, _msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // Allow the client to write the HTTP request
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // The HTTP request should have been written
+        let request_data = sock.borrow_mut().take_writable();
+        assert!(!request_data.is_empty());
+
+        // Create a response with headers larger than the default buffer size (1024 bytes)
+        // This will test the client's ability to expand buffers for large response headers
+        let mut large_resp = String::from("HTTP/1.1 200 OK\r\n");
+        for i in 0..30 {
+            large_resp.push_str(&format!("X-Very-Long-Response-Header-Name-{}: very-long-response-header-value-that-takes-up-space-{}\r\n", i, i));
+        }
+        large_resp.push_str("Content-Length: 13\r\n\r\nHello, world!");
+
+        // Verify the response is large enough to exceed the 1024-byte buffer and trigger expansion
+        let resp_size = large_resp.len();
+        assert!(
+            resp_size > 1024,
+            "Response headers should exceed 1024 bytes to test expansion, got {} bytes",
+            resp_size
+        );
+
+        sock.borrow_mut().add_readable(large_resp.as_bytes());
+
+        // Process the large response headers - client_stream_handler uses BufferBudget for expansion
+        assert_eq!(check_poll(executor.step()), None);
+
+        let mut code = None;
+
+        // Look for a response data message
+        while let Ok((addr, msg)) = r_from_conn.try_recv() {
+            assert_eq!(addr.as_deref(), Some(expected_addr));
+
+            let mut scratch = zhttppacket::ParseScratch::new();
+            let zresp = zhttppacket::Response::parse(&msg, &mut scratch).unwrap();
+
+            let zhttppacket::ResponsePacket::Data(rdata) = zresp.ptype else {
+                continue;
+            };
+
+            code.get_or_insert(rdata.code);
+        }
+
+        assert_eq!(code, Some(200));
+
+        // The fact that we reach this point without a BufferExceeded error proves
+        // that client header buffer expansion is working correctly.
+    }
+
+    #[test]
     fn client_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -10100,7 +10267,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -10228,8 +10395,8 @@ mod tests {
     fn client_websocket() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -10261,7 +10428,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));
@@ -10480,8 +10647,8 @@ mod tests {
     fn client_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = Rc::new(memorypool::RcMemory::new(2));
-        let req_mem = Rc::new(memorypool::RcMemory::new(2));
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let req_mem = memorypool::RcMemoryPool::new(2);
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -10513,7 +10680,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            let shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let shared_mem = memorypool::RcMemoryPool::new(1);
             let shared = memorypool::Rc::try_new_in(StreamSharedData::new(), &shared_mem).unwrap();
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.set_to_addr(Some(addr));

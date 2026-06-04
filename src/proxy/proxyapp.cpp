@@ -30,6 +30,7 @@
 #include "proxyargsdata.h"
 #include "proxyengine.h"
 #include "rust/bindings.h"
+#include "rustthread.h"
 #include "settings.h"
 #include "simplehttpserver.h"
 #include "timer.h"
@@ -42,9 +43,7 @@
 #include <QWaitCondition>
 #include <assert.h>
 #include <boost/algorithm/string.hpp>
-#include <pthread.h>
 #include <string>
-#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -136,7 +135,7 @@ private:
 /// Wraps an Engine instance to run in its own thread
 class EngineThread {
 public:
-    std::thread thread;
+    RustThread::JoinHandle thread;
     QMutex m;
     QWaitCondition w;
     Engine::Configuration config;
@@ -156,15 +155,7 @@ public:
 
         QMutexLocker locker(&m);
 
-        thread = std::thread([=] {
-#ifdef Q_OS_MAC
-            pthread_setname_np(name.toUtf8().data());
-#else
-            pthread_setname_np(pthread_self(), name.toUtf8().data());
-#endif
-
-            run();
-        });
+        thread = RustThread::spawn([=] { run(); }, name.toStdString());
 
         w.wait(&m);
         return (bool)worker;
@@ -246,8 +237,8 @@ public:
     }
 };
 
-static int runLoop(const Engine::Configuration &config, const QStringList &routeLines,
-                   const QString &routesFile, int workerCount) {
+static int runLoop(const QString &logFile, const Engine::Configuration &config,
+                   const QStringList &routeLines, const QString &routesFile, int workerCount) {
     // Plenty for the main thread
     int timersMax = 100;
 
@@ -295,7 +286,7 @@ static int runLoop(const Engine::Configuration &config, const QStringList &route
 
         ProcessQuit::instance()->hup.connect([&] {
             log_info("reloading");
-            log_rotate();
+            log_rotate(logFile);
             domainMap->reload();
         });
 
@@ -350,15 +341,13 @@ extern "C" {
 int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     ProxyArgsData args(argsFfi);
 
-    if (!args.logFile.isEmpty())
-        ffi::log_init(args.logFile.toUtf8().data());
-    else
-        ffi::log_init(nullptr);
+    if (!log_init(args.logFile))
+        return 1;
 
     if (args.logLevel != -1)
-        ffi::log_set_level(args.logLevel);
+        log_setOutputLevel(args.logLevel);
     else
-        ffi::log_set_level(LOG_LEVEL_INFO);
+        log_setOutputLevel(LOG_LEVEL_INFO);
 
     log_debug("starting...");
 
@@ -579,6 +568,6 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     config.prometheusPort = prometheusPort;
     config.prometheusPrefix = prometheusPrefix;
 
-    return runLoop(config, args.routeLines, routesFile, workerCount);
+    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount);
 }
 }

@@ -58,7 +58,8 @@ public:
 
         // For network access
         ZhttpManager *zhttpOut;
-        Url currentUri;
+        Url requestUri; // What was fetched at session start
+        Url currentUri; // Where we are now, potentially after following next links
         QString route;
         bool trusted;
         std::shared_ptr<RateLimiter> limiter;

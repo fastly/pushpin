@@ -548,7 +548,7 @@ fn chain_from_pem(pem: &[u8]) -> Result<Vec<X509>, ssl::Error> {
 
     if chain.is_empty() {
         // we want at least one cert, however stack_from_pem() doesn't
-        // Return an error if the data doesn't contain any certs. To
+        // return an error if the data doesn't contain any certs. To
         // generate an ssl::Error in this case, we'll use from_pem() on
         // empty data
         return Err(X509::from_pem(&[])
@@ -742,7 +742,7 @@ where
 
         // safety: TlsStream will take ownership of outer_box, and the value
         // referred to by outer_box is on the heap, and outer_box will not
-        // Be dropped until TlsStream is dropped, so the value referred to
+        // be dropped until TlsStream is dropped, so the value referred to
         // by outer_box will remain valid for the lifetime of TlsStream.
         // further, outer is a mutable reference, and will only ever be
         // exclusively mutably accessed, either when wrapped by SslStream

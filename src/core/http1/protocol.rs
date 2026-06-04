@@ -664,19 +664,19 @@ impl<const N: usize> OwnedResponse<'_, N> {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ServerState {
-    // call: recv_request
+    // Call: recv_request
     // Next: ReceivingRequest, ReceivingBody, AwaitingResponse
     ReceivingRequest,
 
-    // call: recv_body
+    // Call: recv_body
     // Next: ReceivingBody, AwaitingResponse
     ReceivingBody,
 
-    // call: send_response
+    // Call: send_response
     // Next: SendingBody
     AwaitingResponse,
 
-    // call: send_body
+    // Call: send_body
     // Next: SendingBody, Finished
     SendingBody,
 
@@ -1394,6 +1394,13 @@ pub struct ClientResponse {
 }
 
 impl ClientResponse {
+    #[cfg(test)]
+    pub fn new() -> Self {
+        Self {
+            state: ClientState::new(),
+        }
+    }
+
     pub fn recv_header<const N: usize>(
         mut self,
         rbuf: FilledBuf,

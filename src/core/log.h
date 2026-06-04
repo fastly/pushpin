@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -21,20 +22,22 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include "rust/bindings.h"
 #include <QString>
 
-// Really simply logging stuff
+enum LogLevel {
+    LOG_LEVEL_ERROR = ffi::LOG_LEVEL_ERROR,
+    LOG_LEVEL_WARNING = ffi::LOG_LEVEL_WARN,
+    LOG_LEVEL_INFO = ffi::LOG_LEVEL_INFO,
+    LOG_LEVEL_DEBUG = ffi::LOG_LEVEL_DEBUG,
+    LOG_LEVEL_TRACE = ffi::LOG_LEVEL_TRACE,
+};
 
-#define LOG_LEVEL_ERROR 0
-#define LOG_LEVEL_WARNING 1
-#define LOG_LEVEL_INFO 2
-#define LOG_LEVEL_DEBUG 3
+bool log_init(const QString &outputFile = QString());
 
-void log_startClock();
 int log_outputLevel();
 void log_setOutputLevel(int level);
-bool log_setFile(const QString &fname);
-bool log_rotate();
+bool log_rotate(const QString &outputFile);
 
 void log(int level, const char *fmt, ...);
 void log_error(const char *fmt, ...);

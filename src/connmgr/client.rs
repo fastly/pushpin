@@ -20,7 +20,6 @@ use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, make_zhttp_response, ConnectionPool,
     StreamSharedData,
 };
-use crate::connmgr::counter::Counter;
 use crate::connmgr::origind;
 use crate::connmgr::resolver::Resolver;
 use crate::connmgr::tls::TlsConfigCache;
@@ -28,6 +27,7 @@ use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
+use crate::core::counter::Counter;
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::list::{SlabList, SlabNode};
@@ -801,7 +801,12 @@ impl Worker {
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
         // Large enough to fit anything
-        let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
+        let packet_buf = Rc::new(RefCell::new(vec![
+            0;
+            (buffer_size * connection_blocks_max)
+                + body_buffer_size
+                + 4096
+        ]));
 
         // Same size as working buffers
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
@@ -999,8 +1004,8 @@ impl Worker {
 
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * req_maxconn);
 
-        let req_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
-        let req_req_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
+        let req_scratch_mem = memorypool::RcMemoryPool::new(msg_retained_max);
+        let req_req_mem = memorypool::RcMemoryPool::new(msg_retained_max);
 
         // max_senders is 1 per connection + 1 for this task
         let (zreq_sender, zreq_receiver) = local_channel(handle_bound, req_maxconn + 1);
@@ -1209,7 +1214,7 @@ impl Worker {
     ) {
         let reactor = Reactor::current().unwrap();
 
-        let stream_shared_mem = Rc::new(memorypool::RcMemory::new(stream_maxconn));
+        let stream_shared_mem = memorypool::RcMemoryPool::new(stream_maxconn);
 
         let zreceiver_pool = Rc::new(ChannelPool::new(stream_maxconn));
         for _ in 0..stream_maxconn {
@@ -1218,9 +1223,9 @@ impl Worker {
 
         let msg_retained_max = 1 + (MSG_RETAINED_PER_CONNECTION_MAX * stream_maxconn);
 
-        let stream_scratch_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
-        let stream_req_mem = Rc::new(memorypool::RcMemory::new(msg_retained_max));
-        let stream_polled_mem = Rc::new(memorypool::RcMemory::new(conns.max()));
+        let stream_scratch_mem = memorypool::RcMemoryPool::new(msg_retained_max);
+        let stream_req_mem = memorypool::RcMemoryPool::new(msg_retained_max);
+        let stream_polled_mem = memorypool::RcMemoryPool::new(conns.max());
 
         // Bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
@@ -1889,8 +1894,8 @@ impl Client {
             let (done, _) = local_channel(1, 1);
             let (sender, _) = local_channel(1, 1);
 
-            let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-            let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
+            let req_scratch_mem = memorypool::RcMemoryPool::new(1);
+            let req_req_mem = memorypool::RcMemoryPool::new(1);
 
             let scratch = memorypool::Rc::try_new_in(
                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1954,8 +1959,8 @@ impl Client {
             let conn_items = Rc::new(RefCell::new(ConnectionItems::new(1, batch)));
             let conns = Rc::new(Connections::new(conn_items, 1));
 
-            let req_scratch_mem = Rc::new(memorypool::RcMemory::new(1));
-            let req_req_mem = Rc::new(memorypool::RcMemory::new(1));
+            let req_scratch_mem = memorypool::RcMemoryPool::new(1);
+            let req_req_mem = memorypool::RcMemoryPool::new(1);
 
             let scratch = memorypool::Rc::try_new_in(
                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1978,7 +1983,7 @@ impl Client {
             let tls_config_cache = Arc::new(TlsConfigCache::new());
             let pool = Arc::new(ConnectionPool::new(0));
 
-            let stream_shared_mem = Rc::new(memorypool::RcMemory::new(1));
+            let stream_shared_mem = memorypool::RcMemoryPool::new(1);
 
             let shared =
                 memorypool::Rc::try_new_in(StreamSharedData::new(), &stream_shared_mem).unwrap();

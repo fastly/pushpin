@@ -776,8 +776,8 @@ pub fn deflate_codec_state_size() -> usize {
     encoder_size + decoder_size
 }
 
-// call preprocess_fn on any bytes about to be decoded. this can be used
-// To apply mask processing as needed
+// Calls preprocess_fn on any bytes about to be decoded. This can be used
+// to apply mask processing as needed
 fn decode_from_buffer<T, D, F>(
     src: &mut T,
     limit: usize,
@@ -907,15 +907,15 @@ pub enum CompressionMode {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum State {
-    // call: send_frame, recv_frame
+    // Call: send_frame, recv_frame
     // Next: Connected, PeerClosed, Closing
     Connected,
 
-    // call: send_frame
+    // Call: send_frame
     // Next: PeerClosed, Finished
     PeerClosed,
 
-    // call: recv_frame
+    // Call: recv_frame
     // Next: Closing, Finished
     Closing,
 

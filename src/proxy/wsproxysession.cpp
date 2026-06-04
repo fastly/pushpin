@@ -372,11 +372,10 @@ public:
 
         route = entry;
 
-        log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host),
-                  route.targets.count());
+        log_debug("wsproxysession: %p route has %d targets", q, route.targets.count());
 
         if (route.isNull()) {
-            reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
+            reject(false, 502, "Bad Gateway", "Route not found");
             return;
         }
 
@@ -761,9 +760,7 @@ public:
             tryReadIn();
     }
 
-    void in_framesWritten(int count, int contentBytes) {
-        Q_UNUSED(contentBytes);
-
+    void in_framesWritten(int count, [[maybe_unused]] int contentBytes) {
         for (int n = 0; n < count; ++n) {
             bool fromSendEvent = inPendingFrames.takeFirst();
             if (fromSendEvent)

@@ -451,7 +451,7 @@ pub struct LocalRegistration {
 
 impl LocalRegistration {
     pub fn new(
-        memory: &Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
+        memory: &memorypool::RcMemoryPool<LocalRegistrationEntry>,
     ) -> (Self, LocalSetReadiness) {
         let reg = memorypool::Rc::try_new_in(
             LocalRegistrationEntry {
@@ -531,7 +531,7 @@ pub struct Poller {
     poll: Poll,
     events: Events,
     custom_sources: CustomSources,
-    local_registration_memory: Rc<memorypool::RcMemory<LocalRegistrationEntry>>,
+    local_registration_memory: memorypool::RcMemoryPool<LocalRegistrationEntry>,
     local_budget: u32,
 }
 
@@ -545,7 +545,7 @@ impl Poller {
             poll,
             events,
             custom_sources,
-            local_registration_memory: Rc::new(memorypool::RcMemory::new(max_custom_sources)),
+            local_registration_memory: memorypool::RcMemoryPool::new(max_custom_sources),
             local_budget: LOCAL_BUDGET,
         })
     }
@@ -590,7 +590,7 @@ impl Poller {
         self.custom_sources.deregister(registration)
     }
 
-    pub fn local_registration_memory(&self) -> &Rc<memorypool::RcMemory<LocalRegistrationEntry>> {
+    pub fn local_registration_memory(&self) -> &memorypool::RcMemoryPool<LocalRegistrationEntry> {
         &self.local_registration_memory
     }
 

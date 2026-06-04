@@ -551,9 +551,6 @@ public:
     TestState(std::function<void(int)> loop_wait) {
         qRegisterMetaType<QList<StatsPacket>>();
 
-        log_setOutputLevel(LOG_LEVEL_WARNING);
-        // log_setOutputLevel(LOG_LEVEL_DEBUG);
-
         QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
         QDir configDir(rootDir.filePath("src/proxy"));
         QDir outDir(qgetenv("OUT_DIR"));

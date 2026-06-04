@@ -69,9 +69,7 @@ public:
         handle(req);
     }
 
-    void req_bytesWritten(ZhttpRequest *req, int written) {
-        Q_UNUSED(written);
-
+    void req_bytesWritten(ZhttpRequest *req, [[maybe_unused]] int written) {
         if (!req->isFinished())
             return;
 
@@ -150,8 +148,6 @@ public:
     std::unique_ptr<ZhttpManager> zhttpOut;
 
     TestState(std::function<void(int)> loop_wait) {
-        log_setOutputLevel(LOG_LEVEL_WARNING);
-
         QDir outDir(qgetenv("OUT_DIR"));
         QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
