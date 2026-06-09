@@ -1187,8 +1187,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 3);
 
         r.write(b"678").unwrap();
-        let mut bufs_arr = [&b""[..]; 8];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.remaining_capacity(), 0);
@@ -1222,8 +1222,8 @@ mod tests {
         r.write(b"12345").unwrap();
         r.read(&mut buf[..2]).unwrap();
 
-        let mut bufs_arr = [&b""[..]; 8];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 3);
         assert_eq!(r.read_buf(), b"345");
@@ -1242,8 +1242,8 @@ mod tests {
         r.write(b"6789a").unwrap();
         r.read(&mut buf[..2]).unwrap();
         r.write(b"bc").unwrap();
-        let mut bufs_arr = [&b""[..]; 8];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"56789a");
@@ -1260,8 +1260,8 @@ mod tests {
 
         r.read(&mut buf[..6]).unwrap();
         r.write(b"def123").unwrap();
-        let mut bufs_arr = [&b""[..]; 8];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bc");
@@ -1271,8 +1271,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 0);
 
         r.align();
-        let mut bufs_arr = [&b""[..]; 8];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bcdef123");
