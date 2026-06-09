@@ -181,9 +181,9 @@ fn write_vectored_offset_inner<'a, W: Write>(
 }
 
 /// Stack-allocates space for N IoSlices and calls `write_vectored_offset_inner`.
-fn write_vectored_offset_sized<'a, W: Write, const N: usize>(
+fn write_vectored_offset_sized<W: Write, const N: usize>(
     writer: &mut W,
-    bufs: &[&'a [u8]],
+    bufs: &[&[u8]],
     first_buf_offset: usize,
 ) -> Result<usize, io::Error> {
     // SAFETY: Creating an uninitialized array of MaybeUninit is always safe
