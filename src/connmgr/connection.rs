@@ -43,7 +43,7 @@ use crate::connmgr::track::{
 use crate::connmgr::websocket;
 use crate::connmgr::zhttppacket;
 use crate::core::buffer::{
-    Buffer, BufferBudget, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
+    Buffer, BufferBudget, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, BUFFER_BUFS_MAX,
 };
 use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
 use crate::core::counter::Counter;
@@ -708,9 +708,8 @@ impl<W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
             return Poll::Pending;
         }
 
-        // protocol.send_message_content may add 1 element to vector
-        let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-        let mut bufs = w.buf.read_bufs_mut(&mut buf_arr).limit(f.avail);
+        let mut scratch = mem::MaybeUninit::<[&mut [u8]; BUFFER_BUFS_MAX]>::uninit();
+        let mut bufs = w.buf.read_bufs_mut(&mut scratch).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),

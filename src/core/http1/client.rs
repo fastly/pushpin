@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::buffer::{Buffer, BufferBudget, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, BufferBudget, VecRingBuffer, BUFFER_BUFS_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
@@ -306,11 +306,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                     let req_body = w.req_body.take().unwrap();
 
-                    // req_body.send() expects the input to leave room for at
-                    // least two more buffers in case chunked encoding is
-                    // used (for chunked header and footer)
-                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.read_bufs(&mut buf_arr);
+                    let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+                    let bufs = w.buf.read_bufs(&mut scratch);
 
                     match req_body.send(
                         &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
