@@ -18,7 +18,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::core::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
+use crate::core::buffer::{cap_bufs, write_vectored_offset, FilledBuf, LimitBufs};
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::convert::TryFrom;
@@ -30,6 +30,8 @@ use std::str;
 const CHUNK_SIZE_MAX: usize = 0xffff;
 const CHUNK_HEADER_SIZE_MAX: usize = 6; // Ffff\r\n
 const CHUNK_FOOTER: &[u8] = b"\r\n";
+
+const SEND_BODY_BUFS_MAX: usize = 8;
 
 fn parse_as_int(src: &[u8]) -> Result<usize, io::Error> {
     let int_str = str::from_utf8(src);
@@ -293,6 +295,7 @@ fn write_chunk<W: Write>(
     chunk: &mut Option<Chunk>,
     max_size: usize,
 ) -> Result<usize, io::Error> {
+    assert!(content.len() <= SEND_BODY_BUFS_MAX);
     assert!(max_size <= CHUNK_SIZE_MAX);
 
     let mut content_len = 0;
@@ -327,11 +330,13 @@ fn write_chunk<W: Write>(
 
     let total = cheader.len() + data_size + footer.len();
 
-    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
+    // Make the slice set mutable so we can limit it
+    let mut content = ArrayVec::<&[u8], { SEND_BODY_BUFS_MAX }>::try_from(content).unwrap();
     let content = content.as_mut_slice().limit(data_size);
 
     let size = {
-        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
+        // Add 2 for header and footer
+        let mut out = ArrayVec::<&[u8], { SEND_BODY_BUFS_MAX + 2 }>::new();
 
         out.push(cheader);
 
@@ -1043,6 +1048,10 @@ impl<'buf, 'headers> ServerProtocol {
     ) -> Result<usize, Error> {
         assert_eq!(self.state, ServerState::SendingBody);
 
+        // Cap to some reasonable number of bufs so we can use a fixed array for vectored I/O
+        let (src, capped) = cap_bufs(src, SEND_BODY_BUFS_MAX);
+        let end = end && !capped;
+
         let mut src_len = 0;
         for buf in src.iter() {
             src_len += buf.len();
@@ -1310,6 +1319,10 @@ impl ClientRequestBody {
         headers: Option<&[u8]>,
     ) -> SendStatus<ClientResponse, Self, Error> {
         let state = &mut self.state;
+
+        // Cap to some reasonable number of bufs so we can use a fixed array for vectored I/O
+        let (src, capped) = cap_bufs(src, SEND_BODY_BUFS_MAX);
+        let end = end && !capped;
 
         let mut src_len = 0;
         for buf in src.iter() {

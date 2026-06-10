@@ -27,7 +27,9 @@ use std::slice;
 #[cfg(test)]
 use std::io::Read;
 
-pub const VECTORED_MAX: usize = 8;
+/// The maximum number of contiguous buffers that may be returned by Buffer trait methods.
+/// This is 2 in the case of RingBuffer due to its wraparound nature.
+pub const BUFFER_BUFS_MAX: usize = 2;
 
 pub fn trim_for_display(s: &str, max: usize) -> String {
     // NOTE: O(n)
@@ -150,6 +152,45 @@ impl Buffer for io::Cursor<&mut [u8]> {
     }
 }
 
+/// Converts a set of u8 slices to a set of IoSlices, skipping `first_buf_offset` bytes of the
+/// first slice, and writes them to `writer`. The caller must supply the memory to use for the
+/// IoSlices.
+fn write_vectored_offset_inner<'a, W: Write>(
+    writer: &mut W,
+    bufs: &[&'a [u8]],
+    first_buf_offset: usize,
+    scratch: &mut [MaybeUninit<io::IoSlice<'a>>],
+) -> Result<usize, io::Error> {
+    let mut count = 0;
+
+    for (i, (&buf, out)) in bufs.iter().zip(scratch.iter_mut()).enumerate() {
+        let buf = if i == 0 {
+            &buf[first_buf_offset..]
+        } else {
+            buf
+        };
+
+        out.write(io::IoSlice::new(buf));
+        count += 1;
+    }
+
+    // SAFETY: we just initialized count elements
+    let bufs = unsafe { slice::from_raw_parts(scratch.as_ptr() as *const io::IoSlice, count) };
+
+    writer.write_vectored(bufs)
+}
+
+/// Stack-allocates space for N IoSlices and calls `write_vectored_offset_inner`.
+fn write_vectored_offset_sized<W: Write, const N: usize>(
+    writer: &mut W,
+    bufs: &[&[u8]],
+    first_buf_offset: usize,
+) -> Result<usize, io::Error> {
+    // SAFETY: Creating an uninitialized array of MaybeUninit is always safe
+    let mut scratch: [MaybeUninit<io::IoSlice>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+    write_vectored_offset_inner(writer, bufs, first_buf_offset, &mut scratch)
+}
+
 pub fn write_vectored_offset<W: Write>(
     writer: &mut W,
     bufs: &[&[u8]],
@@ -177,17 +218,45 @@ pub fn write_vectored_offset<W: Write>(
         start += 1;
     }
 
-    let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
-    let mut arr_len = 0;
+    let bufs = &bufs[start..];
 
-    for (index, &buf) in bufs.iter().enumerate().skip(start) {
-        let buf = if index == start { &buf[offset..] } else { buf };
-
-        arr[arr_len] = io::IoSlice::new(buf);
-        arr_len += 1;
+    // Dispatch to appropriately sized function
+    match bufs.len() {
+        0..=8 => write_vectored_offset_sized::<W, 8>(writer, bufs, offset),
+        9..=16 => write_vectored_offset_sized::<W, 16>(writer, bufs, offset),
+        17..=32 => write_vectored_offset_sized::<W, 32>(writer, bufs, offset),
+        33..=64 => write_vectored_offset_sized::<W, 64>(writer, bufs, offset),
+        65..=128 => write_vectored_offset_sized::<W, 128>(writer, bufs, offset),
+        129..=256 => write_vectored_offset_sized::<W, 256>(writer, bufs, offset),
+        257..=512 => write_vectored_offset_sized::<W, 512>(writer, bufs, offset),
+        513..=1024 => write_vectored_offset_sized::<W, 1024>(writer, bufs, offset),
+        _ => {
+            // Fall back to heap allocation for truly massive cases
+            let mut scratch = vec![MaybeUninit::uninit(); bufs.len()];
+            write_vectored_offset_inner(writer, bufs, offset, &mut scratch)
+        }
     }
+}
 
-    writer.write_vectored(&arr[..arr_len])
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs<'a, 'b: 'a>(bufs: &'a [&'b [u8]], max: usize) -> (&'a [&'b [u8]], bool) {
+    if bufs.len() > max {
+        (&bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
+}
+
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs_mut<'a, 'b: 'a>(
+    bufs: &'a mut [&'b mut [u8]],
+    max: usize,
+) -> (&'a mut [&'b mut [u8]], bool) {
+    if bufs.len() > max {
+        (&mut bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
 }
 
 struct LimitBufsRestore<T> {
@@ -1118,8 +1187,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 3);
 
         r.write(b"678").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.remaining_capacity(), 0);
@@ -1153,8 +1222,8 @@ mod tests {
         r.write(b"12345").unwrap();
         r.read(&mut buf[..2]).unwrap();
 
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 3);
         assert_eq!(r.read_buf(), b"345");
@@ -1173,8 +1242,8 @@ mod tests {
         r.write(b"6789a").unwrap();
         r.read(&mut buf[..2]).unwrap();
         r.write(b"bc").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"56789a");
@@ -1191,8 +1260,8 @@ mod tests {
 
         r.read(&mut buf[..6]).unwrap();
         r.write(b"def123").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bc");
@@ -1202,8 +1271,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 0);
 
         r.align();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bcdef123");

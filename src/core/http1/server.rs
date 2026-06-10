@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::core::buffer::{Buffer, BufferBudget, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, BufferBudget, ContiguousBuffer, VecRingBuffer, BUFFER_BUFS_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
@@ -767,11 +767,8 @@ impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
                         return Some(Ok(0));
                     }
 
-                    // protocol.send_body() expects the input to leave room
-                    // for at least two more buffers in case chunked encoding
-                    // is used (for chunked header and footer)
-                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.read_bufs(&mut buf_arr);
+                    let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+                    let bufs = w.buf.read_bufs(&mut scratch);
 
                     match w.protocol.send_body(
                         &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),

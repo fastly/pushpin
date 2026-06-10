@@ -16,7 +16,8 @@
  */
 
 use crate::core::buffer::{
-    trim_for_display, write_vectored_offset, Buffer, LimitBufsMut, RingBuffer, VECTORED_MAX,
+    cap_bufs_mut, trim_for_display, write_vectored_offset, Buffer, LimitBufsMut, RingBuffer,
+    BUFFER_BUFS_MAX,
 };
 use crate::core::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
@@ -51,6 +52,7 @@ pub const OPCODE_PING: u8 = 9;
 pub const OPCODE_PONG: u8 = 10;
 
 pub const CONTROL_FRAME_PAYLOAD_MAX: usize = 125;
+pub const SEND_FRAME_BUFS_MAX: usize = 8;
 
 const DEFAULT_MAX_WINDOW_BITS: u8 = 15;
 const SYNC_MARKER: [u8; 4] = [0x00, 0x00, 0xff, 0xff];
@@ -861,8 +863,8 @@ where
         assert!(masked >= read);
         masked -= read;
 
-        let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX]>::uninit();
-        let mut bufs = src.read_bufs_mut(&mut bufs_arr).limit(masked);
+        let mut scratch = MaybeUninit::<[&mut [u8]; BUFFER_BUFS_MAX]>::uninit();
+        let mut bufs = src.read_bufs_mut(&mut scratch).limit(masked);
 
         apply_mask_vectored(bufs.as_slice(), mask, mask_offset + read);
     }
@@ -1024,6 +1026,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
         let sending_frame = &mut *self.sending.frame.borrow_mut();
 
+        // Cap to some reasonable number of bufs so we can use a fixed array for vectored I/O
+        let (src, capped) = cap_bufs_mut(src, SEND_FRAME_BUFS_MAX);
+        let fin = fin && !capped;
+
         let mut src_len = 0;
         for buf in src.iter() {
             src_len += buf.len();
@@ -1064,7 +1070,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         // revert. In the worst case, nothing will be written and all
         // the bytes will be reverted
         let size = with_mask(src, mask, payload_sent, |src| {
-            let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
+            // Add 1 for the potential header
+            let mut out = ArrayVec::<&[u8], { SEND_FRAME_BUFS_MAX + 1 }>::new();
 
             if header_remaining > 0 {
                 out.push(&header[frame.sent..]);
@@ -1285,9 +1292,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 // (including WouldBlock) we can propagate the error without
                 // data loss
                 if read == 0 && (state.enc_buf.len() > 0 || msg.enc_output_end) {
-                    // send_frame adds 1 element to vector
-                    let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-                    let bufs = state.enc_buf.read_bufs_mut(&mut bufs_arr);
+                    let mut scratch = MaybeUninit::<[&mut [u8]; BUFFER_BUFS_MAX]>::uninit();
+                    let bufs = state.enc_buf.read_bufs_mut(&mut scratch);
 
                     // Set on first frame
                     let rsv1 = opcode != OPCODE_CONTINUATION;
