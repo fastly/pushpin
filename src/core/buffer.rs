@@ -448,6 +448,38 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
     }
 }
 
+pub fn write_trait_vectored_helper<W: Write>(
+    w: &mut W,
+    bufs: &[io::IoSlice],
+) -> Result<usize, io::Error> {
+    // Like std, if bufs is empty then we'll call write with no data
+    if bufs.is_empty() {
+        return w.write(&[]);
+    }
+
+    let mut total = 0;
+
+    for buf in bufs {
+        let size = match w.write(buf.as_ref()) {
+            Ok(size) => size,
+            Err(e) => {
+                if e.kind() == io::ErrorKind::WriteZero && total > 0 {
+                    return Ok(total);
+                }
+                return Err(e);
+            }
+        };
+
+        total += size;
+
+        if size < buf.len() {
+            break;
+        }
+    }
+
+    Ok(total)
+}
+
 pub struct ContiguousBuffer {
     buf: Vec<u8>,
     start: usize,
@@ -538,6 +570,10 @@ impl Write for ContiguousBuffer {
         self.write_commit(size);
 
         Ok(size)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -722,6 +758,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Write for RingBuffer<T> {
         }
 
         Ok(pos)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
