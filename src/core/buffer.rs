@@ -476,17 +476,19 @@ pub fn write_trait_vectored_helper<W: Write>(
             continue;
         }
 
-        let size = match w.write(buf.as_ref()) {
-            Ok(size) => size,
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => {
-                if total > 0 {
-                    // Return what we've written so far rather than returning the error. We can
-                    // surface the error in the next call.
-                    break;
-                }
+        let size = loop {
+            match w.write(buf.as_ref()) {
+                Ok(size) => break size,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    if total > 0 {
+                        // Return what we've written so far rather than returning the error. We
+                        // can surface the error in the next call.
+                        return Ok(total);
+                    }
 
-                return Err(e);
+                    return Err(e);
+                }
             }
         };
 
