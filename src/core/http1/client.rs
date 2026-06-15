@@ -64,8 +64,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
 
         let size_limit = self.hbuf.capacity();
 
-        let req_body = match req
-            .send_header(self.hbuf, method, uri, headers, body_size, websocket, 0)
+        let req_body = match req.send_header(self.hbuf, method, uri, headers, body_size, websocket)
         {
             protocol::SendHeaderStatus::Complete(req_body) => req_body,
             protocol::SendHeaderStatus::Partial(_) | protocol::SendHeaderStatus::Error(_, _) => {
