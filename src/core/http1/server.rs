@@ -438,7 +438,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
 
             if inner
                 .protocol
-                .send_response(&mut buf, code, reason, headers, body_size)
+                .send_response(&mut buf, code, reason, headers, body_size, 0)
                 .is_err()
             {
                 // enable prepare_header to be called again
