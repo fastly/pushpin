@@ -448,6 +448,18 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
     }
 }
 
+/// Calls `w.write` for each element in `bufs`. If `bufs` is empty, `w.write` is called once with
+/// an empty slice. If this function encounters an error after successfully writing some bytes,
+/// the number of bytes written so far is returned and the error is eaten. We assume the caller
+/// can obtain the error by calling this function again afterwards to retrigger it.
+///
+/// # Performance notes
+///
+/// This function should only be used on `Write` implementations that don't already have an
+/// optimized `write_vectored` implementation and for which `write` is a cheap operation, for a
+/// example a memory buffer or a middleware with a buffering effect. Using it on something like
+/// socket object, for which every `write` call may result in a system call, would defeat the
+/// point.
 pub fn write_trait_vectored_helper<W: Write>(
     w: &mut W,
     bufs: &[io::IoSlice],
@@ -460,12 +472,20 @@ pub fn write_trait_vectored_helper<W: Write>(
     let mut total = 0;
 
     for buf in bufs {
+        if buf.is_empty() {
+            continue;
+        }
+
         let size = match w.write(buf.as_ref()) {
             Ok(size) => size,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                if e.kind() == io::ErrorKind::WriteZero && total > 0 {
-                    return Ok(total);
+                if total > 0 {
+                    // Return what we've written so far rather than returning the error. We can
+                    // surface the error in the next call.
+                    break;
                 }
+
                 return Err(e);
             }
         };
