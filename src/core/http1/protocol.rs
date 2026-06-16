@@ -1298,7 +1298,6 @@ impl ClientRequest {
         headers: &[Header],
         body_size: BodySize,
         websocket: bool,
-        offset: usize,
     ) -> SendHeaderStatus<ClientRequest, ClientRequestBody, Error> {
         let body_size = if websocket {
             BodySize::NoBody
@@ -1402,7 +1401,7 @@ impl ClientRequest {
         }
 
         // Send slices using vectored write with offset
-        let bytes_written = match write_vectored_offset(writer, &slices, offset) {
+        let bytes_written = match write_vectored_offset(writer, &slices, self.offset) {
             Ok(bytes) => bytes,
             Err(e) => {
                 return SendHeaderStatus::Error(
@@ -1416,7 +1415,7 @@ impl ClientRequest {
             }
         };
 
-        self.offset = offset + bytes_written;
+        self.offset += bytes_written;
 
         // Check if the entire header has been written
         if self.offset >= total_length {
@@ -3064,6 +3063,7 @@ mod tests {
             reason: &'static str,
             headers: &'headers [Header<'buf>],
             body_size: BodySize,
+            offset: usize,
             ver_min: u8,
             persistent: bool,
             result: Result<Option<usize>, Error>,
@@ -3081,6 +3081,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
                 result: Ok(Some(5)),
@@ -3096,6 +3097,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(5)),
@@ -3111,6 +3113,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(12)),
@@ -3128,6 +3131,7 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(20)),
@@ -3145,6 +3149,7 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(24)),
@@ -3162,6 +3167,7 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(26)),
@@ -3171,12 +3177,31 @@ mod tests {
                 written: "HTTP/1.0 200 OK\r\nFoo: Bar\r",
             },
             Test {
+                name: "resume-write-header",
+                write_space: 50,
+                code: 200,
+                reason: "OK",
+                headers: &[
+                    Header { name: "Foo", value: b"Bar" },
+                ],
+                body_size: BodySize::Known(0),
+                offset: 24,
+                ver_min: 0,
+                persistent: false,
+                result: Ok(None),
+                state: ServerState::SendingBody,
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "r\r\nContent-Length: 0\r\n\r\n",
+            },
+            Test {
                 name: "cant-write-keep-alive",
                 write_space: 30,
                 code: 200,
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: true,
                 result: Ok(Some(30)),
@@ -3192,6 +3217,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
                 result: Ok(Some(30)),
@@ -3207,6 +3233,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
                 result: Ok(Some(50)),
@@ -3222,6 +3249,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(26)),
@@ -3237,6 +3265,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
                 result: Ok(Some(50)),
@@ -3252,6 +3281,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(Some(18)),
@@ -3272,6 +3302,7 @@ mod tests {
                     Header { name: "Transfer-Encoding", value: b"X" },
                 ],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3292,6 +3323,7 @@ mod tests {
                     Header { name: "Transfer-Encoding", value: b"X" },
                 ],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3307,6 +3339,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3322,6 +3355,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3337,6 +3371,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3352,6 +3387,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
                 result: Ok(None),
@@ -3367,6 +3403,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
                 result: Ok(None),
@@ -3382,6 +3419,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
                 result: Ok(None),
@@ -3397,6 +3435,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: true,
                 result: Ok(None),
@@ -3412,6 +3451,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3427,6 +3467,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
                 result: Ok(None),
@@ -3442,6 +3483,7 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
                 result: Ok(None),
@@ -3457,6 +3499,7 @@ mod tests {
                 reason: "Switching Protocols",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
                 result: Ok(None),
@@ -3488,7 +3531,7 @@ mod tests {
                 test.reason,
                 test.headers,
                 test.body_size,
-                0,
+                test.offset,
             );
 
             match r {
@@ -4044,6 +4087,7 @@ mod tests {
             headers: &'headers [Header<'buf>],
             body_size: BodySize,
             websocket: bool,
+            offset: usize,
             result: Result<Option<usize>, Error>,
             body_size_after: BodySize,
             chunked: bool,
@@ -4059,6 +4103,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(2)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4072,6 +4117,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(12)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4088,6 +4134,7 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(22)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4104,6 +4151,7 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(26)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4120,10 +4168,28 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(28)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
                 written: "GET /foo HTTP/1.1\r\nFoo: Bar\r",
+            },
+            Test {
+                name: "resume-write-header",
+                write_space: 50,
+                method: "GET",
+                uri: "/foo",
+                headers: &[Header {
+                    name: "Foo",
+                    value: b"Bar",
+                }],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                offset: 26,
+                result: Ok(None),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "r\r\n\r\n",
             },
             Test {
                 name: "cant-write-transfer-encoding",
@@ -4133,6 +4199,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(33)),
                 body_size_after: BodySize::Unknown,
                 chunked: false,
@@ -4146,6 +4213,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(29)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4159,6 +4227,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
+                offset: 0,
                 result: Ok(Some(20)),
                 body_size_after: BodySize::Unknown,
                 chunked: false,
@@ -4189,6 +4258,7 @@ mod tests {
                 ],
                 body_size: BodySize::Known(0),
                 websocket: false,
+                offset: 0,
                 result: Ok(None),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
@@ -4202,6 +4272,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::NoBody,
                 websocket: false,
+                offset: 0,
                 result: Ok(None),
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -4215,6 +4286,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(42),
                 websocket: false,
+                offset: 0,
                 result: Ok(None),
                 body_size_after: BodySize::Known(42),
                 chunked: false,
@@ -4228,6 +4300,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
+                offset: 0,
                 result: Ok(None),
                 body_size_after: BodySize::Unknown,
                 chunked: true,
@@ -4241,6 +4314,7 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(42),
                 websocket: true,
+                offset: 0,
                 result: Ok(None),
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -4249,7 +4323,8 @@ mod tests {
         ];
 
         for test in tests.iter() {
-            let req = ClientRequest::new();
+            let mut req = ClientRequest::new();
+            req.offset = test.offset;
 
             let mut w = MyBuffer::new(test.write_space, true);
 
@@ -4260,7 +4335,6 @@ mod tests {
                 test.headers,
                 test.body_size,
                 test.websocket,
-                0,
             ) {
                 SendHeaderStatus::Complete(req_body) => Ok((Some(req_body), None)),
                 SendHeaderStatus::Partial(req) => Ok((None, Some(req.offset))),
@@ -5453,7 +5527,6 @@ mod tests {
             }],
             BodySize::NoBody,
             false,
-            0,
         ) {
             SendHeaderStatus::Complete(req_body) => req_body,
             _ => panic!("unexpected status"),
