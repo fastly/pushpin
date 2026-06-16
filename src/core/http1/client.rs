@@ -19,7 +19,7 @@ use crate::core::buffer::{Buffer, BufferBudget, VecRingBuffer, BUFFER_BUFS_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
-use crate::core::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper, WriteHalf};
+use crate::core::io::{AsyncRead, AsyncWrite, ReadHalf, StdWriteWrapper, WriteHalf};
 use crate::core::select::{select_2, Select2};
 use std::cell::RefCell;
 use std::io::{self, Write};
@@ -31,7 +31,7 @@ use std::str;
 pub struct Request<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    hbuf: &'a mut VecRingBuffer,
+    buf1: &'a mut VecRingBuffer,
     bbuf: &'a mut VecRingBuffer,
 }
 
@@ -44,79 +44,136 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
         Self {
             r: stream.0,
             w: stream.1,
-            hbuf: buf1,
+            buf1,
             bbuf: buf2,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn prepare_header(
+    pub fn prepare_header<'b>(
         self,
-        method: &str,
-        uri: &str,
-        headers: &[Header<'_>],
+        method: &'b str,
+        uri: &'b str,
+        headers: &'b [Header<'b>],
         body_size: BodySize,
         websocket: bool,
         initial_body: &[u8],
         end: bool,
-    ) -> Result<RequestHeader<'a, R, W>, Error> {
-        let req = protocol::ClientRequest::new();
-
-        let size_limit = self.hbuf.capacity();
-
-        let req_body = match req.send_header(self.hbuf, method, uri, headers, body_size, websocket)
-        {
-            protocol::SendHeaderStatus::Complete(req_body) => req_body,
-            protocol::SendHeaderStatus::Partial(_) | protocol::SendHeaderStatus::Error(_, _) => {
-                return Err(Error::RequestTooLarge(size_limit))
-            }
-        };
-
+    ) -> Result<RequestHeader<'a, 'b, R, W>, Error> {
         if self.bbuf.write_all(initial_body).is_err() {
             return Err(Error::BufferExceeded);
         }
 
         Ok(RequestHeader {
-            r: self.r,
-            w: self.w,
-            hbuf: self.hbuf,
+            buf1: self.buf1,
             bbuf: self.bbuf,
-            req_body,
             end,
+            r: self.r,
+            w: RefCell::new(RequestHeaderWrite {
+                stream: self.w,
+                method,
+                uri,
+                headers,
+                body_size,
+                websocket,
+                req: Some(protocol::ClientRequest::new()),
+            }),
         })
     }
 }
 
-pub struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    hbuf: &'a mut VecRingBuffer,
-    bbuf: &'a mut VecRingBuffer,
-    req_body: protocol::ClientRequestBody,
-    end: bool,
+struct RequestHeaderWrite<'a, 'b, W: AsyncWrite> {
+    stream: WriteHalf<'a, W>,
+    method: &'b str,
+    uri: &'b str,
+    headers: &'b [Header<'b>],
+    body_size: BodySize,
+    websocket: bool,
+    req: Option<protocol::ClientRequest>,
 }
 
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
-    pub async fn send(mut self) -> Result<RequestBody<'a, R, W>, Error> {
-        while self.hbuf.len() > 0 {
-            let size = self.w.write(Buffer::read_buf(self.hbuf)).await?;
-            self.hbuf.read_commit(size);
-        }
+pub struct RequestHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
+    buf1: &'a mut VecRingBuffer, // Unused at this step but passed along
+    bbuf: &'a mut VecRingBuffer,
+    end: bool,
+    r: ReadHalf<'a, R>,
+    w: RefCell<RequestHeaderWrite<'a, 'b, W>>,
+}
 
-        Ok(RequestBody {
-            inner: RefCell::new(Some(RequestBodyInner {
-                r: RefCell::new(RequestBodyRead {
-                    stream: self.r,
-                    buf: self.hbuf,
-                }),
-                w: RefCell::new(RequestBodyWrite {
-                    stream: self.w,
-                    buf: self.bbuf,
-                    req_body: Some(self.req_body),
-                    end: self.end,
-                }),
-            })),
-        })
+impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, '_, R, W> {
+    pub async fn send(self) -> Result<RequestBody<'a, R, W>, Error> {
+        // Use AsyncOperation pattern like RequestBody::send()
+        let result = AsyncOperation::new(
+            |cx| {
+                let w = &mut *self.w.borrow_mut();
+
+                // Keep trying to write until complete or would block
+                loop {
+                    if !w.stream.is_writable() {
+                        // Writer not ready, try again later
+                        return None;
+                    }
+
+                    let req = w.req.take().unwrap();
+
+                    match req.send_header(
+                        &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+                        w.method,
+                        w.uri,
+                        w.headers,
+                        w.body_size,
+                        w.websocket,
+                    ) {
+                        protocol::SendHeaderStatus::Complete(req_body) => {
+                            // Headers sent successfully
+                            return Some(Ok(req_body));
+                        }
+                        protocol::SendHeaderStatus::Partial(req) => {
+                            // Partial write, try again immediately
+                            w.req = Some(req);
+                        }
+                        protocol::SendHeaderStatus::Error(req, e) => {
+                            match e {
+                                protocol::Error::Io(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                    // Writer not ready, try again later
+                                    w.req = Some(req);
+                                    return None;
+                                }
+                                _ => {}
+                            }
+
+                            return Some(Err(e.into()));
+                        }
+                    }
+                }
+            },
+            || {
+                self.w.borrow_mut().stream.cancel();
+            },
+        )
+        .await;
+
+        match result {
+            Ok(req_body) => {
+                let w = self.w.into_inner();
+
+                Ok(RequestBody {
+                    inner: RefCell::new(Some(RequestBodyInner {
+                        r: RefCell::new(RequestBodyRead {
+                            stream: self.r,
+                            buf: self.buf1,
+                        }),
+                        w: RefCell::new(RequestBodyWrite {
+                            stream: w.stream,
+                            buf: self.bbuf,
+                            req_body: Some(req_body),
+                            end: self.end,
+                        }),
+                    })),
+                })
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -676,7 +733,7 @@ mod tests {
     use crate::core::io::{AsyncRead, AsyncWrite};
     use std::cell::RefCell;
     use std::future::Future;
-    use std::io::{self, Read, Write};
+    use std::io::{self, Read};
     use std::pin::Pin;
     use std::rc::Rc;
     use std::task::{Context, Poll};
@@ -690,6 +747,7 @@ mod tests {
     struct FakeStream {
         in_data: std::io::Cursor<Vec<u8>>,
         out_data: Vec<u8>,
+        write_limit: Option<(usize, usize)>,
     }
 
     impl FakeStream {
@@ -697,6 +755,15 @@ mod tests {
             Self {
                 in_data: std::io::Cursor::new(Vec::new()),
                 out_data: Vec::new(),
+                write_limit: None,
+            }
+        }
+
+        fn with_write_limit(size: usize) -> Self {
+            Self {
+                in_data: std::io::Cursor::new(Vec::new()),
+                out_data: Vec::new(),
+                write_limit: Some((size, size)),
             }
         }
     }
@@ -719,7 +786,24 @@ mod tests {
             _cx: &mut Context<'_>,
             buf: &[u8],
         ) -> Poll<Result<usize, io::Error>> {
-            Poll::Ready(self.out_data.write(buf))
+            let write_size = if let Some((left, max)) = self.write_limit.take() {
+                if left == 0 {
+                    // Replenish and yield
+                    self.write_limit = Some((max, max));
+                    return Poll::Pending;
+                }
+
+                let size = std::cmp::min(buf.len(), left);
+                self.write_limit = Some((left - size, max));
+
+                size
+            } else {
+                buf.len()
+            };
+
+            self.out_data.extend_from_slice(&buf[..write_size]);
+
+            Poll::Ready(Ok(write_size))
         }
 
         fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
@@ -927,5 +1011,99 @@ mod tests {
         let waker = std::sync::Arc::new(NoopWaker).into();
         let mut cx = Context::from_waker(&waker);
         assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn test_request_partial_writes() {
+        let mut fut = pin!(async {
+            // Test that vectored sending handles partial writes correctly
+            let tmp = Rc::new(TmpBuffer::new(1024));
+            let mut buf1 = VecRingBuffer::new(256, &tmp);
+            let mut buf2 = VecRingBuffer::new(256, &tmp);
+
+            // Use a stream that only writes 20 bytes at a time to force partial writes
+            let mut stream = FakeStream::with_write_limit(20);
+
+            let stream_cell = RefCell::new(&mut stream);
+            let (r, w) = crate::core::io::io_split(&stream_cell);
+
+            let req = Request::new((r, w), &mut buf1, &mut buf2);
+
+            let headers = [
+                Header {
+                    name: "Host",
+                    value: b"example.com",
+                },
+                Header {
+                    name: "User-Agent",
+                    value: b"test-agent-with-a-very-long-name",
+                },
+                Header {
+                    name: "Content-Type",
+                    value: b"application/json",
+                },
+                Header {
+                    name: "Content-Length",
+                    value: b"0",
+                },
+            ];
+
+            let req_header = req
+                .prepare_header(
+                    "POST",
+                    "/api/v1/test",
+                    &headers,
+                    BodySize::Known(0),
+                    false,
+                    b"",
+                    true,
+                )
+                .unwrap();
+
+            // This should handle multiple partial writes and eventually succeed
+            let _req_body = req_header.send().await.unwrap();
+
+            // Verify that data was written (even with partial writes)
+            assert!(!stream.out_data.is_empty(), "No data was written");
+
+            let output = String::from_utf8_lossy(&stream.out_data);
+            assert!(
+                output.contains("POST /api/v1/test HTTP/1.1\r\n"),
+                "Missing request line"
+            );
+            assert!(
+                output.contains("Host: example.com\r\n"),
+                "Missing Host header"
+            );
+            assert!(output.ends_with("\r\n\r\n"), "Missing final CRLF");
+
+            println!(
+                "Partial write test output ({} bytes):\n{}",
+                stream.out_data.len(),
+                output
+            );
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+
+        // Poll multiple times to handle partial writes
+        let mut poll_count = 0;
+        loop {
+            match fut.as_mut().poll(&mut cx) {
+                std::task::Poll::Ready(_) => break,
+                std::task::Poll::Pending => {
+                    poll_count += 1;
+                    if poll_count > 10 {
+                        panic!(
+                            "Too many polls ({}) - operation should have completed",
+                            poll_count
+                        );
+                    }
+                }
+            }
+        }
+
+        println!("Completed after {} polls", poll_count + 1);
     }
 }

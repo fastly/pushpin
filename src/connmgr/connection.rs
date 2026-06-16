@@ -4539,6 +4539,8 @@ where
     let stream = RefCell::new(stream);
     let req = client::Request::new(io_split(&stream), buf1, buf2);
 
+    let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
     let req_header = {
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
@@ -4546,8 +4548,6 @@ where
         };
 
         let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
-
-        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         headers.push(http1::Header {
             name: "Host",
@@ -5002,7 +5002,11 @@ where
 
     let req = client::Request::new(io_split(&stream), buf1, buf2);
 
-    let (req_header, ws_key, overflow) = {
+    let mut ws_key = None;
+    let mut ws_ext = ArrayVec::<u8, 512>::new();
+    let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
+    let (req_header, overflow) = {
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
             _ => return Err(Error::BadRequest),
@@ -5012,15 +5016,13 @@ where
 
         let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
 
-        let ws_key = if websocket { Some(gen_ws_key()) } else { None };
+        if websocket {
+            ws_key = Some(gen_ws_key());
+        }
 
         if !websocket && rdata.more {
             follow_redirects = false;
         }
-
-        let mut ws_ext = ArrayVec::<u8, 512>::new();
-
-        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         headers.push(http1::Header {
             name: "Host",
@@ -5152,7 +5154,7 @@ where
             req.prepare_header(method, path, &headers, body_size, false, initial_body, end)?
         };
 
-        (req_header, ws_key, overflow)
+        (req_header, overflow)
     };
 
     // Send request header
