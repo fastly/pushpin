@@ -16,7 +16,6 @@
 
 use crate::core::buffer::{Buffer, VecRingBuffer};
 use crate::core::io::{AsyncRead, AsyncReadExt};
-use std::cmp;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -45,20 +44,6 @@ pub async fn recv_nonzero<R: AsyncRead>(
     }
 
     Ok(())
-}
-
-pub struct LimitedRingBuffer<'a> {
-    pub inner: &'a mut VecRingBuffer,
-    pub limit: usize,
-}
-
-impl AsRef<[u8]> for LimitedRingBuffer<'_> {
-    fn as_ref(&self) -> &[u8] {
-        let buf = Buffer::read_buf(self.inner);
-        let limit = cmp::min(buf.len(), self.limit);
-
-        &buf[..limit]
-    }
 }
 
 pub struct AsyncOperation<O, C>

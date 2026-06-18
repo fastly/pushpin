@@ -22,7 +22,7 @@ pub enum Error {
     Io(io::Error),
     Protocol(protocol::Error),
     RequestTooLarge(usize),
-    ResponseTooLarge(usize),
+    ResponseTooManyHeaders(usize),
     ResponseDuringContinue,
     FurtherInputNotAllowed,
     BufferExceeded,
