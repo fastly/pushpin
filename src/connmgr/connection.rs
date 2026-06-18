@@ -1649,30 +1649,25 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
 
         // Send response header
 
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
+        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         for h in rdata.headers.iter() {
-            if headers_len >= headers.len() {
+            if headers.remaining_capacity() == 0 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: h.name,
                 value: h.value,
-            };
-
-            headers_len += 1;
+            });
         }
-
-        let headers = &headers[..headers_len];
 
         let mut resp_take = resp.take().unwrap();
 
         let (header, prepare_body) = match resp_take.prepare_header(
             rdata.code,
             rdata.reason,
-            headers,
+            &headers,
             http1::BodySize::Known(rdata.body.len()),
             resp_state,
         ) {
@@ -3573,8 +3568,7 @@ where
                 }
 
                 let (header, mut prepare_body) = {
-                    let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-                    let mut headers_len = 0;
+                    let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
                     for h in rdata.headers.iter() {
                         // Don't send these headers
@@ -3586,26 +3580,22 @@ where
                             continue;
                         }
 
-                        if headers_len >= headers.len() {
+                        if headers.remaining_capacity() == 0 {
                             return Err(Error::BadMessage);
                         }
 
-                        headers[headers_len] = http1::Header {
+                        headers.push(http1::Header {
                             name: h.name,
                             value: h.value,
-                        };
-
-                        headers_len += 1;
+                        });
                     }
-
-                    let headers = &headers[..headers_len];
 
                     let mut resp_take = resp.take().unwrap();
 
                     match resp_take.prepare_header(
                         rdata.code,
                         rdata.reason,
-                        headers,
+                        &headers,
                         http1::BodySize::Known(rdata.body.len()),
                         resp_state,
                     ) {
@@ -3652,8 +3642,8 @@ where
     // Send response header
 
     let (header, mut prepare_body) = {
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
+        let mut ws_ext = ArrayVec::<u8, 512>::new();
+        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         let mut body_size = http1::BodySize::Unknown;
 
@@ -3680,67 +3670,57 @@ where
                 }
             }
 
-            if headers_len >= headers.len() {
+            if headers.remaining_capacity() == 0 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: h.name,
                 value: h.value,
-            };
-
-            headers_len += 1;
+            });
         }
 
         if body_size == http1::BodySize::Unknown && !rdata.more {
             body_size = http1::BodySize::Known(rdata.body.len());
         }
 
-        let mut ws_ext = ArrayVec::<u8, 512>::new();
-
         if let Some(ws_req_data) = &ws_req_data {
             let accept_data = &ws_req_data.accept;
 
-            if headers_len + 4 > headers.len() {
+            if headers.remaining_capacity() < 4 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Upgrade",
                 value: b"websocket",
-            };
-            headers_len += 1;
+            });
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Connection",
                 value: b"Upgrade",
-            };
-            headers_len += 1;
+            });
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Sec-WebSocket-Accept",
                 value: accept_data.as_bytes(),
-            };
-            headers_len += 1;
+            });
 
             if let Some((config, _)) = &ws_req_data.deflate_config {
                 if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
                     return Err(Error::Compression);
                 }
 
-                headers[headers_len] = http1::Header {
+                headers.push(http1::Header {
                     name: "Sec-WebSocket-Extensions",
                     value: ws_ext.as_ref(),
-                };
-                headers_len += 1;
+                });
             }
         }
 
-        let headers = &headers[..headers_len];
-
         let mut resp_take = resp.take().unwrap();
 
-        match resp_take.prepare_header(rdata.code, rdata.reason, headers, body_size, resp_state) {
+        match resp_take.prepare_header(rdata.code, rdata.reason, &headers, body_size, resp_state) {
             Ok(ret) => ret,
             Err(e) => {
                 *resp = Some(resp_take);
