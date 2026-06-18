@@ -564,7 +564,7 @@ pub struct ResponsePrepareBody<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 
 impl<R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'_, '_, R, W> {
     // Only returns an error on invalid input
-    pub fn prepare(&mut self, src: &[u8], end: bool) -> Result<(usize, usize), Error> {
+    pub fn prepare(&mut self, src: &[u8], end: bool) -> Result<usize, Error> {
         let state = self.state.borrow();
         let state = state.as_ref().unwrap();
 
@@ -589,7 +589,7 @@ impl<R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'_, '_, R, W> {
             state.end.set(true);
         }
 
-        Ok((size, 0))
+        Ok(size)
     }
 }
 
