@@ -1063,25 +1063,24 @@ mod tests {
             // This should handle multiple partial writes and eventually succeed
             let _req_body = req_header.send().await.unwrap();
 
-            // Verify that data was written (even with partial writes)
-            assert!(!stream.out_data.is_empty(), "No data was written");
-
             let output = String::from_utf8_lossy(&stream.out_data);
-            assert!(
-                output.contains("POST /api/v1/test HTTP/1.1\r\n"),
-                "Missing request line"
-            );
-            assert!(
-                output.contains("Host: example.com\r\n"),
-                "Missing Host header"
-            );
-            assert!(output.ends_with("\r\n\r\n"), "Missing final CRLF");
 
             println!(
                 "Partial write test output ({} bytes):\n{}",
                 stream.out_data.len(),
                 output
             );
+
+            let expected = concat!(
+                "POST /api/v1/test HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "User-Agent: test-agent-with-a-very-long-name\r\n",
+                "Content-Type: application/json\r\n",
+                "Content-Length: 0\r\n",
+                "\r\n",
+            );
+
+            assert_eq!(output, expected);
         });
 
         let waker = std::sync::Arc::new(NoopWaker).into();
