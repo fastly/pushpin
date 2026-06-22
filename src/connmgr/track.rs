@@ -55,6 +55,13 @@ impl<'a, T> Track<'a, T> {
             inner: Some(TrackInner { value, active }),
         }
     }
+
+    pub fn into_inner(mut self) -> T {
+        let inner = self.inner.take().unwrap();
+        inner.active.set(false);
+
+        inner.value
+    }
 }
 
 impl<'a, A, B> Track<'a, (A, B)> {
