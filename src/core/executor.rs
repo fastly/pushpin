@@ -229,7 +229,7 @@ impl Tasks {
             self.set_current_task(None);
 
             // take_task() took the future out of the task, so we
-            // Could poll it without having to maintain a borrow of
+            // could poll it without having to maintain a borrow of
             // the tasks set. We'll put it back now
             self.set_fut(task_id, fut);
 

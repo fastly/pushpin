@@ -21,6 +21,7 @@ pub mod domainmap;
 mod tests {
     use crate::core::test::{run_cpp, TestException};
     use crate::ffi;
+    use test_log::test;
 
     fn websocketoverhttp_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call

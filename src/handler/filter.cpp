@@ -457,19 +457,20 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 
     Url destUri = currentUri.resolved(url);
 
-    int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+    Url requestUri = context.requestUri;
+    int requestPort = requestUri.port(requestUri.scheme() == "https" ? 443 : 80);
     int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
     VariantHash passthroughData;
 
     passthroughData["route"] = context.route.toUtf8();
 
-    // If dest link points to the same service as the current request, then we can assume the
+    // If dest link points to the same service as the original request, then we can assume the
     // network would send the request back to us, so we can handle it internally. If the link points
     // to a different service, then we can't make this assumption and need to make the request over
     // the network. Note that such a request could still end up looping back to us
-    if (destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() &&
-        destPort == currentPort) {
+    if (destUri.scheme() == requestUri.scheme() && destUri.host() == requestUri.host() &&
+        destPort == requestPort) {
         // Tell the proxy that we prefer the request to be handled internally, using the same route
         passthroughData["prefer-internal"] = true;
     }

@@ -68,7 +68,6 @@ public:
     }
 
     static void unixHandler(int sig) {
-        Q_UNUSED(sig);
         unsigned char c = 0;
         if (sig == SIGHUP)
             c = 1;

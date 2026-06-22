@@ -16,7 +16,6 @@
 
 use crate::core::buffer::{Buffer, VecRingBuffer};
 use crate::core::io::{AsyncRead, AsyncReadExt};
-use std::cmp;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -24,33 +23,6 @@ use std::task::{Context, Poll};
 
 // Some reasonable number
 pub const HEADERS_MAX: usize = 64;
-
-// Return the capacity increase
-pub fn resize_write_buffer_if_full<F>(
-    buf: &mut VecRingBuffer,
-    block_size: usize,
-    blocks_max: usize,
-    mut reserve: F,
-) -> usize
-where
-    F: FnMut() -> bool,
-{
-    assert!(blocks_max >= 2);
-
-    // All but one block can be used for writing
-    let allowed = blocks_max - 1;
-
-    if buf.remaining_capacity() == 0
-        && buf.capacity() < block_size.checked_mul(allowed).unwrap()
-        && reserve()
-    {
-        buf.resize(buf.capacity() + block_size);
-
-        block_size
-    } else {
-        0
-    }
-}
 
 pub async fn recv_nonzero<R: AsyncRead>(
     r: &mut R,
@@ -72,20 +44,6 @@ pub async fn recv_nonzero<R: AsyncRead>(
     }
 
     Ok(())
-}
-
-pub struct LimitedRingBuffer<'a> {
-    pub inner: &'a mut VecRingBuffer,
-    pub limit: usize,
-}
-
-impl AsRef<[u8]> for LimitedRingBuffer<'_> {
-    fn as_ref(&self) -> &[u8] {
-        let buf = Buffer::read_buf(self.inner);
-        let limit = cmp::min(buf.len(), self.limit);
-
-        &buf[..limit]
-    }
 }
 
 pub struct AsyncOperation<O, C>

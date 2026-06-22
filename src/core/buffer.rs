@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::core::counter::Counter;
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
@@ -26,7 +27,9 @@ use std::slice;
 #[cfg(test)]
 use std::io::Read;
 
-pub const VECTORED_MAX: usize = 8;
+/// The maximum number of contiguous buffers that may be returned by Buffer trait methods.
+/// This is 2 in the case of RingBuffer due to its wraparound nature.
+pub const BUFFER_BUFS_MAX: usize = 2;
 
 pub fn trim_for_display(s: &str, max: usize) -> String {
     // NOTE: O(n)
@@ -149,6 +152,45 @@ impl Buffer for io::Cursor<&mut [u8]> {
     }
 }
 
+/// Converts a set of u8 slices to a set of IoSlices, skipping `first_buf_offset` bytes of the
+/// first slice, and writes them to `writer`. The caller must supply the memory to use for the
+/// IoSlices.
+fn write_vectored_offset_inner<'a, W: Write>(
+    writer: &mut W,
+    bufs: &[&'a [u8]],
+    first_buf_offset: usize,
+    scratch: &mut [MaybeUninit<io::IoSlice<'a>>],
+) -> Result<usize, io::Error> {
+    let mut count = 0;
+
+    for (i, (&buf, out)) in bufs.iter().zip(scratch.iter_mut()).enumerate() {
+        let buf = if i == 0 {
+            &buf[first_buf_offset..]
+        } else {
+            buf
+        };
+
+        out.write(io::IoSlice::new(buf));
+        count += 1;
+    }
+
+    // SAFETY: we just initialized count elements
+    let bufs = unsafe { slice::from_raw_parts(scratch.as_ptr() as *const io::IoSlice, count) };
+
+    writer.write_vectored(bufs)
+}
+
+/// Stack-allocates space for N IoSlices and calls `write_vectored_offset_inner`.
+fn write_vectored_offset_sized<W: Write, const N: usize>(
+    writer: &mut W,
+    bufs: &[&[u8]],
+    first_buf_offset: usize,
+) -> Result<usize, io::Error> {
+    // SAFETY: Creating an uninitialized array of MaybeUninit is always safe
+    let mut scratch: [MaybeUninit<io::IoSlice>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+    write_vectored_offset_inner(writer, bufs, first_buf_offset, &mut scratch)
+}
+
 pub fn write_vectored_offset<W: Write>(
     writer: &mut W,
     bufs: &[&[u8]],
@@ -176,17 +218,45 @@ pub fn write_vectored_offset<W: Write>(
         start += 1;
     }
 
-    let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
-    let mut arr_len = 0;
+    let bufs = &bufs[start..];
 
-    for (index, &buf) in bufs.iter().enumerate().skip(start) {
-        let buf = if index == start { &buf[offset..] } else { buf };
-
-        arr[arr_len] = io::IoSlice::new(buf);
-        arr_len += 1;
+    // Dispatch to appropriately sized function
+    match bufs.len() {
+        0..=8 => write_vectored_offset_sized::<W, 8>(writer, bufs, offset),
+        9..=16 => write_vectored_offset_sized::<W, 16>(writer, bufs, offset),
+        17..=32 => write_vectored_offset_sized::<W, 32>(writer, bufs, offset),
+        33..=64 => write_vectored_offset_sized::<W, 64>(writer, bufs, offset),
+        65..=128 => write_vectored_offset_sized::<W, 128>(writer, bufs, offset),
+        129..=256 => write_vectored_offset_sized::<W, 256>(writer, bufs, offset),
+        257..=512 => write_vectored_offset_sized::<W, 512>(writer, bufs, offset),
+        513..=1024 => write_vectored_offset_sized::<W, 1024>(writer, bufs, offset),
+        _ => {
+            // Fall back to heap allocation for truly massive cases
+            let mut scratch = vec![MaybeUninit::uninit(); bufs.len()];
+            write_vectored_offset_inner(writer, bufs, offset, &mut scratch)
+        }
     }
+}
 
-    writer.write_vectored(&arr[..arr_len])
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs<'a, 'b: 'a>(bufs: &'a [&'b [u8]], max: usize) -> (&'a [&'b [u8]], bool) {
+    if bufs.len() > max {
+        (&bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
+}
+
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs_mut<'a, 'b: 'a>(
+    bufs: &'a mut [&'b mut [u8]],
+    max: usize,
+) -> (&'a mut [&'b mut [u8]], bool) {
+    if bufs.len() > max {
+        (&mut bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
 }
 
 struct LimitBufsRestore<T> {
@@ -378,6 +448,60 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
     }
 }
 
+/// Calls `w.write` for each element in `bufs`. If `bufs` is empty, `w.write` is called once with
+/// an empty slice. If this function encounters an error after successfully writing some bytes,
+/// the number of bytes written so far is returned and the error is eaten. We assume the caller
+/// can obtain the error by calling this function again afterwards to retrigger it.
+///
+/// # Performance notes
+///
+/// This function should only be used on `Write` implementations that don't already have an
+/// optimized `write_vectored` implementation and for which `write` is a cheap operation, for a
+/// example a memory buffer or a middleware with a buffering effect. Using it on something like
+/// socket object, for which every `write` call may result in a system call, would defeat the
+/// point.
+pub fn write_trait_vectored_helper<W: Write>(
+    w: &mut W,
+    bufs: &[io::IoSlice],
+) -> Result<usize, io::Error> {
+    // Like std, if bufs is empty then we'll call write with no data
+    if bufs.is_empty() {
+        return w.write(&[]);
+    }
+
+    let mut total = 0;
+
+    for buf in bufs {
+        if buf.is_empty() {
+            continue;
+        }
+
+        let size = loop {
+            match w.write(buf.as_ref()) {
+                Ok(size) => break size,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    if total > 0 {
+                        // Return what we've written so far rather than returning the error. We
+                        // can surface the error in the next call.
+                        return Ok(total);
+                    }
+
+                    return Err(e);
+                }
+            }
+        };
+
+        total += size;
+
+        if size < buf.len() {
+            break;
+        }
+    }
+
+    Ok(total)
+}
+
 pub struct ContiguousBuffer {
     buf: Vec<u8>,
     start: usize,
@@ -468,6 +592,10 @@ impl Write for ContiguousBuffer {
         self.write_commit(size);
 
         Ok(size)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -654,6 +782,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Write for RingBuffer<T> {
         Ok(pos)
     }
 
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
+    }
+
     fn flush(&mut self) -> Result<(), io::Error> {
         Ok(())
     }
@@ -835,46 +967,208 @@ impl<'a> RingBuffer<&'a mut [u8]> {
 pub type VecRingBuffer = RingBuffer<Vec<u8>>;
 pub type SliceRingBuffer<'a> = RingBuffer<&'a mut [u8]>;
 
+/// Manages buffer expansion budget for a connection.
+///
+/// BufferBudget provides unified memory accounting for buffer expansion across a connection.
+/// It works with any VecRingBuffer, regardless of whether it's used for read or write operations.
+///
+/// # Features
+///
+/// - **Unified memory budget**: Total memory usage is capped by both local and shared limits
+/// - **Block-based expansion**: All buffers grow by fixed block size increments
+/// - **Automatic cleanup**: Memory blocks are automatically returned to the shared counter when dropped
+/// - **Production-safe**: Constructor never panics, even when expansion blocks are exhausted
+///
+/// # Example
+///
+/// ```
+/// use pushpin::core::buffer::{BufferBudget, VecRingBuffer, TmpBuffer};
+/// use pushpin::core::counter::Counter;
+/// use std::rc::Rc;
+/// use std::io::Write;
+///
+/// let counter = Counter::new(100); // Shared counter with 100 excess blocks for expansion
+/// let mut budget = BufferBudget::new(&counter)
+///     .with_blocks_max(3)    // Local limit of 3 expansion blocks
+///     .with_block_size(64);  // 64-byte block size
+/// let tmp = Rc::new(TmpBuffer::new(1024));
+/// let mut read_buf = VecRingBuffer::new(64, &tmp);
+/// let mut write_buf = VecRingBuffer::new(64, &tmp);
+///
+/// // Fill buffers to capacity and expand them
+/// let data = vec![b'x'; 64];
+/// read_buf.write_all(&data).unwrap();
+/// write_buf.write_all(&data).unwrap();
+///
+/// // Expand buffers as needed (works with any number of buffers)
+/// budget.expand_buffer_if_needed(&mut read_buf);
+/// budget.expand_buffer_if_needed(&mut write_buf);
+///
+/// assert_eq!(budget.blocks_used(), 2); // 2 (expansions)
+///
+/// // Or use defaults for simpler cases:
+/// let mut simple_budget = BufferBudget::new(&counter); // No local limit, 1-byte expansion
+/// simple_budget.expand_buffer_if_needed(&mut read_buf); // Expands by 1 byte if needed
+/// // Blocks are automatically returned to shared counter when budget is dropped
+/// ```
+pub struct BufferBudget<'a> {
+    blocks_avail: &'a Counter,
+    blocks_max: Option<usize>,
+    block_size: usize,
+    blocks_used: usize,
+}
+
+impl<'a> BufferBudget<'a> {
+    pub fn new(blocks_avail: &'a Counter) -> Self {
+        // Note: blocks_used starts at 0 and tracks only expansion blocks used, not base buffer
+        // allocations. This ensures the constructor never panics due to exhausted expansion blocks,
+        // allowing connections to start successfully even when the shared pool is empty. The shared
+        // counter should only contain excess blocks available for expansion.
+        Self {
+            blocks_avail,
+            blocks_max: None, // No local limit by default
+            block_size: 1,    // Default to 1-byte expansion
+            blocks_used: 0,   // Start at 0 (tracks expansion blocks only)
+        }
+    }
+
+    pub fn with_blocks_max(mut self, blocks_max: usize) -> Self {
+        self.blocks_max = Some(blocks_max);
+        self
+    }
+
+    pub fn with_block_size(mut self, block_size: usize) -> Self {
+        self.block_size = block_size;
+        self
+    }
+
+    pub fn blocks_used(&self) -> usize {
+        self.blocks_used
+    }
+
+    pub fn block_size(&self) -> usize {
+        self.block_size
+    }
+
+    pub fn blocks_max(&self) -> Option<usize> {
+        self.blocks_max
+    }
+
+    /// Expand buffer if it is full and budget allows
+    pub fn expand_buffer_if_needed(&mut self, buf: &mut VecRingBuffer) -> usize {
+        let local_limit_ok = self.blocks_max.map_or(true, |max| self.blocks_used < max);
+
+        if buf.remaining_capacity() == 0 && local_limit_ok && self.blocks_avail.dec(1).is_ok() {
+            self.blocks_used += 1;
+            buf.resize(buf.capacity() + self.block_size);
+            return self.block_size;
+        }
+
+        0
+    }
+
+    /// Release blocks back to the shared counter immediately
+    ///
+    /// This should be called when buffer memory is freed (e.g., when connection buffers are
+    /// resized down) but the BufferBudget is still needed for potential future expansions.
+    pub fn release_blocks(&mut self, count: usize) -> usize {
+        let count = cmp::min(count, self.blocks_used);
+
+        self.blocks_used -= count;
+        self.blocks_avail
+            .inc(count)
+            .expect("reverting decrements should always succeed");
+
+        count
+    }
+
+    /// Shrink buffer to target capacity
+    ///
+    /// If the buffer was expanded beyond target_capacity, it will be resized back
+    /// to the target size and the corresponding blocks will be released.
+    pub fn shrink_buffer(&mut self, buf: &mut VecRingBuffer, target_capacity: usize) {
+        let capacity = buf.capacity();
+
+        if capacity > target_capacity {
+            // Expansion should be in whole blocks
+            assert_eq!(
+                (capacity - target_capacity) % self.block_size,
+                0,
+                "expansion size must be multiple of block size"
+            );
+
+            buf.resize(target_capacity);
+
+            let blocks_freed = (capacity - target_capacity) / self.block_size;
+            self.release_blocks(blocks_freed);
+        }
+    }
+}
+
+impl Drop for BufferBudget<'_> {
+    fn drop(&mut self) {
+        // Release all used blocks to the shared counter
+        self.blocks_avail
+            .inc(self.blocks_used)
+            .expect("reverting decrements should always succeed");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
 
-    #[test]
-    fn test_write_vectored_offset() {
-        struct MyWriter {
-            bufs: Vec<String>,
-        }
+    struct MyWriter {
+        bufs: Vec<String>,
+        cause_error_after: Option<(usize, io::Error)>,
+    }
 
-        impl MyWriter {
-            fn new() -> Self {
-                Self { bufs: Vec::new() }
+    impl MyWriter {
+        fn new() -> Self {
+            Self {
+                bufs: Vec::new(),
+                cause_error_after: None,
             }
         }
 
-        impl Write for MyWriter {
-            fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-                self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+        fn cause_error_after(&mut self, num_slices: usize, e: io::Error) {
+            self.cause_error_after = Some((num_slices, e));
+        }
+    }
 
-                Ok(buf.len())
-            }
-
-            fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-                let mut total = 0;
-
-                for buf in bufs {
-                    total += buf.len();
-                    self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+    impl Write for MyWriter {
+        fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+            if let Some((num_slices, e)) = self.cause_error_after.take() {
+                if num_slices == 0 {
+                    return Err(e);
                 }
 
-                Ok(total)
+                self.cause_error_after = Some((num_slices - 1, e));
             }
 
-            fn flush(&mut self) -> Result<(), io::Error> {
-                Ok(())
-            }
+            self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+
+            Ok(buf.len())
         }
 
+        fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+            let mut total = 0;
+
+            for buf in bufs {
+                total += self.write(buf)?;
+            }
+
+            Ok(total)
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_write_vectored_offset() {
         // Empty
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[], 0);
@@ -928,6 +1222,78 @@ mod tests {
     }
 
     #[test]
+    fn test_write_trait_vectored_helper() {
+        // Write none to get one empty
+        let mut w = MyWriter::new();
+        assert_eq!(write_trait_vectored_helper(&mut w, &[]).unwrap(), 0);
+        assert_eq!(w.bufs, vec![""]);
+
+        // Write multiple, skipping empty
+        let mut w = MyWriter::new();
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b""),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            17
+        );
+        assert_eq!(w.bufs, vec!["apple", "banana", "cherry"]);
+
+        // Error on first slice is returned
+        let mut w = MyWriter::new();
+        w.cause_error_after(0, io::Error::from(io::ErrorKind::Other));
+        write_trait_vectored_helper(
+            &mut w,
+            &[
+                io::IoSlice::new(b"apple"),
+                io::IoSlice::new(b"banana"),
+                io::IoSlice::new(b"cherry"),
+            ],
+        )
+        .unwrap_err();
+
+        // Error on later slice is eaten, and progress is returned
+        let mut w = MyWriter::new();
+        w.cause_error_after(1, io::Error::from(io::ErrorKind::Other));
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            5
+        );
+        assert_eq!(w.bufs, vec!["apple"]);
+
+        // Interrupted error is eaten
+        let mut w = MyWriter::new();
+        w.cause_error_after(1, io::Error::from(io::ErrorKind::Interrupted));
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            17
+        );
+        assert_eq!(w.bufs, vec!["apple", "banana", "cherry"]);
+    }
+
+    #[test]
     fn test_buffer() {
         let mut b = ContiguousBuffer::new(8);
 
@@ -970,8 +1336,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 3);
 
         r.write(b"678").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.remaining_capacity(), 0);
@@ -1005,8 +1371,8 @@ mod tests {
         r.write(b"12345").unwrap();
         r.read(&mut buf[..2]).unwrap();
 
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 3);
         assert_eq!(r.read_buf(), b"345");
@@ -1025,8 +1391,8 @@ mod tests {
         r.write(b"6789a").unwrap();
         r.read(&mut buf[..2]).unwrap();
         r.write(b"bc").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"56789a");
@@ -1043,8 +1409,8 @@ mod tests {
 
         r.read(&mut buf[..6]).unwrap();
         r.write(b"def123").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bc");
@@ -1054,8 +1420,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 0);
 
         r.align();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bcdef123");
@@ -1178,5 +1544,367 @@ mod tests {
         let size = r.read(&mut buf).unwrap();
         assert_eq!(size, 8);
         assert_eq!(&buf[..size], b"12345678");
+    }
+
+    #[test]
+    fn test_buffer_budget_shrink() {
+        let counter = Counter::new(10);
+        let mut budget = BufferBudget::new(&counter)
+            .with_block_size(64)
+            .with_blocks_max(5);
+
+        let tmp = std::rc::Rc::new(TmpBuffer::new(512));
+        let mut buf = VecRingBuffer::new(128, &tmp);
+        let original_capacity = buf.capacity();
+
+        // Fill buffer so remaining_capacity() == 0
+        buf.write_all(&vec![0u8; 128]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Expand the buffer
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 64);
+        assert_eq!(budget.blocks_used(), 1);
+
+        // Fill again to trigger another expansion
+        buf.write_all(&vec![0u8; 64]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Expand again
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 128);
+        assert_eq!(budget.blocks_used(), 2);
+
+        // Shrink back to original
+        budget.shrink_buffer(&mut buf, original_capacity);
+        assert_eq!(buf.capacity(), original_capacity);
+        assert_eq!(budget.blocks_used(), 0);
+
+        // Verify shrinking a non-expanded buffer is safe (no-op)
+        budget.shrink_buffer(&mut buf, original_capacity);
+        assert_eq!(buf.capacity(), original_capacity);
+        assert_eq!(budget.blocks_used(), 0);
+
+        // Test shrinking to a different target size
+        buf.clear(); // Clear buffer after previous shrinking
+        buf.write_all(&vec![0u8; 128]).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        budget.expand_buffer_if_needed(&mut buf);
+        buf.write_all(&vec![0u8; 64]).unwrap(); // Fill the expansion space
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(buf.capacity(), original_capacity + 128);
+        assert_eq!(budget.blocks_used(), 2);
+
+        // Shrink to intermediate size
+        budget.shrink_buffer(&mut buf, original_capacity + 64);
+        assert_eq!(buf.capacity(), original_capacity + 64);
+        assert_eq!(budget.blocks_used(), 1);
+    }
+
+    #[test]
+    fn test_buffer_budget_accounting() {
+        let counter = Counter::new(100); // Start with plenty of blocks available
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(3)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        assert_eq!(budget.blocks_used(), 0);
+        assert_eq!(budget.blocks_max(), Some(3));
+
+        // Test read buffer expansion with block-based strategy
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let data = vec![b'x'; 64];
+        read_buf.write_all(&data).unwrap();
+
+        budget.expand_buffer_if_needed(&mut read_buf); // 1 block (64 → 128)
+
+        // Fill remaining capacity to trigger second expansion
+        let remaining_data = vec![b'y'; 64];
+        read_buf.write_all(&remaining_data).unwrap();
+        budget.expand_buffer_if_needed(&mut read_buf); // 1 more block (128 → 192)
+
+        // Test write buffer expansion (1 expansion)
+        let mut write_buf = VecRingBuffer::new(64, &tmp);
+        write_buf.write_all(&data).unwrap();
+        budget.expand_buffer_if_needed(&mut write_buf); // 1 block
+
+        assert_eq!(budget.blocks_used(), 3); // 1 + 1 + 1 = 3 expansion blocks
+    }
+
+    #[test]
+    fn test_buffer_budget_expansion() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(1)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+        let mut buf = VecRingBuffer::new(64, &tmp);
+
+        // Fill buffer to capacity
+        let data = vec![b'x'; 64];
+        buf.write_all(&data).unwrap();
+        assert_eq!(buf.remaining_capacity(), 0);
+
+        // Should expand when no capacity and budget available
+        let expanded = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded, 64);
+        assert_eq!(buf.capacity(), 128);
+        assert_eq!(budget.blocks_used(), 1); // 1 (expansion)
+    }
+
+    #[test]
+    fn test_buffer_budget_exhaustion() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(3)
+            .with_block_size(64); // Limit of 3 expansion blocks
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Use up all blocks via expansion
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let mut write_buf = VecRingBuffer::new(32, &tmp); // Start smaller so write buffer can expand
+        let read_data = vec![b'x'; 64];
+        let write_data = vec![b'y'; 32];
+
+        read_buf.write_all(&read_data).unwrap();
+        write_buf.write_all(&write_data).unwrap();
+
+        // Use up budget with expansions
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0); // 1 block (64 → 128)
+        assert!(budget.expand_buffer_if_needed(&mut write_buf) > 0); // 1 block (32 → 96)
+        assert_eq!(budget.blocks_used(), 2); // 2 (expansions)
+
+        // Try one more read expansion - this uses 1 block, should succeed
+        read_buf.write_all(&read_data).unwrap(); // Fill expanded buffer to capacity
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0); // Should succeed
+
+        // Now budget is exhausted (used all 3 expansion blocks) - write expansion should fail
+        let remaining = write_buf.remaining_capacity();
+        let fill_data = vec![b'z'; remaining];
+        write_buf.write_all(&fill_data).unwrap(); // Fill write buffer completely
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0); // Should fail - budget exhausted
+        assert_eq!(budget.blocks_used(), 3); // 3 (expansions)
+
+        // Now budget is exhausted - no more expansions should succeed
+        // Both buffers should fail to expand due to budget exhaustion
+        assert_eq!(budget.expand_buffer_if_needed(&mut read_buf), 0);
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_mixed_types() {
+        let counter = Counter::new(100);
+        let mut budget = BufferBudget::new(&counter)
+            .with_blocks_max(4)
+            .with_block_size(64); // 4 (expansions)
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Can expand across buffer types up to total limit
+        let mut read_buf = VecRingBuffer::new(64, &tmp);
+        let mut write_buf = VecRingBuffer::new(64, &tmp);
+
+        // First read expansion: 64 → 128 bytes (uses 1 block)
+        let data64 = vec![b'x'; 64];
+        read_buf.write_all(&data64).unwrap();
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0);
+
+        // Second read expansion: 128 → 192 bytes (uses 1 more block)
+        // Fill the remaining 64 bytes to make the 128-byte buffer full
+        let remaining_data = vec![b'y'; 64];
+        read_buf.write_all(&remaining_data).unwrap();
+        assert!(budget.expand_buffer_if_needed(&mut read_buf) > 0);
+
+        // Now we've used 1 + 1 = 2 blocks for read expansions
+
+        // Expand write buffer (2 blocks)
+        for _ in 0..2 {
+            write_buf.write_all(&data64).unwrap();
+            assert!(budget.expand_buffer_if_needed(&mut write_buf) > 0);
+        }
+
+        assert_eq!(budget.blocks_used(), 4); // 2 (read) + 2 (write)
+
+        // Should be at limit - no more expansion possible
+        // Fill buffers to capacity to test expansion failure
+        let remaining_read = read_buf.remaining_capacity();
+        if remaining_read > 0 {
+            let fill_data = vec![b'z'; remaining_read];
+            read_buf.write_all(&fill_data).unwrap();
+        }
+        write_buf.write_all(&data64).unwrap();
+        assert_eq!(budget.expand_buffer_if_needed(&mut read_buf), 0);
+        assert_eq!(budget.expand_buffer_if_needed(&mut write_buf), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_shared_counter_integration() {
+        // Test that BufferBudget properly uses the shared Counter
+        let counter = Counter::new(3); // 3 excess blocks: budget1 uses 2, budget2 uses 1
+        let mut budget1 = BufferBudget::new(&counter)
+            .with_blocks_max(10) // Local limit higher than global
+            .with_block_size(64);
+        let mut budget2 = BufferBudget::new(&counter)
+            .with_blocks_max(10)
+            .with_block_size(64);
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // budget1 uses 1 block via read expansion (64 → 128)
+        let mut read_buf1 = VecRingBuffer::new(64, &tmp);
+        let data = vec![b'x'; 64];
+        read_buf1.write_all(&data).unwrap();
+        assert!(budget1.expand_buffer_if_needed(&mut read_buf1) > 0); // Uses 1 block
+
+        // Fill to capacity and expand again (128 → 192) - this uses 1 more block
+        read_buf1.write_all(&data).unwrap(); // Now 128 bytes used, 0 remaining
+        assert!(budget1.expand_buffer_if_needed(&mut read_buf1) > 0); // Uses 1 more block
+
+        // At this point budget1 has used 2 expansion blocks, leaving 1 block available
+
+        // budget2 uses the remaining 1 expansion block
+        let mut write_buf2 = VecRingBuffer::new(64, &tmp);
+        write_buf2.write_all(&data).unwrap();
+        assert!(budget2.expand_buffer_if_needed(&mut write_buf2) > 0); // Uses the last expansion block
+
+        assert_eq!(budget1.blocks_used(), 2);
+        assert_eq!(budget2.blocks_used(), 1);
+
+        // Now all 3 excess blocks are used - no more expansion should be possible
+
+        // Confirm no more expansion is possible for either budget
+        // Try to fill buffers to capacity for expansion attempt, but write_buf2 is already full
+        let remaining = read_buf1.remaining_capacity();
+        if remaining > 0 {
+            let fill_data = vec![b'y'; remaining];
+            read_buf1.write_all(&fill_data).unwrap();
+        }
+        // write_buf2 is already full, so don't try to write more to it
+        assert_eq!(budget1.expand_buffer_if_needed(&mut read_buf1), 0); // Should fail due to global limit
+        assert_eq!(budget2.expand_buffer_if_needed(&mut write_buf2), 0); // Should fail due to global limit
+    }
+
+    #[test]
+    fn test_buffer_budget_defaults() {
+        let counter = Counter::new(10); // Small counter for testing
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Test that BufferBudget works with just a counter (no builder methods)
+        let mut budget = BufferBudget::new(&counter);
+        assert_eq!(budget.blocks_used(), 0); // Starts with 0 expansion blocks
+        assert_eq!(budget.blocks_max(), None); // No local limit by default
+
+        // Test expansion with default 1-byte block size
+        let mut buf = VecRingBuffer::new(64, &tmp);
+        buf.write_all(&vec![b'x'; 64]).unwrap(); // Fill buffer
+        let expanded = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded, 1); // Should expand by 1 byte (default block_size)
+        assert_eq!(buf.capacity(), 65); // 64 + 1
+        assert_eq!(budget.blocks_used(), 1); // 1 expansion
+
+        // Since blocks_max is None, it can keep expanding (limited only by shared counter)
+        buf.write_all(&[b'y']).unwrap(); // Fill the new byte
+        let expanded2 = budget.expand_buffer_if_needed(&mut buf);
+        assert_eq!(expanded2, 1); // Should expand by another 1 byte
+        assert_eq!(buf.capacity(), 66); // 65 + 1
+        assert_eq!(budget.blocks_used(), 2); // 2 expansions
+    }
+
+    #[test]
+    fn test_buffer_budget_release_blocks() {
+        let counter = Counter::new(5); // 5 blocks available for expansion
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        let mut budget1 = BufferBudget::new(&counter)
+            .with_blocks_max(10) // High local limit
+            .with_block_size(64);
+
+        // Use 3 blocks via expansion
+        let mut buf = VecRingBuffer::new(64, &tmp);
+        for _ in 0..3 {
+            let data = vec![b'x'; buf.remaining_capacity()];
+            buf.write_all(&data).unwrap(); // Fill buffer
+            assert!(budget1.expand_buffer_if_needed(&mut buf) > 0);
+        }
+
+        // At this point, shared counter should have 2 blocks left (5 - 3 = 2)
+        // Verify by trying to create another budget that uses 3 blocks (should fail on 3rd)
+        let mut budget2 = BufferBudget::new(&counter)
+            .with_blocks_max(10)
+            .with_block_size(64);
+        let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+        // Should be able to use 2 more blocks
+        for _ in 0..2 {
+            buf2.write_all(&vec![b'y'; buf2.remaining_capacity()])
+                .unwrap();
+            assert!(budget2.expand_buffer_if_needed(&mut buf2) > 0);
+        }
+
+        // Should fail on the 3rd block (would exceed shared counter limit)
+        buf2.write_all(&vec![b'z'; buf2.remaining_capacity()])
+            .unwrap();
+        assert_eq!(budget2.expand_buffer_if_needed(&mut buf2), 0);
+
+        // Now release 2 blocks from budget1 (simulating connection buffer downsizing)
+        let released = budget1.release_blocks(2);
+        assert_eq!(released, 2);
+        assert_eq!(budget1.blocks_used(), 1); // 3 - 2 = 1
+
+        // Now budget2 should be able to expand (using the 2 released blocks)
+        assert!(budget2.expand_buffer_if_needed(&mut buf2) > 0);
+        assert_eq!(budget2.blocks_used(), 3);
+
+        // Try to release more blocks than available
+        let released = budget1.release_blocks(5); // Only 1 block left
+        assert_eq!(released, 1); // Should only release 1
+        assert_eq!(budget1.blocks_used(), 0);
+    }
+
+    #[test]
+    fn test_buffer_budget_drop_releases_blocks() {
+        let counter = Counter::new(3); // 3 blocks available for expansion
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        // Use all 3 blocks in a budget, then drop it
+        {
+            let mut budget = BufferBudget::new(&counter)
+                .with_blocks_max(5)
+                .with_block_size(64);
+            let mut buf = VecRingBuffer::new(64, &tmp);
+
+            // Use 3 blocks via expansion
+            for _ in 0..3 {
+                let data = vec![b'x'; buf.remaining_capacity()];
+                buf.write_all(&data).unwrap();
+                assert!(budget.expand_buffer_if_needed(&mut buf) > 0);
+            }
+
+            assert_eq!(budget.blocks_used(), 3);
+
+            // At this point, no more blocks should be available
+            let mut budget2 = BufferBudget::new(&counter).with_block_size(64);
+            let mut buf2 = VecRingBuffer::new(64, &tmp);
+            buf2.write_all(&vec![b'y'; 64]).unwrap();
+            assert_eq!(budget2.expand_buffer_if_needed(&mut buf2), 0); // Should fail
+
+            // budget drops here, should return all 3 blocks to counter
+        }
+
+        // After budget is dropped, all 3 blocks should be available again
+        let mut budget3 = BufferBudget::new(&counter).with_block_size(64);
+        let mut buf3 = VecRingBuffer::new(64, &tmp);
+
+        // Should be able to use all 3 blocks again
+        for i in 0..3 {
+            let data = vec![b'z'; buf3.remaining_capacity()];
+            buf3.write_all(&data).unwrap();
+            let expanded = budget3.expand_buffer_if_needed(&mut buf3);
+            assert!(expanded > 0, "Should expand on iteration {}", i);
+        }
+
+        assert_eq!(budget3.blocks_used(), 3);
     }
 }

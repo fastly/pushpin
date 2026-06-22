@@ -50,10 +50,7 @@ bool FileWatcher::start(const QString &filePath) {
     return true;
 }
 
-void FileWatcher::sn_activated(int socket, uint8_t readiness) {
-    Q_UNUSED(socket);
-    Q_UNUSED(readiness);
-
+void FileWatcher::sn_activated([[maybe_unused]] int socket, [[maybe_unused]] uint8_t readiness) {
     sn_->clearReadiness(SocketNotifier::Read);
 
     if (ffi::file_watcher_file_changed(inner_))

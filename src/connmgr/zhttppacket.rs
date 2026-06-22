@@ -1765,7 +1765,7 @@ where
         //
         // further, it is safe for T::parse() to write references to src_ref
         // into scratch_mut, because src_ref and scratch_mut have the same
-        // Lifetime
+        // lifetime
         let scratch_mut: &'static mut ParseScratch<'static> =
             unsafe { scratch.as_ptr().as_mut().unwrap() };
 
@@ -1810,7 +1810,6 @@ impl OwnedResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
     use std::sync::Arc;
 
     #[test]
@@ -2061,7 +2060,7 @@ mod tests {
         )
         .as_bytes();
 
-        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_memory = memorypool::RcMemoryPool::new(1);
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =
@@ -2087,7 +2086,7 @@ mod tests {
         )
         .as_bytes();
 
-        let scratch_memory = Rc::new(memorypool::RcMemory::new(1));
+        let scratch_memory = memorypool::RcMemoryPool::new(1);
 
         let msg = Arc::new(zmq::Message::from(data));
         let scratch =

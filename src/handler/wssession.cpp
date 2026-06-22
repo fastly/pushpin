@@ -142,6 +142,7 @@ void WsSession::processPublishQueue() {
         fc.subscriptionMeta = meta;
         fc.publishMeta = item.meta;
         fc.zhttpOut = zhttpOut;
+        fc.requestUri = requestData.uri;
         fc.currentUri = requestData.uri;
         fc.route = route;
         fc.trusted = targetTrusted;

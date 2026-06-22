@@ -80,7 +80,7 @@ static QString firstSpec(const QString &s, int peerCount) {
     return s;
 }
 
-static int runLoop(const HandlerEngine::Configuration &config) {
+static int runLoop(const QString &logFile, const HandlerEngine::Configuration &config) {
     // Includes worst-case subscriptions and update registrations
     int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
                            (config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
@@ -128,7 +128,7 @@ static int runLoop(const HandlerEngine::Configuration &config) {
 
             ProcessQuit::instance()->hup.connect([&] {
                 log_info("reloading");
-                log_rotate();
+                log_rotate(logFile);
                 engine->reload();
             });
 
@@ -162,15 +162,13 @@ extern "C" {
 int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     HandlerArgsData args(argsFfi);
 
-    if (!args.logFile.isEmpty())
-        ffi::log_init(args.logFile.toUtf8().data());
-    else
-        ffi::log_init(nullptr);
+    if (!log_init(args.logFile))
+        return 1;
 
     if (args.logLevel != -1)
-        ffi::log_set_level(args.logLevel);
+        log_setOutputLevel(args.logLevel);
     else
-        ffi::log_set_level(LOG_LEVEL_INFO);
+        log_setOutputLevel(LOG_LEVEL_INFO);
 
     log_debug("starting...");
 
@@ -371,6 +369,6 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     config.prometheusPort = prometheusPort;
     config.prometheusPrefix = prometheusPrefix;
 
-    return runLoop(config);
+    return runLoop(args.logFile, config);
 }
 }

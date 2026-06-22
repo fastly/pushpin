@@ -28,6 +28,7 @@
 #include "filewatcher.h"
 #include "log.h"
 #include "routesfile.h"
+#include "rustthread.h"
 #include "timer.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -38,8 +39,6 @@
 #include <QTextStream>
 #include <QWaitCondition>
 #include <assert.h>
-#include <pthread.h>
-#include <thread>
 
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
@@ -244,9 +243,6 @@ public:
                 // ParseRouteLine will have logged a message if needed
                 continue;
             }
-
-            if (r.id.isEmpty())
-                r.id = r.idFromCondition();
 
             AddRuleResult ret = addRule(r, &all, &domainMap, &idMap);
             if (ret != AddRuleOk) {
@@ -663,6 +659,9 @@ private:
         if (!ok)
             return false;
 
+        if (r.id.isEmpty())
+            r.id = r.idFromCondition();
+
         *rule = r;
         return true;
     }
@@ -728,7 +727,7 @@ private:
 class DomainMap::Thread {
 public:
     QString fileName;
-    std::thread thread;
+    RustThread::JoinHandle thread;
     std::unique_ptr<EventLoop> loop;
     std::unique_ptr<Worker> worker;
     QMutex m;
@@ -750,15 +749,7 @@ public:
     void start() {
         QMutexLocker locker(&m);
 
-        thread = std::thread([=] {
-#ifdef Q_OS_MAC
-            pthread_setname_np("domainmap");
-#else
-            pthread_setname_np(pthread_self(), "domainmap");
-#endif
-
-            run();
-        });
+        thread = RustThread::spawn([=] { run(); }, "domainmap");
 
         w.wait(&m);
     }
@@ -892,7 +883,7 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
     return best->toEntry();
 }
 
-DomainMap::Entry DomainMap::entry(const QString &id) const {
+DomainMap::Entry DomainMap::entry(const QString &id, const QByteArray &path) const {
     QMutexLocker locker(&d->thread->worker->m);
 
     // HACK
@@ -919,6 +910,10 @@ DomainMap::Entry DomainMap::entry(const QString &id) const {
 
     // This can happen if there were duplicate route IDs
     if (r->id.isEmpty())
+        return Entry();
+
+    // If a request path was provided, check it against the route's path prefix.
+    if (!path.isNull() && !path.startsWith(r->pathBeg))
         return Entry();
 
     return r->toEntry();
@@ -963,13 +958,15 @@ DomainMap *domainmap_create(const char *filename) {
 
 void domainmap_destroy(DomainMap *handle) { delete handle; }
 
-int domainmap_entry_params(DomainMap *handle, const char *route_id, DomainMapRouteParams *params) {
+int domainmap_entry_params(DomainMap *handle, const char *route_id, const char *path,
+                           DomainMapRouteParams *params) {
     if (!handle || !route_id || !params) {
         return -1;
     }
 
     QString qroute_id = QString::fromUtf8(route_id);
-    DomainMap::Entry entry = handle->entry(qroute_id);
+    QByteArray qpath(path);
+    DomainMap::Entry entry = handle->entry(qroute_id, path);
 
     if (entry.isNull()) {
         return -1;

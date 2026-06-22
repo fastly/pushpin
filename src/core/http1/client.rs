@@ -15,11 +15,11 @@
  * limitations under the License.
  */
 
-use crate::core::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, BufferBudget, VecRingBuffer, BUFFER_BUFS_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
-use crate::core::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper, WriteHalf};
+use crate::core::io::{AsyncRead, AsyncWrite, ReadHalf, StdWriteWrapper, WriteHalf};
 use crate::core::select::{select_2, Select2};
 use std::cell::RefCell;
 use std::io::{self, Write};
@@ -31,7 +31,7 @@ use std::str;
 pub struct Request<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    hbuf: &'a mut VecRingBuffer,
+    buf1: &'a mut VecRingBuffer,
     bbuf: &'a mut VecRingBuffer,
 }
 
@@ -44,80 +44,136 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
         Self {
             r: stream.0,
             w: stream.1,
-            hbuf: buf1,
+            buf1,
             bbuf: buf2,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn prepare_header(
+    pub fn prepare_header<'b>(
         self,
-        method: &str,
-        uri: &str,
-        headers: &[Header<'_>],
+        method: &'b str,
+        uri: &'b str,
+        headers: &'b [Header<'b>],
         body_size: BodySize,
         websocket: bool,
         initial_body: &[u8],
         end: bool,
-    ) -> Result<RequestHeader<'a, R, W>, Error> {
-        let req = protocol::ClientRequest::new();
-
-        let size_limit = self.hbuf.capacity();
-
-        let req_body = match req.send_header(self.hbuf, method, uri, headers, body_size, websocket)
-        {
-            Ok(ret) => ret,
-            Err(_) => return Err(Error::RequestTooLarge(size_limit)),
-        };
-
+    ) -> Result<RequestHeader<'a, 'b, R, W>, Error> {
         if self.bbuf.write_all(initial_body).is_err() {
             return Err(Error::BufferExceeded);
         }
 
         Ok(RequestHeader {
-            r: self.r,
-            w: self.w,
-            hbuf: self.hbuf,
+            buf1: self.buf1,
             bbuf: self.bbuf,
-            req_body,
             end,
+            r: self.r,
+            w: RefCell::new(RequestHeaderWrite {
+                stream: self.w,
+                method,
+                uri,
+                headers,
+                body_size,
+                websocket,
+                req: Some(protocol::ClientRequest::new()),
+            }),
         })
     }
 }
 
-pub struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    hbuf: &'a mut VecRingBuffer,
-    bbuf: &'a mut VecRingBuffer,
-    req_body: protocol::ClientRequestBody,
-    end: bool,
+struct RequestHeaderWrite<'a, 'b, W: AsyncWrite> {
+    stream: WriteHalf<'a, W>,
+    method: &'b str,
+    uri: &'b str,
+    headers: &'b [Header<'b>],
+    body_size: BodySize,
+    websocket: bool,
+    req: Option<protocol::ClientRequest>,
 }
 
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
-    pub async fn send(mut self) -> Result<RequestBody<'a, R, W>, Error> {
-        while self.hbuf.len() > 0 {
-            let size = self.w.write(Buffer::read_buf(self.hbuf)).await?;
-            self.hbuf.read_commit(size);
+pub struct RequestHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
+    buf1: &'a mut VecRingBuffer, // Unused at this step but passed along
+    bbuf: &'a mut VecRingBuffer,
+    end: bool,
+    r: ReadHalf<'a, R>,
+    w: RefCell<RequestHeaderWrite<'a, 'b, W>>,
+}
+
+impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, '_, R, W> {
+    pub async fn send(self) -> Result<RequestBody<'a, R, W>, Error> {
+        // Use AsyncOperation pattern like RequestBody::send()
+        let result = AsyncOperation::new(
+            |cx| {
+                let w = &mut *self.w.borrow_mut();
+
+                // Keep trying to write until complete or would block
+                loop {
+                    if !w.stream.is_writable() {
+                        // Writer not ready, try again later
+                        return None;
+                    }
+
+                    let req = w.req.take().unwrap();
+
+                    match req.send_header(
+                        &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+                        w.method,
+                        w.uri,
+                        w.headers,
+                        w.body_size,
+                        w.websocket,
+                    ) {
+                        protocol::SendHeaderStatus::Complete(req_body) => {
+                            // Headers sent successfully
+                            return Some(Ok(req_body));
+                        }
+                        protocol::SendHeaderStatus::Partial(req) => {
+                            // Partial write, try again immediately
+                            w.req = Some(req);
+                        }
+                        protocol::SendHeaderStatus::Error(req, e) => {
+                            match e {
+                                protocol::Error::Io(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                    // Writer not ready, try again later
+                                    w.req = Some(req);
+                                    return None;
+                                }
+                                _ => {}
+                            }
+
+                            return Some(Err(e.into()));
+                        }
+                    }
+                }
+            },
+            || {
+                self.w.borrow_mut().stream.cancel();
+            },
+        )
+        .await;
+
+        match result {
+            Ok(req_body) => {
+                let w = self.w.into_inner();
+
+                Ok(RequestBody {
+                    inner: RefCell::new(Some(RequestBodyInner {
+                        r: RefCell::new(RequestBodyRead {
+                            stream: self.r,
+                            buf: self.buf1,
+                        }),
+                        w: RefCell::new(RequestBodyWrite {
+                            stream: w.stream,
+                            buf: self.bbuf,
+                            req_body: Some(req_body),
+                            end: self.end,
+                        }),
+                    })),
+                })
+            }
+            Err(e) => Err(e),
         }
-
-        let block_size = self.bbuf.capacity();
-
-        Ok(RequestBody {
-            inner: RefCell::new(Some(RequestBodyInner {
-                r: RefCell::new(RequestBodyRead {
-                    stream: self.r,
-                    buf: self.hbuf,
-                }),
-                w: RefCell::new(RequestBodyWrite {
-                    stream: self.w,
-                    buf: self.bbuf,
-                    req_body: Some(self.req_body),
-                    end: self.end,
-                    block_size,
-                }),
-            })),
-        })
     }
 }
 
@@ -131,7 +187,6 @@ struct RequestBodyWrite<'a, W: AsyncWrite> {
     buf: &'a mut VecRingBuffer,
     req_body: Option<protocol::ClientRequestBody>,
     end: bool,
-    block_size: usize,
 }
 
 struct RequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
@@ -171,19 +226,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         }
     }
 
-    pub fn expand_write_buffer<F>(&self, blocks_max: usize, reserve: F) -> Result<usize, Error>
-    where
-        F: FnMut() -> bool,
-    {
+    pub fn expand_write_buffer(&self, budget: &mut BufferBudget) -> Result<usize, Error> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
 
-            Ok(resize_write_buffer_if_full(
-                w.buf,
-                w.block_size,
-                blocks_max,
-                reserve,
-            ))
+            Ok(budget.expand_buffer_if_needed(w.buf))
         } else {
             Err(Error::Unusable)
         }
@@ -318,11 +365,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                     let req_body = w.req_body.take().unwrap();
 
-                    // req_body.send() expects the input to leave room for at
-                    // Least two more buffers in case chunked encoding is
-                    // used (for chunked header and footer)
-                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.read_bufs(&mut buf_arr);
+                    let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+                    let bufs = w.buf.read_bufs(&mut scratch);
 
                     match req_body.send(
                         &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -414,17 +458,20 @@ pub struct Response<'a, R: AsyncRead> {
 }
 
 impl<'a, R: AsyncRead> Response<'a, R> {
-    pub async fn recv_header<'b, const N: usize>(
+    pub async fn recv_header<'b, 'budget, 'counter, const N: usize>(
         mut self,
         mut scratch: &'b mut ParseScratch<N>,
+        mut budget: Option<&'budget mut BufferBudget<'counter>>,
     ) -> Result<
         (
             protocol::OwnedResponse<'b, N>,
-            ResponseBodyKeepHeader<'a, R>,
+            ResponseBodyKeepHeader<'a, 'budget, 'counter, R>,
         ),
         Error,
     > {
         let mut resp = self.inner;
+
+        let original_rbuf_capacity = self.rbuf.capacity();
 
         let (resp, resp_body) = loop {
             {
@@ -454,6 +501,13 @@ impl<'a, R: AsyncRead> Response<'a, R> {
 
             if let Err(e) = recv_nonzero(&mut self.r, self.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
+                    // Try to expand the buffer before failing
+                    if let Some(budget) = budget.as_mut() {
+                        let expanded = budget.expand_buffer_if_needed(self.rbuf);
+                        if expanded > 0 {
+                            continue; // Retry reading with the expanded buffer
+                        }
+                    }
                     return Err(Error::BufferExceeded);
                 }
 
@@ -464,7 +518,7 @@ impl<'a, R: AsyncRead> Response<'a, R> {
         // At this point, resp has taken rbuf's inner buffer, such that
         // rbuf has no inner buffer
 
-        // Put remaining readable bytes in wbuf
+        // Put remaining readable bytes in wbuf, which should always fit
         self.wbuf.write_all(resp.remaining_bytes())?;
 
         // Swap inner buffers, such that rbuf now contains the remaining
@@ -483,6 +537,8 @@ impl<'a, R: AsyncRead> Response<'a, R> {
                     })),
                 },
                 wbuf: RefCell::new(Some(self.wbuf)),
+                original_rbuf_capacity,
+                budget,
             },
         ))
     }
@@ -597,19 +653,27 @@ impl<R: AsyncRead> ResponseBody<'_, R> {
     }
 }
 
-pub struct ResponseBodyKeepHeader<'a, R: AsyncRead> {
+pub struct ResponseBodyKeepHeader<'a, 'budget, 'counter, R: AsyncRead> {
     inner: ResponseBody<'a, R>,
     wbuf: RefCell<Option<&'a mut VecRingBuffer>>,
+    // Track original capacity for shrinking back after header discard
+    original_rbuf_capacity: usize,
+    budget: Option<&'budget mut BufferBudget<'counter>>,
 }
 
-impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
+impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, '_, '_, R> {
     pub fn discard_header<const N: usize>(
-        self,
+        mut self,
         resp: protocol::OwnedResponse<N>,
     ) -> Result<ResponseBody<'a, R>, Error> {
         if let Some(wbuf) = self.wbuf.borrow_mut().take() {
             wbuf.set_inner(resp.into_buf());
             wbuf.clear();
+
+            // Shrink buffer back to original size if expansion occurred
+            if let Some(budget) = self.budget.as_mut() {
+                budget.shrink_buffer(wbuf, self.original_rbuf_capacity);
+            }
 
             Ok(self.inner)
         } else {
@@ -668,5 +732,388 @@ impl FinishedKeepHeader<'_> {
 
     pub fn is_persistent(&self) -> bool {
         self.inner.is_persistent()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::buffer::TmpBuffer;
+    use crate::core::counter::Counter;
+    use crate::core::http1::protocol::ParseScratch;
+    use crate::core::io::{AsyncRead, AsyncWrite};
+    use std::cell::RefCell;
+    use std::future::Future;
+    use std::io::{self, Read};
+    use std::pin::Pin;
+    use std::rc::Rc;
+    use std::task::{Context, Poll};
+
+    struct NoopWaker;
+
+    impl std::task::Wake for NoopWaker {
+        fn wake(self: std::sync::Arc<Self>) {}
+    }
+
+    struct FakeStream {
+        in_data: std::io::Cursor<Vec<u8>>,
+        out_data: Vec<u8>,
+        write_limit: Option<(usize, usize)>,
+    }
+
+    impl FakeStream {
+        fn new() -> Self {
+            Self {
+                in_data: std::io::Cursor::new(Vec::new()),
+                out_data: Vec::new(),
+                write_limit: None,
+            }
+        }
+
+        fn with_write_limit(size: usize) -> Self {
+            Self {
+                in_data: std::io::Cursor::new(Vec::new()),
+                out_data: Vec::new(),
+                write_limit: Some((size, size)),
+            }
+        }
+    }
+
+    impl AsyncRead for FakeStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            Poll::Ready(self.in_data.read(buf))
+        }
+
+        fn cancel(&mut self) {}
+    }
+
+    impl AsyncWrite for FakeStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            let write_size = if let Some((left, max)) = self.write_limit.take() {
+                if left == 0 {
+                    // Replenish and yield
+                    self.write_limit = Some((max, max));
+                    return Poll::Pending;
+                }
+
+                let size = std::cmp::min(buf.len(), left);
+                self.write_limit = Some((left - size, max));
+
+                size
+            } else {
+                buf.len()
+            };
+
+            self.out_data.extend_from_slice(&buf[..write_size]);
+
+            Poll::Ready(Ok(write_size))
+        }
+
+        fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn is_writable(&self) -> bool {
+            true
+        }
+
+        fn cancel(&mut self) {}
+    }
+
+    const HEADERS_MAX: usize = 32;
+
+    #[test]
+    fn response_header_expansion_enabled() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a response with headers larger than the initial buffer
+            let mut large_headers = String::from("HTTP/1.1 200 OK\r\n");
+            // Add many headers to exceed the small buffer size
+            for i in 0..15 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream
+                .in_data
+                .get_mut()
+                .extend_from_slice(large_headers.as_bytes());
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Small buffer to force expansion
+                let mut buf2 = VecRingBuffer::new(32, &tmp);
+
+                // Set up budget for expansion
+                let counter = Counter::new(1000);
+                let mut budget = BufferBudget::new(&counter).with_block_size(64);
+
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let (resp_header, resp_body) = resp
+                    .recv_header(&mut scratch, Some(&mut budget))
+                    .await
+                    .unwrap();
+
+                let resp_ref = resp_header.get();
+                assert_eq!(resp_ref.code, 200);
+                assert_eq!(resp_ref.reason, "OK");
+
+                // Verify that expansion was used (original rbuf was small)
+                assert_eq!(resp_body.original_rbuf_capacity, 32);
+
+                // The fact that parsing succeeded with large headers and small initial buffer
+                // proves that buffer expansion worked (would have failed without expansion)
+
+                let resp_body_final = resp_body.discard_header(resp_header).unwrap();
+
+                // After discard_header, verify buffer was shrunk back to original size
+                let final_capacity = {
+                    let inner = resp_body_final.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    final_capacity, 32,
+                    "Buffer should be shrunk back to original size (32), got {}",
+                    final_capacity
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn response_header_expansion_disabled() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Create a response with headers larger than the buffer
+            let mut large_headers = String::from("HTTP/1.1 200 OK\r\n");
+            // Add many headers to exceed buffer size
+            for i in 0..15 {
+                large_headers.push_str(&format!("X-Custom-Header-{}: value-{}\r\n", i, i));
+            }
+            large_headers.push_str("Content-Length: 6\r\n\r\nhello\n");
+
+            stream
+                .in_data
+                .get_mut()
+                .extend_from_slice(large_headers.as_bytes());
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(1024));
+                let mut buf1 = VecRingBuffer::new(32, &tmp); // Small buffer
+                let mut buf2 = VecRingBuffer::new(32, &tmp);
+
+                // No budget provided - expansion disabled
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let result = resp.recv_header(&mut scratch, None).await;
+
+                // Should fail due to buffer being too small and no expansion available
+                assert!(result.is_err());
+
+                // Verify buffer capacity remained unchanged (no expansion occurred)
+                assert_eq!(
+                    buf1.capacity(),
+                    32,
+                    "Buffer capacity should remain 32 when expansion is disabled, got {}",
+                    buf1.capacity()
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn response_header_basic() {
+        let mut fut = std::pin::pin!(async {
+            let mut stream = FakeStream::new();
+
+            // Simple response that fits in buffer
+            stream.in_data.get_mut().extend_from_slice(
+                "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nhello\n".as_bytes(),
+            );
+
+            {
+                let stream = RefCell::new(&mut stream);
+                let (r, _w) = crate::core::io::io_split(&stream);
+
+                let tmp = Rc::new(TmpBuffer::new(64));
+                let mut buf1 = VecRingBuffer::new(64, &tmp);
+                let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+                let resp = Response {
+                    r,
+                    rbuf: &mut buf1,
+                    wbuf: &mut buf2,
+                    inner: protocol::ClientResponse::new(),
+                };
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let (resp_header, resp_body) = resp.recv_header(&mut scratch, None).await.unwrap();
+
+                let resp_ref = resp_header.get();
+                assert_eq!(resp_ref.code, 200);
+                assert_eq!(resp_ref.reason, "OK");
+
+                // Verify no expansion occurred - buffer should still be original size
+                let current_rbuf_capacity = {
+                    let inner = resp_body.inner.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    current_rbuf_capacity, 64,
+                    "Expected no expansion, rbuf capacity should remain 64, got {}",
+                    current_rbuf_capacity
+                );
+
+                let resp_body_final = resp_body.discard_header(resp_header).unwrap();
+
+                // After discard_header, verify buffer capacity is still unchanged
+                let final_capacity = {
+                    let inner = resp_body_final.inner.borrow();
+                    let inner = inner.as_ref().unwrap();
+                    inner.rbuf.capacity()
+                };
+                assert_eq!(
+                    final_capacity, 64,
+                    "Buffer capacity should remain 64 after discard_header, got {}",
+                    final_capacity
+                );
+            }
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn test_request_partial_writes() {
+        let mut fut = pin!(async {
+            // Test that vectored sending handles partial writes correctly
+            let tmp = Rc::new(TmpBuffer::new(1024));
+            let mut buf1 = VecRingBuffer::new(256, &tmp);
+            let mut buf2 = VecRingBuffer::new(256, &tmp);
+
+            // Use a stream that only writes 20 bytes at a time to force partial writes
+            let mut stream = FakeStream::with_write_limit(20);
+
+            let stream_cell = RefCell::new(&mut stream);
+            let (r, w) = crate::core::io::io_split(&stream_cell);
+
+            let req = Request::new((r, w), &mut buf1, &mut buf2);
+
+            let headers = [
+                Header {
+                    name: "Host",
+                    value: b"example.com",
+                },
+                Header {
+                    name: "User-Agent",
+                    value: b"test-agent-with-a-very-long-name",
+                },
+                Header {
+                    name: "Content-Type",
+                    value: b"application/json",
+                },
+                Header {
+                    name: "Content-Length",
+                    value: b"0",
+                },
+            ];
+
+            let req_header = req
+                .prepare_header(
+                    "POST",
+                    "/api/v1/test",
+                    &headers,
+                    BodySize::Known(0),
+                    false,
+                    b"",
+                    true,
+                )
+                .unwrap();
+
+            // This should handle multiple partial writes and eventually succeed
+            let _req_body = req_header.send().await.unwrap();
+
+            let output = String::from_utf8_lossy(&stream.out_data);
+
+            println!(
+                "Partial write test output ({} bytes):\n{}",
+                stream.out_data.len(),
+                output
+            );
+
+            let expected = concat!(
+                "POST /api/v1/test HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "User-Agent: test-agent-with-a-very-long-name\r\n",
+                "Content-Type: application/json\r\n",
+                "Content-Length: 0\r\n",
+                "\r\n",
+            );
+
+            assert_eq!(output, expected);
+        });
+
+        let waker = std::sync::Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+
+        // Poll multiple times to handle partial writes
+        let mut poll_count = 0;
+        loop {
+            match fut.as_mut().poll(&mut cx) {
+                std::task::Poll::Ready(_) => break,
+                std::task::Poll::Pending => {
+                    poll_count += 1;
+                    if poll_count > 10 {
+                        panic!(
+                            "Too many polls ({}) - operation should have completed",
+                            poll_count
+                        );
+                    }
+                }
+            }
+        }
+
+        println!("Completed after {} polls", poll_count + 1);
     }
 }

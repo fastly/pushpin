@@ -499,11 +499,11 @@ public:
         write(type, zresp, zhttpAddress, routerResp);
     }
 
-    void client_out_messagesWritten(int count) { Q_UNUSED(count); }
+    void client_out_messagesWritten([[maybe_unused]] int count) {}
 
-    void client_out_stream_messagesWritten(int count) { Q_UNUSED(count); }
+    void client_out_stream_messagesWritten([[maybe_unused]] int count) {}
 
-    void server_out_messagesWritten(int count) { Q_UNUSED(count); }
+    void server_out_messagesWritten([[maybe_unused]] int count) {}
 
     void client_req_readyRead() {
         std::weak_ptr<Private> self = q->d;

@@ -273,12 +273,9 @@ public:
             Q_UNREACHABLE();
         }
 
-        if (!args.logFile.isEmpty()) {
-            if (!log_setFile(args.logFile)) {
-                log_error("failed to open log file: %s", qPrintable(args.logFile));
-                q->quit(1);
-                return;
-            }
+        if (!log_init(args.logFile)) {
+            q->quit(1);
+            return;
         }
 
         QStringList configFileList;
@@ -729,7 +726,7 @@ private:
 
     void reload() {
         log_info("reloading");
-        log_rotate();
+        log_rotate(args.logFile);
 
         foreach (Service *s, services) {
             if (s->acceptSighup())
