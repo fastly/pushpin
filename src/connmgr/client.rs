@@ -3214,7 +3214,7 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // Sizes in debug mode at commit TBD
+        // Sizes in debug mode at commit 08464e1c52dd12e76681c218b2681d00f1eb3712
         const REQ_TASK_SIZE_BASE: usize = 7064;
         const STREAM_TASK_SIZE_BASE: usize = 15744;
 
