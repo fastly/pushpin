@@ -436,15 +436,19 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
         let header_size = {
             let mut buf = io::Cursor::new(inner.wbuf.write_buf());
 
-            if inner
+            match inner
                 .protocol
                 .send_response(&mut buf, code, reason, headers, body_size, 0)
-                .is_err()
             {
-                // enable prepare_header to be called again
-                inner.wbuf.clear();
+                Ok(None) => {}
+                Ok(Some(_)) | Err(_) => {
+                    // Partial write, or error due to input being too large
 
-                return Err(Error::ResponseTooLarge(size_limit));
+                    // Enable prepare_header to be called again
+                    inner.wbuf.clear();
+
+                    return Err(Error::ResponseTooLarge(size_limit));
+                }
             }
 
             buf.position() as usize
