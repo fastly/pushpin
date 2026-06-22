@@ -27,7 +27,9 @@ use std::slice;
 #[cfg(test)]
 use std::io::Read;
 
-pub const VECTORED_MAX: usize = 8;
+/// The maximum number of contiguous buffers that may be returned by Buffer trait methods.
+/// This is 2 in the case of RingBuffer due to its wraparound nature.
+pub const BUFFER_BUFS_MAX: usize = 2;
 
 pub fn trim_for_display(s: &str, max: usize) -> String {
     // NOTE: O(n)
@@ -150,6 +152,45 @@ impl Buffer for io::Cursor<&mut [u8]> {
     }
 }
 
+/// Converts a set of u8 slices to a set of IoSlices, skipping `first_buf_offset` bytes of the
+/// first slice, and writes them to `writer`. The caller must supply the memory to use for the
+/// IoSlices.
+fn write_vectored_offset_inner<'a, W: Write>(
+    writer: &mut W,
+    bufs: &[&'a [u8]],
+    first_buf_offset: usize,
+    scratch: &mut [MaybeUninit<io::IoSlice<'a>>],
+) -> Result<usize, io::Error> {
+    let mut count = 0;
+
+    for (i, (&buf, out)) in bufs.iter().zip(scratch.iter_mut()).enumerate() {
+        let buf = if i == 0 {
+            &buf[first_buf_offset..]
+        } else {
+            buf
+        };
+
+        out.write(io::IoSlice::new(buf));
+        count += 1;
+    }
+
+    // SAFETY: we just initialized count elements
+    let bufs = unsafe { slice::from_raw_parts(scratch.as_ptr() as *const io::IoSlice, count) };
+
+    writer.write_vectored(bufs)
+}
+
+/// Stack-allocates space for N IoSlices and calls `write_vectored_offset_inner`.
+fn write_vectored_offset_sized<W: Write, const N: usize>(
+    writer: &mut W,
+    bufs: &[&[u8]],
+    first_buf_offset: usize,
+) -> Result<usize, io::Error> {
+    // SAFETY: Creating an uninitialized array of MaybeUninit is always safe
+    let mut scratch: [MaybeUninit<io::IoSlice>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+    write_vectored_offset_inner(writer, bufs, first_buf_offset, &mut scratch)
+}
+
 pub fn write_vectored_offset<W: Write>(
     writer: &mut W,
     bufs: &[&[u8]],
@@ -177,17 +218,45 @@ pub fn write_vectored_offset<W: Write>(
         start += 1;
     }
 
-    let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
-    let mut arr_len = 0;
+    let bufs = &bufs[start..];
 
-    for (index, &buf) in bufs.iter().enumerate().skip(start) {
-        let buf = if index == start { &buf[offset..] } else { buf };
-
-        arr[arr_len] = io::IoSlice::new(buf);
-        arr_len += 1;
+    // Dispatch to appropriately sized function
+    match bufs.len() {
+        0..=8 => write_vectored_offset_sized::<W, 8>(writer, bufs, offset),
+        9..=16 => write_vectored_offset_sized::<W, 16>(writer, bufs, offset),
+        17..=32 => write_vectored_offset_sized::<W, 32>(writer, bufs, offset),
+        33..=64 => write_vectored_offset_sized::<W, 64>(writer, bufs, offset),
+        65..=128 => write_vectored_offset_sized::<W, 128>(writer, bufs, offset),
+        129..=256 => write_vectored_offset_sized::<W, 256>(writer, bufs, offset),
+        257..=512 => write_vectored_offset_sized::<W, 512>(writer, bufs, offset),
+        513..=1024 => write_vectored_offset_sized::<W, 1024>(writer, bufs, offset),
+        _ => {
+            // Fall back to heap allocation for truly massive cases
+            let mut scratch = vec![MaybeUninit::uninit(); bufs.len()];
+            write_vectored_offset_inner(writer, bufs, offset, &mut scratch)
+        }
     }
+}
 
-    writer.write_vectored(&arr[..arr_len])
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs<'a, 'b: 'a>(bufs: &'a [&'b [u8]], max: usize) -> (&'a [&'b [u8]], bool) {
+    if bufs.len() > max {
+        (&bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
+}
+
+/// Returns a potentially smaller slice and a flag set to true if the slice is smaller.
+pub fn cap_bufs_mut<'a, 'b: 'a>(
+    bufs: &'a mut [&'b mut [u8]],
+    max: usize,
+) -> (&'a mut [&'b mut [u8]], bool) {
+    if bufs.len() > max {
+        (&mut bufs[..max], true)
+    } else {
+        (bufs, false)
+    }
 }
 
 struct LimitBufsRestore<T> {
@@ -379,6 +448,60 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
     }
 }
 
+/// Calls `w.write` for each element in `bufs`. If `bufs` is empty, `w.write` is called once with
+/// an empty slice. If this function encounters an error after successfully writing some bytes,
+/// the number of bytes written so far is returned and the error is eaten. We assume the caller
+/// can obtain the error by calling this function again afterwards to retrigger it.
+///
+/// # Performance notes
+///
+/// This function should only be used on `Write` implementations that don't already have an
+/// optimized `write_vectored` implementation and for which `write` is a cheap operation, for a
+/// example a memory buffer or a middleware with a buffering effect. Using it on something like
+/// socket object, for which every `write` call may result in a system call, would defeat the
+/// point.
+pub fn write_trait_vectored_helper<W: Write>(
+    w: &mut W,
+    bufs: &[io::IoSlice],
+) -> Result<usize, io::Error> {
+    // Like std, if bufs is empty then we'll call write with no data
+    if bufs.is_empty() {
+        return w.write(&[]);
+    }
+
+    let mut total = 0;
+
+    for buf in bufs {
+        if buf.is_empty() {
+            continue;
+        }
+
+        let size = loop {
+            match w.write(buf.as_ref()) {
+                Ok(size) => break size,
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    if total > 0 {
+                        // Return what we've written so far rather than returning the error. We
+                        // can surface the error in the next call.
+                        return Ok(total);
+                    }
+
+                    return Err(e);
+                }
+            }
+        };
+
+        total += size;
+
+        if size < buf.len() {
+            break;
+        }
+    }
+
+    Ok(total)
+}
+
 pub struct ContiguousBuffer {
     buf: Vec<u8>,
     start: usize,
@@ -469,6 +592,10 @@ impl Write for ContiguousBuffer {
         self.write_commit(size);
 
         Ok(size)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -653,6 +780,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Write for RingBuffer<T> {
         }
 
         Ok(pos)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        write_trait_vectored_helper(self, bufs)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -988,41 +1119,56 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
 
-    #[test]
-    fn test_write_vectored_offset() {
-        struct MyWriter {
-            bufs: Vec<String>,
-        }
+    struct MyWriter {
+        bufs: Vec<String>,
+        cause_error_after: Option<(usize, io::Error)>,
+    }
 
-        impl MyWriter {
-            fn new() -> Self {
-                Self { bufs: Vec::new() }
+    impl MyWriter {
+        fn new() -> Self {
+            Self {
+                bufs: Vec::new(),
+                cause_error_after: None,
             }
         }
 
-        impl Write for MyWriter {
-            fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-                self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+        fn cause_error_after(&mut self, num_slices: usize, e: io::Error) {
+            self.cause_error_after = Some((num_slices, e));
+        }
+    }
 
-                Ok(buf.len())
-            }
-
-            fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-                let mut total = 0;
-
-                for buf in bufs {
-                    total += buf.len();
-                    self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+    impl Write for MyWriter {
+        fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+            if let Some((num_slices, e)) = self.cause_error_after.take() {
+                if num_slices == 0 {
+                    return Err(e);
                 }
 
-                Ok(total)
+                self.cause_error_after = Some((num_slices - 1, e));
             }
 
-            fn flush(&mut self) -> Result<(), io::Error> {
-                Ok(())
-            }
+            self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+
+            Ok(buf.len())
         }
 
+        fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+            let mut total = 0;
+
+            for buf in bufs {
+                total += self.write(buf)?;
+            }
+
+            Ok(total)
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_write_vectored_offset() {
         // Empty
         let mut w = MyWriter::new();
         let r = write_vectored_offset(&mut w, &[], 0);
@@ -1076,6 +1222,78 @@ mod tests {
     }
 
     #[test]
+    fn test_write_trait_vectored_helper() {
+        // Write none to get one empty
+        let mut w = MyWriter::new();
+        assert_eq!(write_trait_vectored_helper(&mut w, &[]).unwrap(), 0);
+        assert_eq!(w.bufs, vec![""]);
+
+        // Write multiple, skipping empty
+        let mut w = MyWriter::new();
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b""),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            17
+        );
+        assert_eq!(w.bufs, vec!["apple", "banana", "cherry"]);
+
+        // Error on first slice is returned
+        let mut w = MyWriter::new();
+        w.cause_error_after(0, io::Error::from(io::ErrorKind::Other));
+        write_trait_vectored_helper(
+            &mut w,
+            &[
+                io::IoSlice::new(b"apple"),
+                io::IoSlice::new(b"banana"),
+                io::IoSlice::new(b"cherry"),
+            ],
+        )
+        .unwrap_err();
+
+        // Error on later slice is eaten, and progress is returned
+        let mut w = MyWriter::new();
+        w.cause_error_after(1, io::Error::from(io::ErrorKind::Other));
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            5
+        );
+        assert_eq!(w.bufs, vec!["apple"]);
+
+        // Interrupted error is eaten
+        let mut w = MyWriter::new();
+        w.cause_error_after(1, io::Error::from(io::ErrorKind::Interrupted));
+        assert_eq!(
+            write_trait_vectored_helper(
+                &mut w,
+                &[
+                    io::IoSlice::new(b"apple"),
+                    io::IoSlice::new(b"banana"),
+                    io::IoSlice::new(b"cherry"),
+                ],
+            )
+            .unwrap(),
+            17
+        );
+        assert_eq!(w.bufs, vec!["apple", "banana", "cherry"]);
+    }
+
+    #[test]
     fn test_buffer() {
         let mut b = ContiguousBuffer::new(8);
 
@@ -1118,8 +1336,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 3);
 
         r.write(b"678").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.remaining_capacity(), 0);
@@ -1153,8 +1371,8 @@ mod tests {
         r.write(b"12345").unwrap();
         r.read(&mut buf[..2]).unwrap();
 
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 3);
         assert_eq!(r.read_buf(), b"345");
@@ -1173,8 +1391,8 @@ mod tests {
         r.write(b"6789a").unwrap();
         r.read(&mut buf[..2]).unwrap();
         r.write(b"bc").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"56789a");
@@ -1191,8 +1409,8 @@ mod tests {
 
         r.read(&mut buf[..6]).unwrap();
         r.write(b"def123").unwrap();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bc");
@@ -1202,8 +1420,8 @@ mod tests {
         assert_eq!(r.remaining_capacity(), 0);
 
         r.align();
-        let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.read_bufs(&mut bufs_arr);
+        let mut scratch = [&b""[..]; BUFFER_BUFS_MAX];
+        let bufs = r.read_bufs(&mut scratch);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bcdef123");

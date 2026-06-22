@@ -44,7 +44,7 @@ use crate::connmgr::track::{
 use crate::connmgr::websocket;
 use crate::connmgr::zhttppacket;
 use crate::core::buffer::{
-    Buffer, BufferBudget, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
+    Buffer, BufferBudget, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, BUFFER_BUFS_MAX,
 };
 use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
 use crate::core::counter::Counter;
@@ -755,9 +755,8 @@ impl<W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
             return Poll::Pending;
         }
 
-        // protocol.send_message_content may add 1 element to vector
-        let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-        let mut bufs = w.buf.read_bufs_mut(&mut buf_arr).limit(f.avail);
+        let mut scratch = mem::MaybeUninit::<[&mut [u8]; BUFFER_BUFS_MAX]>::uninit();
+        let mut bufs = w.buf.read_bufs_mut(&mut scratch).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -1397,10 +1396,10 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
 
             400
         }
-        Error::CoreHttp(CoreHttpError::ResponseTooLarge(limit)) => {
+        Error::CoreHttp(CoreHttpError::ResponseTooManyHeaders(limit)) => {
             writeln!(
                 &mut body,
-                "Response header size exceeded limit of {} bytes.",
+                "The number of response headers exceeded the limit of {}.",
                 limit
             )?;
 
@@ -1624,14 +1623,22 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
     Ok(Some(result?))
 }
 
-struct ReqRespond<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
-    header: server::ResponseHeader<'buf, 'st, R, W>,
+struct ReqRespond<'buf, 'st, 'headers, R: AsyncRead, W: AsyncWrite> {
+    header: server::ResponseHeader<'buf, 'st, 'headers, R, W>,
     prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
 }
 
 // Consumes resp if successful
 #[allow(clippy::too_many_arguments)]
-async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
+async fn server_req_respond<
+    'buf,
+    'st,
+    'headers,
+    'resp: 'headers,
+    'tr,
+    R: AsyncRead,
+    W: AsyncWrite,
+>(
     id: &str,
     req: server::Request,
     resp: &mut Option<server::Response<'buf, R, W>>,
@@ -1641,8 +1648,10 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
     body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
-) -> Result<Option<ReqRespond<'buf, 'st, R, W>>, Error> {
+    zreceiver: &TrackedAsyncLocalReceiver<'tr, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
+    headers_scratch: &'headers mut ArrayVec<http1::Header<'resp>, HEADERS_MAX>,
+    zresp_scratch: &'resp mut Option<memorypool::Rc<zhttppacket::OwnedResponse>>,
+) -> Result<Option<ReqRespond<'buf, 'st, 'headers, R, W>>, Error> {
     let msg = {
         let req_header = req.recv_header(resp.as_mut().unwrap());
 
@@ -1691,6 +1700,9 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
         }
     };
 
+    // Remove tracking so the message can be retained
+    let zresp = zresp_scratch.insert(zresp.into_inner());
+
     let (header, prepare_body) = {
         let zresp = zresp.get();
 
@@ -1705,23 +1717,18 @@ async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
 
         // Send response header
 
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
+        let headers = headers_scratch;
 
         for h in rdata.headers.iter() {
-            if headers_len >= headers.len() {
+            if headers.remaining_capacity() == 0 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: h.name,
                 value: h.value,
-            };
-
-            headers_len += 1;
+            });
         }
-
-        let headers = &headers[..headers_len];
 
         let mut resp_take = resp.take().unwrap();
 
@@ -1766,43 +1773,50 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     let mut resp_state = server::ResponseState::default();
 
-    let r = {
-        let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
-        let mut resp = Some(resp);
+    let resp_body = {
+        let mut zresp_scratch = None;
+        let mut headers_scratch = ArrayVec::new();
 
-        let ret = match server_req_respond(
-            id,
-            req,
-            &mut resp,
-            &mut resp_state,
-            peer_addr,
-            secure,
-            body_buf,
-            packet_buf,
-            zsender,
-            zreceiver,
-        )
-        .await
-        {
-            Ok(Some(ret)) => ret,
-            Ok(None) => return Ok(false), // No request
-            Err(e) => {
-                // On error, resp is not consumed, so we can use it
-                send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
+        let r = {
+            let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
+            let mut resp = Some(resp);
 
-                return Err(e);
-            }
+            let ret = match server_req_respond(
+                id,
+                req,
+                &mut resp,
+                &mut resp_state,
+                peer_addr,
+                secure,
+                body_buf,
+                packet_buf,
+                zsender,
+                zreceiver,
+                &mut headers_scratch,
+                &mut zresp_scratch,
+            )
+            .await
+            {
+                Ok(Some(ret)) => ret,
+                Ok(None) => return Ok(false), // No request
+                Err(e) => {
+                    // On error, resp is not consumed, so we can use it
+                    send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
+
+                    return Err(e);
+                }
+            };
+
+            assert!(resp.is_none());
+
+            ret
         };
 
-        assert!(resp.is_none());
+        // ABR: discard_while
+        let header_sent = discard_while(zreceiver, pin!(r.header.send())).await?;
 
-        ret
+        header_sent.start_body(r.prepare_body)
     };
-
-    // ABR: discard_while
-    let header_sent = discard_while(zreceiver, pin!(r.header.send())).await?;
-
-    let resp_body = header_sent.start_body(r.prepare_body);
 
     // Send response body
 
@@ -3276,7 +3290,6 @@ where
 }
 
 struct WsReqData {
-    accept: ArrayString<WS_ACCEPT_MAX>,
     deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
 }
 
@@ -3291,6 +3304,7 @@ fn server_stream_process_req_header(
     instance_id: &str,
     shared: &StreamSharedData,
     recv_buf_size: usize,
+    ws_accept: &mut ArrayString<WS_ACCEPT_MAX>,
 ) -> Result<(zmq::Message, Option<WsReqData>), Error> {
     let mut websocket = false;
     let mut ws_version = None;
@@ -3369,13 +3383,12 @@ fn server_stream_process_req_header(
     );
 
     let ws_req_data: Option<WsReqData> = if websocket {
-        let accept = match validate_ws_request(req, ws_version, ws_key) {
+        *ws_accept = match validate_ws_request(req, ws_version, ws_key) {
             Ok(s) => s,
             Err(_) => return Err(Error::InvalidWebSocketRequest),
         };
 
         Some(WsReqData {
-            accept,
             deflate_config: ws_deflate_config,
         })
     } else {
@@ -3439,6 +3452,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &StreamSharedData,
     recv_buf_size: usize,
+    ws_accept: &mut ArrayString<WS_ACCEPT_MAX>,
 ) -> Result<
     Option<(
         zmq::Message,
@@ -3480,6 +3494,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
         instance_id,
         shared,
         recv_buf_size,
+        ws_accept,
     );
 
     let body_size = req_ref.body_size;
@@ -3494,21 +3509,28 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     Ok(Some((msg, body_size, ws_req_data, req_body)))
 }
 
-struct StreamRespondProceed<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
-    header: server::ResponseHeader<'buf, 'st, R, W>,
+struct StreamRespondProceed<'buf, 'st, 'headers, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
+    header: server::ResponseHeader<'buf, 'st, 'headers, R, W>,
     prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
     zsess_in: ZhttpStreamSessionIn<'zs, 'tr, R2>,
     ws_config: Option<Option<(websocket::PerMessageDeflateConfig, usize)>>,
 }
 
-struct StreamRespondWebSocketRejected<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
-    header: server::ResponseHeader<'buf, 'st, R, W>,
+struct StreamRespondWebSocketRejected<'buf, 'st, 'headers, R: AsyncRead, W: AsyncWrite> {
+    header: server::ResponseHeader<'buf, 'st, 'headers, R, W>,
     prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
 }
 
-enum StreamRespond<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
-    Proceed(StreamRespondProceed<'buf, 'st, 'zs, 'tr, R, W, R2>),
-    WebSocketRejected(StreamRespondWebSocketRejected<'buf, 'st, R, W>),
+enum StreamRespond<'buf, 'st, 'headers, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
+    Proceed(StreamRespondProceed<'buf, 'st, 'headers, 'zs, 'tr, R, W, R2>),
+    WebSocketRejected(StreamRespondWebSocketRejected<'buf, 'st, 'headers, R, W>),
+}
+
+#[derive(Default)]
+struct StreamRespondScratch {
+    zresp: Option<memorypool::Rc<zhttppacket::OwnedResponse>>,
+    ws_ext: ArrayVec<u8, 512>,
+    ws_accept: ArrayString<WS_ACCEPT_MAX>,
 }
 
 // Consumes resp if successful
@@ -3518,11 +3540,13 @@ enum StreamRespond<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
     skip_all,
     fields(connection.id = %id, http.status_code)
 )]
-async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
+async fn server_stream_respond<'buf, 'st, 'headers, 'resp: 'headers, 'zs, 'tr, R, W, R1, R2>(
     id: &'zs str,
     req: server::Request,
     resp: &mut Option<server::Response<'buf, R, W>>,
     resp_state: &'st mut server::ResponseState<'buf, R, W>,
+    resp_scratch: &'resp mut StreamRespondScratch,
+    headers_scratch: &'headers mut ArrayVec<http1::Header<'resp>, HEADERS_MAX>,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
     send_buf_size: usize,
@@ -3541,7 +3565,7 @@ async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
     shared: &'zs StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &'zs R2,
-) -> Result<Option<StreamRespond<'buf, 'st, 'zs, 'tr, R, W, R2>>, Error>
+) -> Result<Option<StreamRespond<'buf, 'st, 'headers, 'zs, 'tr, R, W, R2>>, Error>
 where
     R: AsyncRead,
     W: AsyncWrite,
@@ -3564,6 +3588,7 @@ where
         zreceiver,
         shared,
         recv_buf_size,
+        &mut resp_scratch.ws_accept,
     )
     .await?;
 
@@ -3640,10 +3665,28 @@ where
     // Determine how to respond
 
     let rdata = match &zresp.get().ptype {
-        zhttppacket::ResponsePacket::Data(rdata) => rdata,
+        zhttppacket::ResponsePacket::Data(_) => {
+            // Remove tracking so the message can be retained
+            let zresp = resp_scratch.zresp.insert(zresp.into_inner());
+
+            // Borrow again
+            match &zresp.get().ptype {
+                zhttppacket::ResponsePacket::Data(rdata) => rdata,
+                _ => unreachable!(), // We confirmed the type above
+            }
+        }
         zhttppacket::ResponsePacket::Error(edata) => {
             if ws_req_data.is_some() && edata.condition == "rejected" {
                 // Send websocket rejection
+
+                // Remove tracking so the message can be retained
+                let zresp = resp_scratch.zresp.insert(zresp.into_inner());
+
+                // Borrow again
+                let edata = match &zresp.get().ptype {
+                    zhttppacket::ResponsePacket::Error(edata) => edata,
+                    _ => unreachable!(), // We confirmed the type above
+                };
 
                 let rdata = edata.rejected_info.as_ref().unwrap();
 
@@ -3653,10 +3696,9 @@ where
                     return Err(Error::WebSocketRejectionTooLarge(recv_buf_size));
                 }
 
-                let (header, mut prepare_body) = {
-                    let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-                    let mut headers_len = 0;
+                let headers = headers_scratch;
 
+                let (header, mut prepare_body) = {
                     for h in rdata.headers.iter() {
                         // Don't send these headers
                         if h.name.eq_ignore_ascii_case("Upgrade")
@@ -3667,19 +3709,15 @@ where
                             continue;
                         }
 
-                        if headers_len >= headers.len() {
+                        if headers.remaining_capacity() == 0 {
                             return Err(Error::BadMessage);
                         }
 
-                        headers[headers_len] = http1::Header {
+                        headers.push(http1::Header {
                             name: h.name,
                             value: h.value,
-                        };
-
-                        headers_len += 1;
+                        });
                     }
-
-                    let headers = &headers[..headers_len];
 
                     let mut resp_take = resp.take().unwrap();
 
@@ -3735,10 +3773,9 @@ where
     // Send response header
 
     let (header, mut prepare_body) = {
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
-
         let mut body_size = http1::BodySize::Unknown;
+
+        let headers = headers_scratch;
 
         for h in rdata.headers.iter() {
             if ws_req_data.is_some() {
@@ -3763,63 +3800,55 @@ where
                 }
             }
 
-            if headers_len >= headers.len() {
+            if headers.remaining_capacity() == 0 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: h.name,
                 value: h.value,
-            };
-
-            headers_len += 1;
+            });
         }
 
         if body_size == http1::BodySize::Unknown && !rdata.more {
             body_size = http1::BodySize::Known(rdata.body.len());
         }
 
-        let mut ws_ext = ArrayVec::<u8, 512>::new();
+        let ws_ext = &mut resp_scratch.ws_ext;
 
         if let Some(ws_req_data) = &ws_req_data {
-            let accept_data = &ws_req_data.accept;
+            let accept_data = &mut resp_scratch.ws_accept;
 
-            if headers_len + 4 > headers.len() {
+            if headers.remaining_capacity() < 4 {
                 return Err(Error::BadMessage);
             }
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Upgrade",
                 value: b"websocket",
-            };
-            headers_len += 1;
+            });
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Connection",
                 value: b"Upgrade",
-            };
-            headers_len += 1;
+            });
 
-            headers[headers_len] = http1::Header {
+            headers.push(http1::Header {
                 name: "Sec-WebSocket-Accept",
                 value: accept_data.as_bytes(),
-            };
-            headers_len += 1;
+            });
 
             if let Some((config, _)) = &ws_req_data.deflate_config {
-                if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
+                if write_ws_ext_header_value(config, ws_ext).is_err() {
                     return Err(Error::Compression);
                 }
 
-                headers[headers_len] = http1::Header {
+                headers.push(http1::Header {
                     name: "Sec-WebSocket-Extensions",
-                    value: ws_ext.as_ref(),
-                };
-                headers_len += 1;
+                    value: ws_ext,
+                });
             }
         }
-
-        let headers = &headers[..headers_len];
 
         let mut resp_take = resp.take().unwrap();
 
@@ -3898,6 +3927,8 @@ where
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);
 
     let mut resp_state = server::ResponseState::default();
+    let mut resp_scratch = StreamRespondScratch::default();
+    let mut headers_scratch = ArrayVec::new();
 
     let respond = {
         let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
@@ -3908,6 +3939,8 @@ where
             req,
             &mut resp,
             &mut resp_state,
+            &mut resp_scratch,
+            &mut headers_scratch,
             peer_addr,
             secure,
             send_buf_size,
@@ -4703,6 +4736,8 @@ where
     let stream = RefCell::new(stream);
     let req = client::Request::new(io_split(&stream), buf1, buf2);
 
+    let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
     let req_header = {
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
@@ -4710,8 +4745,6 @@ where
         };
 
         let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
-
-        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         headers.push(http1::Header {
             name: "Host",
@@ -5172,7 +5205,11 @@ where
 
     let req = client::Request::new(io_split(&stream), buf1, buf2);
 
-    let (req_header, ws_key, overflow) = {
+    let mut ws_key = None;
+    let mut ws_ext = ArrayVec::<u8, 512>::new();
+    let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
+    let (req_header, overflow) = {
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
             _ => return Err(Error::BadRequest),
@@ -5182,15 +5219,13 @@ where
 
         let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
 
-        let ws_key = if websocket { Some(gen_ws_key()) } else { None };
+        if websocket {
+            ws_key = Some(gen_ws_key());
+        }
 
         if !websocket && rdata.more {
             follow_redirects = false;
         }
-
-        let mut ws_ext = ArrayVec::<u8, 512>::new();
-
-        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         headers.push(http1::Header {
             name: "Host",
@@ -5322,7 +5357,7 @@ where
             req.prepare_header(method, path, &headers, body_size, false, initial_body, end)?
         };
 
-        (req_header, ws_key, overflow)
+        (req_header, overflow)
     };
 
     // Send request header
@@ -8522,8 +8557,8 @@ mod tests {
     fn server_stream_expand_write_buffer() {
         let reactor = Reactor::new(100);
 
-        let scratch_mem = memorypool::RcMemoryPool::new(1);
-        let resp_mem = memorypool::RcMemoryPool::new(1);
+        let scratch_mem = memorypool::RcMemoryPool::new(2);
+        let resp_mem = memorypool::RcMemoryPool::new(2);
 
         let sock = Rc::new(RefCell::new(FakeSock::new()));
 

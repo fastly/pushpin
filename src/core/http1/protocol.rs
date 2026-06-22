@@ -18,11 +18,14 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::core::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
+use crate::core::buffer::{cap_bufs, write_vectored_offset, FilledBuf, LimitBufs};
+use crate::core::http1::util::HEADERS_MAX;
+use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
 use log::error;
 use std::cmp;
 use std::convert::TryFrom;
+use std::fmt::Write as _;
 use std::io;
 use std::io::{Read, Write};
 use std::mem;
@@ -31,6 +34,8 @@ use std::str;
 const CHUNK_SIZE_MAX: usize = 0xffff;
 const CHUNK_HEADER_SIZE_MAX: usize = 6; // Ffff\r\n
 const CHUNK_FOOTER: &[u8] = b"\r\n";
+
+const SEND_BODY_BUFS_MAX: usize = 8;
 
 fn parse_as_int(src: &[u8]) -> Result<usize, io::Error> {
     let int_str = str::from_utf8(src);
@@ -294,6 +299,7 @@ fn write_chunk<W: Write>(
     chunk: &mut Option<Chunk>,
     max_size: usize,
 ) -> Result<usize, io::Error> {
+    assert!(content.len() <= SEND_BODY_BUFS_MAX);
     assert!(max_size <= CHUNK_SIZE_MAX);
 
     let mut content_len = 0;
@@ -328,11 +334,13 @@ fn write_chunk<W: Write>(
 
     let total = cheader.len() + data_size + footer.len();
 
-    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
+    // Make the slice set mutable so we can limit it
+    let mut content = ArrayVec::<&[u8], { SEND_BODY_BUFS_MAX }>::try_from(content).unwrap();
     let content = content.as_mut_slice().limit(data_size);
 
     let size = {
-        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
+        // Add 2 for header and footer
+        let mut out = ArrayVec::<&[u8], { SEND_BODY_BUFS_MAX + 2 }>::new();
 
         out.push(cheader);
 
@@ -711,6 +719,7 @@ pub enum Error {
 pub struct ServerProtocol {
     state: ServerState,
     ver_min: u8,
+    header_size: Option<usize>,
     body_size: BodySize,
     chunk_left: Option<usize>,
     chunk_size: usize,
@@ -725,6 +734,7 @@ impl<'buf, 'headers> ServerProtocol {
         Self {
             state: ServerState::ReceivingRequest,
             ver_min: 0,
+            header_size: None,
             body_size: BodySize::NoBody,
             chunk_left: None,
             chunk_size: 0,
@@ -955,7 +965,8 @@ impl<'buf, 'headers> ServerProtocol {
         reason: &str,
         headers: &[Header],
         body_size: BodySize,
-    ) -> Result<(), Error> {
+        offset: usize,
+    ) -> Result<Option<usize>, Error> {
         assert!(
             self.state == ServerState::AwaitingResponse || self.state == ServerState::ReceivingBody
         );
@@ -979,16 +990,42 @@ impl<'buf, 'headers> ServerProtocol {
 
         let chunked = body_size == BodySize::Unknown && self.ver_min >= 1;
 
-        if self.ver_min >= 1 {
-            writer.write_all(b"HTTP/1.1 ")?;
-        } else {
-            writer.write_all(b"HTTP/1.0 ")?;
+        // Validate user header count upfront
+        if headers.len() > HEADERS_MAX {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "too many headers").into());
         }
 
-        write!(writer, "{} {}\r\n", code, reason)?;
+        // Stack buffers for formatted parts
+        let mut status_code_str = ArrayString::<16>::new();
+        let mut content_length_str = ArrayString::<48>::new();
+        let final_crlf = b"\r\n";
 
+        // Status line components as separate slices
+        let http_version_space = if self.ver_min >= 1 {
+            b"HTTP/1.1 "
+        } else {
+            b"HTTP/1.0 "
+        };
+        let space = b" ";
+        write!(status_code_str, "{}", code).unwrap();
+        let status_code_slice = status_code_str.as_bytes();
+        let reason_bytes = reason.as_bytes();
+        let crlf = b"\r\n";
+
+        // Build slice array using ArrayVec - panics on overflow (logic error)
+        const SLICES_MAX: usize = HEADERS_MAX * 4 + 5 + 4; // user headers + status line + (connection + content-length + transfer-encoding + final)
+        let mut slices: ArrayVec<&[u8], SLICES_MAX> = ArrayVec::new();
+
+        // Add status line as 5 separate slices (http_version_space + code + space + reason + crlf)
+        slices.push(http_version_space);
+        slices.push(status_code_slice);
+        slices.push(space);
+        slices.push(reason_bytes);
+        slices.push(crlf);
+
+        // Add user headers (4 slices each: name, separator, value, newline)
         for h in headers.iter() {
-            // We'll override these headers
+            // Skip headers we'll override
             if (h.name.eq_ignore_ascii_case("Connection") && code != 101)
                 || h.name.eq_ignore_ascii_case("Content-Length")
                 || h.name.eq_ignore_ascii_case("Transfer-Encoding")
@@ -996,43 +1033,69 @@ impl<'buf, 'headers> ServerProtocol {
                 continue;
             }
 
-            write!(writer, "{}: ", h.name)?;
-            writer.write_all(h.value)?;
-            writer.write_all(b"\r\n")?;
+            slices.push(h.name.as_bytes());
+            slices.push(b": ");
+            slices.push(h.value);
+            slices.push(b"\r\n");
         }
 
-        // Connection header
-
+        // Add Connection header if needed
         if persistent && self.ver_min == 0 {
-            writer.write_all(b"Connection: keep-alive\r\n")?;
+            slices.push(b"Connection: keep-alive\r\n");
         } else if !persistent && self.ver_min >= 1 {
-            writer.write_all(b"Connection: close\r\n")?;
+            slices.push(b"Connection: close\r\n");
         }
 
+        // Add chunked connection header
         if chunked {
-            writer.write_all(b"Connection: Transfer-Encoding\r\n")?;
+            slices.push(b"Connection: Transfer-Encoding\r\n");
         }
 
-        // Content-Length header
-
+        // Add Content-Length header if needed
         if let BodySize::Known(x) = body_size {
-            write!(writer, "Content-Length: {}\r\n", x)?;
+            write!(content_length_str, "Content-Length: {}\r\n", x).unwrap();
+            slices.push(content_length_str.as_bytes());
         }
 
-        // Transfer-Encoding header
-
+        // Add Transfer-Encoding header if needed
         if chunked {
-            writer.write_all(b"Transfer-Encoding: chunked\r\n")?;
+            slices.push(b"Transfer-Encoding: chunked\r\n");
         }
 
-        writer.write_all(b"\r\n")?;
+        // Add final CRLF
+        slices.push(final_crlf);
 
-        self.state = ServerState::SendingBody;
-        self.body_size = body_size;
-        self.persistent = persistent;
-        self.chunked = chunked;
+        // Calculate total length of all slices
+        let mut total_length = 0;
+        for slice in &slices {
+            total_length += slice.len();
+        }
 
-        Ok(())
+        if let Some(header_size) = self.header_size {
+            if total_length != header_size {
+                // When resuming after a partial write, the caller must provide the same content
+                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+            }
+        } else {
+            self.header_size = Some(total_length);
+        }
+
+        // Send slices using vectored write with offset
+        let bytes_written = write_vectored_offset(writer, &slices, offset)?;
+
+        // Check if the entire header has been written
+        if offset + bytes_written >= total_length {
+            // Complete - update protocol state and return None
+            self.state = ServerState::SendingBody;
+            self.header_size = None;
+            self.body_size = body_size;
+            self.persistent = persistent;
+            self.chunked = chunked;
+            Ok(None)
+        } else {
+            // Partial write - return bytes written for retry
+            Ok(Some(bytes_written))
+        }
     }
 
     pub fn send_body<W: Write>(
@@ -1043,6 +1106,10 @@ impl<'buf, 'headers> ServerProtocol {
         headers: Option<&[u8]>,
     ) -> Result<usize, Error> {
         assert_eq!(self.state, ServerState::SendingBody);
+
+        // Cap to some reasonable number of bufs so we can use a fixed array for vectored I/O
+        let (src, capped) = cap_bufs(src, SEND_BODY_BUFS_MAX);
+        let end = end && !capped;
 
         let mut src_len = 0;
         for buf in src.iter() {
@@ -1202,8 +1269,16 @@ impl ClientState {
     }
 }
 
+pub enum SendHeaderStatus<P, C, E> {
+    Partial(P),
+    Complete(C),
+    Error(P, E),
+}
+
 pub struct ClientRequest {
     state: ClientState,
+    header_size: Option<usize>,
+    offset: usize,
 }
 
 #[allow(clippy::new_without_default)]
@@ -1211,9 +1286,12 @@ impl ClientRequest {
     pub fn new() -> Self {
         Self {
             state: ClientState::new(),
+            header_size: None,
+            offset: 0,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn send_header<W: Write>(
         mut self,
         writer: &mut W,
@@ -1222,7 +1300,7 @@ impl ClientRequest {
         headers: &[Header],
         body_size: BodySize,
         websocket: bool,
-    ) -> Result<ClientRequestBody, Error> {
+    ) -> SendHeaderStatus<ClientRequest, ClientRequestBody, Error> {
         let body_size = if websocket {
             BodySize::NoBody
         } else {
@@ -1231,10 +1309,41 @@ impl ClientRequest {
 
         let chunked = body_size == BodySize::Unknown;
 
-        write!(writer, "{} {} HTTP/1.1\r\n", method, uri)?;
+        // Validate user header count upfront
+        if headers.len() > HEADERS_MAX {
+            return SendHeaderStatus::Error(
+                ClientRequest {
+                    state: self.state,
+                    header_size: None,
+                    offset: 0,
+                },
+                io::Error::new(io::ErrorKind::InvalidInput, "too many headers").into(),
+            );
+        }
 
+        // Stack buffers for formatted parts
+        let mut content_length_str = ArrayString::<48>::new();
+        let final_crlf = b"\r\n";
+
+        // Request line components as separate slices
+        let method_bytes = method.as_bytes();
+        let space = b" ";
+        let uri_bytes = uri.as_bytes();
+        let http_version_crlf = b" HTTP/1.1\r\n";
+
+        // Build slice array using ArrayVec - panics on overflow (logic error)
+        const SLICES_MAX: usize = HEADERS_MAX * 4 + 4 + 4; // user headers + request line + (connection + content-length + transfer-encoding + final)
+        let mut slices: ArrayVec<&[u8], SLICES_MAX> = ArrayVec::new();
+
+        // Add request line as 4 separate slices (method + space + uri + http_version_crlf)
+        slices.push(method_bytes);
+        slices.push(space);
+        slices.push(uri_bytes);
+        slices.push(http_version_crlf);
+
+        // Add user headers (4 slices each: name, separator, value, newline)
         for h in headers.iter() {
-            // We'll override these headers
+            // Skip headers we'll override
             if (h.name.eq_ignore_ascii_case("Connection") && !websocket)
                 || h.name.eq_ignore_ascii_case("Content-Length")
                 || h.name.eq_ignore_ascii_case("Transfer-Encoding")
@@ -1242,41 +1351,88 @@ impl ClientRequest {
                 continue;
             }
 
-            write!(writer, "{}: ", h.name)?;
-            writer.write_all(h.value)?;
-            writer.write_all(b"\r\n")?;
+            slices.push(h.name.as_bytes());
+            slices.push(b": ");
+            slices.push(h.value);
+            slices.push(b"\r\n");
         }
 
-        // Connection header
-
+        // Add chunked connection header
         if chunked {
-            writer.write_all(b"Connection: Transfer-Encoding\r\n")?;
+            slices.push(b"Connection: Transfer-Encoding\r\n");
         }
 
-        // Content-Length header
-
+        // Add Content-Length header if needed
         if let BodySize::Known(x) = body_size {
             if x > 0
                 || !method.eq_ignore_ascii_case("OPTIONS")
                     && !method.eq_ignore_ascii_case("GET")
                     && !method.eq_ignore_ascii_case("HEAD")
             {
-                write!(writer, "Content-Length: {}\r\n", x)?;
+                write!(content_length_str, "Content-Length: {}\r\n", x).unwrap();
+                slices.push(content_length_str.as_bytes());
             }
         }
 
-        // Transfer-Encoding header
-
+        // Add Transfer-Encoding header if needed
         if chunked {
-            writer.write_all(b"Transfer-Encoding: chunked\r\n")?;
+            slices.push(b"Transfer-Encoding: chunked\r\n");
         }
 
-        writer.write_all(b"\r\n")?;
+        // Add final CRLF
+        slices.push(final_crlf);
 
-        self.state.body_size = body_size;
-        self.state.chunked = chunked;
+        // Calculate total length of all slices
+        let mut total_length = 0;
+        for slice in &slices {
+            total_length += slice.len();
+        }
 
-        Ok(ClientRequestBody { state: self.state })
+        if let Some(header_size) = self.header_size {
+            if total_length != header_size {
+                // When resuming after a partial write, the caller must provide the same content
+                return SendHeaderStatus::Error(
+                    ClientRequest {
+                        state: self.state,
+                        header_size: Some(total_length),
+                        offset: self.offset,
+                    },
+                    io::Error::from(io::ErrorKind::InvalidInput).into(),
+                );
+            }
+        }
+
+        // Send slices using vectored write with offset
+        let bytes_written = match write_vectored_offset(writer, &slices, self.offset) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                return SendHeaderStatus::Error(
+                    ClientRequest {
+                        state: self.state,
+                        header_size: Some(total_length),
+                        offset: self.offset,
+                    },
+                    e.into(),
+                );
+            }
+        };
+
+        self.offset += bytes_written;
+
+        // Check if the entire header has been written
+        if self.offset >= total_length {
+            // Complete - update state and return ClientRequestBody
+            self.state.body_size = body_size;
+            self.state.chunked = chunked;
+            SendHeaderStatus::Complete(ClientRequestBody { state: self.state })
+        } else {
+            // Partial write - return bytes written for retry
+            SendHeaderStatus::Partial(ClientRequest {
+                state: self.state,
+                header_size: Some(total_length),
+                offset: self.offset,
+            })
+        }
     }
 }
 
@@ -1311,6 +1467,10 @@ impl ClientRequestBody {
         headers: Option<&[u8]>,
     ) -> SendStatus<ClientResponse, Self, Error> {
         let state = &mut self.state;
+
+        // Cap to some reasonable number of bufs so we can use a fixed array for vectored I/O
+        let (src, capped) = cap_bufs(src, SEND_BODY_BUFS_MAX);
+        let end = end && !capped;
 
         let mut src_len = 0;
         for buf in src.iter() {
@@ -1799,6 +1959,7 @@ pub struct ClientFinished {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::buffer::write_trait_vectored_helper;
 
     const HEADERS_MAX: usize = 32;
 
@@ -1832,27 +1993,7 @@ mod tests {
         }
 
         fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-            let mut total = 0;
-
-            for buf in bufs {
-                let size = match self.write(buf.as_ref()) {
-                    Ok(size) => size,
-                    Err(e) => {
-                        if e.kind() == io::ErrorKind::WriteZero && total > 0 {
-                            return Ok(total);
-                        }
-                        return Err(e);
-                    }
-                };
-
-                total += size;
-
-                if size < buf.len() {
-                    break;
-                }
-            }
-
-            Ok(total)
+            write_trait_vectored_helper(self, bufs)
         }
 
         fn flush(&mut self) -> Result<(), io::Error> {
@@ -1995,8 +2136,10 @@ mod tests {
             BodySize::Known(resp.body.len())
         };
 
-        p.send_response(&mut wbuf, resp.code, &resp.reason, &headers, body_size)
+        let partial = p
+            .send_response(&mut wbuf, resp.code, &resp.reason, &headers, body_size, 0)
             .unwrap();
+        assert!(partial.is_none());
 
         let size = wbuf.position() as usize;
 
@@ -2885,6 +3028,7 @@ mod tests {
             let mut p = ServerProtocol {
                 state: ServerState::ReceivingBody,
                 ver_min: 0,
+                header_size: None,
                 body_size: test.body_size,
                 chunk_left: test.chunk_left,
                 chunk_size: test.chunk_size,
@@ -2953,9 +3097,10 @@ mod tests {
             reason: &'static str,
             headers: &'headers [Header<'buf>],
             body_size: BodySize,
+            offset: usize,
             ver_min: u8,
             persistent: bool,
-            result: Result<(), Error>,
+            result: Result<Option<usize>, Error>,
             state: ServerState,
             body_size_after: BodySize,
             chunked: bool,
@@ -2970,13 +3115,14 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(5)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "",
+                written: "HTTP/",
             },
             Test {
                 name: "cant-write-1.0",
@@ -2985,13 +3131,14 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(5)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "",
+                written: "HTTP/",
             },
             Test {
                 name: "cant-write-status-line",
@@ -3000,9 +3147,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(12)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3017,9 +3165,10 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(20)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3034,13 +3183,14 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(24)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.0 200 OK\r\nFoo: ",
+                written: "HTTP/1.0 200 OK\r\nFoo: Ba",
             },
             Test {
                 name: "cant-write-header-eol",
@@ -3051,58 +3201,80 @@ mod tests {
                     Header { name: "Foo", value: b"Bar" },
                 ],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(26)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.0 200 OK\r\nFoo: Bar",
+                written: "HTTP/1.0 200 OK\r\nFoo: Bar\r",
+            },
+            Test {
+                name: "resume-write-header",
+                write_space: 50,
+                code: 200,
+                reason: "OK",
+                headers: &[
+                    Header { name: "Foo", value: b"Bar" },
+                ],
+                body_size: BodySize::Known(0),
+                offset: 24,
+                ver_min: 0,
+                persistent: false,
+                result: Ok(None),
+                state: ServerState::SendingBody,
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "r\r\nContent-Length: 0\r\n\r\n",
             },
             Test {
                 name: "cant-write-keep-alive",
-                write_space: 26,
+                write_space: 30,
                 code: 200,
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: true,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(30)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.0 200 OK\r\n",
+                written: "HTTP/1.0 200 OK\r\nConnection: k",
             },
             Test {
                 name: "cant-write-close",
-                write_space: 26,
+                write_space: 30,
                 code: 200,
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(30)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.1 200 OK\r\n",
+                written: "HTTP/1.1 200 OK\r\nConnection: c",
             },
             Test {
                 name: "cant-write-transfer-encoding",
-                write_space: 26,
+                write_space: 50,
                 code: 200,
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(50)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.1 200 OK\r\n",
+                written: "HTTP/1.1 200 OK\r\nConnection: close\r\nConnection: Tr",
             },
             Test {
                 name: "cant-write-content-length",
@@ -3111,13 +3283,14 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(0),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(26)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.0 200 OK\r\n",
+                written: "HTTP/1.0 200 OK\r\nContent-L",
             },
             Test {
                 name: "cant-write-te-chunked",
@@ -3126,13 +3299,14 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(50)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.1 200 OK\r\nConnection: Transfer-Encoding\r\n",
+                written: "HTTP/1.1 200 OK\r\nConnection: Transfer-Encoding\r\nTr",
             },
             Test {
                 name: "cant-write-eol",
@@ -3141,13 +3315,14 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Ok(Some(18)),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
-                written: "HTTP/1.0 200 OK\r\n",
+                written: "HTTP/1.0 200 OK\r\n\r",
             },
             Test {
                 name: "exclude-headers",
@@ -3161,9 +3336,10 @@ mod tests {
                     Header { name: "Transfer-Encoding", value: b"X" },
                 ],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::Unknown,
                 chunked: false,
@@ -3181,9 +3357,10 @@ mod tests {
                     Header { name: "Transfer-Encoding", value: b"X" },
                 ],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3196,9 +3373,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3211,9 +3389,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::Known(42),
                 chunked: false,
@@ -3226,9 +3405,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::Unknown,
                 chunked: false,
@@ -3241,9 +3421,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3256,9 +3437,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::Known(42),
                 chunked: false,
@@ -3271,9 +3453,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::Unknown,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::Unknown,
                 chunked: true,
@@ -3286,9 +3469,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: true,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3301,9 +3485,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3316,9 +3501,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: true,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3331,9 +3517,10 @@ mod tests {
                 reason: "OK",
                 headers: &[],
                 body_size: BodySize::NoBody,
+                offset: 0,
                 ver_min: 1,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3346,9 +3533,10 @@ mod tests {
                 reason: "Switching Protocols",
                 headers: &[],
                 body_size: BodySize::Known(42),
+                offset: 0,
                 ver_min: 0,
                 persistent: false,
-                result: Ok(()),
+                result: Ok(None),
                 state: ServerState::SendingBody,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -3360,6 +3548,7 @@ mod tests {
             let mut p = ServerProtocol {
                 state: ServerState::AwaitingResponse,
                 ver_min: test.ver_min,
+                header_size: None,
                 body_size: BodySize::NoBody,
                 chunk_left: None,
                 chunk_size: 0,
@@ -3368,16 +3557,25 @@ mod tests {
                 sending_chunk: None,
             };
 
-            let mut w = MyBuffer::new(test.write_space, false);
+            let mut w = MyBuffer::new(test.write_space, true);
 
-            let r = p.send_response(&mut w, test.code, test.reason, test.headers, test.body_size);
+            let r = p.send_response(
+                &mut w,
+                test.code,
+                test.reason,
+                test.headers,
+                test.body_size,
+                test.offset,
+            );
 
             match r {
-                Ok(_) => {
-                    match &test.result {
-                        Ok(_) => {}
+                Ok(partial) => {
+                    let expected = match test.result {
+                        Ok(p) => p,
                         _ => panic!("result mismatch: test={}", test.name),
                     };
+
+                    assert_eq!(partial, expected, "test={}", test.name);
                 }
                 Err(e) => {
                     let expected = match &test.result {
@@ -3647,6 +3845,7 @@ mod tests {
             let mut p = ServerProtocol {
                 state: ServerState::SendingBody,
                 ver_min: 0,
+                header_size: None,
                 body_size: test.body_size,
                 chunk_left: None,
                 chunk_size: 0,
@@ -3922,7 +4121,8 @@ mod tests {
             headers: &'headers [Header<'buf>],
             body_size: BodySize,
             websocket: bool,
-            result: Result<(), Error>,
+            offset: usize,
+            result: Result<Option<usize>, Error>,
             body_size_after: BodySize,
             chunked: bool,
             written: &'static str,
@@ -3937,10 +4137,11 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(2)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
-                written: "",
+                written: "GE",
             },
             Test {
                 name: "cant-write-request-line",
@@ -3950,10 +4151,11 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(12)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
-                written: "GET /foo",
+                written: "GET /foo HTT",
             },
             Test {
                 name: "cant-write-header-name",
@@ -3966,7 +4168,8 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(22)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
                 written: "GET /foo HTTP/1.1\r\nFoo",
@@ -3982,10 +4185,11 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(26)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
-                written: "GET /foo HTTP/1.1\r\nFoo: ",
+                written: "GET /foo HTTP/1.1\r\nFoo: Ba",
             },
             Test {
                 name: "cant-write-header-eol",
@@ -3998,36 +4202,56 @@ mod tests {
                 }],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(28)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
-                written: "GET /foo HTTP/1.1\r\nFoo: Bar",
+                written: "GET /foo HTTP/1.1\r\nFoo: Bar\r",
+            },
+            Test {
+                name: "resume-write-header",
+                write_space: 50,
+                method: "GET",
+                uri: "/foo",
+                headers: &[Header {
+                    name: "Foo",
+                    value: b"Bar",
+                }],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                offset: 26,
+                result: Ok(None),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "r\r\n\r\n",
             },
             Test {
                 name: "cant-write-transfer-encoding",
-                write_space: 27,
+                write_space: 33,
                 method: "POST",
                 uri: "/foo",
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(33)),
                 body_size_after: BodySize::Unknown,
                 chunked: false,
-                written: "POST /foo HTTP/1.1\r\n",
+                written: "POST /foo HTTP/1.1\r\nConnection: T",
             },
             Test {
                 name: "cant-write-content-length",
-                write_space: 27,
+                write_space: 29,
                 method: "POST",
                 uri: "/foo",
                 headers: &[],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(29)),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
-                written: "POST /foo HTTP/1.1\r\n",
+                written: "POST /foo HTTP/1.1\r\nContent-L",
             },
             Test {
                 name: "cant-write-eol",
@@ -4037,7 +4261,8 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
-                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                offset: 0,
+                result: Ok(Some(20)),
                 body_size_after: BodySize::Unknown,
                 chunked: false,
                 written: "POST /foo HTTP/1.1\r\n",
@@ -4067,7 +4292,8 @@ mod tests {
                 ],
                 body_size: BodySize::Known(0),
                 websocket: false,
-                result: Ok(()),
+                offset: 0,
+                result: Ok(None),
                 body_size_after: BodySize::Known(0),
                 chunked: false,
                 written: "POST /foo HTTP/1.1\r\nFoo: Bar\r\nContent-Length: 0\r\n\r\n",
@@ -4080,7 +4306,8 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::NoBody,
                 websocket: false,
-                result: Ok(()),
+                offset: 0,
+                result: Ok(None),
                 body_size_after: BodySize::NoBody,
                 chunked: false,
                 written: "GET /foo HTTP/1.1\r\n\r\n",
@@ -4093,7 +4320,8 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(42),
                 websocket: false,
-                result: Ok(()),
+                offset: 0,
+                result: Ok(None),
                 body_size_after: BodySize::Known(42),
                 chunked: false,
                 written: "POST /foo HTTP/1.1\r\nContent-Length: 42\r\n\r\n",
@@ -4106,7 +4334,8 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Unknown,
                 websocket: false,
-                result: Ok(()),
+                offset: 0,
+                result: Ok(None),
                 body_size_after: BodySize::Unknown,
                 chunked: true,
                 written: "POST /foo HTTP/1.1\r\nConnection: Transfer-Encoding\r\nTransfer-Encoding: chunked\r\n\r\n",
@@ -4119,7 +4348,8 @@ mod tests {
                 headers: &[],
                 body_size: BodySize::Known(42),
                 websocket: true,
-                result: Ok(()),
+                offset: 0,
+                result: Ok(None),
                 body_size_after: BodySize::NoBody,
                 chunked: false,
                 written: "GET /foo HTTP/1.1\r\n\r\n",
@@ -4127,32 +4357,43 @@ mod tests {
         ];
 
         for test in tests.iter() {
-            let req = ClientRequest::new();
+            let mut req = ClientRequest::new();
+            req.offset = test.offset;
 
-            let mut w = MyBuffer::new(test.write_space, false);
+            let mut w = MyBuffer::new(test.write_space, true);
 
-            let r = req.send_header(
+            let r = match req.send_header(
                 &mut w,
                 test.method,
                 test.uri,
                 test.headers,
                 test.body_size,
                 test.websocket,
-            );
+            ) {
+                SendHeaderStatus::Complete(req_body) => Ok((Some(req_body), None)),
+                SendHeaderStatus::Partial(req) => Ok((None, Some(req.offset))),
+                SendHeaderStatus::Error(_, e) => Err(e),
+            };
 
             match r {
-                Ok(req_body) => {
-                    match &test.result {
-                        Ok(_) => {}
+                Ok((ret_req_body, ret_partial)) => {
+                    let expected_partial = match test.result {
+                        Ok(p) => p,
                         _ => panic!("result mismatch: test={}", test.name),
                     };
 
-                    assert_eq!(
-                        req_body.state.body_size, test.body_size_after,
-                        "test={}",
-                        test.name
-                    );
-                    assert_eq!(req_body.state.chunked, test.chunked, "test={}", test.name);
+                    if let Some(expected_partial) = expected_partial {
+                        let partial = ret_partial.unwrap();
+                        assert_eq!(partial, expected_partial, "test={}", test.name);
+                    } else {
+                        let req_body = ret_req_body.unwrap();
+                        assert_eq!(
+                            req_body.state.body_size, test.body_size_after,
+                            "test={}",
+                            test.name
+                        );
+                        assert_eq!(req_body.state.chunked, test.chunked, "test={}", test.name);
+                    }
                 }
                 Err(e) => {
                     let expected = match &test.result {
@@ -5310,19 +5551,20 @@ mod tests {
 
         let mut out = MyBuffer::new(1024, true);
 
-        let req_body = req
-            .send_header(
-                &mut out,
-                "GET",
-                "/foo",
-                &[Header {
-                    name: "Host",
-                    value: b"example.com",
-                }],
-                BodySize::NoBody,
-                false,
-            )
-            .unwrap();
+        let req_body = match req.send_header(
+            &mut out,
+            "GET",
+            "/foo",
+            &[Header {
+                name: "Host",
+                value: b"example.com",
+            }],
+            BodySize::NoBody,
+            false,
+        ) {
+            SendHeaderStatus::Complete(req_body) => req_body,
+            _ => panic!("unexpected status"),
+        };
 
         let expected = "GET /foo HTTP/1.1\r\nHost: example.com\r\n\r\n";
 
