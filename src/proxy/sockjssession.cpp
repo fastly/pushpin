@@ -30,13 +30,13 @@
 #include "qtcompat.h"
 #include "sockjsmanager.h"
 #include "timer.h"
+#include "urlquery.h"
 #include "variant.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QUrlQuery>
 #include <assert.h>
 
 using std::map;
@@ -345,7 +345,7 @@ public:
                 }
             } else // GET
             {
-                QUrlQuery query(_req->requestUri());
+                UrlQuery query(_req->requestUri());
                 param = query.queryItemValue("d").toUtf8();
             }
 
