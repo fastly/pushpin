@@ -242,9 +242,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
         newResponse.reason = reason;
     }
 
-    CowUrl nextLink;
+    QString nextLink;
     int nextLinkTimeout = -1;
-    CowUrl goneLink;
+    QString goneLink;
     foreach (const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link")) {
         if (params.count() < 2)
             continue;
@@ -256,15 +256,22 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
             return Instruct();
         }
 
-        CowUrl link = CowUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
-        if (!link.isValid()) {
-            setError(ok, errorMessage, "Grip-Link contains invalid link");
-            return Instruct();
+        QByteArray linkBytes = linkParam.mid(1, linkParam.length() - 2);
+        QString linkString = QString::fromUtf8(linkBytes);
+
+        // Validate the URL - try to create a Url first, if that fails, validate as relative URL
+        CowUrl tempLink(linkString);
+        if (!tempLink.isValid()) {
+            // Try validating as a relative URL
+            if (!CowUrl::isValidRelativeUrl(linkString)) {
+                setError(ok, errorMessage, "Grip-Link contains invalid link");
+                return Instruct();
+            }
         }
 
         QByteArray rel = params.get("rel").asQByteArray();
         if (rel == "next") {
-            nextLink = link;
+            nextLink = linkString;
 
             if (params.contains("timeout")) {
                 bool x;
@@ -282,7 +289,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
                 nextLinkTimeout = DEFAULT_NEXTLINK_TIMEOUT;
             }
         } else if (rel == "gone") {
-            goneLink = link;
+            goneLink = linkString;
         }
     }
 

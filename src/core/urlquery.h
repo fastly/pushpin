@@ -20,13 +20,14 @@
 #include "cowurl.h"
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QUrlQuery>
 
 class UrlQuery {
 public:
     // Constructors
     UrlQuery() = default;
-    explicit UrlQuery(const CowUrl &url) : inner_(url) {}
+    explicit UrlQuery(const CowUrl &url) : inner_(url.query()) {}
     explicit UrlQuery(const QString &queryString) : inner_(queryString) {}
     UrlQuery(const UrlQuery &other) : inner_(other.inner_) {}
     UrlQuery(UrlQuery &&other) noexcept : inner_(std::move(other.inner_)) {}
@@ -63,21 +64,22 @@ public:
     QString
     queryItemValue(const QString &key,
                    CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
-        return inner_.queryItemValue(key, encoding);
+        return inner_.queryItemValue(key, static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
     QStringList
     allQueryItemValues(const QString &key,
                        CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
-        return inner_.allQueryItemValues(key, encoding);
+        return inner_.allQueryItemValues(key,
+                                         static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
     QList<QPair<QString, QString>>
     queryItems(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
-        return inner_.queryItems(encoding);
+        return inner_.queryItems(static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
 
     // String conversion
     QString toString(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
-        return inner_.toString(encoding);
+        return inner_.toString(static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
 
     // Access to underlying QUrlQuery for compatibility

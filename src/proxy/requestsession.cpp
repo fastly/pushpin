@@ -692,7 +692,7 @@ public:
             }
         }
 
-        uri.setQuery(query.asQUrlQuery());
+        uri.setQuery(query);
 
         // If we have no query items anymore, strip the '?'
         if (query.isEmpty()) {

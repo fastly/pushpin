@@ -53,9 +53,9 @@ public:
     int keepAliveTimeout;
     QHash<QString, QString> meta;
     HttpResponseData response;
-    CowUrl nextLink;
+    QString nextLink;
     int nextLinkTimeout;
-    CowUrl goneLink;
+    QString goneLink;
 
     Instruct()
         : holdMode(NoHold),
