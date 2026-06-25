@@ -132,6 +132,11 @@ mod tests {
         unsafe { ffi::cowstring_test(out_ex) == 0 }
     }
 
+    fn url_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::url_test(out_ex) == 0 }
+    }
+
     fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::httpheaders_test(out_ex) == 0 }
@@ -175,6 +180,11 @@ mod tests {
     #[test]
     fn cowstring() {
         run_cpp(cowstring_test);
+    }
+
+    #[test]
+    fn url() {
+        run_cpp(url_test);
     }
 
     #[test]

@@ -5,6 +5,9 @@ HEADERS += \
 	$$PWD/urlquery.h \
 	$$PWD/variant.h
 
+SOURCES += \
+	$$PWD/url.cpp
+
 HEADERS += \
 	$$PWD/zmqcontext.h \
 	$$PWD/zmqsocket.h \
