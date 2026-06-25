@@ -32,6 +32,7 @@
 #include "statsmanager.h"
 #include "test.h"
 #include "tnetstring.h"
+#include "urlquery.h"
 #include "variant.h"
 #include "zhttpmanager.h"
 #include "zhttprequestpacket.h"
@@ -352,7 +353,7 @@ private:
 
         QByteArray encPath = zreq.uri.path(Url::FullyEncoded).toUtf8();
 
-        QUrlQuery query(zreq.uri.query());
+        UrlQuery query(zreq.uri.query());
         QString hold = query.queryItemValue("hold");
         bool bodyInstruct = (query.queryItemValue("body-instruct") == "true");
         bool large = (query.queryItemValue("large") == "true");
