@@ -1,6 +1,7 @@
 SOURCES += \
 	$$PWD/cowbytearraytest.cpp \
 	$$PWD/cowstringtest.cpp \
+	$$PWD/urltest.cpp \
 	$$PWD/httpheaderstest.cpp \
 	$$PWD/jwttest.cpp \
 	$$PWD/timertest.cpp \

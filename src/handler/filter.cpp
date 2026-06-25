@@ -441,10 +441,10 @@ HttpFilter::HttpFilter(Mode mode) {
 }
 
 void HttpFilter::start(const Filter::Context &context, const QByteArray &content) {
-    Url url = Url(context.subscriptionMeta.value("url"), Url::StrictMode);
-    if (!url.isValid()) {
+    QString urlString = context.subscriptionMeta.value("url");
+    if (urlString.isEmpty()) {
         Result r;
-        r.errorMessage = "invalid or missing url value";
+        r.errorMessage = "missing url value";
         finished(r);
         return;
     }
@@ -455,7 +455,14 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
     else if (currentUri.scheme() == "ws")
         currentUri.setScheme("http");
 
-    Url destUri = currentUri.resolved(url);
+    // Handle relative URLs by resolving against currentUri
+    Url destUri = currentUri.resolved(urlString);
+    if (!destUri.isValid()) {
+        Result r;
+        r.errorMessage = "invalid url value";
+        finished(r);
+        return;
+    }
 
     Url requestUri = context.requestUri;
     int requestPort = requestUri.port(requestUri.scheme() == "https" ? 443 : 80);

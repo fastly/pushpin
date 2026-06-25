@@ -151,6 +151,7 @@ pub mod ffi {
     import_cpptest! {
         pub fn cowbytearray_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn cowstring_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn url_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn httpheaders_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn jwt_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn timer_test(out_ex: *mut TestException) -> libc::c_int;

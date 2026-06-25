@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2026 Fastly, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,80 @@
 #ifndef URL_H
 #define URL_H
 
+#include "rust/bindings.h"
+#include <QByteArray>
+#include <QHash>
+#include <QString>
 #include <QUrl>
 
-// Type alias for URL handling - this will be replaced with a custom implementation later
-using Url = QUrl;
+class UrlQuery; // Forward declaration
+
+class Url {
+public:
+    enum ParsingMode { StrictMode = 0 };
+
+    enum ComponentFormattingOptions : unsigned int {
+        PrettyDecoded = QUrl::PrettyDecoded,
+        FullyEncoded = QUrl::FullyEncoded,
+        FullyDecoded = QUrl::FullyDecoded
+    };
+
+    Url();
+    Url(const QString &url);
+    Url(const QString &url, ParsingMode mode);
+    Url(const char *url);
+    Url(const Url &other);
+    ~Url();
+
+    Url &operator=(const Url &other);
+
+    bool operator==(const Url &other) const;
+    bool operator!=(const Url &other) const;
+    bool operator<(const Url &other) const;
+
+    static Url fromEncoded(const QByteArray &input, ParsingMode mode = StrictMode);
+    static Url fromUserInput(const QString &userInput);
+    static QString fromPercentEncoding(const QByteArray &input);
+    static QByteArray toPercentEncoding(const QString &input);
+
+    // Validates that a potentially relative URL string is syntactically valid
+    // by attempting to resolve it against a dummy base URL
+    static bool isValidRelativeUrl(const QString &relativeUrl);
+
+    bool isEmpty() const;
+    bool isValid() const;
+    void clear();
+
+    void setScheme(const QString &scheme);
+    QString scheme() const;
+    QString path(ComponentFormattingOptions options = FullyEncoded) const;
+    QString query(ComponentFormattingOptions options = FullyEncoded) const;
+    bool hasQuery() const;
+
+    QString host() const;
+    int port() const;
+    int port(int defaultPort) const;
+    QString authority() const;
+    void setHost(const QString &host);
+    void setPort(int port);
+    void setPath(const QString &path, ParsingMode mode = StrictMode);
+    void setQuery(const QString &query);
+    void setQuery(const UrlQuery &query);
+
+    Url resolved(const Url &relative) const;
+    Url resolved(const QString &relativeString) const;
+
+    QString toString(ComponentFormattingOptions options = FullyEncoded) const;
+    QByteArray toEncoded() const;
+
+private:
+    ffi::CUrlHandle handle_;
+};
+
+// Hash function for Url so it can be used in QHash
+inline uint qHash(const Url &url, uint seed = 0) {
+    QString urlStr = url.toString();
+    return qHashMulti(seed, urlStr);
+}
 
 #endif // URL_H
