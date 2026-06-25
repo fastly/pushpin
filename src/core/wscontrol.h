@@ -23,10 +23,38 @@
 #ifndef WSCONTROL_H
 #define WSCONTROL_H
 
+#include "websocket.h"
+
 namespace WsControl {
 
 enum KeepAliveMode { NoKeepAlive, Idle, Interval };
 
-}
+class AutoRespondConfig {
+public:
+    WebSocket::Frame::Type matchType;
+    QByteArray matchContent;
+    QByteArray matchContentPtr;
+    WebSocket::Frame::Type type;
+    QByteArray content;
+
+    AutoRespondConfig() : matchType((WebSocket::Frame::Type)-1), type((WebSocket::Frame::Type)-1) {}
+
+    /// Returns true if the config has no matching criteria.
+    bool isEmpty() const { return (((int)matchType) < 0 && matchContent.isNull()); }
+
+    /// Returns true if the config has matching critera and response data.
+    bool isEnabled() const { return (!isEmpty() && (((int)type) >= 0 || !content.isNull())); }
+
+    /// Returns true if this config has the same matching criteria as `other`.
+    bool matches(const AutoRespondConfig &other) {
+        return (matchType == other.matchType &&
+                ((matchContent.isNull() && other.matchContent.isNull()) ||
+                 (!matchContent.isNull() && !other.matchContent.isNull() &&
+                  matchContent == other.matchContent)) &&
+                matchContentPtr == other.matchContentPtr);
+    }
+};
+
+} // namespace WsControl
 
 #endif

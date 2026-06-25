@@ -237,6 +237,61 @@ QString getString(const Variant &in, const QString &parentName, const QString &c
     return str;
 }
 
+QByteArray getBytes(const Variant &in, const QString &parentName, const QString &childName,
+                    const QString &childBinName, bool required, bool *ok, QString *errorMessage,
+                    bool *isBin) {
+    QByteArray out;
+
+    QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+    if (keyedObjectContains(in, childBinName)) {
+        if (isBin)
+            *isBin = true;
+
+        Variant vcontentBin = keyedObjectGetValue(in, childBinName);
+
+        if (typeId(in) == VariantType::Map) // JSON input
+        {
+            if (typeId(vcontentBin) != VariantType::String) {
+                setError(ok, errorMessage,
+                         QString("%1 contains '%2' with wrong type").arg(pn, childBinName));
+                return QByteArray();
+            }
+
+            out = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
+        } else {
+            if (typeId(vcontentBin) != VariantType::ByteArray) {
+                setError(ok, errorMessage,
+                         QString("%1 contains '%2' with wrong type").arg(pn, childBinName));
+                return QByteArray();
+            }
+
+            out = vcontentBin.toByteArray();
+        }
+    } else if (keyedObjectContains(in, childName)) {
+        if (isBin)
+            *isBin = false;
+
+        Variant vcontent = keyedObjectGetValue(in, childName);
+        if (typeId(vcontent) == VariantType::ByteArray)
+            out = vcontent.toByteArray();
+        else if (typeId(vcontent) == VariantType::String)
+            out = vcontent.toString().toUtf8();
+        else {
+            setError(ok, errorMessage,
+                     QString("%1 contains '%2' with wrong type").arg(pn, childName));
+            return QByteArray();
+        }
+    } else if (required) {
+        setError(ok, errorMessage,
+                 QString("%1 does not contain '%2' nor '%3'").arg(pn, childName, childBinName));
+        return QByteArray();
+    }
+
+    setSuccess(ok, errorMessage);
+    return out;
+}
+
 bool convertToJsonStyleInPlace(Variant *in) {
     // Hash -> Map
     // ByteArray (UTF-8) -> String
