@@ -674,7 +674,17 @@ impl<T> AsyncLocalReceiver<T> {
     }
 
     pub fn recv(&self) -> LocalRecvFuture<'_, T> {
-        LocalRecvFuture { r: self }
+        LocalRecvFuture {
+            r: self,
+            use_budget: true,
+        }
+    }
+
+    pub fn recv_no_budget(&self) -> LocalRecvFuture<'_, T> {
+        LocalRecvFuture {
+            r: self,
+            use_budget: false,
+        }
     }
 }
 
@@ -962,6 +972,7 @@ impl<T> Drop for WaitSendableFuture<'_, T> {
 
 pub struct LocalRecvFuture<'a, T> {
     r: &'a AsyncLocalReceiver<T>,
+    use_budget: bool,
 }
 
 impl<T> Future for LocalRecvFuture<'_, T> {
@@ -978,7 +989,7 @@ impl<T> Future for LocalRecvFuture<'_, T> {
             return Poll::Pending;
         }
 
-        if !f.r.evented.registration().pull_from_budget() {
+        if f.use_budget && !f.r.evented.registration().pull_from_budget() {
             return Poll::Pending;
         }
 
