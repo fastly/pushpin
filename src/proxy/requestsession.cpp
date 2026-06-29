@@ -39,6 +39,7 @@
 #include "sockjsmanager.h"
 #include "statsmanager.h"
 #include "url.h"
+#include "urlquery.h"
 #include "variant.h"
 #include "xffrule.h"
 #include "zhttpmanager.h"
@@ -48,7 +49,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QUrlQuery>
 #include <assert.h>
 
 #define MAX_SHARED_REQUEST_BODY 100000
@@ -577,7 +577,7 @@ public:
             bodyParam = QString::fromUtf8(config.bodyParam);
 
         Url uri = requestData.uri;
-        QUrlQuery query(uri);
+        UrlQuery query(uri);
 
         // Two ways to activate JSON-P:
         // 1) callback param present
@@ -691,7 +691,7 @@ public:
             }
         }
 
-        uri.setQuery(query);
+        uri.setQuery(query.asQUrlQuery());
 
         // If we have no query items anymore, strip the '?'
         if (query.isEmpty()) {

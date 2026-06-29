@@ -28,6 +28,7 @@
 #include "qtcompat.h"
 #include "sockjssession.h"
 #include "timer.h"
+#include "urlquery.h"
 #include "variant.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
@@ -36,7 +37,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRandomGenerator>
-#include <QUrlQuery>
 #include <QtGlobal>
 #include <assert.h>
 
@@ -206,7 +206,7 @@ public:
         QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
         s->path = encPath.mid(basePathStart);
 
-        QUrlQuery query(uri);
+        UrlQuery query(uri);
 
         QList<QByteArray> parts = s->path.split('/');
         if (!parts.isEmpty() && parts.last().startsWith("jsonp")) {

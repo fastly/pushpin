@@ -58,6 +58,7 @@
 #include "statsmanager.h"
 #include "timer.h"
 #include "tnetstring.h"
+#include "urlquery.h"
 #include "variant.h"
 #include "variantutil.h"
 #include "wscontrolmessage.h"
@@ -73,7 +74,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QUrlQuery>
 #include <algorithm>
 #include <assert.h>
 
@@ -341,7 +341,7 @@ private:
                 QByteArray jsonData;
 
                 if (!rule.jsonParam.isEmpty()) {
-                    QUrlQuery tmp(QString::fromUtf8(requestData.body));
+                    UrlQuery tmp(QString::fromUtf8(requestData.body));
                     jsonData = tmp.queryItemValue(rule.jsonParam, Url::FullyDecoded).toUtf8();
                 } else {
                     jsonData = requestData.body;

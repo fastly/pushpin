@@ -29,8 +29,8 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "statusreasons.h"
+#include "urlquery.h"
 #include <QSet>
-#include <QUrlQuery>
 #include <assert.h>
 
 #define MAX_REQUEST_SIZE 100000
@@ -74,7 +74,7 @@ public:
 
         QSet<QString> channels;
 
-        QUrlQuery query(request.uri);
+        UrlQuery query(request.uri);
         QList<QPair<QString, QString>> queryItems = query.queryItems();
         for (int n = 0; n < queryItems.count(); ++n) {
             if (queryItems[n].first == "channel")

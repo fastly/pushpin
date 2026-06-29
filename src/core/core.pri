@@ -2,6 +2,7 @@ HEADERS += \
 	$$PWD/cowbytearray.h \
 	$$PWD/cowstring.h \
 	$$PWD/url.h \
+	$$PWD/urlquery.h \
 	$$PWD/variant.h
 
 HEADERS += \
