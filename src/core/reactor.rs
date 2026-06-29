@@ -712,6 +712,10 @@ impl Reactor {
         timer.start + ticks_to_duration(timer.current_ticks)
     }
 
+    pub fn budget(&self) -> Option<u32> {
+        *self.inner.budget.borrow()
+    }
+
     pub fn set_budget(&self, budget: Option<u32>) {
         *self.inner.budget.borrow_mut() = budget;
     }

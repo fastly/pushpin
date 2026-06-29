@@ -34,7 +34,9 @@ use crate::core::list::{SlabList, SlabNode};
 use crate::core::memorypool;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
-use crate::core::task::{self, yield_to_local_events, CancellationSender, CancellationToken};
+use crate::core::task::{
+    self, get_reactor, yield_to_local_events, CancellationSender, CancellationToken,
+};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
@@ -151,24 +153,19 @@ impl<T> ChannelPool<T> {
 }
 
 // sharable boolean with optional error message, used by FlagWheneverPolled
+#[derive(Default)]
 struct PolledFlag {
-    value: Cell<bool>,
+    value: Cell<Option<Option<u32>>>,
     err_msg_on_poll: Cell<Option<String>>,
 }
 
 impl PolledFlag {
-    fn new(value: bool) -> Self {
-        Self {
-            value: Cell::new(value),
-            err_msg_on_poll: Cell::new(None),
-        }
-    }
-
-    fn get(&self) -> bool {
+    /// Returns `Some` if polled, containing the remaining I/O budget if any.
+    fn get(&self) -> Option<Option<u32>> {
         self.value.get()
     }
 
-    fn set(&self, value: bool) {
+    fn set(&self, value: Option<Option<u32>>) {
         self.value.set(value);
     }
 
@@ -199,13 +196,20 @@ where
             (fut, &s.flag)
         };
 
-        flag.value.set(true);
+        // Flag as polled, without setting the remaining budget yet
+        flag.value.set(Some(None));
 
         if let Some(msg) = flag.err_msg_on_poll.take() {
             error!("{}", msg);
         }
 
-        fut.poll(cx)
+        let ret = fut.poll(cx);
+
+        // Now set the remaining budget
+        let remaining_budget = get_reactor().budget();
+        flag.value.set(Some(remaining_budget));
+
+        ret
     }
 }
 
@@ -214,7 +218,7 @@ where
 // Example:
 //
 // let pool_mem = Rc::new(memorypool::RcMemory::new(1));
-// let polled = memorypool::Rc::try_new_in(PolledFlag::new(false), &pool_mem).unwrap();
+// let polled = memorypool::Rc::try_new_in(PolledFlag::default(), &pool_mem).unwrap();
 // assert!(polled.get().get(), false);
 //
 // let mut x = 0;
@@ -425,11 +429,11 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         if let Some(polled) = &ci.polled {
-            polled.set(false);
+            polled.set(None);
         }
     }
 
-    fn polled(&self, ckey: usize) -> bool {
+    fn polled(&self, ckey: usize) -> Option<Option<u32>> {
         let nkey = ckey;
 
         let items = &*self.items.borrow();
@@ -437,7 +441,7 @@ impl Connections {
 
         match &ci.polled {
             Some(polled) => polled.get(),
-            None => false,
+            None => None,
         }
     }
 
@@ -1374,7 +1378,7 @@ impl Worker {
                             .unwrap();
 
                             let polled = memorypool::Rc::try_new_in(
-                                PolledFlag::new(false),
+                                PolledFlag::default(),
                                 &stream_polled_mem,
                             )
                             .unwrap();
@@ -1517,7 +1521,7 @@ impl Worker {
                                         conns.clear_polled(key);
                                     }
                                     Err(mpsc::TrySendError::Full(_)) => error!(
-                                        "client-worker {}: connection-{} state={:?} cannot receive message despite fix 2 seq={:?}",
+                                        "client-worker {}: connection-{} state={:?} cannot receive message seq={:?}",
                                         id, key, state, rid.seq,
                                     ),
                                     Err(mpsc::TrySendError::Disconnected(_)) => {} // Conn task ended
@@ -1534,14 +1538,18 @@ impl Worker {
                                 yield_to_local_events(&resume_waker).await;
 
                                 for &key in ckeys_sent_to.iter() {
-                                    let polled = conns.polled(key);
+                                    let (polled, remaining_budget) = match conns.polled(key) {
+                                        Some(remaining_budget) => (true, remaining_budget),
+                                        None => (false, None),
+                                    };
+
                                     let can_send_or_disconnected =
                                         conns.can_send_or_disconnected(key);
 
                                     if !polled || !can_send_or_disconnected {
                                         let state = conns.state(key);
 
-                                        error!("client-worker {}: connection-{} state={:?} unexpected status after yield despite fix 2 polled={} can_send_or_disconnected={}", id, key, state, polled, can_send_or_disconnected);
+                                        error!("client-worker {}: connection-{} state={:?} unexpected status after yield polled={} can_send_or_disconnected={} remaining_budget={:?}", id, key, state, polled, can_send_or_disconnected, remaining_budget);
 
                                         if !polled {
                                             // this allocs but it happens rarely, so fine for debugging
