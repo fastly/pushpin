@@ -52,6 +52,16 @@ impl<T: AsyncWrite> tokio::io::AsyncWrite for WriteHalf<T> {
         AsyncWrite::poll_write(Pin::new(&mut *handle), cx, buf)
     }
 
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        let mut handle = self.handle.borrow_mut();
+
+        AsyncWrite::poll_write_vectored(Pin::new(&mut *handle), cx, bufs)
+    }
+
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         // nothing to do
         Poll::Ready(Ok(()))
@@ -115,6 +125,34 @@ impl AsyncWrite for OrigindStream {
 
         if s.to_flush.is_none() {
             match ready!(tokio::io::AsyncWrite::poll_write(inner.as_mut(), cx, buf)) {
+                Ok(size) => s.to_flush = Some(size),
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        }
+
+        if let Err(e) = ready!(tokio::io::AsyncWrite::poll_flush(inner, cx)) {
+            return Poll::Ready(Err(e));
+        }
+
+        let size = s.to_flush.take().unwrap();
+
+        Poll::Ready(Ok(size))
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        let s = Pin::into_inner(self);
+        let mut inner = Pin::new(&mut s.inner);
+
+        if s.to_flush.is_none() {
+            match ready!(tokio::io::AsyncWrite::poll_write_vectored(
+                inner.as_mut(),
+                cx,
+                bufs
+            )) {
                 Ok(size) => s.to_flush = Some(size),
                 Err(e) => return Poll::Ready(Err(e)),
             }
@@ -305,9 +343,11 @@ mod tests {
     use crate::core::reactor::Reactor;
     use crate::core::task::{poll_async, yield_task};
     use bytes::{Bytes, BytesMut};
+    use log::info;
     use std::fs;
     use std::path::PathBuf;
     use std::pin::pin;
+    use test_log::test;
     use tokio_util::codec::{Decoder, Encoder};
 
     #[test]
@@ -357,7 +397,7 @@ mod tests {
                     }
                 };
 
-                println!("C->S {:?}", msg);
+                info!("C->S {:?}", msg);
 
                 let msg = origind_common::OrigindMsg::Result(origind_common::OrigindResult {
                     msg: None,
@@ -378,7 +418,7 @@ mod tests {
                     ),
                 });
 
-                println!("S->C {:?}", msg);
+                info!("S->C {:?}", msg);
 
                 let mut outbuf = BytesMut::new();
                 codec.encode(msg, &mut outbuf).unwrap();
@@ -415,42 +455,56 @@ mod tests {
                     }
                 };
 
-                println!("C->S {:?}", msg);
+                info!("C->S {:?}", msg);
 
                 let expected = Bytes::from(data.to_vec());
                 assert_eq!(msg, origind_common::OrigindMsg::Data(expected));
 
-                // write data from client again
+                // write vectored data from client
 
                 let data = b"lo";
                 let mut outbuf = BytesMut::from(data.as_slice());
 
                 while !outbuf.is_empty() {
-                    let size = client.write(&outbuf).await.unwrap();
+                    let bufs: Vec<io::IoSlice> =
+                        outbuf.chunks(1).map(|s| io::IoSlice::new(s)).collect();
+                    let size = client.write_vectored(&bufs).await.unwrap();
                     let _ = outbuf.split_to(size);
                 }
 
-                // wait for message
-                let msg = loop {
-                    let mut buf = [0; 16_384];
-                    let size = server.read(&mut buf).await.unwrap();
-                    let buf = &buf[..size];
-                    inbuf.extend_from_slice(&buf);
+                // wait for messages
 
-                    if let Some(msg) = codec.decode(&mut inbuf).unwrap() {
-                        break msg;
-                    }
-                };
+                let mut received_data = Vec::new();
 
-                println!("C->S {:?}", msg);
+                while received_data.len() < data.len() {
+                    let msg = loop {
+                        if let Some(msg) = codec.decode(&mut inbuf).unwrap() {
+                            break msg;
+                        }
 
-                let expected = Bytes::from(data.to_vec());
-                assert_eq!(msg, origind_common::OrigindMsg::Data(expected));
+                        let mut buf = [0; 16_384];
+                        let size = server.read(&mut buf).await.unwrap();
+                        let buf = &buf[..size];
+                        inbuf.extend_from_slice(&buf);
+                    };
+
+                    info!("C->S {:?}", msg);
+
+                    let msg_bytes = match msg {
+                        origind_common::OrigindMsg::Data(d) => d,
+                        _ => panic!("unexpected message type"),
+                    };
+
+                    received_data.extend_from_slice(&msg_bytes);
+                }
+
+                let expected = data;
+                assert_eq!(&received_data, expected);
 
                 let data = b"world";
                 let msg = origind_common::OrigindMsg::Data(Bytes::from(data.to_vec()));
 
-                println!("S->C {:?}", msg);
+                info!("S->C {:?}", msg);
 
                 let mut outbuf = BytesMut::new();
                 codec.encode(msg, &mut outbuf).unwrap();
