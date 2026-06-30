@@ -34,6 +34,7 @@
 #include "rust/bindings.h"
 #include "settings.h"
 #include "url.h"
+#include "urlquery.h"
 #include "zurlservice.h"
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -41,7 +42,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStringList>
-#include <QUrlQuery>
 
 struct ServiceConnections {
     Connection startedConnection;
@@ -483,7 +483,7 @@ public:
                     return;
                 }
 
-                QUrlQuery query(path.query());
+                UrlQuery query(path.query());
 
                 int mode = -1;
                 if (query.hasQueryItem("mode")) {

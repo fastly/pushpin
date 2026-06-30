@@ -117,14 +117,15 @@ impl<'a, T> TrackedAsyncLocalReceiver<'a, T> {
         }
     }
 
-    // Attempt to receive a value from the inner receiver. If a previously
-    // received value has not been dropped, this method returns an error
+    // Attempt to receive a value from the inner receiver. If a previously received value has not
+    // been dropped, this method returns an error. This method does not draw from the I/O budget,
+    // to ensure all messages can be consumed at any time.
     pub async fn recv(&self) -> Result<Track<'a, T>, RecvError> {
         if self.value_active.get() {
             return Err(RecvError::ValueActive);
         }
 
-        let v = match self.inner.recv().await {
+        let v = match self.inner.recv_no_budget().await {
             Ok(v) => v,
             Err(mpsc::RecvError) => return Err(RecvError::Disconnected),
         };
