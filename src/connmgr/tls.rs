@@ -1119,6 +1119,57 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
             stream: Some(s),
         }
     }
+
+    /// Helper method for implementing I/O poll methods
+    fn do_poll<O, I, C, A, R, E>(
+        &mut self,
+        cx: &mut Context,
+        tls_op: O,
+        stream_interests: I,
+        stream_call: C,
+        as_io_err: A,
+    ) -> Poll<Result<R, E>>
+    where
+        O: Fn(&TlsWaker) -> &TlsOp,
+        I: Fn(&TlsStream<TcpStream>) -> Option<mio::Interest>,
+        C: FnOnce(&mut TlsStream<TcpStream>) -> Result<R, E>,
+        A: Fn(&E) -> Option<&io::Error>,
+    {
+        let registration = self.waker.registration();
+        let op = tls_op(&self.waker);
+        let stream = self.stream.as_mut().unwrap();
+
+        let interests = stream_interests(stream);
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
+            return Poll::Pending;
+        }
+
+        match stream_call(stream) {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(e) => {
+                if let Some(e) = as_io_err(&e) {
+                    if e.kind() == io::ErrorKind::WouldBlock {
+                        let interests = stream_interests(stream).unwrap();
+                        op.clear_readiness(interests);
+                        op.set_waker(cx.waker(), interests);
+
+                        return Poll::Pending;
+                    }
+                }
+
+                Poll::Ready(Err(e))
+            }
+        }
+    }
 }
 
 impl Drop for AsyncTlsStream<'_> {
@@ -1137,37 +1188,13 @@ impl AsyncRead for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let f = &mut *self;
-
-        let registration = f.waker.registration();
-        let op = &f.waker.read;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_read();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.read(buf) {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_read().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.do_poll(
+            cx,
+            |w| &w.read,
+            |s| s.interests_for_read(),
+            |s| s.read(buf),
+            |e| Some(e),
+        )
     }
 
     fn cancel(&mut self) {
@@ -1183,71 +1210,23 @@ impl AsyncWrite for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let f = &mut *self;
-
-        let registration = f.waker.registration();
-        let op = &f.waker.write;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_write();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.write(buf) {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_write().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.do_poll(
+            cx,
+            |w| &w.write,
+            |s| s.interests_for_write(),
+            |s| s.write(buf),
+            |e| Some(e),
+        )
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        let f = &mut *self;
-
-        let registration = f.waker.registration();
-        let op = &f.waker.shutdown;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_shutdown();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.shutdown() {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_shutdown().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.do_poll(
+            cx,
+            |w| &w.shutdown,
+            |s| s.interests_for_shutdown(),
+            |s| s.shutdown(),
+            |e| Some(e),
+        )
     }
 
     fn is_writable(&self) -> bool {
@@ -1278,37 +1257,16 @@ impl Future for EnsureHandshakeFuture<'_, '_> {
     type Output = Result<(), TlsStreamError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &mut *self;
-
-        let registration = f.s.waker.registration();
-        let op = &f.s.waker.handshake;
-        let stream = f.s.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_handshake();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.ensure_handshake() {
-            Ok(()) => Poll::Ready(Ok(())),
-            Err(TlsStreamError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_handshake().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.s.do_poll(
+            cx,
+            |w| &w.handshake,
+            |s| s.interests_for_handshake(),
+            |s| s.ensure_handshake(),
+            |e| match e {
+                TlsStreamError::Io(e) => Some(e),
+                _ => None,
+            },
+        )
     }
 }
 
