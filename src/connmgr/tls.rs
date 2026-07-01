@@ -106,6 +106,14 @@ const TEST_KEY: &str = concat!(
     "-----END PRIVATE KEY-----"
 );
 
+const TLS_RECORD_MAX: usize = 16 * 1024;
+
+thread_local! {
+    // Per-thread buffer that a set of slices can be coalesced into, for converting vectored
+    // writes into individual writes.
+    static WRITE_BUF: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(TLS_RECORD_MAX));
+}
+
 enum IdentityError {
     InvalidName,
     CertMetadata(PathBuf, io::Error),
@@ -840,6 +848,42 @@ where
     }
 }
 
+/// Helper function for converting vectored writes into individual writes. If the input slices are
+/// small enough (not exceeding `max_len`), then this function copies them into a contiguous
+/// buffer `dest` and returns it. Otherwise, this function returns the first non-empty input
+/// slice, if any.
+fn coalesced_or_first_non_empty<'a>(
+    bufs: &'a [io::IoSlice],
+    dest: &'a mut Vec<u8>,
+    max_len: usize,
+) -> Option<&'a [u8]> {
+    dest.clear();
+
+    let mut first_non_empty = None;
+
+    for buf in bufs {
+        if buf.is_empty() {
+            continue;
+        }
+
+        first_non_empty.get_or_insert(buf.as_ref());
+
+        let remaining_capacity = dest.capacity() - dest.len();
+
+        if buf.len() > cmp::min(max_len, remaining_capacity) {
+            break;
+        }
+
+        dest.extend_from_slice(buf);
+    }
+
+    if !dest.is_empty() {
+        Some(dest)
+    } else {
+        first_non_empty
+    }
+}
+
 impl<T> Read for TlsStream<T>
 where
     T: Read + Write + Any + Send,
@@ -861,6 +905,23 @@ where
             Ok(size) => Ok(size),
             Err(e) => Err(e.into_io_error()),
         }
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        // The openssl crate does not provide an efficient write_vectored implementation, so we
+        // provide our own here. Mainly we want to avoid wrapping lots of small slices in
+        // individual TLS packets, e.g. an HTTP header section being encoded into hundreds of TLS
+        // packets when it ought to fit in one.
+
+        // Slices larger than this should not be copied.
+        const SLICE_COPY_MAX: usize = 512;
+
+        WRITE_BUF.with_borrow_mut(|write_buf| {
+            // Prepare/determine a single slice to write
+            let buf = coalesced_or_first_non_empty(bufs, write_buf, SLICE_COPY_MAX).unwrap_or(&[]);
+
+            self.write(buf)
+        })
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -1219,6 +1280,20 @@ impl AsyncWrite for AsyncTlsStream<'_> {
         )
     }
 
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        self.do_poll(
+            cx,
+            |w| &w.write,
+            |s| s.interests_for_write(),
+            |s| s.write_vectored(bufs),
+            |e| Some(e),
+        )
+    }
+
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         self.do_poll(
             cx,
@@ -1488,6 +1563,77 @@ mod tests {
                 Ok(chain) => assert_eq!(Some(chain.len()), t.expected_len),
                 Err(_) => assert!(t.expected_len.is_none(), "test={}", t.name),
             }
+        }
+    }
+
+    #[test]
+    fn test_coalesce() {
+        struct Test {
+            name: &'static str,
+            bufs: &'static [&'static str],
+            dest_capacity: usize,
+            max_len: usize,
+            expected: Option<&'static str>,
+        }
+
+        let tests = [
+            Test {
+                name: "all-fit",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: Some("applebanana"),
+            },
+            Test {
+                name: "empty",
+                bufs: &[],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: None,
+            },
+            Test {
+                name: "all-empty",
+                bufs: &[""],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: None,
+            },
+            Test {
+                name: "first-fit-by-len",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 5,
+                expected: Some("apple"),
+            },
+            Test {
+                name: "first-fit-by-capacity",
+                bufs: &["apple", "banana"],
+                dest_capacity: 8,
+                max_len: 10,
+                expected: Some("apple"),
+            },
+            Test {
+                name: "none-fit",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 4,
+                expected: Some("apple"),
+            },
+        ];
+
+        for t in tests {
+            let bufs: Vec<io::IoSlice> = t
+                .bufs
+                .iter()
+                .map(|s| io::IoSlice::new(s.as_bytes()))
+                .collect();
+
+            let mut dest = Vec::with_capacity(t.dest_capacity);
+
+            let ret = coalesced_or_first_non_empty(&bufs, &mut dest, t.max_len)
+                .map(|b| str::from_utf8(b).unwrap());
+
+            assert_eq!(ret, t.expected, "test={}", t.name);
         }
     }
 }
