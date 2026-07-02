@@ -37,7 +37,6 @@
 #include "simplehttpserver.h"
 #include "timer.h"
 #include "wssession.h"
-#include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
