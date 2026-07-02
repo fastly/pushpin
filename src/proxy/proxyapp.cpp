@@ -35,7 +35,6 @@
 #include "simplehttpserver.h"
 #include "timer.h"
 #include "xffrule.h"
-#include <QCommandLineParser>
 #include <QFile>
 #include <QFileInfo>
 #include <QMutex>
