@@ -31,9 +31,11 @@ use openssl::ssl::{
 };
 use openssl::x509::X509;
 use std::any::Any;
+use std::array;
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fs;
 use std::future::Future;
@@ -458,6 +460,18 @@ impl From<ssl::Error> for TlsStreamError {
                 Some(e) => Self::Ssl(e.clone()),
                 None => Self::Io(io::Error::from(io::ErrorKind::Other)),
             },
+        }
+    }
+}
+
+// Implemented on the reference type so it can be converted without consuming
+impl<'a> TryFrom<&'a TlsStreamError> for &'a io::Error {
+    type Error = ();
+
+    fn try_from(e: &'a TlsStreamError) -> Result<Self, Self::Error> {
+        match e {
+            TlsStreamError::Io(e) => Ok(e),
+            _ => Err(()),
         }
     }
 }
@@ -1018,12 +1032,32 @@ impl TlsOp {
     }
 }
 
+#[derive(Copy, Clone)]
+#[repr(usize)]
+enum TlsOpType {
+    Handshake,
+    Shutdown,
+    Read,
+    Write,
+}
+
+impl TlsOpType {
+    // The number of variants
+    const COUNT: usize = 4;
+}
+
+fn interests_for_op(stream: &TlsStream<TcpStream>, op_type: TlsOpType) -> Option<mio::Interest> {
+    match op_type {
+        TlsOpType::Handshake => stream.interests_for_handshake(),
+        TlsOpType::Shutdown => stream.interests_for_shutdown(),
+        TlsOpType::Read => stream.interests_for_read(),
+        TlsOpType::Write => stream.interests_for_write(),
+    }
+}
+
 pub struct TlsWaker {
     registration: RefCell<Option<Registration>>,
-    handshake: TlsOp,
-    shutdown: TlsOp,
-    read: TlsOp,
-    write: TlsOp,
+    ops: [TlsOp; TlsOpType::COUNT],
 }
 
 #[allow(clippy::new_without_default)]
@@ -1031,10 +1065,7 @@ impl TlsWaker {
     pub fn new() -> Self {
         Self {
             registration: RefCell::new(None),
-            handshake: TlsOp::new(),
-            shutdown: TlsOp::new(),
-            read: TlsOp::new(),
-            write: TlsOp::new(),
+            ops: array::from_fn(|_| TlsOp::new()),
         }
     }
 
@@ -1047,7 +1078,7 @@ impl TlsWaker {
 
         registration.clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
 
-        for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+        for op in &self.ops {
             op.set_readiness(readiness);
         }
 
@@ -1057,6 +1088,10 @@ impl TlsWaker {
     fn take_registration(&self) -> Registration {
         self.registration.borrow_mut().take().unwrap()
     }
+
+    fn op(&self, op_type: TlsOpType) -> &TlsOp {
+        &self.ops[op_type as usize]
+    }
 }
 
 impl RefWake for TlsWaker {
@@ -1065,7 +1100,7 @@ impl RefWake for TlsWaker {
             self.registration()
                 .clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
 
-            for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+            for op in &self.ops {
                 op.apply_readiness(readiness);
             }
         }
@@ -1182,25 +1217,21 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
     }
 
     /// Helper method for implementing I/O poll methods
-    fn do_poll<O, I, C, A, R, E>(
+    fn do_poll<C, R, E>(
         &mut self,
         cx: &mut Context,
-        tls_op: O,
-        stream_interests: I,
+        op_type: TlsOpType,
         stream_call: C,
-        as_io_err: A,
     ) -> Poll<Result<R, E>>
     where
-        O: Fn(&TlsWaker) -> &TlsOp,
-        I: Fn(&TlsStream<TcpStream>) -> Option<mio::Interest>,
         C: FnOnce(&mut TlsStream<TcpStream>) -> Result<R, E>,
-        A: Fn(&E) -> Option<&io::Error>,
+        for<'e> &'e E: TryInto<&'e io::Error>,
     {
         let registration = self.waker.registration();
-        let op = tls_op(&self.waker);
+        let op = self.waker.op(op_type);
         let stream = self.stream.as_mut().unwrap();
 
-        let interests = stream_interests(stream);
+        let interests = interests_for_op(stream, op_type);
 
         if let Some(interests) = interests {
             if !op.readiness().contains_any(interests) {
@@ -1217,9 +1248,9 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         match stream_call(stream) {
             Ok(v) => Poll::Ready(Ok(v)),
             Err(e) => {
-                if let Some(e) = as_io_err(&e) {
+                if let Ok(e) = (&e).try_into() {
                     if e.kind() == io::ErrorKind::WouldBlock {
-                        let interests = stream_interests(stream).unwrap();
+                        let interests = interests_for_op(stream, op_type).unwrap();
                         op.clear_readiness(interests);
                         op.set_waker(cx.waker(), interests);
 
@@ -1249,17 +1280,11 @@ impl AsyncRead for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
-        self.do_poll(
-            cx,
-            |w| &w.read,
-            |s| s.interests_for_read(),
-            |s| s.read(buf),
-            |e| Some(e),
-        )
+        self.do_poll(cx, TlsOpType::Read, |s| s.read(buf))
     }
 
     fn cancel(&mut self) {
-        let op = &self.waker.read;
+        let op = self.waker.op(TlsOpType::Read);
 
         op.clear_waker();
     }
@@ -1271,13 +1296,7 @@ impl AsyncWrite for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        self.do_poll(
-            cx,
-            |w| &w.write,
-            |s| s.interests_for_write(),
-            |s| s.write(buf),
-            |e| Some(e),
-        )
+        self.do_poll(cx, TlsOpType::Write, |s| s.write(buf))
     }
 
     fn poll_write_vectored(
@@ -1285,27 +1304,15 @@ impl AsyncWrite for AsyncTlsStream<'_> {
         cx: &mut Context,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<Result<usize, io::Error>> {
-        self.do_poll(
-            cx,
-            |w| &w.write,
-            |s| s.interests_for_write(),
-            |s| s.write_vectored(bufs),
-            |e| Some(e),
-        )
+        self.do_poll(cx, TlsOpType::Write, |s| s.write_vectored(bufs))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        self.do_poll(
-            cx,
-            |w| &w.shutdown,
-            |s| s.interests_for_shutdown(),
-            |s| s.shutdown(),
-            |e| Some(e),
-        )
+        self.do_poll(cx, TlsOpType::Shutdown, |s| s.shutdown())
     }
 
     fn is_writable(&self) -> bool {
-        let op = &self.waker.write;
+        let op = self.waker.op(TlsOpType::Write);
         let stream = self.stream.as_ref().unwrap();
 
         if let Some(interests) = stream.interests_for_write() {
@@ -1316,8 +1323,8 @@ impl AsyncWrite for AsyncTlsStream<'_> {
     }
 
     fn cancel(&mut self) {
-        let write_op = &self.waker.write;
-        let shutdown_op = &self.waker.shutdown;
+        let write_op = self.waker.op(TlsOpType::Write);
+        let shutdown_op = self.waker.op(TlsOpType::Shutdown);
 
         write_op.clear_waker();
         shutdown_op.clear_waker();
@@ -1332,22 +1339,14 @@ impl Future for EnsureHandshakeFuture<'_, '_> {
     type Output = Result<(), TlsStreamError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.s.do_poll(
-            cx,
-            |w| &w.handshake,
-            |s| s.interests_for_handshake(),
-            |s| s.ensure_handshake(),
-            |e| match e {
-                TlsStreamError::Io(e) => Some(e),
-                _ => None,
-            },
-        )
+        self.s
+            .do_poll(cx, TlsOpType::Handshake, |s| s.ensure_handshake())
     }
 }
 
 impl Drop for EnsureHandshakeFuture<'_, '_> {
     fn drop(&mut self) {
-        let op = &self.s.waker.handshake;
+        let op = self.s.waker.op(TlsOpType::Handshake);
 
         op.clear_waker();
     }
