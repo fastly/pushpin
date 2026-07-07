@@ -23,26 +23,30 @@ import time
 import urllib.parse
 import os
 
-PKG_VERSION = '1.0.0'
+PKG_VERSION = "1.0.0"
 TEST = False
 
-PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
-GRIP_ENABLED_FLAG = 'loader-pushpin-grip-enabled'
-WOH_ENABLED_FLAG = 'loader-pushpin-woh-enabled'
-ACO_ENABLED_FLAG = 'loader-pushpin-aco-enabled'
-LOG_LEVEL = 'loader-pushpin-log-level'
-GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
-WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
+PUSHPIN_ENABLED_FLAG = "loader-pushpin-enabled"
+GRIP_ENABLED_FLAG = "loader-pushpin-grip-enabled"
+WOH_ENABLED_FLAG = "loader-pushpin-woh-enabled"
+ACO_ENABLED_FLAG = "loader-pushpin-aco-enabled"
+LOG_LEVEL = "loader-pushpin-log-level"
+GRIP_ENABLED_FLAG_PREFIX = "loader-pushpin-backend-grip-enabled:"
+WOH_ENABLED_FLAG_PREFIX = "loader-pushpin-backend-woh-enabled:"
 
 alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
-nonspaces = string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
-Response = namedtuple('Response', 'status data etag')
+nonspaces = (
+    string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
+)
+Response = namedtuple("Response", "status data etag")
 
 
 class Service:
-    def __init__(self, data, grip_enabled, woh_enabled, aco_enabled, log_level, backend_flags):
+    def __init__(
+        self, data, grip_enabled, woh_enabled, aco_enabled, log_level, backend_flags
+    ):
         self.data = data
-        self.id = data['service']
+        self.id = data["service"]
         self.grip_enabled = grip_enabled
         self.woh_enabled = woh_enabled
         self.aco_enabled = aco_enabled
@@ -57,12 +61,11 @@ class ValidationError(Exception):
 
 def validate_id(s):
     if len(s) < 1 or len(s) > 63:
-        raise ValidationError(
-            'id must have a length between 1 and 63 characters')
+        raise ValidationError("id must have a length between 1 and 63 characters")
 
     for c in s:
-        if c not in '._-' and c not in alphanumerics:
-            raise ValidationError('id cannot contain: {}'.format(repr(c)))
+        if c not in "._-" and c not in alphanumerics:
+            raise ValidationError("id cannot contain: {}".format(repr(c)))
 
     return s
 
@@ -70,39 +73,40 @@ def validate_id(s):
 def validate_backend(s):
     if len(s) < 1 or len(s) > 512:
         raise ValidationError(
-            'backend name must have a length between 1 and 512 characters')
+            "backend name must have a length between 1 and 512 characters"
+        )
 
     for c in s:
-        if c in '\r\n':
-            raise ValidationError('backend name cannot contain: {}'.format(repr(c)))
+        if c in "\r\n":
+            raise ValidationError("backend name cannot contain: {}".format(repr(c)))
 
     return s
 
 
 def validate_host(s):
     if len(s) < 1 or len(s) > 255:
-        raise ValidationError(
-            'host must have a length between 1 and 255 characters')
+        raise ValidationError("host must have a length between 1 and 255 characters")
 
     for c in s:
-        if c not in '._-:' and c not in alphanumerics:
-            raise ValidationError('host cannot contain: {}'.format(repr(c)))
+        if c not in "._-:" and c not in alphanumerics:
+            raise ValidationError("host cannot contain: {}".format(repr(c)))
 
     return s
 
 
 def vclify_backend(s):
-    return re.sub('[^A-Za-z0-9_]', '_', s)
+    return re.sub("[^A-Za-z0-9_]", "_", s)
 
 
 def validate_header_name(s):
     if len(s) < 1 or len(s) > 32:
         raise ValidationError(
-            'header name must have a length between 1 and 32 characters')
+            "header name must have a length between 1 and 32 characters"
+        )
 
     for c in s:
-        if c not in '-' and c not in alphanumerics:
-            raise ValidationError('header name cannot contain: {}'.format(repr(c)))
+        if c not in "-" and c not in alphanumerics:
+            raise ValidationError("header name cannot contain: {}".format(repr(c)))
 
     return s
 
@@ -110,21 +114,22 @@ def validate_header_name(s):
 def validate_header_value(s):
     if len(s) < 1 or len(s) > 512:
         raise ValidationError(
-            'header value must have a length between 1 and 512 characters')
+            "header value must have a length between 1 and 512 characters"
+        )
 
     for c in s:
-        if c not in ' ' and c not in nonspaces:
-            raise ValidationError('header value cannot contain: {}'.format(repr(c)))
+        if c not in " " and c not in nonspaces:
+            raise ValidationError("header value cannot contain: {}".format(repr(c)))
 
     return s
 
 
 def escape_route_param(s):
-    out = ''
+    out = ""
     for c in s:
-        if c == '\\':
-            out += '\\\\'
-        elif c == '\"':
+        if c == "\\":
+            out += "\\\\"
+        elif c == '"':
             out += '\\"'
         else:
             out += c
@@ -135,7 +140,7 @@ class HTTPUnixSocketConnection(HTTPConnection):
     def __init__(self, unix_socket: str, timeout=None, blocksize=8192):
         super().__init__("localhost", timeout, blocksize)
         self.unix_socket = unix_socket
-    
+
     def connect(self):
         if not os.path.exists(self.unix_socket):
             raise IOError(f"Socket {self.unix_socket} does not exist")
@@ -155,16 +160,15 @@ class BaseClient(object):
     def request(self, url, accept, inm=None):
         connect_hostport, conn_type, host, headers = self.get_request_details()
 
-
         # Use an established connection, open a new one if that fails.
         for reuse in (True, False):
             if reuse and self.conn is None:
                 continue
             if not reuse:
                 self.conn = None
-                if conn_type == 'unix':
+                if conn_type == "unix":
                     self.conn = HTTPUnixSocketConnection(connect_hostport)
-                elif conn_type == 'tls':
+                elif conn_type == "tls":
                     self.conn = HTTPSConnection(connect_hostport)
                 else:
                     self.conn = HTTPConnection(connect_hostport)
@@ -176,57 +180,56 @@ class BaseClient(object):
 
     def request_on_conn(self, conn, url, accept, inm, host, custom_headers):
         headers = {
-            'Accept-Encoding': 'gzip',
-            'Accept': accept,
-            'Host': host,
-            'User-Agent': 'pushpin-loader/' + PKG_VERSION,
+            "Accept-Encoding": "gzip",
+            "Accept": accept,
+            "Host": host,
+            "User-Agent": "pushpin-loader/" + PKG_VERSION,
         }
 
         if inm is not None:
-            headers['If-None-Match'] = inm
+            headers["If-None-Match"] = inm
 
         for k, v in custom_headers.items():
             headers[k] = v
 
         nredirs = 0
-        
+
         while True:
-            conn.request('GET', url, None, headers)
+            conn.request("GET", url, None, headers)
             resp = conn.getresponse()
             data = resp.read()
 
-            location = resp.getheader('Location')
-            if location and location.startswith('/'):
+            location = resp.getheader("Location")
+            if location and location.startswith("/"):
                 url = location
                 nredirs += 1
                 if nredirs > 5:
-                    raise IOError('Too many redirects')
+                    raise IOError("Too many redirects")
                 continue
             break
 
         if resp.status == 304:
-            return Response(304, None, resp.getheader('ETag'))
+            return Response(304, None, resp.getheader("ETag"))
 
-        content_encoding = resp.getheader('Content-Encoding')
+        content_encoding = resp.getheader("Content-Encoding")
         if content_encoding:
-            if content_encoding.lower() != 'gzip':
-                raise IOError(
-                    'Surprising Content-Encoding {}'.format(content_encoding))
+            if content_encoding.lower() != "gzip":
+                raise IOError("Surprising Content-Encoding {}".format(content_encoding))
             data = gzip.GzipFile(fileobj=BytesIO(data)).read()
 
-        data = data.decode('utf-8')
+        data = data.decode("utf-8")
 
-        return Response(resp.status, data, resp.getheader('ETag'))
+        return Response(resp.status, data, resp.getheader("ETag"))
 
 
 class FetchlyClient(BaseClient):
     def __init__(self):
         super().__init__()
-        self.socket_path = './mock_server.sock' if TEST else '/run/fetchly/fetchly.sock'
+        self.socket_path = "./mock_server.sock" if TEST else "/run/fetchly/fetchly.sock"
 
     def get_request_details(self):
-        consumer_name = 'pushpin-loader/' + PKG_VERSION
-        return (self.socket_path, 'unix', '', {'Fetchly-Consumer': consumer_name})
+        consumer_name = "pushpin-loader/" + PKG_VERSION
+        return (self.socket_path, "unix", "", {"Fetchly-Consumer": consumer_name})
 
 
 class FanoutInternalClient(BaseClient):
@@ -236,13 +239,18 @@ class FanoutInternalClient(BaseClient):
         self.key = key
 
     def get_request_details(self):
-        return ('fanout-internal.edgecompute.app:443', 'tls', 'fanout-internal.edgecompute.app', {'Fastly-Key': self.key})
+        return (
+            "fanout-internal.edgecompute.app:443",
+            "tls",
+            "fanout-internal.edgecompute.app",
+            {"Fastly-Key": self.key},
+        )
 
 
 def is_deleted(backend):
     try:
         # field present and valid means deleted
-        datetime.strptime(backend['deleted'], '%Y-%m-%d %H:%M:%S')
+        datetime.strptime(backend["deleted"], "%Y-%m-%d %H:%M:%S")
         return True
     except Exception:
         # field missing or invalid ('0000-00-00 00:00:00' is invalid) means not deleted
@@ -255,7 +263,7 @@ def clean_backends(backends):
     names = set()
 
     for b in backends:
-        name = b['name']
+        name = b["name"]
 
         if name in names or is_deleted(b):
             continue
@@ -266,8 +274,14 @@ def clean_backends(backends):
     return out
 
 
-def get_backends(fetchly_client, cache_dir, old_cache_files, service_id, version, index, total):
-    cache_file = os.path.abspath(os.path.join(os.path.join(cache_dir, "backends"), f"{service_id}.{version}.json"))
+def get_backends(
+    fetchly_client, cache_dir, old_cache_files, service_id, version, index, total
+):
+    cache_file = os.path.abspath(
+        os.path.join(
+            os.path.join(cache_dir, "backends"), f"{service_id}.{version}.json"
+        )
+    )
 
     cached_backends = None
 
@@ -284,14 +298,20 @@ def get_backends(fetchly_client, cache_dir, old_cache_files, service_id, version
         old_cache_files.remove(cache_file)
         return cached_backends
 
-    logging.debug('fetching backends for service {} ({}/{})'.format(service_id, index + 1, total))
+    logging.debug(
+        "fetching backends for service {} ({}/{})".format(service_id, index + 1, total)
+    )
 
     resp = fetchly_client.request(
-        '/v1/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
+        "/v1/config/service/{}/version/{}/backends".format(service_id, version),
+        "application/json",
+    )
     if resp.status != 200:
-        raise Exception(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
+        raise Exception(
+            f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}"
+        )
 
-    backends = json.loads(resp.data)['backends']
+    backends = json.loads(resp.data)["backends"]
 
     try:
         with open(cache_file, "w") as f:
@@ -309,33 +329,39 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
     fetchly_client = FetchlyClient()
     internal_client = FanoutInternalClient(api_key)
 
-    logging.info('fetching service manifest')
+    logging.info("fetching service manifest")
 
-    resp = fetchly_client.request('/v1/config/service', 'application/json')
+    resp = fetchly_client.request("/v1/config/service", "application/json")
     if resp.status != 200:
-        raise Exception(f"Error: fetchly manifest request failed with status: {resp.status}, data: {resp.data}")
+        raise Exception(
+            f"Error: fetchly manifest request failed with status: {resp.status}, data: {resp.data}"
+        )
 
-    services = json.loads(resp.data)['service']
+    services = json.loads(resp.data)["service"]
 
     pushpin_services = []
 
-    for (service_id, service) in services.items():
+    for service_id, service in services.items():
         # Check if 'service' key exists in the 'service' dictionary
-        if 'service' not in service:
-            logging.warning(f"Error: 'service' key not found in service: {service} with {resp.status} status code")
+        if "service" not in service:
+            logging.warning(
+                f"Error: 'service' key not found in service: {service} with {resp.status} status code"
+            )
             continue
 
         # Check if service_id matches the 'service' key in the 'service' dictionary
-        if service_id != service['service']:
-            logging.warning(f"Error: service_id {service_id} does not match service['service'] {service['service']}")
+        if service_id != service["service"]:
+            logging.warning(
+                f"Error: service_id {service_id} does not match service['service'] {service['service']}"
+            )
             continue
 
-        features = service.get('features', {})
+        features = service.get("features", {})
 
-        pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, '0') == '1'
-        grip_enabled = features.get(GRIP_ENABLED_FLAG, '0') == '1'
-        woh_enabled = features.get(WOH_ENABLED_FLAG, '0') == '1'
-        aco_enabled = features.get(ACO_ENABLED_FLAG, '0') == '1'
+        pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, "0") == "1"
+        grip_enabled = features.get(GRIP_ENABLED_FLAG, "0") == "1"
+        woh_enabled = features.get(WOH_ENABLED_FLAG, "0") == "1"
+        aco_enabled = features.get(ACO_ENABLED_FLAG, "0") == "1"
 
         log_level = None
         s = features.get(LOG_LEVEL)
@@ -343,20 +369,22 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
             try:
                 x = int(s)
                 if x < 0 or x > 4:
-                    raise ValueError('value must be between 0 and 4, inclusive')
+                    raise ValueError("value must be between 0 and 4, inclusive")
                 log_level = x
             except Exception as e:
-                logging.warning(f"Error: service {service_id} has invalid log level {repr(s)}: {e}")
+                logging.warning(
+                    f"Error: service {service_id} has invalid log level {repr(s)}: {e}"
+                )
 
         backend_flags = {}
 
-        for (k, v) in features.items():
+        for k, v in features.items():
             if k.startswith(GRIP_ENABLED_FLAG_PREFIX):
                 offset = len(GRIP_ENABLED_FLAG_PREFIX)
-                flag = 'grip-enabled'
+                flag = "grip-enabled"
             elif k.startswith(WOH_ENABLED_FLAG_PREFIX):
                 offset = len(WOH_ENABLED_FLAG_PREFIX)
-                flag = 'woh-enabled'
+                flag = "woh-enabled"
             else:
                 continue
 
@@ -368,47 +396,72 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
             backend_flags[backend_name][flag] = v
 
         if pushpin_enabled:
-            pushpin_services.append(Service(service, grip_enabled, woh_enabled, aco_enabled, log_level, backend_flags))
+            pushpin_services.append(
+                Service(
+                    service,
+                    grip_enabled,
+                    woh_enabled,
+                    aco_enabled,
+                    log_level,
+                    backend_flags,
+                )
+            )
 
-    logging.debug('found {} services with pushpin enabled'.format(len(pushpin_services)))
+    logging.debug(
+        "found {} services with pushpin enabled".format(len(pushpin_services))
+    )
 
     service_backends = {}
 
-    for (i, service) in enumerate(pushpin_services):
+    for i, service in enumerate(pushpin_services):
         service_id = service.id
-        version = service.data['version']
+        version = service.data["version"]
 
-        backends = get_backends(fetchly_client, cache_dir, old_cache_files, service_id, version, i, len(pushpin_services))
+        backends = get_backends(
+            fetchly_client,
+            cache_dir,
+            old_cache_files,
+            service_id,
+            version,
+            i,
+            len(pushpin_services),
+        )
 
         backends = clean_backends(backends)
 
         # apply the backend-specific loader flags to the backend object
-        for (backend_name, flags) in service.backend_flags.items():
+        for backend_name, flags in service.backend_flags.items():
             for backend in backends:
-                if backend['name'] == backend_name:
-                    for (k, v) in flags.items():
-                        backend['loader-{}'.format(k)] = v
+                if backend["name"] == backend_name:
+                    for k, v in flags.items():
+                        backend["loader-{}".format(k)] = v
                     break
 
         # apply service-level flags to backends
         for backend in backends:
             if service.grip_enabled:
-                backend['loader-grip-enabled'] = '1'
+                backend["loader-grip-enabled"] = "1"
             if service.woh_enabled:
-                backend['loader-woh-enabled'] = '1'
+                backend["loader-woh-enabled"] = "1"
 
         if service.grip_enabled:
-            logging.debug('fetching extensions for service {} ({}/{})'.format(service_id,
-                i + 1, len(pushpin_services)))
+            logging.debug(
+                "fetching extensions for service {} ({}/{})".format(
+                    service_id, i + 1, len(pushpin_services)
+                )
+            )
 
             resp = internal_client.request(
-                '/service-extensions/{}'.format(service_id), 'application/json')
+                "/service-extensions/{}".format(service_id), "application/json"
+            )
             if resp.status == 200:
                 service.extensions = json.loads(resp.data)
             elif resp.status == 404:
                 pass
             else:
-                raise ValueError('unexpected status from internal api: {}'.format(resp.status))
+                raise ValueError(
+                    "unexpected status from internal api: {}".format(resp.status)
+                )
 
         service_backends[service_id] = (service, backends)
 
@@ -416,19 +469,19 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
 
 
 def sig_key_filename(service_id):
-    return f'{service_id}.key'
+    return f"{service_id}.key"
 
 
 def cert_info_filename(service_id, backend_name):
-    hash = hashlib.sha1(backend_name.encode('utf-8')).hexdigest()[:4]
-    shortname = urllib.parse.quote(backend_name[:32], safe='')
-    return f'{service_id}:{shortname}-{hash}.crtinfo'
+    hash = hashlib.sha1(backend_name.encode("utf-8")).hexdigest()[:4]
+    shortname = urllib.parse.quote(backend_name[:32], safe="")
+    return f"{service_id}:{shortname}-{hash}.crtinfo"
 
 
 def backend_info_filename(backend_name, service_id):
-    hash = hashlib.sha1(backend_name.encode('utf-8')).hexdigest()[:4]
-    shortname = urllib.parse.quote(backend_name[:32], safe='')
-    return f'{service_id}:{shortname}-{hash}.backendinfo'
+    hash = hashlib.sha1(backend_name.encode("utf-8")).hexdigest()[:4]
+    shortname = urllib.parse.quote(backend_name[:32], safe="")
+    return f"{service_id}:{shortname}-{hash}.backendinfo"
 
 
 def in_dir(fname, dir):
@@ -437,101 +490,133 @@ def in_dir(fname, dir):
 
 def make_routes(service, backend, sig_keys_dir, backends_dir):
     service_id = validate_id(service.id)
-    backend_name = validate_backend(backend['name'])
-    host = validate_host(backend['address'])
+    backend_name = validate_backend(backend["name"])
+    host = validate_host(backend["address"])
     backend_file = in_dir(backend_info_filename(backend_name, service_id), backends_dir)
 
-    backend_extensions = service.extensions.get('backends', {}).get(backend_name, {})
+    backend_extensions = service.extensions.get("backends", {}).get(backend_name, {})
 
-    if ':' in host:
+    if ":" in host:
         # assume ipv6 address
-        target = '[{}]'.format(host)
+        target = "[{}]".format(host)
     else:
         target = host
 
-    target += ':{}'.format(backend['port'])
+    target += ":{}".format(backend["port"])
 
-    if int(backend.get('use_ssl', '0')):
-        target += ',ssl'
+    if int(backend.get("use_ssl", "0")):
+        target += ",ssl"
 
     # field may be a string or null. we'll disable cert checks if the field
     # is present and set to "0". if it has any other value (including null)
     # or if it is not present, then we'll leave cert checks enabled
-    if backend.get('ssl_check_cert') == '0':
-        target += ',insecure'
+    if backend.get("ssl_check_cert") == "0":
+        target += ",insecure"
 
-    cert_hostname = backend.get('ssl_cert_hostname', '')
-    sni_hostname = backend.get('ssl_sni_hostname', '')
-    override_host = backend.get('override_host', '')
+    cert_hostname = backend.get("ssl_cert_hostname", "")
+    sni_hostname = backend.get("ssl_sni_hostname", "")
+    override_host = backend.get("override_host", "")
 
-    if cert_hostname == host and sni_hostname == host and (not override_host or override_host != host):
-        target += ',trust_connect_host'
+    if (
+        cert_hostname == host
+        and sni_hostname == host
+        and (not override_host or override_host != host)
+    ):
+        target += ",trust_connect_host"
 
     if override_host:
         override_host = validate_host(override_host)
-        target += ',host={}'.format(override_host)
+        target += ",host={}".format(override_host)
 
-    woh = int(backend.get('loader-woh-enabled', '0')) and not backend_extensions.get('disable-woh', False)
+    woh = int(backend.get("loader-woh-enabled", "0")) and not backend_extensions.get(
+        "disable-woh", False
+    )
 
     if woh:
-        target += ',over_http'
+        target += ",over_http"
 
-    target += ',untrusted'
+    target += ",untrusted"
 
-    target += ',backendinfo={}'.format(backend_file)
+    target += ",backendinfo={}".format(backend_file)
 
     routes = []
 
-    if int(backend.get('loader-grip-enabled', '0')):
-        cond_opts = 'prefix=g:ck:{}:'.format(service_id)
+    if int(backend.get("loader-grip-enabled", "0")):
+        cond_opts = "prefix=g:ck:{}:".format(service_id)
 
-        sig_iss = service.extensions.get('sig-iss', 'fastly:{}'.format(service_id))
-        cond_opts += ',sig_iss={}'.format(sig_iss)
+        sig_iss = service.extensions.get("sig-iss", "fastly:{}".format(service_id))
+        cond_opts += ",sig_iss={}".format(sig_iss)
 
-        if service.extensions.get('sig-key', ''):
-            cond_opts += ',sig_key=file:{}'.format(in_dir(sig_key_filename(service_id), sig_keys_dir))
+        if service.extensions.get("sig-key", ""):
+            cond_opts += ",sig_key=file:{}".format(
+                in_dir(sig_key_filename(service_id), sig_keys_dir)
+            )
 
-        headers = backend_extensions.get('headers', {})
+        headers = backend_extensions.get("headers", {})
 
         xfp = False
-        if headers.get('X-Forwarded-Proto', '') == 'https':
+        if headers.get("X-Forwarded-Proto", "") == "https":
             xfp = True
 
             # don't count this header towards the limit
-            del headers['X-Forwarded-Proto']
+            del headers["X-Forwarded-Proto"]
 
         # up to 3 headers allowed
         for k, v in islice(headers.items(), 3):
             k = validate_header_name(k)
             v = validate_header_value(v)
 
-            cond_opts += ',header=\"{}:{}\"'.format(escape_route_param(k), escape_route_param(v))
+            cond_opts += ',header="{}:{}"'.format(
+                escape_route_param(k), escape_route_param(v)
+            )
 
         if xfp:
-            cond_opts += ',header=X-Forwarded-Proto:https'
+            cond_opts += ",header=X-Forwarded-Proto:https"
 
-        if service.aco_enabled or service.extensions.get('aco', False):
-            cond_opts += ',aco'
+        if service.aco_enabled or service.extensions.get("aco", False):
+            cond_opts += ",aco"
 
-        if bool(service.extensions.get('debug', False)) or bool(backend_extensions.get('debug', False)):
-            cond_opts += ',debug'
+        if bool(service.extensions.get("debug", False)) or bool(
+            backend_extensions.get("debug", False)
+        ):
+            cond_opts += ",debug"
 
         if service.log_level is not None:
             cond_opts += f",log_level={service.log_level}"
 
-        routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
-        routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
+        routes.append(
+            'id="gr:ht:{}:{}",{} {}'.format(
+                service_id, escape_route_param(backend_name), cond_opts, target
+            )
+        )
+        routes.append(
+            'id="gr:ws:{}:{}",{} {}'.format(
+                service_id, escape_route_param(backend_name), cond_opts, target
+            )
+        )
     else:
-        cond_opts = 'no_grip'
+        cond_opts = "no_grip"
 
-        share_key = backend.get('share_key') or service_id
+        share_key = backend.get("share_key") or service_id
 
         if service.log_level is not None:
             cond_opts += f",log_level={service.log_level}"
 
-        routes.append('id="ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
-        routes.append('id=ws:{}:{}--{},{} {}'.format(service_id, share_key, vclify_backend(backend_name), cond_opts, target))
-        routes.append('id=ws:{}:{}--F_{},{} {}'.format(service_id, share_key, vclify_backend(backend_name), cond_opts, target))
+        routes.append(
+            'id="ws:{}:{}",{} {}'.format(
+                service_id, escape_route_param(backend_name), cond_opts, target
+            )
+        )
+        routes.append(
+            "id=ws:{}:{}--{},{} {}".format(
+                service_id, share_key, vclify_backend(backend_name), cond_opts, target
+            )
+        )
+        routes.append(
+            "id=ws:{}:{}--F_{},{} {}".format(
+                service_id, share_key, vclify_backend(backend_name), cond_opts, target
+            )
+        )
 
     return routes
 
@@ -559,14 +644,14 @@ def write_file(fname, data, mode=None, uid=None, gid=None, force=False):
     Returns True if file was changed.
     """
     try:
-        with open(fname, 'r', encoding='utf-8') as f:
+        with open(fname, "r", encoding="utf-8") as f:
             curdata = f.read()
     except Exception:
         # failed to read original data. no big deal
-        curdata = ''
+        curdata = ""
 
     if force or data != curdata:
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as f:
             temp_fname = f.name
             f.write(data)
 
@@ -586,9 +671,9 @@ def write_routes(fname, routes, force=False):
     """
     Returns True if file was changed.
     """
-    data = ''
+    data = ""
     for route in routes:
-        data += route + '\n'
+        data += route + "\n"
 
     return write_file(fname, data, mode=0o644, force=force)
 
@@ -615,7 +700,9 @@ def update_dir(dir, extension, files, mode=None, user=None, group=None):
     if uid is not None or gid is not None:
         statinfo = os.stat(dir)
 
-        if (uid is not None and statinfo.st_uid != uid) or (gid is not None and statinfo.st_gid != gid):
+        if (uid is not None and statinfo.st_uid != uid) or (
+            gid is not None and statinfo.st_gid != gid
+        ):
             my_chown(dir, uid, gid)
 
     old_files = set()
@@ -652,9 +739,9 @@ def write_sig_keys(keys, dir, user=None, group=None):
     files = {}
     for service_id, key in keys.items():
         fname = sig_key_filename(service_id)
-        files[fname] = key.hex() + '\n'
+        files[fname] = key.hex() + "\n"
 
-    return update_dir(dir, '.key', files, mode=0o400, user=user, group=group)
+    return update_dir(dir, ".key", files, mode=0o400, user=user, group=group)
 
 
 def write_backends(backends, dir, user=None, group=None):
@@ -664,12 +751,20 @@ def write_backends(backends, dir, user=None, group=None):
     files = {}
     for (backend_name, service_id), backend in backends.items():
         fname = backend_info_filename(backend_name, service_id)
-        files[fname] = json.dumps(backend, indent=2) + '\n'
+        files[fname] = json.dumps(backend, indent=2) + "\n"
 
-    return update_dir(dir, '.backendinfo', files, mode=0o400, user=user, group=group)
+    return update_dir(dir, ".backendinfo", files, mode=0o400, user=user, group=group)
 
 
-def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, secrets_user=None, secrets_group=None):
+def update_routes(
+    api_key,
+    routes_file,
+    cache_dir,
+    sig_keys_dir,
+    backends_dir,
+    secrets_user=None,
+    secrets_group=None,
+):
     try:
         os.mkdir(cache_dir)
     except FileExistsError:
@@ -688,22 +783,26 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, s
 
     # look up existing cache files
     for fname in os.listdir(backends_cache_dir):
-        if fname.endswith('.json'):
-            old_cache_files.add(os.path.abspath(os.path.join(backends_cache_dir, fname)))
+        if fname.endswith(".json"):
+            old_cache_files.add(
+                os.path.abspath(os.path.join(backends_cache_dir, fname))
+            )
 
     routes = []
 
-    routes.append('pushpin.healthcheck.test 127.0.0.1:9092')
+    routes.append("pushpin.healthcheck.test 127.0.0.1:9092")
 
     services = fetch_service_backends(api_key, cache_dir, old_cache_files)
 
     custom_sig_keys = {}
     for service, _ in services.values():
-        key = service.extensions.get('sig-key', '')
+        key = service.extensions.get("sig-key", "")
         if key:
             custom_sig_keys[service.id] = b64decode(key)
 
-    keys_changed = write_sig_keys(custom_sig_keys, sig_keys_dir, user=secrets_user, group=secrets_group)
+    keys_changed = write_sig_keys(
+        custom_sig_keys, sig_keys_dir, user=secrets_user, group=secrets_group
+    )
     if keys_changed:
         logging.info("sig keys changed")
 
@@ -711,11 +810,13 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, s
     backends_services = {}
     for service, backends in services.values():
         for backend in backends:
-            backend_data = {**backend, 'service_id': service.id}
+            backend_data = {**backend, "service_id": service.id}
 
-            backends_services[(backend['name'], service.id)] = backend_data
+            backends_services[(backend["name"], service.id)] = backend_data
 
-    backends_changed = write_backends(backends_services, backends_dir, user=secrets_user, group=secrets_group)
+    backends_changed = write_backends(
+        backends_services, backends_dir, user=secrets_user, group=secrets_group
+    )
     if backends_changed:
         logging.info(f"backends changed")
 
@@ -725,12 +826,15 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, s
                 routes.extend(make_routes(service, backend, sig_keys_dir, backends_dir))
             except Exception as e:
                 logging.error(
-                    'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
+                    "failed to make route for service {} backend {}: {}".format(
+                        service.id, repr(backend["name"]), e
+                    )
+                )
 
     if write_routes(routes_file, routes, force=keys_changed):
-        logging.info('wrote {}'.format(routes_file))
+        logging.info("wrote {}".format(routes_file))
     else:
-        logging.debug('no changes')
+        logging.debug("no changes")
 
     # remove unneeded cache files
     for fname in old_cache_files:
@@ -740,7 +844,11 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, backends_dir, s
 
 class LogFormatter(logging.Formatter):
     def __init__(self):
-        super().__init__(fmt="[{levelname}] {asctime}.{msecs:03.0f} {message}", datefmt="%Y-%m-%d %H:%M:%S", style="{")
+        super().__init__(
+            fmt="[{levelname}] {asctime}.{msecs:03.0f} {message}",
+            datefmt="%Y-%m-%d %H:%M:%S",
+            style="{",
+        )
 
     def format(self, record):
         if record.levelname == "ERROR":
@@ -762,39 +870,90 @@ def configure_logging(stream, level):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Fetch backends from Fetchly/Heavenly and write Pushpin routes file.')
-    parser.add_argument('--log-level', metavar='N', type=int,
-                        dest='log_level', default=2, help='log level')
-    parser.add_argument('--key', metavar='FILENAME', dest='key',
-                        default='key', help='location of API key file (default: ./key)')
-    parser.add_argument('--output', metavar='FILENAME', dest='output',
-                        default='routes', help='location of routes file (default: ./routes)')
-    parser.add_argument('--cache-dir', metavar='PATH', dest='cache_dir',
-                        default='cache', help='directory to keep cached data (default: ./cache)')
-    parser.add_argument('--sig-keys-dir', metavar='PATH', dest='sig_keys_dir',
-                        default='sig-keys', help='directory to write sig keys (default: ./sig-keys)')
-    parser.add_argument('--backends-dir', metavar='PATH', dest='backends_dir',
-                        default='backends', help='directory to write backends (default: ./backends)')
-    parser.add_argument('--test', dest='test', action='store_true',
-                        help='use test mode (connects to ./mock_server.sock instead of /run/fetchly/fetchly.sock)')
-    parser.add_argument('--secrets-user', metavar='USERNAME', dest='secrets_user',
-                        help='owning user to set for keys/backends')
-    parser.add_argument('--secrets-group', metavar='GROUP', dest='secrets_group',
-                        help='owning group to set for keys/backends')
-    parser.add_argument('--loop', metavar='SECONDS', type=int,
-                        dest='loop', help='repeat the process on an interval')
+        description="Fetch backends from Fetchly/Heavenly and write Pushpin routes file."
+    )
+    parser.add_argument(
+        "--log-level",
+        metavar="N",
+        type=int,
+        dest="log_level",
+        default=2,
+        help="log level",
+    )
+    parser.add_argument(
+        "--key",
+        metavar="FILENAME",
+        dest="key",
+        default="key",
+        help="location of API key file (default: ./key)",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="FILENAME",
+        dest="output",
+        default="routes",
+        help="location of routes file (default: ./routes)",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        metavar="PATH",
+        dest="cache_dir",
+        default="cache",
+        help="directory to keep cached data (default: ./cache)",
+    )
+    parser.add_argument(
+        "--sig-keys-dir",
+        metavar="PATH",
+        dest="sig_keys_dir",
+        default="sig-keys",
+        help="directory to write sig keys (default: ./sig-keys)",
+    )
+    parser.add_argument(
+        "--backends-dir",
+        metavar="PATH",
+        dest="backends_dir",
+        default="backends",
+        help="directory to write backends (default: ./backends)",
+    )
+    parser.add_argument(
+        "--test",
+        dest="test",
+        action="store_true",
+        help="use test mode (connects to ./mock_server.sock instead of /run/fetchly/fetchly.sock)",
+    )
+    parser.add_argument(
+        "--secrets-user",
+        metavar="USERNAME",
+        dest="secrets_user",
+        help="owning user to set for keys/backends",
+    )
+    parser.add_argument(
+        "--secrets-group",
+        metavar="GROUP",
+        dest="secrets_group",
+        help="owning group to set for keys/backends",
+    )
+    parser.add_argument(
+        "--loop",
+        metavar="SECONDS",
+        type=int,
+        dest="loop",
+        help="repeat the process on an interval",
+    )
 
     args = parser.parse_args()
 
     global TEST
     TEST = args.test
 
-    log_level = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG][args.log_level]
+    log_level = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG][
+        args.log_level
+    ]
 
     configure_logging(sys.stdout, log_level)
 
     try:
-        with open(args.key, 'r') as f:
+        with open(args.key, "r") as f:
             api_key = f.read().strip()
     except FileNotFoundError:
         print(f"API key file not found in file path: {args.key}.", file=sys.stderr)
@@ -811,15 +970,23 @@ def main():
 
     while True:
         try:
-            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, args.backends_dir, secrets_user=args.secrets_user, secrets_group=args.secrets_group)
+            update_routes(
+                api_key,
+                routes_file,
+                args.cache_dir,
+                args.sig_keys_dir,
+                args.backends_dir,
+                secrets_user=args.secrets_user,
+                secrets_group=args.secrets_group,
+            )
         except Exception:
-            logging.exception('update_routes failed')
+            logging.exception("update_routes failed")
 
         if not sleep_time:
             break
 
         # whether success or fail, sleep before acting again
-        logging.debug('sleeping for {}s'.format(sleep_time))
+        logging.debug("sleeping for {}s".format(sleep_time))
         time.sleep(sleep_time)
 
 
