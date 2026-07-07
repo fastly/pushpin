@@ -3657,13 +3657,9 @@ where
                 };
 
                 // First call can't fail
-                let (size, overflowed) = prepare_body
+                let size = prepare_body
                     .prepare(rdata.body, true)
                     .expect("infallible prepare call failed");
-
-                if overflowed > 0 {
-                    debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-                }
 
                 // We confirmed above that the data will fit in the buffer
                 assert!(size == rdata.body.len());
@@ -3780,13 +3776,9 @@ where
     };
 
     // First call can't fail
-    let (size, overflowed) = prepare_body
+    let size = prepare_body
         .prepare(rdata.body, !rdata.more)
         .expect("infallible prepare call failed");
-
-    if overflowed > 0 {
-        debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-    }
 
     // We confirmed above that the data will fit in the buffer
     assert!(size == rdata.body.len());
@@ -3930,12 +3922,7 @@ where
 
                     match &zresp.get().ptype {
                         zhttppacket::ResponsePacket::Data(rdata) => {
-                            let (size, overflowed) =
-                                prepare_body.prepare(rdata.body, !rdata.more)?;
-
-                            if overflowed > 0 {
-                                debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-                            }
+                            let size = prepare_body.prepare(rdata.body, !rdata.more)?;
 
                             if size < rdata.body.len() {
                                 return Err(Error::BufferExceeded);
