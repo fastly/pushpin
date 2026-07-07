@@ -96,20 +96,39 @@ pub fn trace_ws_close_code(code: u16, source: WsCloseSource) {
 ///
 /// Traces go to the collector's `/v1/traces` endpoint for Tempo.
 /// The OTLP endpoint is read from the config file (`otel_endpoint` in `[global]`),
-/// falling back to `http://localhost:4318` (the default OTLP HTTP port).
+/// falling back to `http://127.0.0.1:14318` (the default OTLP HTTP port on cache nodes).
 ///
 /// Always call `shutdown_tracing()` before process exit to flush any remaining spans.
-pub fn init_tracing(service_name: &str, endpoint: Option<&str>) -> Result<(), Box<dyn Error>> {
+pub fn init_tracing(
+    service_name: &str,
+    endpoint: Option<&str>,
+    resource_attributes: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let env_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
     let endpoint = endpoint
         .filter(|s| !s.is_empty())
-        .unwrap_or("http://localhost:4318");
+        .or(env_endpoint.as_deref())
+        .unwrap_or("http://127.0.0.1:14318");
+
+    let mut attributes = vec![
+        KeyValue::new("service.version", crate::core::version()),
+        KeyValue::new("__tenant", "fastly-edge"),
+    ];
+
+    if let Some(attrs) = resource_attributes.filter(|s| !s.is_empty()) {
+        for pair in attrs.split(',') {
+            if let Some((key, value)) = pair.split_once('=') {
+                attributes.push(KeyValue::new(
+                    key.trim().to_string(),
+                    value.trim().to_string(),
+                ));
+            }
+        }
+    }
 
     let resource = Resource::builder()
         .with_service_name(service_name.to_string())
-        .with_attributes([
-            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-            KeyValue::new("__tenant", "fanout"),
-        ])
+        .with_attributes(attributes)
         .build();
 
     let trace_exporter = opentelemetry_otlp::SpanExporter::builder()

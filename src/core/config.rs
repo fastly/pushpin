@@ -33,6 +33,7 @@ pub struct Global {
     pub stats_connection_ttl: i32,
     pub stats_connection_send: bool,
     pub otel_endpoint: String,
+    pub otel_resource_attributes: String,
 }
 
 impl From<Global> for config::ValueKind {
@@ -60,6 +61,10 @@ impl From<Global> for config::ValueKind {
         properties.insert(
             "otel_endpoint".to_string(),
             config::Value::from(global.otel_endpoint),
+        );
+        properties.insert(
+            "otel_resource_attributes".to_string(),
+            config::Value::from(global.otel_resource_attributes),
         );
 
         Self::Table(properties)
@@ -364,6 +369,7 @@ impl CustomConfig {
                     stats_connection_send: true,
                     libdir: String::new(),
                     otel_endpoint: String::new(),
+                    otel_resource_attributes: String::new(),
                 },
             )?
             .set_default(

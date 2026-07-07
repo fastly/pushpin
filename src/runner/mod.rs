@@ -221,6 +221,7 @@ pub struct Settings {
     pub log_levels: HashMap<String, u8>,
     pub route_lines: Vec<String>,
     pub otel_endpoint: String,
+    pub otel_resource_attributes: String,
 }
 
 impl Settings {
@@ -414,6 +415,7 @@ impl Settings {
             log_levels,
             route_lines: args_data.route_lines,
             otel_endpoint: config.global.otel_endpoint,
+            otel_resource_attributes: config.global.otel_resource_attributes,
         })
     }
 }
@@ -890,6 +892,7 @@ mod tests {
                 log_levels: log_map,
                 route_lines: vec![],
                 otel_endpoint: String::new(),
+                otel_resource_attributes: String::new(),
             }),
         }];
 

@@ -278,6 +278,13 @@ impl ConnmgrService {
             args.push(format!("--otel-endpoint={}", settings.otel_endpoint));
         }
 
+        if !settings.otel_resource_attributes.is_empty() {
+            args.push(format!(
+                "--otel-resource-attributes={}",
+                settings.otel_resource_attributes
+            ));
+        }
+
         if !settings.ports.is_empty() {
             // Server mode
             let mut using_ssl = false;
