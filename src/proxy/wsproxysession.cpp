@@ -26,6 +26,7 @@
 #include "connectionmanager.h"
 #include "defercall.h"
 #include "inspectdata.h"
+#include "jsonpointer.h"
 #include "jwt.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
@@ -44,6 +45,7 @@
 #include "zwebsocket.h"
 #include <QDateTime>
 #include <QHostAddress>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRandomGenerator>
@@ -51,6 +53,7 @@
 
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
+#define AUTO_RESPOND_CONFIGS_MAX 2
 
 class HttpExtension {
 public:
@@ -187,6 +190,59 @@ static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QBy
     return e;
 }
 
+static bool autoRespondMatch(const WsControl::AutoRespondConfig &config,
+                             const WebSocket::Frame &f) {
+    if (((int)config.matchType) >= 0 && config.matchType != f.type)
+        return false;
+
+    if (!config.matchContent.isNull()) {
+        QByteArray content = f.data;
+
+        if (!config.matchContentPtr.isEmpty()) {
+            QJsonParseError error;
+            QJsonDocument doc = QJsonDocument::fromJson(f.data, &error);
+            if (error.error != QJsonParseError::NoError)
+                return false;
+
+            if (!doc.isObject() && !doc.isArray())
+                return false;
+
+            Variant data;
+            if (doc.isObject())
+                data = doc.object().toVariantMap();
+            else
+                data = doc.array().toVariantList();
+
+            QString errorMessage;
+            JsonPointer ptr = JsonPointer::resolve(&data, config.matchContentPtr, &errorMessage);
+            if (ptr.isNull()) {
+                log_debug("failed to resolve json pointer [%s]: %s",
+                          qPrintable(config.matchContentPtr), qPrintable(errorMessage));
+                return false;
+            }
+
+            Variant value = ptr.value();
+            if (typeId(value) != VariantType::String) {
+                log_debug("no string value at json pointer [%s]",
+                          qPrintable(config.matchContentPtr));
+                return false;
+            }
+
+            QString s = value.toString();
+
+            log_debug("found value at json pointer [%s]: [%s]", qPrintable(config.matchContentPtr),
+                      qPrintable(s));
+
+            content = s.toUtf8();
+        }
+
+        if (config.matchContent != content)
+            return false;
+    }
+
+    return true;
+}
+
 class WsProxySession::Private {
 public:
     enum State { Idle, Connecting, Connected, Closing };
@@ -215,6 +271,7 @@ public:
         Connection sendEventReceivedConnection;
         Connection keepAliveSetupEventReceivedConnection;
         Connection refreshEventReceivedConnection;
+        Connection autoRespondEventReceivedConnection;
         Connection closeEventReceivedConnection;
         Connection detachEventReceivedConnection;
         Connection cancelEventReceivedConnection;
@@ -273,6 +330,7 @@ public:
     map<WsControlSession *, WSProxyConnections> wsProxyConnectionMap;
     WSConnections outWSConnection;
     InWSConnections inWSConnection;
+    std::vector<WsControl::AutoRespondConfig> autoRespondConfigs;
 
     Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager,
             const LogUtil::Config &_logConfig, StatsManager *_statsManager,
@@ -593,6 +651,9 @@ public:
             if (!f.more)
                 incCounter(Stats::ClientMessagesReceived);
 
+            if (autoRespond(f))
+                continue;
+
             if (detached)
                 continue;
 
@@ -745,6 +806,53 @@ public:
         woh->setHeaders(requestData.headers);
     }
 
+    bool autoRespond(const WebSocket::Frame &f) {
+        // We don't buffer full multi-part messages, so only respond to single-part messages
+        if (f.type == WebSocket::Frame::Continuation)
+            return false;
+
+        std::optional<size_t> index;
+        for (size_t i = 0; i < autoRespondConfigs.size(); ++i) {
+            if (autoRespondMatch(autoRespondConfigs[i], f)) {
+                index = i;
+                break;
+            }
+        }
+
+        // No matching config
+        if (!index.has_value())
+            return false;
+
+        const auto &config = autoRespondConfigs[*index];
+
+        // If auto response specifies a frame type then use it, else default to either the
+        // same type as the sender, or PONG if the sender used PING.
+        WebSocket::Frame::Type type;
+        if (((int)config.type) >= 0) {
+            type = config.type;
+        } else {
+            if (f.type == WebSocket::Frame::Ping) {
+                type = WebSocket::Frame::Pong;
+            } else {
+                type = f.type;
+            }
+        }
+
+        QByteArray content = config.content;
+        if (content.isNull())
+            content = f.data;
+
+        WebSocket::Frame resp(type, content, false);
+
+        if (outReadInProgress != -1) {
+            queuedInFrames += QueuedFrame(resp, false);
+        } else {
+            writeInFrame(resp, false);
+        }
+
+        return true;
+    }
+
     void incCounter(Stats::Counter c, int count = 1) {
         if (statsManager)
             statsManager->incCounter(route.statsRoute(), c, count);
@@ -847,6 +955,9 @@ public:
                                     boost::placeholders::_1, boost::placeholders::_2)),
                     wsControl->refreshEventReceived.connect(
                         boost::bind(&Private::wsControl_refreshEventReceived, this)),
+                    wsControl->autoRespondEventReceived.connect(
+                        boost::bind(&Private::wsControl_autoRespondEventReceived, this,
+                                    boost::placeholders::_1)),
                     wsControl->closeEventReceived.connect(
                         boost::bind(&Private::wsControl_closeEventReceived, this,
                                     boost::placeholders::_1, boost::placeholders::_2)),
@@ -1000,6 +1111,20 @@ public:
         WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp *>(outSock.get());
         if (woh)
             woh->refresh();
+    }
+
+    void wsControl_autoRespondEventReceived(const WsControl::AutoRespondConfig &config) {
+        // Remove any matching config
+        for (auto it = autoRespondConfigs.begin(); it != autoRespondConfigs.end();) {
+            if ((*it).matches(config)) {
+                it = autoRespondConfigs.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        if (autoRespondConfigs.size() < AUTO_RESPOND_CONFIGS_MAX && config.isEnabled())
+            autoRespondConfigs.push_back(config);
     }
 
     void wsControl_closeEventReceived(int code, const QByteArray &reason) {

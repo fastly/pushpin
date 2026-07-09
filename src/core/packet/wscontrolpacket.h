@@ -44,6 +44,7 @@ public:
             Send,
             KeepAliveSetup,
             Refresh,
+            AutoRespond,
             Close,
             Detach,
             Ack
@@ -68,6 +69,9 @@ public:
         int ttl;
         int timeout;
         QByteArray keepAliveMode;
+        QByteArray matchContentType;
+        QByteArray matchContent;
+        QByteArray matchContentPtr;
 
         Item()
             : type((Type)-1),
