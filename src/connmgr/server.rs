@@ -45,6 +45,7 @@ use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::SpecInfo;
+use crate::proxy::domainmap::DomainMap;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio::net::{TcpListener, TcpStream, UnixListener};
@@ -668,6 +669,7 @@ impl Worker {
         identities: &Arc<IdentityCache>,
         zsockman: &Arc<zhttpsocket::ClientSocketManager>,
         handle_bound: usize,
+        domainmap: Option<&Arc<DomainMap>>,
     ) -> Self {
         debug!("server-worker {}: starting", id);
 
@@ -680,6 +682,7 @@ impl Worker {
         let stream_acceptor_tls = stream_acceptor_tls.to_owned();
         let identities = Arc::clone(identities);
         let zsockman = Arc::clone(zsockman);
+        let domainmap = domainmap.cloned();
 
         let thread = thread::Builder::new()
             .name(format!("server-worker-{}", id))
@@ -726,6 +729,7 @@ impl Worker {
                         identities,
                         zsockman,
                         handle_bound,
+                        domainmap,
                     ))
                     .unwrap();
 
@@ -770,6 +774,7 @@ impl Worker {
         identities: Arc<IdentityCache>,
         zsockman: Arc<zhttpsocket::ClientSocketManager>,
         handle_bound: usize,
+        domainmap: Option<Arc<DomainMap>>,
     ) {
         let executor = Executor::current().unwrap();
         let reactor = Reactor::current().unwrap();
@@ -888,6 +893,7 @@ impl Worker {
                         body_buffer_size,
                         sender: zreq_sender,
                     }),
+                    domainmap.clone(),
                 ))
                 .unwrap();
 
@@ -944,6 +950,7 @@ impl Worker {
                         sender_stream: zstream_out_stream_sender,
                         stream_shared_mem,
                     }),
+                    domainmap.clone(),
                 ))
                 .unwrap();
 
@@ -1075,6 +1082,7 @@ impl Worker {
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         mode_opts: ConnectionModeOpts,
+        domainmap: Option<Arc<DomainMap>>,
     ) {
         let mut tls_acceptors = Vec::new();
 
@@ -1271,6 +1279,7 @@ impl Worker {
                             opts.clone(),
                             stream_opts,
                             shared.unwrap(),
+                            domainmap.clone(),
                         ))
                         .is_err()
                     {
@@ -1724,6 +1733,7 @@ impl Worker {
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
         shared: memorypool::Rc<StreamSharedData>,
+        domainmap: Option<Arc<DomainMap>>,
     ) {
         let done = AsyncLocalSender::new(done);
         let zreceiver = AsyncLocalReceiver::new(zreceiver);
@@ -1759,6 +1769,7 @@ impl Worker {
                         AsyncLocalSender::new(stream_opts.sender_stream),
                         zreceiver,
                         shared,
+                        domainmap.as_deref(),
                     )
                     .await
                 }
@@ -1784,6 +1795,7 @@ impl Worker {
                         AsyncLocalSender::new(stream_opts.sender_stream),
                         zreceiver,
                         shared,
+                        domainmap.as_deref(),
                     )
                     .await
                 }
@@ -1812,6 +1824,7 @@ impl Worker {
                     AsyncLocalSender::new(stream_opts.sender_stream),
                     zreceiver,
                     shared,
+                    domainmap.as_deref(),
                 )
                 .await
             }
@@ -1951,10 +1964,14 @@ impl Server {
         limit_permissions: bool,
         zsockman: zhttpsocket::ClientSocketManager,
         handle_bound: usize,
+        routes_file: Option<&str>,
     ) -> Result<Self, String> {
         assert!(blocks_max >= stream_maxconn * 2);
 
         let identities = Arc::new(IdentityCache::new(certs_dir));
+
+        // Create DomainMap instance if routes file is specified
+        let domainmap = routes_file.map(|f| Arc::new(DomainMap::new(f)));
 
         let mut req_listeners = Vec::new();
         let mut stream_listeners = Vec::new();
@@ -2090,6 +2107,7 @@ impl Server {
                 &identities,
                 &zsockman,
                 handle_bound,
+                domainmap.as_ref(),
             );
             workers.push(w);
         }
@@ -2219,6 +2237,7 @@ impl Server {
                     stream_shared_mem,
                 },
                 shared,
+                None,
             );
 
             mem::size_of_val(&fut)
@@ -2324,6 +2343,7 @@ impl TestServer {
             false,
             zsockman,
             100,
+            None, // No routes file needed for tests
         )
         .unwrap();
 

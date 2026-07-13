@@ -65,6 +65,7 @@ use crate::core::time::Timeout;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
 use crate::observability::{trace_status_code, trace_ws_close_code, WsCloseSource};
+use crate::proxy::domainmap::DomainMap;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
@@ -335,6 +336,7 @@ enum Error {
     ReqModeWebSocket,
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
+    InvalidRouteEncoding,
     #[allow(dead_code)]
     WebSocketRejectionTooLarge(usize),
     Compression,
@@ -1412,6 +1414,11 @@ async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
         }
         Error::InvalidWebSocketRequest => {
             writeln!(&mut body, "Request contained an Upgrade header with value \"websocket\" but the request was not a valid WebSocket request.")?;
+
+            400
+        }
+        Error::InvalidRouteEncoding => {
+            writeln!(&mut body, "Invalid route encoding")?;
 
             400
         }
@@ -3305,11 +3312,13 @@ fn server_stream_process_req_header(
     shared: &StreamSharedData,
     recv_buf_size: usize,
     ws_accept: &mut ArrayString<WS_ACCEPT_MAX>,
+    domainmap: Option<&DomainMap>,
 ) -> Result<(zmq::Message, Option<WsReqData>), Error> {
     let mut websocket = false;
     let mut ws_version = None;
     let mut ws_key = None;
     let mut ws_deflate_config = None;
+    let mut route = None;
 
     for h in req.headers.iter() {
         if h.name.eq_ignore_ascii_case("Upgrade") && h.value.eq_ignore_ascii_case(b"websocket") {
@@ -3357,6 +3366,30 @@ fn server_stream_process_req_header(
                 }
             }
         }
+
+        if h.name.eq_ignore_ascii_case("Pushpin-Route") {
+            let Ok(s) = str::from_utf8(h.value) else {
+                return Err(Error::InvalidRouteEncoding);
+            };
+
+            route = Some(s);
+        }
+    }
+
+    let mut log_level = log::Level::Debug;
+
+    if let Some(route) = route {
+        if let Some(domainmap) = domainmap {
+            if let Some(params) = domainmap.lookup(route, Some(req.uri)) {
+                log_level = match params.log_level {
+                    i32::MIN..=0 => log::Level::Error,
+                    1 => log::Level::Warn,
+                    2 => log::Level::Info,
+                    3 => log::Level::Debug,
+                    4..=i32::MAX => log::Level::Trace,
+                };
+            }
+        }
     }
 
     // Log request
@@ -3377,9 +3410,14 @@ fn server_stream_process_req_header(
         }
     };
 
-    debug!(
+    log!(
+        log_level,
         "server-conn {}: request: {} {}://{}{}",
-        id, req.method, scheme, host, req.uri
+        id,
+        req.method,
+        scheme,
+        host,
+        req.uri
     );
 
     let ws_req_data: Option<WsReqData> = if websocket {
@@ -3453,6 +3491,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
     shared: &StreamSharedData,
     recv_buf_size: usize,
     ws_accept: &mut ArrayString<WS_ACCEPT_MAX>,
+    domainmap: Option<&DomainMap>,
 ) -> Result<
     Option<(
         zmq::Message,
@@ -3495,6 +3534,7 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
         shared,
         recv_buf_size,
         ws_accept,
+        domainmap,
     );
 
     let body_size = req_ref.body_size;
@@ -3565,6 +3605,7 @@ async fn server_stream_respond<'buf, 'st, 'headers, 'resp: 'headers, 'zs, 'tr, R
     shared: &'zs StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &'zs R2,
+    domainmap: Option<&DomainMap>,
 ) -> Result<Option<StreamRespond<'buf, 'st, 'headers, 'zs, 'tr, R, W, R2>>, Error>
 where
     R: AsyncRead,
@@ -3589,6 +3630,7 @@ where
         shared,
         recv_buf_size,
         &mut resp_scratch.ws_accept,
+        domainmap,
     )
     .await?;
 
@@ -3913,6 +3955,7 @@ async fn server_stream_handler<S, R1, R2>(
     shared: &StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
+    domainmap: Option<&DomainMap>,
 ) -> Result<bool, Error>
 where
     S: AsyncRead + AsyncWrite,
@@ -3956,6 +3999,7 @@ where
             shared,
             refresh_stream_timeout,
             refresh_session_timeout,
+            domainmap,
         )
         .await
         {
@@ -4110,6 +4154,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: memorypool::Rc<StreamSharedData>,
+    domainmap: Option<&DomainMap>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
@@ -4158,6 +4203,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &shared,
                 &refresh_stream_timeout,
                 &refresh_session_timeout,
+                domainmap,
             ));
 
             let ret = match select_4(
@@ -4280,6 +4326,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: AsyncLocalReceiver<(memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: memorypool::Rc<StreamSharedData>,
+    domainmap: Option<&DomainMap>,
 ) {
     let value_active = TrackFlag::default();
 
@@ -4307,6 +4354,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
             zsender_stream,
             &zreceiver,
             shared,
+            domainmap,
         ),
         &value_active,
     )
@@ -6886,6 +6934,7 @@ pub mod testutil {
             &shared,
             &|| {},
             &|| {},
+            None, // No domainmap for tests
         )
         .await
     }
@@ -7068,6 +7117,7 @@ pub mod testutil {
             s_stream_from_conn,
             &r_to_conn,
             shared,
+            None, // No domainmap for tests
         )
         .await
     }
@@ -7914,6 +7964,7 @@ mod tests {
             s_stream_from_conn,
             &r_to_conn,
             shared,
+            None,
         )
         .await
     }

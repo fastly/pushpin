@@ -68,6 +68,7 @@ struct Args {
     origind_rate: u8,
     otel_endpoint: Option<String>,
     otel_resource_attributes: Option<String>,
+    routes_file: Option<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -119,6 +120,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         origind_rate: args.origind_rate,
         otel_endpoint: args.otel_endpoint,
         otel_resource_attributes: args.otel_resource_attributes,
+        routes_file: args.routes_file,
     };
 
     for v in args.listen.iter() {
@@ -463,6 +465,13 @@ fn main() {
                 .help("Comma-separated key=value pairs for OTel resource attributes (e.g. __tenant=fastly-edge)"),
         )
         .arg(
+            Arg::new("routes-file")
+                .long("routes-file")
+                .num_args(1)
+                .value_name("PATH")
+                .help("Path to routes file for route-specific configuration"),
+        )
+        .arg(
             Arg::new("sizes")
                 .long("sizes")
                 .action(ArgAction::SetTrue)
@@ -685,6 +694,8 @@ fn main() {
         }
     };
 
+    let routes_file = matches.get_one::<String>("routes-file").cloned();
+
     // If no zmq server specs are set (needed by client mode), specify
     // default listen configuration in order to enable server mode. This
     // means if zmq server specs are set, then server mode won't be enabled
@@ -721,6 +732,7 @@ fn main() {
         origind_rate,
         otel_endpoint,
         otel_resource_attributes,
+        routes_file,
     };
 
     if let Err(e) = process_args_and_run(args) {

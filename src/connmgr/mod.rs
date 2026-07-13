@@ -140,6 +140,7 @@ pub struct Config {
     pub origind_rate: u8,
     pub otel_endpoint: Option<String>,
     pub otel_resource_attributes: Option<String>,
+    pub routes_file: Option<String>,
 }
 
 pub struct App {
@@ -329,6 +330,7 @@ impl App {
                 limit_permissions,
                 zsockman,
                 handle_bound,
+                config.routes_file.as_deref(),
             )?)
         } else {
             None
