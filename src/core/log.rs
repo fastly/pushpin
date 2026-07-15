@@ -24,6 +24,7 @@ use crate::core::select::{select_2, Select2};
 use crate::core::task::{get_reactor, CancellationSender, CancellationToken};
 use log::{debug, error, warn, LevelFilter, Log, Metadata, Record};
 use mio::net::UnixListener;
+use std::cell::Cell;
 use std::fmt::{self, Write as _};
 use std::fs::File;
 use std::io::{self, Write as _};
@@ -147,7 +148,11 @@ impl Default for AtomicLevelFilter {
 }
 
 pub struct SimpleLogger {
+    // Thread-safe instance-wide level
     max_level: AtomicLevelFilter,
+
+    // Per-thread level. Supersedes max_level if set.
+    local_max_level: &'static thread::LocalKey<Cell<Option<LevelFilter>>>,
 
     // The outer Option is read-only, for quick detection of the output mode. The inner Option
     // should be Some unless a log rotation fails, in which case it can be set to None to disable
@@ -168,11 +173,17 @@ impl SimpleLogger {
     }
 
     pub fn max_level(&self) -> LevelFilter {
-        self.max_level.get()
+        self.local_max_level
+            .get()
+            .unwrap_or_else(|| self.max_level.get())
     }
 
     pub fn set_max_level(&self, level: LevelFilter) {
         self.max_level.set(level);
+    }
+
+    fn set_local_max_level(&self, level: Option<LevelFilter>) {
+        self.local_max_level.set(level);
     }
 }
 
@@ -184,7 +195,7 @@ impl Log for SimpleLogger {
             }
         }
 
-        metadata.level() <= self.max_level.get()
+        metadata.level() <= self.max_level()
     }
 
     fn log(&self, record: &Record) {
@@ -196,7 +207,7 @@ impl Log for SimpleLogger {
             dl.log(record);
         }
 
-        if record.metadata().level() > self.max_level.get() {
+        if record.metadata().level() > self.max_level() {
             return;
         }
 
@@ -216,11 +227,16 @@ impl Log for SimpleLogger {
     fn flush(&self) {}
 }
 
+thread_local! {
+    static LOCAL_MAX_LEVEL: Cell<Option<LevelFilter>> = const { Cell::new(None) };
+}
+
 static LOGGER: OnceLock<SimpleLogger> = OnceLock::new();
 
 pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
     LOGGER.get_or_init(|| SimpleLogger {
         max_level: AtomicLevelFilter::default(),
+        local_max_level: &LOCAL_MAX_LEVEL,
         output_file: output_file.map(|f| Mutex::new(Some(f))),
         runner_mode,
     });
@@ -231,6 +247,21 @@ pub fn get_simple_logger() -> &'static SimpleLogger {
 
     // Logger is guaranteed to have been initialized
     LOGGER.get().expect("logger should be initialized")
+}
+
+/// Calls the provided function with an optional, temporary max logging level in effect. Any
+/// logging calls made by this function to the global `SimpleLogger` will be subject to the
+/// specified max level rather than the logger's configured max level.
+pub fn with_max_level<F, R>(max_level: Option<LevelFilter>, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let logger = get_simple_logger();
+    logger.set_local_max_level(max_level);
+    let ret = f();
+    logger.set_local_max_level(None);
+
+    ret
 }
 
 #[derive(Clone)]
@@ -567,11 +598,22 @@ mod ffi {
 
     fn int_to_level(level: c_int) -> log::Level {
         match level {
-            core::i32::MIN..=0 => log::Level::Error,
+            c_int::MIN..=0 => log::Level::Error,
             1 => log::Level::Warn,
             2 => log::Level::Info,
             3 => log::Level::Debug,
-            4..=core::i32::MAX => log::Level::Trace,
+            4..=c_int::MAX => log::Level::Trace,
+        }
+    }
+
+    fn int_to_optional_level_filter(level: c_int) -> Option<LevelFilter> {
+        match level {
+            c_int::MIN..=-1 => None,
+            0 => Some(log::LevelFilter::Error),
+            1 => Some(log::LevelFilter::Warn),
+            2 => Some(log::LevelFilter::Info),
+            3 => Some(log::LevelFilter::Debug),
+            4..=c_int::MAX => Some(log::LevelFilter::Trace),
         }
     }
 
@@ -583,7 +625,9 @@ mod ffi {
     /// initialized, but will be configured log to stdout instead of a file,
     /// and a file error message will be logged.
     ///
-    /// SAFETY: `output_file` must be valid if non-null.
+    /// # Safety
+    ///
+    /// `output_file` must be valid if non-null.
     #[no_mangle]
     pub unsafe extern "C" fn log_init(output_file: *const c_char) -> c_int {
         let (output_file, file_error) = if !output_file.is_null() {
@@ -644,9 +688,11 @@ mod ffi {
 
     /// Returns 0 on success or if file output was not configured.
     ///
-    /// SAFETY: `output_file` must be valid.
+    /// # Safety
+    ///
+    /// `output_file` must be valid.
     #[no_mangle]
-    pub extern "C" fn log_rotate(output_file: *const c_char) -> c_int {
+    pub unsafe extern "C" fn log_rotate(output_file: *const c_char) -> c_int {
         assert!(!output_file.is_null());
 
         let f = unsafe {
@@ -687,7 +733,9 @@ mod ffi {
         0
     }
 
-    /// SAFETY: `message` must be valid.
+    /// # Safety
+    ///
+    /// `message` must be valid.
     #[no_mangle]
     pub unsafe extern "C" fn log_log(level: c_int, message: *const c_char) {
         assert!(!message.is_null());
@@ -704,7 +752,25 @@ mod ffi {
         log::log!(target: "", int_to_level(level), "{}", message);
     }
 
-    /// SAFETY: `message` must be valid.
+    /// `max_level` may be negative to indicate no max level.
+    ///
+    /// # Safety
+    ///
+    /// `message` must be valid.
+    #[no_mangle]
+    pub unsafe extern "C" fn log_log_with_max_level(
+        max_level: c_int,
+        level: c_int,
+        message: *const c_char,
+    ) {
+        with_max_level(int_to_optional_level_filter(max_level), move || {
+            log_log(level, message);
+        });
+    }
+
+    /// # Safety
+    ///
+    /// `message` must be valid.
     #[no_mangle]
     pub unsafe extern "C" fn log_log_raw(message: *const c_char) {
         assert!(!message.is_null());
