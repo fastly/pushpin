@@ -585,7 +585,7 @@ impl Log for DebugLogger {
     fn flush(&self) {}
 }
 
-mod ffi {
+pub mod ffi {
     use super::*;
     use std::ffi::{c_char, c_int, CStr};
     use std::fs::OpenOptions;
@@ -606,7 +606,7 @@ mod ffi {
         }
     }
 
-    fn int_to_optional_level_filter(level: c_int) -> Option<LevelFilter> {
+    pub fn int_to_optional_level_filter(level: c_int) -> Option<LevelFilter> {
         match level {
             c_int::MIN..=-1 => None,
             0 => Some(log::LevelFilter::Error),

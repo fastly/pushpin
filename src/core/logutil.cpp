@@ -64,9 +64,10 @@ static QString makeLastIdsStr(const HttpHeaders &headers) {
     return out;
 }
 
-static void logPacket(int level, const QString &message, const Variant &data = Variant(),
-                      int dataMax = -1, const QByteArray &content = QByteArray(),
-                      int contentMax = -1) {
+static void logPacketWithOutputLevel(int outputLevel, int level, const QString &message,
+                                     const Variant &data = Variant(), int dataMax = -1,
+                                     const QByteArray &content = QByteArray(),
+                                     int contentMax = -1) {
     QString out = message;
 
     if (data.isValid()) {
@@ -79,7 +80,13 @@ static void logPacket(int level, const QString &message, const Variant &data = V
         out += TnetString::variantToString(Variant(buf), -1);
     }
 
-    log(level, "%s", qPrintable(out));
+    logWithOutputLevel(outputLevel, level, "%s", qPrintable(out));
+}
+
+static void logPacket(int level, const QString &message, const Variant &data = Variant(),
+                      int dataMax = -1, const QByteArray &content = QByteArray(),
+                      int contentMax = -1) {
+    logPacketWithOutputLevel(-1, level, message, data, dataMax, content, contentMax);
 }
 
 static void logPacket(int level, const Variant &data, const char *fmt, va_list ap) {
@@ -102,8 +109,8 @@ static void logPacket(int level, const Variant &data, const QString &contentFiel
         hdata.remove(contentField);
         meta = hdata;
     } else {
-        // If data isn't a hash, then we can't extract content, so the meta part will be the entire
-        // data
+        // If data isn't a hash, then we can't extract content, so the meta part will be the
+        // entire data
         meta = data;
     }
 
@@ -180,16 +187,16 @@ void logRequest(int level, const RequestData &data, const Config &config) {
     if (!lastIdsStr.isEmpty())
         msg += ' ' + lastIdsStr;
 
-    log(level, "%s", qPrintable(msg));
+    logWithOutputLevel(data.logLevel, level, "%s", qPrintable(msg));
 }
 
-void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...) {
+void logForRoute(int level, const RouteInfo &routeInfo, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     QString msg = QString::vasprintf(fmt, ap);
     if (!routeInfo.id.isEmpty())
         msg += QString(" route=%1").arg(routeInfo.id);
-    logPacket(routeInfo.logLevel, msg);
+    logPacketWithOutputLevel(routeInfo.logLevel, level, msg);
     va_end(ap);
 }
 

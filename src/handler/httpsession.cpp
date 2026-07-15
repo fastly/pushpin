@@ -198,7 +198,7 @@ public:
             int _connectionSubscriptionMax)
         : q(_q),
           req(_req),
-          logLevel(LOG_LEVEL_DEBUG),
+          logLevel(-1),
           stats(_stats),
           outZhttp(_outZhttp),
           updateLimiter(_updateLimiter),
@@ -271,7 +271,7 @@ public:
             instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
 
             auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
-            LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
+            LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo, "httpsession: too many subscriptions");
         }
 
         // Need to send initial content?
@@ -1164,7 +1164,8 @@ private:
                         instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
 
                         auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
-                        LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
+                        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                                             "httpsession: too many subscriptions");
                     }
 
                     if (instruct.holdMode == Instruct::StreamHold) {
@@ -1216,6 +1217,7 @@ private:
         if (!adata.statsRoute.isEmpty())
             rd.routeId = adata.route;
 
+        rd.logLevel = logLevel;
         rd.status = LogUtil::Response;
 
         rd.requestData.method = method;
@@ -1235,6 +1237,7 @@ private:
         if (!adata.statsRoute.isEmpty())
             rd.routeId = adata.route;
 
+        rd.logLevel = logLevel;
         rd.status = LogUtil::Error;
 
         rd.requestData.method = method;
