@@ -2441,7 +2441,8 @@ private:
                                  qPrintable(channel));
                     } else {
                         auto routeInfo = LogUtil::RouteInfo(s->route, s->logLevel);
-                        LogUtil::logForRoute(routeInfo, "wssession: too many subscriptions");
+                        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                                             "wssession: too many subscriptions");
                     }
                 } else if (cm.type == WsControlMessage::Unsubscribe) {
                     QString channel = s->channelPrefix + cm.channel;

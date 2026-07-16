@@ -908,6 +908,8 @@ public:
         if (route.separateStats)
             rd.routeId = route.id;
 
+        rd.logLevel = route.logLevel;
+
         if (accepted) {
             rd.status = LogUtil::Accept;
         } else if (resp.code != -1 && !si->unclean) {

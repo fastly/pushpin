@@ -698,6 +698,8 @@ public:
         if (route.separateStats)
             rd.routeId = route.id;
 
+        rd.logLevel = route.logLevel;
+
         if (responseCode != -1) {
             rd.status = LogUtil::Response;
             rd.responseData.code = responseCode;

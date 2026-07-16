@@ -106,7 +106,7 @@ public:
               autoCrossOrigin(false),
               session(false),
               grip(true),
-              logLevel(LOG_LEVEL_DEBUG) {}
+              logLevel(-1) {}
 
         // Checks only the condition, not sig/targets
         bool compare(const Rule &other) const {
