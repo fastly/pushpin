@@ -348,7 +348,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["uri"]) != VariantType::ByteArray)
             return false;
 
-        uri = Url::fromEncoded(obj["uri"].toByteArray(), Url::StrictMode);
+        uri = CowUrl::fromEncoded(obj["uri"].toByteArray(), CowUrl::StrictMode);
     }
 
     headers.clear();

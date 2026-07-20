@@ -105,7 +105,7 @@ public:
             return;
         }
 
-        Url uri = req->requestUri();
+        CowUrl uri = req->requestUri();
         QByteArray body = req->readBody();
         bool preferInternal = req->passthroughData().toMap().value("prefer-internal").toBool();
 

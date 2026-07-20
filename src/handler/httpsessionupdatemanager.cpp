@@ -23,23 +23,23 @@
 
 #include "httpsessionupdatemanager.h"
 
+#include "cowurl.h"
 #include "defercall.h"
 #include "httpsession.h"
 #include "timer.h"
-#include "url.h"
 
 class HttpSessionUpdateManager::Private {
 public:
     class Bucket {
     public:
-        QPair<int, Url> key;
+        QPair<int, CowUrl> key;
         QSet<HttpSession *> sessions;
         QSet<HttpSession *> deferredSessions;
         std::unique_ptr<Timer> timer;
     };
 
     HttpSessionUpdateManager *q;
-    QHash<QPair<int, Url>, Bucket *> buckets;
+    QHash<QPair<int, CowUrl>, Bucket *> buckets;
     QHash<Timer *, Bucket *> bucketsByTimer;
     QHash<HttpSession *, Bucket *> bucketsBySession;
 
@@ -56,10 +56,10 @@ public:
         delete bucket;
     }
 
-    void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout) {
-        Url tmp = uri;
+    void registerSession(HttpSession *hs, int timeout, const CowUrl &uri, bool resetTimeout) {
+        CowUrl tmp = uri;
         tmp.setQuery(QString()); // Remove the query part
-        QPair<int, Url> key(timeout, tmp);
+        QPair<int, CowUrl> key(timeout, tmp);
 
         Bucket *bucket = buckets.value(key);
         if (bucket) {
@@ -140,7 +140,7 @@ HttpSessionUpdateManager::HttpSessionUpdateManager() { d = new Private(this); }
 
 HttpSessionUpdateManager::~HttpSessionUpdateManager() { delete d; }
 
-void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const Url &uri,
+void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const CowUrl &uri,
                                                bool resetTimeout) {
     d->registerSession(hs, timeout, uri, resetTimeout);
 }

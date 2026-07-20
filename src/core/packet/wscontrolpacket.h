@@ -24,7 +24,7 @@
 #ifndef WSCONTROLPACKET_H
 #define WSCONTROLPACKET_H
 
-#include "url.h"
+#include "cowurl.h"
 #include "variant.h"
 #include <QByteArray>
 #include <QList>
@@ -52,7 +52,7 @@ public:
         QByteArray cid;
         Type type;
         QByteArray requestId;
-        Url uri;
+        CowUrl uri;
         QByteArray contentType;
         QByteArray message;
         bool queue;

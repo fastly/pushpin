@@ -24,6 +24,7 @@
 
 #include "config.h"
 #include "connmgrservice.h"
+#include "cowurl.h"
 #include "listenport.h"
 #include "log.h"
 #include "m2adapterservice.h"
@@ -33,7 +34,6 @@
 #include "pushpinproxyservice.h"
 #include "rust/bindings.h"
 #include "settings.h"
-#include "url.h"
 #include "urlquery.h"
 #include "zurlservice.h"
 #include <QCommandLineParser>
@@ -74,8 +74,8 @@ static QPair<QHostAddress, int> parsePort(const QString &s) {
 
     // Otherwise, assume it's an address:port combination
 
-    // Parse with Url in order to support bracketed IPv6 notation
-    Url url{Url::fromUserInput(s)};
+    // Parse with CowUrl in order to support bracketed IPv6 notation
+    CowUrl url{CowUrl::fromUserInput(s)};
 
     return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
 }
@@ -476,7 +476,7 @@ public:
             }
 
             foreach (const QString &localPortStr, localPortStrs) {
-                Url path = Url::fromEncoded(localPortStr.toUtf8());
+                CowUrl path = CowUrl::fromEncoded(localPortStr.toUtf8());
                 if (!path.isValid()) {
                     log_error("invalid local port: %s", qPrintable(localPortStr));
                     q->quit(1);

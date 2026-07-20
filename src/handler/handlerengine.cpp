@@ -143,7 +143,7 @@ public:
                 return;
             }
 
-            requestData.uri = Url(args["uri"].toString(), Url::StrictMode);
+            requestData.uri = CowUrl(args["uri"].toString(), CowUrl::StrictMode);
             if (!requestData.uri.isValid()) {
                 respondError("bad-request");
                 return;
@@ -212,7 +212,7 @@ public:
 
                 auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(
                     stateClient, requestData.uri.host().toUtf8(),
-                    requestData.uri.path(Url::FullyEncoded).toUtf8()));
+                    requestData.uri.path(CowUrl::FullyEncoded).toUtf8()));
 
                 // Safe to not track, since d can't outlive this
                 d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished,
@@ -243,7 +243,7 @@ private:
             // reason the query part is not considered is because it may vary per client and
             // Grip-Last supersedes whatever is in the query
 
-            Url uri = requestData.uri;
+            CowUrl uri = requestData.uri;
             uri.setQuery(QString()); // Remove the query part
 
             QList<QByteArray> gripLastHeaders =
@@ -291,7 +291,7 @@ private:
 
                 if (!rule.jsonParam.isEmpty()) {
                     UrlQuery tmp(QString::fromUtf8(requestData.body));
-                    jsonData = tmp.queryItemValue(rule.jsonParam, Url::FullyDecoded).toUtf8();
+                    jsonData = tmp.queryItemValue(rule.jsonParam, CowUrl::FullyDecoded).toUtf8();
                 } else {
                     jsonData = requestData.body;
                 }
@@ -762,7 +762,7 @@ private:
         if (!rd.contains("uri") || typeId(rd["uri"]) != VariantType::ByteArray)
             return HttpRequestData();
 
-        out.uri = Url(rd["uri"].toString(), Url::StrictMode);
+        out.uri = CowUrl(rd["uri"].toString(), CowUrl::StrictMode);
         if (!out.uri.isValid())
             return HttpRequestData();
 
@@ -2437,7 +2437,7 @@ private:
                         addSub(channel);
 
                         log_info("subscribe %s channel=%s",
-                                 qPrintable(s->requestData.uri.toString(Url::FullyEncoded)),
+                                 qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
                                  qPrintable(channel));
                     } else {
                         auto routeInfo = LogUtil::RouteInfo(s->route, s->logLevel);
@@ -2567,7 +2567,7 @@ private:
                 addSub(channel);
 
                 log_info("subscribe %s channel=%s",
-                         qPrintable(s->requestData.uri.toString(Url::FullyEncoded)),
+                         qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
                          qPrintable(channel));
             } else if (item.type == WsControlPacket::Item::Ack) {
                 int reqId = item.requestId.toInt();
@@ -2827,7 +2827,7 @@ private:
         addSub(channel);
 
         QString msg = QString("subscribe %1 channel=%2")
-                          .arg(hs->requestUri().toString(Url::FullyEncoded), channel);
+                          .arg(hs->requestUri().toString(CowUrl::FullyEncoded), channel);
         if (hs->isRetry())
             msg += " retry";
 

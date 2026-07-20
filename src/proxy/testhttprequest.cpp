@@ -141,7 +141,7 @@ void TestHttpRequest::setTimeout([[maybe_unused]] int msecs) {}
 void TestHttpRequest::setClientCert([[maybe_unused]] const QString &cert,
                                     [[maybe_unused]] const QString &key) {}
 
-void TestHttpRequest::start(const QString &method, const Url &uri, const HttpHeaders &headers) {
+void TestHttpRequest::start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
     assert(d->state == Private::Idle);
 
     d->state = Private::ReceivingRequest;
@@ -207,7 +207,7 @@ HttpRequest::ErrorCondition TestHttpRequest::errorCondition() const { return d->
 
 QString TestHttpRequest::requestMethod() const { return d->request.method; }
 
-Url TestHttpRequest::requestUri() const { return d->request.uri; }
+CowUrl TestHttpRequest::requestUri() const { return d->request.uri; }
 
 HttpHeaders TestHttpRequest::requestHeaders() const { return d->request.headers; }
 

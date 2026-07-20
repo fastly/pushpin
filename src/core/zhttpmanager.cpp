@@ -1178,14 +1178,14 @@ void ZhttpManager::registerKeepAlive(ZWebSocket *sock) {
 
 void ZhttpManager::unregisterKeepAlive(ZWebSocket *sock) { d->unregisterKeepAlive(sock); }
 
-int ZhttpManager::estimateRequestHeaderBytes(const QString &method, const Url &uri,
+int ZhttpManager::estimateRequestHeaderBytes(const QString &method, const CowUrl &uri,
                                              const HttpHeaders &headers) {
     int total = method.toUtf8().length();
 
-    total += uri.path(Url::FullyEncoded).length();
+    total += uri.path(CowUrl::FullyEncoded).length();
 
     if (uri.hasQuery())
-        total += uri.query(Url::FullyEncoded).length() + 1; // +1 for question mark
+        total += uri.query(CowUrl::FullyEncoded).length() + 1; // +1 for question mark
 
     foreach (const HttpHeader &h, headers) {
         total += h.first.length();

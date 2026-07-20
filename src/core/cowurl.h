@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef URL_H
-#define URL_H
+#ifndef COWURL_H
+#define COWURL_H
 
 #include <QUrl>
 
-// Type alias for URL handling - this will be replaced with a custom implementation later
-using Url = QUrl;
+// Type alias for copy-on-write URL handling - this will be replaced with a custom implementation
+// later
+using CowUrl = QUrl;
 
-#endif // URL_H
+#endif // COWURL_H

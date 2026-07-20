@@ -26,6 +26,7 @@
 #include "acceptdata.h"
 #include "acceptrequest.h"
 #include "bufferlist.h"
+#include "cowurl.h"
 #include "inspectdata.h"
 #include "jwt.h"
 #include "log.h"
@@ -38,7 +39,6 @@
 #include "statsmanager.h"
 #include "statusreasons.h"
 #include "testhttprequest.h"
-#include "url.h"
 #include "variant.h"
 #include "xffrule.h"
 #include "zhttpmanager.h"
@@ -255,7 +255,7 @@ public:
             if (!route.asHost.isEmpty())
                 ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-            QByteArray path = requestData.uri.path(Url::FullyEncoded).toUtf8();
+            QByteArray path = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
             if (route.pathRemove > 0)
                 path = path.mid(route.pathRemove);
@@ -263,7 +263,7 @@ public:
             if (!route.pathPrepend.isEmpty())
                 path = route.pathPrepend + path;
 
-            requestData.uri.setPath(QString::fromUtf8(path), Url::StrictMode);
+            requestData.uri.setPath(QString::fromUtf8(path), CowUrl::StrictMode);
 
             QByteArray sigIss = defaultSigIss;
             Jwt::EncodingKey sigKey = defaultSigKey;
@@ -376,7 +376,7 @@ public:
             }
         }
 
-        Url uri = requestData.uri;
+        CowUrl uri = requestData.uri;
         if (target.ssl)
             uri.setScheme("https");
         else
@@ -398,7 +398,7 @@ public:
                     --pathRemove;
 
                 if (pathRemove > 0)
-                    uri.setPath(uri.path(Url::FullyEncoded).mid(pathRemove));
+                    uri.setPath(uri.path(CowUrl::FullyEncoded).mid(pathRemove));
             }
 
             zhttpRequest = std::make_unique<TestHttpRequest>();

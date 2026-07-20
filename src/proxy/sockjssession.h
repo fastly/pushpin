@@ -24,9 +24,9 @@
 #ifndef SOCKJSSESSION_H
 #define SOCKJSSESSION_H
 
+#include "cowurl.h"
 #include "domainmap.h"
 #include "httpheaders.h"
-#include "url.h"
 #include "websocket.h"
 #include <QHostAddress>
 #include <boost/signals2.hpp>
@@ -58,14 +58,14 @@ public:
     virtual void setIgnoreTlsErrors(bool on);
     virtual void setClientCert(const QString &cert, const QString &key);
 
-    virtual void start(const Url &uri, const HttpHeaders &headers);
+    virtual void start(const CowUrl &uri, const HttpHeaders &headers);
 
     virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
     virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
                               const QByteArray &body);
 
     virtual State state() const;
-    virtual Url requestUri() const;
+    virtual CowUrl requestUri() const;
     virtual HttpHeaders requestHeaders() const;
     virtual int responseCode() const;
     virtual QByteArray responseReason() const;
@@ -89,11 +89,11 @@ private:
     friend class SockJsManager;
     SockJsSession();
     void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback,
-                     const Url &asUri, const QByteArray &sid, const QByteArray &lastPart,
+                     const CowUrl &asUri, const QByteArray &sid, const QByteArray &lastPart,
                      const QByteArray &body, const DomainMap::Entry &route);
-    void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri,
+    void setupServer(SockJsManager *manager, ZWebSocket *sock, const CowUrl &asUri,
                      const DomainMap::Entry &route);
-    void setupServer(SockJsManager *manager, ZWebSocket *sock, const Url &asUri,
+    void setupServer(SockJsManager *manager, ZWebSocket *sock, const CowUrl &asUri,
                      const QByteArray &sid, const QByteArray &lastPart,
                      const DomainMap::Entry &route);
 

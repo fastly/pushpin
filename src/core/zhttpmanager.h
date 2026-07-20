@@ -24,7 +24,7 @@
 #ifndef ZHTTPMANAGER_H
 #define ZHTTPMANAGER_H
 
-#include "url.h"
+#include "cowurl.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <boost/signals2.hpp>
@@ -69,7 +69,7 @@ public:
     // For server mode, jump directly to responding state
     ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
-    static int estimateRequestHeaderBytes(const QString &method, const Url &uri,
+    static int estimateRequestHeaderBytes(const QString &method, const CowUrl &uri,
                                           const HttpHeaders &headers);
     static int estimateResponseHeaderBytes(int code, const QByteArray &reason,
                                            const HttpHeaders &headers);

@@ -22,9 +22,9 @@
 
 #include "connmgrservice.h"
 
+#include "cowurl.h"
 #include "log.h"
 #include "template.h"
-#include "url.h"
 #include <QDir>
 #include <QProcess>
 
@@ -69,7 +69,7 @@ ConnmgrService::ConnmgrService(const QString &name, const QString &binFile, cons
 
                 args_ += arg;
             } else {
-                Url url;
+                CowUrl url;
                 url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
                 url.setPort(p.port);
 

@@ -24,6 +24,7 @@
 #include "wsproxysession.h"
 
 #include "connectionmanager.h"
+#include "cowurl.h"
 #include "defercall.h"
 #include "inspectdata.h"
 #include "jwt.h"
@@ -33,7 +34,6 @@
 #include "statsmanager.h"
 #include "testwebsocket.h"
 #include "timer.h"
-#include "url.h"
 #include "websocketoverhttp.h"
 #include "wscontrol.h"
 #include "wscontrolmanager.h"
@@ -385,7 +385,7 @@ public:
         if (!route.asHost.isEmpty())
             ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-        QByteArray path = requestData.uri.path(Url::FullyEncoded).toUtf8();
+        QByteArray path = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
         if (route.pathRemove > 0)
             path = path.mid(route.pathRemove);
@@ -393,7 +393,7 @@ public:
         if (!route.pathPrepend.isEmpty())
             path = route.pathPrepend + path;
 
-        requestData.uri.setPath(QString::fromUtf8(path), Url::StrictMode);
+        requestData.uri.setPath(QString::fromUtf8(path), CowUrl::StrictMode);
 
         sigIss = defaultSigIss;
         sigKey = defaultSigKey;
@@ -462,7 +462,7 @@ public:
 
         target = targets.takeFirst();
 
-        Url uri = requestData.uri;
+        CowUrl uri = requestData.uri;
         if (target.ssl)
             uri.setScheme("wss");
         else
@@ -484,7 +484,7 @@ public:
                     --pathRemove;
 
                 if (pathRemove > 0)
-                    uri.setPath(uri.path(Url::FullyEncoded).mid(pathRemove));
+                    uri.setPath(uri.path(CowUrl::FullyEncoded).mid(pathRemove));
             }
 
             outSock = std::make_unique<TestWebSocket>();

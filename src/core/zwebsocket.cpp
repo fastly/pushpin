@@ -62,7 +62,7 @@ public:
     bool ignoreTlsErrors;
     QString clientCert;
     QString clientKey;
-    Url requestUri;
+    CowUrl requestUri;
     HttpHeaders requestHeaders;
     int inSeq;
     int outSeq;
@@ -950,7 +950,7 @@ void ZWebSocket::setClientCert(const QString &cert, const QString &key) {
     d->clientKey = key;
 }
 
-void ZWebSocket::start(const Url &uri, const HttpHeaders &headers) {
+void ZWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     assert(!d->server);
 
     d->requestUri = uri;
@@ -1001,7 +1001,7 @@ WebSocket::State ZWebSocket::state() const {
     }
 }
 
-Url ZWebSocket::requestUri() const { return d->requestUri; }
+CowUrl ZWebSocket::requestUri() const { return d->requestUri; }
 
 HttpHeaders ZWebSocket::requestHeaders() const { return d->requestHeaders; }
 

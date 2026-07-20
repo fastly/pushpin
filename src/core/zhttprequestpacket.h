@@ -24,8 +24,8 @@
 
 #include "cowbytearray.h"
 #include "cowstring.h"
+#include "cowurl.h"
 #include "httpheaders.h"
-#include "url.h"
 #include "variant.h"
 #include <QHostAddress>
 
@@ -68,7 +68,7 @@ public:
     int timeout;
 
     CowString method;
-    Url uri;
+    CowUrl uri;
     HttpHeaders headers;
     CowByteArray body;
 

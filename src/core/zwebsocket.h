@@ -24,7 +24,7 @@
 #ifndef ZWEBSOCKET_H
 #define ZWEBSOCKET_H
 
-#include "url.h"
+#include "cowurl.h"
 #include "websocket.h"
 #include <boost/signals2.hpp>
 
@@ -55,14 +55,14 @@ public:
     virtual void setIgnoreTlsErrors(bool on);
     virtual void setClientCert(const QString &cert, const QString &key);
 
-    virtual void start(const Url &uri, const HttpHeaders &headers);
+    virtual void start(const CowUrl &uri, const HttpHeaders &headers);
 
     virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
     virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
                               const QByteArray &body);
 
     virtual State state() const;
-    virtual Url requestUri() const;
+    virtual CowUrl requestUri() const;
     virtual HttpHeaders requestHeaders() const;
     virtual int responseCode() const;
     virtual QByteArray responseReason() const;

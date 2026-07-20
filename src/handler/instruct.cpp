@@ -242,9 +242,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
         newResponse.reason = reason;
     }
 
-    Url nextLink;
+    CowUrl nextLink;
     int nextLinkTimeout = -1;
-    Url goneLink;
+    CowUrl goneLink;
     foreach (const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link")) {
         if (params.count() < 2)
             continue;
@@ -256,7 +256,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
             return Instruct();
         }
 
-        Url link = Url::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
+        CowUrl link = CowUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
         if (!link.isValid()) {
             setError(ok, errorMessage, "Grip-Link contains invalid link");
             return Instruct();
