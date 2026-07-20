@@ -24,7 +24,7 @@
 #ifndef HTTPSESSIONUPDATEMANAGER_H
 #define HTTPSESSIONUPDATEMANAGER_H
 
-#include "url.h"
+#include "cowurl.h"
 
 #define TIMERS_PER_UNIQUE_UPDATE_REGISTRATION 1
 class HttpSession;
@@ -35,7 +35,8 @@ public:
     ~HttpSessionUpdateManager();
 
     // No-op if session already registered and resetTimeout=false
-    void registerSession(HttpSession *hs, int timeout, const Url &uri, bool resetTimeout = false);
+    void registerSession(HttpSession *hs, int timeout, const CowUrl &uri,
+                         bool resetTimeout = false);
 
     void unregisterSession(HttpSession *hs);
 

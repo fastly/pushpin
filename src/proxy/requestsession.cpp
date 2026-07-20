@@ -27,6 +27,7 @@
 #include "acceptrequest.h"
 #include "bufferlist.h"
 #include "cors.h"
+#include "cowurl.h"
 #include "defercall.h"
 #include "inspectdata.h"
 #include "inspectrequest.h"
@@ -38,7 +39,6 @@
 #include "qtcompat.h"
 #include "sockjsmanager.h"
 #include "statsmanager.h"
-#include "url.h"
 #include "urlquery.h"
 #include "variant.h"
 #include "xffrule.h"
@@ -271,7 +271,7 @@ public:
 
         bool isHttps = (requestData.uri.scheme() == "https");
         QString host = requestData.uri.host();
-        QByteArray encPath = requestData.uri.path(Url::FullyEncoded).toUtf8();
+        QByteArray encPath = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
         // Before we do anything else, see if this is a sockjs request
         if (!route.isNull() && !route.sockJsPath.isEmpty() &&
@@ -576,7 +576,7 @@ public:
         if (!config.bodyParam.isEmpty())
             bodyParam = QString::fromUtf8(config.bodyParam);
 
-        Url uri = requestData.uri;
+        CowUrl uri = requestData.uri;
         UrlQuery query(uri);
 
         // Two ways to activate JSON-P:
@@ -591,7 +591,7 @@ public:
         QByteArray callback;
         if (query.hasQueryItem(callbackParam)) {
             callback = parsePercentEncoding(
-                query.queryItemValue(callbackParam, Url::FullyEncoded).toUtf8());
+                query.queryItemValue(callbackParam, CowUrl::FullyEncoded).toUtf8());
             if (callback.isEmpty()) {
                 log_debug("requestsession: id=%s invalid callback parameter, rejecting",
                           rid.second.data());
@@ -606,8 +606,8 @@ public:
 
         QString method;
         if (query.hasQueryItem("_method")) {
-            method = QString::fromLatin1(
-                parsePercentEncoding(query.queryItemValue("_method", Url::FullyEncoded).toUtf8()));
+            method = QString::fromLatin1(parsePercentEncoding(
+                query.queryItemValue("_method", CowUrl::FullyEncoded).toUtf8()));
             if (!validMethod(method)) {
                 log_debug("requestsession: id=%s invalid _method parameter, rejecting",
                           rid.second.data());
@@ -623,7 +623,8 @@ public:
         if (query.hasQueryItem("_headers")) {
             QJsonParseError e;
             QJsonDocument doc = QJsonDocument::fromJson(
-                parsePercentEncoding(query.queryItemValue("_headers", Url::FullyEncoded).toUtf8()),
+                parsePercentEncoding(
+                    query.queryItemValue("_headers", CowUrl::FullyEncoded).toUtf8()),
                 &e);
             if (e.error != QJsonParseError::NoError || !doc.isObject()) {
                 log_debug("requestsession: id=%s invalid _headers parameter, rejecting",
@@ -662,7 +663,7 @@ public:
         if (!bodyParam.isEmpty()) {
             if (query.hasQueryItem(bodyParam)) {
                 body = parsePercentEncoding(
-                    query.queryItemValue(bodyParam, Url::FullyEncoded).toUtf8());
+                    query.queryItemValue(bodyParam, CowUrl::FullyEncoded).toUtf8());
                 if (body.isNull()) {
                     log_debug("requestsession: id=%s invalid body parameter, rejecting",
                               rid.second.data());
@@ -698,7 +699,7 @@ public:
             QByteArray tmp = uri.toEncoded();
             if (tmp.length() > 0 && tmp[tmp.length() - 1] == '?') {
                 tmp.truncate(tmp.length() - 1);
-                uri = Url::fromEncoded(tmp, Url::StrictMode);
+                uri = CowUrl::fromEncoded(tmp, CowUrl::StrictMode);
             }
         }
 

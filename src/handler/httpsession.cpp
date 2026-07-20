@@ -160,9 +160,9 @@ public:
     int sentOutReqData;
     int retries;
     QString errorMessage;
-    Url currentUri;
-    Url nextUri;
-    Url goneUri;
+    CowUrl currentUri;
+    CowUrl nextUri;
+    CowUrl goneUri;
     bool needUpdate;
     Priority needUpdatePriority;
     UpdateAction *pendingAction;
@@ -1017,7 +1017,7 @@ private:
         finishedCallback.call({q});
     }
 
-    void prepareOutReq(const Url &destUri, bool autoShare = false) {
+    void prepareOutReq(const CowUrl &destUri, bool autoShare = false) {
         haveOutReqHeaders = false;
         sentOutReqData = 0;
 
@@ -1026,7 +1026,7 @@ private:
             outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
         errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
-        Url requestUri = req->requestUri();
+        CowUrl requestUri = req->requestUri();
         int requestPort = requestUri.port(requestUri.scheme() == "https" ? 443 : 80);
         int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
@@ -1209,7 +1209,7 @@ private:
         }
     }
 
-    void logRequest(const QString &method, const Url &uri, const HttpHeaders &headers, int code,
+    void logRequest(const QString &method, const CowUrl &uri, const HttpHeaders &headers, int code,
                     int bodySize) {
         LogUtil::RequestData rd;
 
@@ -1230,7 +1230,7 @@ private:
         LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
     }
 
-    void logRequestError(const QString &method, const Url &uri, const HttpHeaders &headers) {
+    void logRequestError(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
         LogUtil::RequestData rd;
 
         // Only log route id if explicitly set
@@ -1505,7 +1505,7 @@ Instruct::HoldMode HttpSession::holdMode() const {
 
 ZhttpRequest::Rid HttpSession::rid() const { return d->req->rid(); }
 
-Url HttpSession::requestUri() const { return d->req->requestUri(); }
+CowUrl HttpSession::requestUri() const { return d->req->requestUri(); }
 
 bool HttpSession::isRetry() const { return d->adata.isRetry; }
 

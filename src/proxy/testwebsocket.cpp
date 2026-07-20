@@ -144,7 +144,7 @@ void TestWebSocket::setIgnoreTlsErrors([[maybe_unused]] bool on) {}
 void TestWebSocket::setClientCert([[maybe_unused]] const QString &cert,
                                   [[maybe_unused]] const QString &key) {}
 
-void TestWebSocket::start(const Url &uri, const HttpHeaders &headers) {
+void TestWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->request.uri = uri;
     d->request.headers = headers;
 
@@ -178,7 +178,7 @@ WebSocket::State TestWebSocket::state() const {
         return Closing;
 }
 
-Url TestWebSocket::requestUri() const { return d->request.uri; }
+CowUrl TestWebSocket::requestUri() const { return d->request.uri; }
 
 HttpHeaders TestWebSocket::requestHeaders() const { return d->request.headers; }
 

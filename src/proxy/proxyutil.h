@@ -23,9 +23,9 @@
 #ifndef PROXYUTIL_H
 #define PROXYUTIL_H
 
+#include "cowurl.h"
 #include "domainmap.h"
 #include "packet/httprequestdata.h"
-#include "url.h"
 #include "xffrule.h"
 #include <QByteArray>
 #include <QHostAddress>
@@ -53,9 +53,9 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
                               const QHostAddress &peerAddress, const InspectData &idata,
                               bool gripEnabled, bool intReq);
 
-void applyHost(Url *url, const QString &host);
+void applyHost(CowUrl *url, const QString &host);
 
-void applyHostHeader(HttpHeaders *headers, const Url &uri);
+void applyHostHeader(HttpHeaders *headers, const CowUrl &uri);
 void applyGripSig(const char *logprefix, void *object, HttpHeaders *headers,
                   const QByteArray &sigIss, const Jwt::EncodingKey &sigKey);
 

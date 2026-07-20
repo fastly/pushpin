@@ -77,7 +77,7 @@ public:
     bool sendBodyAfterAck;
     Variant passthrough;
     QString requestMethod;
-    Url requestUri;
+    CowUrl requestUri;
     HttpHeaders requestHeaders;
     BufferList requestBodyBuf;
     int inSeq;
@@ -1076,7 +1076,7 @@ void ZhttpRequest::setPassthroughData(const Variant &data) { d->passthrough = da
 
 void ZhttpRequest::setQuiet(bool on) { d->quiet = on; }
 
-void ZhttpRequest::start(const QString &method, const Url &uri, const HttpHeaders &headers) {
+void ZhttpRequest::start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
     assert(!d->server);
 
     d->requestMethod = method;
@@ -1166,7 +1166,7 @@ HttpRequest::ErrorCondition ZhttpRequest::errorCondition() const { return d->err
 
 QString ZhttpRequest::requestMethod() const { return d->requestMethod; }
 
-Url ZhttpRequest::requestUri() const { return d->requestUri; }
+CowUrl ZhttpRequest::requestUri() const { return d->requestUri; }
 
 HttpHeaders ZhttpRequest::requestHeaders() const { return d->requestHeaders; }
 

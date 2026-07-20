@@ -503,10 +503,10 @@ public:
                     QString::fromUtf8(req->requestHeaders().get("Pushpin-Route").asQByteArray());
         }
 
-        Url uri = req->requestUri();
+        CowUrl uri = req->requestUri();
         bool isSecure = (uri.scheme() == "https");
         QString host = uri.host();
-        QByteArray encPath = uri.path(Url::FullyEncoded).toUtf8();
+        QByteArray encPath = uri.path(CowUrl::FullyEncoded).toUtf8();
 
         DomainMap::Entry route;
 
@@ -598,14 +598,14 @@ public:
         if (config.acceptXForwardedProto && isXForwardedProtocolTls(sock->requestHeaders()))
             sock->setIsTls(true);
 
-        Url requestUri = sock->requestUri();
+        CowUrl requestUri = sock->requestUri();
 
         log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(),
                   requestUri.toEncoded().data());
 
         bool isSecure = (requestUri.scheme() == "wss");
         QString host = requestUri.host();
-        QByteArray encPath = requestUri.path(Url::FullyEncoded).toUtf8();
+        QByteArray encPath = requestUri.path(CowUrl::FullyEncoded).toUtf8();
 
         QString routeId;
 
@@ -847,7 +847,7 @@ private:
 
             bool isSecure = req.https;
             QString host = p.requestData.uri.host();
-            QByteArray encPath = p.requestData.uri.path(Url::FullyEncoded).toUtf8();
+            QByteArray encPath = p.requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
             QString routeId = QString::fromUtf8(p.route);
 

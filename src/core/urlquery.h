@@ -17,7 +17,7 @@
 #ifndef URLQUERY_H
 #define URLQUERY_H
 
-#include "url.h"
+#include "cowurl.h"
 #include <QString>
 #include <QStringList>
 #include <QUrlQuery>
@@ -26,7 +26,7 @@ class UrlQuery {
 public:
     // Constructors
     UrlQuery() = default;
-    explicit UrlQuery(const Url &url) : inner_(url) {}
+    explicit UrlQuery(const CowUrl &url) : inner_(url) {}
     explicit UrlQuery(const QString &queryString) : inner_(queryString) {}
     UrlQuery(const UrlQuery &other) : inner_(other.inner_) {}
     UrlQuery(UrlQuery &&other) noexcept : inner_(std::move(other.inner_)) {}
@@ -60,22 +60,23 @@ public:
 
     // Item access
     bool hasQueryItem(const QString &key) const { return inner_.hasQueryItem(key); }
-    QString queryItemValue(const QString &key,
-                           Url::ComponentFormattingOptions encoding = Url::PrettyDecoded) const {
+    QString
+    queryItemValue(const QString &key,
+                   CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.queryItemValue(key, encoding);
     }
     QStringList
     allQueryItemValues(const QString &key,
-                       Url::ComponentFormattingOptions encoding = Url::PrettyDecoded) const {
+                       CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.allQueryItemValues(key, encoding);
     }
     QList<QPair<QString, QString>>
-    queryItems(Url::ComponentFormattingOptions encoding = Url::PrettyDecoded) const {
+    queryItems(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.queryItems(encoding);
     }
 
     // String conversion
-    QString toString(Url::ComponentFormattingOptions encoding = Url::PrettyDecoded) const {
+    QString toString(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.toString(encoding);
     }
 

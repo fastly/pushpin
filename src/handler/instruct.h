@@ -23,8 +23,8 @@
 #ifndef INSTRUCT_H
 #define INSTRUCT_H
 
+#include "cowurl.h"
 #include "packet/httpresponsedata.h"
-#include "url.h"
 #include <QByteArray>
 #include <QHash>
 #include <QList>
@@ -53,9 +53,9 @@ public:
     int keepAliveTimeout;
     QHash<QString, QString> meta;
     HttpResponseData response;
-    Url nextLink;
+    CowUrl nextLink;
     int nextLinkTimeout;
-    Url goneLink;
+    CowUrl goneLink;
 
     Instruct()
         : holdMode(NoHold),
