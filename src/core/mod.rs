@@ -18,6 +18,7 @@ pub mod buffer;
 pub mod channel;
 pub mod config;
 pub mod counter;
+pub mod cow;
 pub mod defer;
 pub mod event;
 pub mod eventloop;
@@ -40,6 +41,7 @@ pub mod thread;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
+pub mod url;
 pub mod waker;
 pub mod zmq;
 
