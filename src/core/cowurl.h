@@ -17,6 +17,7 @@
 #ifndef COWURL_H
 #define COWURL_H
 
+#include "rust/bindings.h"
 #include <QByteArray>
 #include <QHash>
 #include <QString>
@@ -24,8 +25,6 @@
 
 class UrlQuery;
 
-// QUrl-like class that currently forwards to an inner QUrl, to assist with reducing direct
-// dependency on Qt. The API is designed to allow cheap conversion to/from QUrl.
 class CowUrl {
 public:
     enum ParsingMode { StrictMode = 0 };
@@ -36,69 +35,57 @@ public:
         FullyDecoded = QUrl::FullyDecoded
     };
 
-    CowUrl() = default;
-    CowUrl(const QString &url, [[maybe_unused]] ParsingMode mode = StrictMode) : inner_(url) {}
-    CowUrl(const char *url) : inner_(url) {}
-    CowUrl(const CowUrl &other) = default;
-    CowUrl &operator=(const CowUrl &other) = default;
+    CowUrl();
+    CowUrl(const QString &url);
+    CowUrl(const QString &url, ParsingMode mode);
+    CowUrl(const char *url);
+    CowUrl(const CowUrl &other);
+    ~CowUrl();
 
-    bool operator==(const CowUrl &other) const { return inner_ == other.inner_; }
-    bool operator!=(const CowUrl &other) const { return inner_ != other.inner_; }
-    bool operator<(const CowUrl &other) const {
-        return inner_.toString() < other.inner_.toString();
-    }
+    CowUrl &operator=(const CowUrl &other);
+
+    bool operator==(const CowUrl &other) const;
+    bool operator!=(const CowUrl &other) const;
+    bool operator<(const CowUrl &other) const;
 
     static CowUrl fromEncoded(const QByteArray &input, ParsingMode mode = StrictMode);
     static QString fromPercentEncoding(const QByteArray &input);
     static QByteArray toPercentEncoding(const QString &input);
+
+    // Validates that a potentially relative URL string is syntactically valid
+    // by attempting to resolve it against a dummy base URL
     static bool isValidRelativeUrl(const QString &relativeUrl);
 
-    bool isValid() const { return inner_.isValid() && !inner_.scheme().isEmpty(); }
-    bool isEmpty() const { return !isValid(); }
-    void clear() { inner_.clear(); }
+    bool isEmpty() const;
+    bool isValid() const;
+    void clear();
 
-    void setScheme(const QString &scheme) { inner_.setScheme(scheme); }
-    QString scheme() const { return inner_.scheme(); }
+    void setScheme(const QString &scheme);
+    QString scheme() const;
+    QString path(ComponentFormattingOptions options = FullyEncoded) const;
+    QString query(ComponentFormattingOptions options = FullyEncoded) const;
+    bool hasQuery() const;
 
-    QString path(ComponentFormattingOptions options = FullyEncoded) const {
-        return inner_.path(static_cast<QUrl::ComponentFormattingOptions>(options));
-    }
-    void setPath(const QString &path, [[maybe_unused]] ParsingMode mode = StrictMode) {
-        inner_.setPath(path);
-    }
-
-    QString query(ComponentFormattingOptions options = FullyEncoded) const {
-        if (!inner_.hasQuery())
-            return QString();
-        return inner_.query(static_cast<QUrl::ComponentFormattingOptions>(options));
-    }
-    bool hasQuery() const { return inner_.hasQuery(); }
+    QString host() const;
+    int port() const;
+    int port(int defaultPort) const;
+    QString authority() const;
+    void setHost(const QString &host);
+    void setPort(int port);
+    void setPath(const QString &path, ParsingMode mode = StrictMode);
     void setQuery(const QString &query);
     void setQuery(const UrlQuery &query);
 
-    QString host() const { return inner_.host(); }
-    void setHost(const QString &host) { inner_.setHost(host); }
+    CowUrl resolved(const QString &relativeString) const;
 
-    int port() const { return inner_.port(); }
-    int port(int defaultPort) const { return inner_.port(defaultPort); }
-    void setPort(int port) { inner_.setPort(port); }
-
-    QString authority() const { return inner_.authority(); }
-
-    CowUrl resolved(const QString &relative) const;
-
-    QString toString(ComponentFormattingOptions options = FullyEncoded) const {
-        return inner_.toString(static_cast<QUrl::ComponentFormattingOptions>(options));
-    }
-    QByteArray toEncoded() const { return inner_.toEncoded(); }
+    QString toString(ComponentFormattingOptions options = FullyEncoded) const;
+    QByteArray toEncoded() const;
 
 private:
-    friend uint qHash(const CowUrl &url, uint seed);
-
-    QUrl inner_;
+    ffi::Url *inner_;
 };
 
 // Hash function for CowUrl so it can be used in QHash
-inline uint qHash(const CowUrl &url, uint seed = 0) { return qHash(url.inner_, seed); }
+inline size_t qHash(const CowUrl &url, size_t seed = 0) { return qHash(url.toString(), seed); }
 
 #endif // COWURL_H
