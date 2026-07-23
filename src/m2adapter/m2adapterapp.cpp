@@ -2246,7 +2246,7 @@ public:
             }
 
             QByteArray uriRaw = scheme + "://" + host + mreq.uri;
-            CowUrl uri = CowUrl::fromEncoded(uriRaw, CowUrl::TolerantMode);
+            CowUrl uri = CowUrl::fromEncoded(uriRaw, CowUrl::StrictMode);
             if (!uri.isValid()) {
                 log_warning("m2: invalid constructed uri: [%s]", uriRaw.data());
                 m2_writeErrorClose(conn);

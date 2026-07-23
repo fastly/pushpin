@@ -75,7 +75,7 @@ static QPair<QHostAddress, int> parsePort(const QString &s) {
     // Otherwise, assume it's an address:port combination
 
     // Parse with CowUrl in order to support bracketed IPv6 notation
-    CowUrl url{CowUrl::fromUserInput(s)};
+    CowUrl url("http://" + s);
 
     return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
 }
