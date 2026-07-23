@@ -23,7 +23,7 @@ static QString dataToString(ffi::CowUrlData data) {
     assert(data.data);
 
     QString s = QString::fromUtf8(data.data, data.len);
-    ffi::cow_url_data_delete(data);
+    ffi::cow_url_data_destroy(data);
     return s;
 }
 
@@ -31,7 +31,7 @@ static QByteArray dataToByteArray(ffi::CowUrlData data) {
     assert(data.data);
 
     QByteArray ba(data.data, data.len);
-    ffi::cow_url_data_delete(data);
+    ffi::cow_url_data_destroy(data);
     return ba;
 }
 
@@ -224,11 +224,23 @@ void CowUrl::setQuery(const QString &query) {
 
 void CowUrl::setQuery(const UrlQuery &query) { setQuery(query.toString()); }
 
-bool CowUrl::operator==(const CowUrl &other) const { return toString() == other.toString(); }
+bool CowUrl::operator==(const CowUrl &other) const {
+    if (!inner_ && !other.inner_)
+        return true;
+    if (!inner_ || !other.inner_)
+        return false;
+    return ffi::cow_url_eq(inner_, other.inner_) == 1;
+}
 
 bool CowUrl::operator!=(const CowUrl &other) const { return !(*this == other); }
 
-bool CowUrl::operator<(const CowUrl &other) const { return toString() < other.toString(); }
+bool CowUrl::operator<(const CowUrl &other) const {
+    if (!inner_)
+        return other.inner_ != nullptr;
+    if (!other.inner_)
+        return false;
+    return ffi::cow_url_cmp(inner_, other.inner_) < 0;
+}
 
 CowUrl CowUrl::resolved(const QString &relative) const {
     if (!isValid() || relative.isEmpty()) {
