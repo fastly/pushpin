@@ -19,6 +19,7 @@
 
 #include "rust/bindings.h"
 #include <QByteArray>
+#include <QByteArrayView>
 #include <QHash>
 #include <QString>
 #include <QUrl>
@@ -82,10 +83,16 @@ public:
     QByteArray toEncoded() const;
 
 private:
+    friend size_t qHash(const CowUrl &url, size_t seed) noexcept;
     ffi::Url *inner_;
 };
 
 // Hash function for CowUrl so it can be used in QHash
-inline size_t qHash(const CowUrl &url, size_t seed = 0) { return qHash(url.toString(), seed); }
+inline size_t qHash(const CowUrl &url, size_t seed = 0) noexcept {
+    if (!url.inner_)
+        return seed;
+    ffi::CowUrlData s = ffi::cow_url_as_str(url.inner_);
+    return qHash(QByteArrayView(s.data, static_cast<qsizetype>(s.len)), seed);
+}
 
 #endif // COWURL_H

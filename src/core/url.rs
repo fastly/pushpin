@@ -85,7 +85,7 @@ mod ffi {
     }
 
     /// FFI-compatible owned string. Does not free its memory on drop; callers must pass it to
-    /// `cow_url_data_delete` when done.
+    /// `cow_url_data_destroy` when done.
     #[repr(C)]
     pub struct CowUrlData {
         pub data: *mut c_char,
@@ -184,7 +184,7 @@ mod ffi {
     /// # Safety
     ///
     /// - `url` must be a valid non-null pointer returned by a cow_url_* function
-    /// - The returned string must be freed with `cow_url_data_delete` to avoid memory leaks
+    /// - The returned string must be freed with `cow_url_data_destroy` to avoid memory leaks
     #[no_mangle]
     pub unsafe extern "C" fn cow_url_scheme(url: *const Url) -> CowUrlData {
         arc_borrow(url).scheme().to_string().into()
@@ -223,7 +223,7 @@ mod ffi {
     /// # Safety
     ///
     /// - `url` must be a valid non-null pointer returned by a cow_url_* function
-    /// - The returned string must be freed with `cow_url_data_delete` to avoid memory leaks
+    /// - The returned string must be freed with `cow_url_data_destroy` to avoid memory leaks
     #[no_mangle]
     pub unsafe extern "C" fn cow_url_path(url: *const Url) -> CowUrlData {
         arc_borrow(url).path().to_string().into()
@@ -271,7 +271,7 @@ mod ffi {
     /// # Safety
     ///
     /// - `url` must be a valid non-null pointer returned by a cow_url_* function
-    /// - The returned string must be freed with `cow_url_data_delete` to avoid memory leaks
+    /// - The returned string must be freed with `cow_url_data_destroy` to avoid memory leaks
     /// - Returns null data if the URL has no query string
     #[no_mangle]
     pub unsafe extern "C" fn cow_url_query(url: *const Url) -> CowUrlData {
@@ -315,7 +315,7 @@ mod ffi {
     /// # Safety
     ///
     /// - `url` must be a valid non-null pointer returned by a cow_url_* function
-    /// - The returned string must be freed with `cow_url_data_delete` to avoid memory leaks
+    /// - The returned string must be freed with `cow_url_data_destroy` to avoid memory leaks
     /// - Returns null data if the URL has no host
     #[no_mangle]
     pub unsafe extern "C" fn cow_url_host(url: *const Url) -> CowUrlData {
@@ -390,7 +390,7 @@ mod ffi {
     /// # Safety
     ///
     /// - `url` must be a valid non-null pointer returned by a cow_url_* function
-    /// - The returned string must be freed with `cow_url_data_delete` to avoid memory leaks
+    /// - The returned string must be freed with `cow_url_data_destroy` to avoid memory leaks
     #[no_mangle]
     pub unsafe extern "C" fn cow_url_to_string(url: *const Url) -> CowUrlData {
         arc_borrow(url).to_string().into()
@@ -403,9 +403,55 @@ mod ffi {
     /// - `data` must be a `CowUrlData` returned by a cow_url_* function, or null data
     /// - After calling this function, `data` becomes invalid and must not be used
     #[no_mangle]
-    pub unsafe extern "C" fn cow_url_data_delete(data: CowUrlData) {
+    pub unsafe extern "C" fn cow_url_data_destroy(data: CowUrlData) {
         if !data.is_null() {
             drop(data.into_boxed_slice());
+        }
+    }
+
+    /// Returns the URL's internal UTF-8 string as a borrowed slice. The data pointer is valid
+    /// only for the lifetime of the URL object. Do not pass the returned value to
+    /// `cow_url_data_destroy`.
+    ///
+    /// # Safety
+    ///
+    /// - `url` must be a valid non-null pointer returned by a cow_url_* function
+    #[no_mangle]
+    pub unsafe extern "C" fn cow_url_as_str(url: *const Url) -> CowUrlData {
+        let arc = arc_borrow(url);
+        let s = arc.as_str();
+        CowUrlData {
+            data: s.as_ptr() as *mut c_char,
+            len: s.len(),
+        }
+    }
+
+    /// Checks if two URLs are equal. Returns 1 if equal, 0 if not.
+    ///
+    /// # Safety
+    ///
+    /// - Both `a` and `b` must be valid non-null pointers returned by cow_url_* functions
+    #[no_mangle]
+    pub unsafe extern "C" fn cow_url_eq(a: *const Url, b: *const Url) -> c_int {
+        if *arc_borrow(a) == *arc_borrow(b) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Compares two URLs. Returns -1 if a < b, 0 if a == b, 1 if a > b.
+    ///
+    /// # Safety
+    ///
+    /// - Both `a` and `b` must be valid non-null pointers returned by cow_url_* functions
+    #[no_mangle]
+    pub unsafe extern "C" fn cow_url_cmp(a: *const Url, b: *const Url) -> c_int {
+        use std::cmp::Ordering;
+        match (**arc_borrow(a)).cmp(&**arc_borrow(b)) {
+            Ordering::Less => -1,
+            Ordering::Equal => 0,
+            Ordering::Greater => 1,
         }
     }
 
