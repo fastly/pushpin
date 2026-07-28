@@ -17,7 +17,8 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::connmgr::{run, App, Config, DebugSocketConfig, ListenConfig, ListenSpec};
+use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec};
+use pushpin::core::config::{NetListenConfig, UnixListenConfig};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
 use std::error::Error;
@@ -114,76 +115,47 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     };
 
     for v in args.listen.iter() {
-        let mut parts = v.split(',');
+        let net: NetListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse listen: {}", e))?;
 
-        // There's always a first part
-        let part1 = parts.next().unwrap();
+        let (spec, stream) = match net {
+            NetListenConfig::Tcp(mut c) => {
+                let stream =
+                    c.params.remove("req").is_none() || c.params.remove("stream").is_some();
+                let tls = c.params.remove("tls").is_some();
+                let default_cert = c.params.remove("default-cert");
 
-        let mut stream = true;
-        let mut tls = false;
-        let mut default_cert = None;
-        let mut local = false;
-        let mut mode = None;
-        let mut user = None;
-        let mut group = None;
-
-        for part in parts {
-            let (k, v) = match part.find('=') {
-                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
-                None => (part, ""),
-            };
-
-            match k {
-                "req" => stream = false,
-                "stream" => stream = true,
-                "tls" => tls = true,
-                "default-cert" => default_cert = Some(String::from(v)),
-                "local" => local = true,
-                "mode" => match u32::from_str_radix(v, 8) {
-                    Ok(x) => mode = Some(x),
-                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
-                },
-                "user" => user = Some(String::from(v)),
-                "group" => group = Some(String::from(v)),
-                _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
-            }
-        }
-
-        let spec = if local {
-            ListenSpec::Local {
-                path: PathBuf::from(part1),
-                mode,
-                user,
-                group,
-            }
-        } else {
-            let port_pos = match part1.rfind(':') {
-                Some(pos) => pos + 1,
-                None => 0,
-            };
-
-            let port = &part1[port_pos..];
-            if port.parse::<u16>().is_err() {
-                return Err(format!("failed to parse listen: invalid port {}", port).into());
-            }
-
-            let addr = if port_pos > 0 {
-                String::from(part1)
-            } else {
-                format!("0.0.0.0:{}", part1)
-            };
-
-            let addr = match addr.parse() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    return Err(format!("failed to parse listen: {}", e).into());
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
                 }
-            };
 
-            ListenSpec::Tcp {
-                addr,
-                tls,
-                default_cert,
+                (
+                    ListenSpec::Tcp {
+                        addr: c.addr,
+                        tls,
+                        default_cert,
+                    },
+                    stream,
+                )
+            }
+            NetListenConfig::Unix(mut c) => {
+                let stream =
+                    c.params.remove("req").is_none() || c.params.remove("stream").is_some();
+
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
+                }
+
+                (
+                    ListenSpec::Local {
+                        path: c.path,
+                        mode: c.mode,
+                        user: c.user,
+                        group: c.group,
+                    },
+                    stream,
+                )
             }
         };
 
@@ -197,42 +169,13 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(v) = &args.debug_socket {
-        let mut parts = v.split(',');
-
-        // There's always a first part
-        let part1 = parts.next().unwrap();
-
-        let mut mode = None;
-        let mut user = None;
-        let mut group = None;
-
-        for part in parts {
-            let (k, v) = match part.find('=') {
-                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
-                None => (part, ""),
-            };
-
-            match k {
-                "mode" => match u32::from_str_radix(v, 8) {
-                    Ok(x) => mode = Some(x),
-                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
-                },
-                "user" => user = Some(String::from(v)),
-                "group" => group = Some(String::from(v)),
-                _ => {
-                    return Err(
-                        format!("failed to parse debug-socket: invalid param: {}", part).into(),
-                    )
-                }
-            }
+        let spec: UnixListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse debug-socket: {}", e))?;
+        if let Some(k) = spec.params.keys().next() {
+            return Err(format!("failed to parse debug-socket: invalid param: {}", k).into());
         }
-
-        config.debug_socket = Some(DebugSocketConfig {
-            path: PathBuf::from(part1),
-            mode,
-            user,
-            group,
-        });
+        config.debug_socket = Some(spec);
     }
 
     run(&config)

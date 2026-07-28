@@ -31,20 +31,17 @@ pub mod websocket;
 
 use self::client::Client;
 use self::server::Server;
-use crate::core::fs::{set_group, set_user};
+use crate::core::config::UnixListenConfig;
 use crate::core::log::DebugLogger;
+use crate::core::net::bind_unix_config;
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
 use log::{debug, info};
-use mio::net::UnixListener;
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::error::Error;
-use std::fs;
-use std::io;
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -103,13 +100,6 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
-pub struct DebugSocketConfig {
-    pub path: PathBuf,
-    pub mode: Option<u32>,
-    pub user: Option<String>,
-    pub group: Option<String>,
-}
-
 pub struct Config {
     pub instance_id: String,
     pub workers: usize,
@@ -133,7 +123,7 @@ pub struct Config {
     pub certs_dir: PathBuf,
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
-    pub debug_socket: Option<DebugSocketConfig>,
+    pub debug_socket: Option<UnixListenConfig>,
 }
 
 pub struct App {
@@ -154,50 +144,8 @@ impl App {
 
         let mut debug_logger = None;
 
-        if let Some(DebugSocketConfig {
-            path,
-            mode,
-            user,
-            group,
-        }) = &config.debug_socket
-        {
-            // Ensure pipe file doesn't exist
-            match fs::remove_file(path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => panic!("{}", e),
-            }
-
-            let l = match UnixListener::bind(path) {
-                Ok(l) => l,
-                Err(e) => return Err(format!("failed to bind {:?}: {}", path, e)),
-            };
-
-            if let Some(mode) = mode {
-                let perms = fs::Permissions::from_mode(*mode);
-
-                if let Err(e) = fs::set_permissions(path, perms) {
-                    return Err(format!("failed to set mode on {:?}: {}", path, e));
-                }
-            }
-
-            if let Some(user) = user {
-                if let Err(e) = set_user(path, user) {
-                    return Err(format!(
-                        "failed to set user {:?} on {:?}: {}",
-                        user, path, e
-                    ));
-                }
-            }
-
-            if let Some(group) = group {
-                if let Err(e) = set_group(path, group) {
-                    return Err(format!(
-                        "failed to set group {:?} on {:?}: {}",
-                        group, path, e
-                    ));
-                }
-            }
+        if let Some(spec) = &config.debug_socket {
+            let l = bind_unix_config(spec).map_err(|e| format!("debug socket: {}", e))?;
 
             // Scale the log queue with the number of workers
             let queue_max = (config.workers * 1000) + 1000;
