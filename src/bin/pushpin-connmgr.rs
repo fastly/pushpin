@@ -115,14 +115,25 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     };
 
     for v in args.listen.iter() {
-        let net: NetListenConfig = v
+        let mut net: NetListenConfig = v
             .parse()
             .map_err(|e| format!("failed to parse listen: {}", e))?;
 
-        let (spec, stream) = match net {
+        let stream = {
+            let params = match &mut net {
+                NetListenConfig::Tcp(c) => &mut c.params,
+                NetListenConfig::Unix(c) => &mut c.params,
+            };
+
+            let req = params.remove("req").is_some();
+            let stream = params.remove("stream").is_some();
+
+            // Stream mode indicated by presence of stream param or absence of req param
+            stream || !req
+        };
+
+        let spec = match net {
             NetListenConfig::Tcp(mut c) => {
-                let stream =
-                    c.params.remove("req").is_none() || c.params.remove("stream").is_some();
                 let tls = c.params.remove("tls").is_some();
                 let default_cert = c.params.remove("default-cert");
 
@@ -130,32 +141,23 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
                     return Err(format!("failed to parse listen: invalid param: {}", k).into());
                 }
 
-                (
-                    ListenSpec::Tcp {
-                        addr: c.addr,
-                        tls,
-                        default_cert,
-                    },
-                    stream,
-                )
+                ListenSpec::Tcp {
+                    addr: c.addr,
+                    tls,
+                    default_cert,
+                }
             }
-            NetListenConfig::Unix(mut c) => {
-                let stream =
-                    c.params.remove("req").is_none() || c.params.remove("stream").is_some();
-
+            NetListenConfig::Unix(c) => {
                 if let Some(k) = c.params.keys().next() {
                     return Err(format!("failed to parse listen: invalid param: {}", k).into());
                 }
 
-                (
-                    ListenSpec::Local {
-                        path: c.path,
-                        mode: c.mode,
-                        user: c.user,
-                        group: c.group,
-                    },
-                    stream,
-                )
+                ListenSpec::Local {
+                    path: c.path,
+                    mode: c.mode,
+                    user: c.user,
+                    group: c.group,
+                }
             }
         };
 
