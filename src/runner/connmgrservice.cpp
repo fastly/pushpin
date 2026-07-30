@@ -69,8 +69,7 @@ ConnmgrService::ConnmgrService(const QString &name, const QString &binFile, cons
 
                 args_ += arg;
             } else {
-                CowUrl url;
-                url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
+                CowUrl url("http://" + (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0")));
                 url.setPort(p.port);
 
                 QString arg = "--listen=" + url.authority() + ",stream";
