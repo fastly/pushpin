@@ -123,7 +123,7 @@ async fn run_server(
     debug!("prometheus server started");
 
     // Loop to serve connections. When the loop ends, the `clients` Vec is dropped, which causes
-    // causes all the client tasks to end as well.
+    // all the client tasks to end as well.
 
     loop {
         let stream = match select_2(pin!(listener.accept()), pin!(stop.cancelled())).await {
