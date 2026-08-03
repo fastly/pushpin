@@ -17,6 +17,7 @@
 
 mod batch;
 mod listener;
+mod metrics;
 mod pool;
 mod track;
 mod zhttppacket;
@@ -31,9 +32,10 @@ pub mod websocket;
 
 use self::client::Client;
 use self::server::Server;
-use crate::core::config::UnixListenConfig;
+use crate::core::config::{NetListenConfig, UnixListenConfig};
 use crate::core::log::DebugLogger;
-use crate::core::net::bind_unix_config;
+use crate::core::net::{bind_unix_config, NetListener};
+use crate::core::prometheus::PrometheusServer;
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
 use log::{debug, info};
@@ -100,6 +102,11 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
+pub struct PrometheusConfig {
+    pub listen_config: NetListenConfig,
+    pub prefix: String,
+}
+
 pub struct Config {
     pub instance_id: String,
     pub workers: usize,
@@ -124,12 +131,14 @@ pub struct Config {
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
     pub debug_socket: Option<UnixListenConfig>,
+    pub prometheus: Option<PrometheusConfig>,
 }
 
 pub struct App {
     _server: Option<Server>,
     _client: Option<Client>,
     _debug_logger: Option<DebugLogger>,
+    _prometheus: Option<PrometheusServer>,
 }
 
 impl App {
@@ -151,6 +160,21 @@ impl App {
             let queue_max = (config.workers * 1000) + 1000;
 
             debug_logger = Some(DebugLogger::new(l, queue_max));
+        }
+
+        let mut prometheus = None;
+
+        if let Some(config) = &config.prometheus {
+            metrics::init();
+
+            let l = NetListener::bind_config(&config.listen_config)
+                .map_err(|e| format!("prometheus listener: {e}"))?;
+
+            prometheus = Some(PrometheusServer::new(
+                l,
+                &config.prefix,
+                prometheus::default_registry().clone(),
+            ));
         }
 
         let zmq_context = Arc::new(zmq::Context::new());
@@ -378,6 +402,7 @@ impl App {
             _server: server,
             _client: client,
             _debug_logger: debug_logger,
+            _prometheus: prometheus,
         })
     }
 
