@@ -933,8 +933,7 @@ public:
 
         rd.fromAddress = rs->peerAddress();
 
-        int logLevel = route.logLevel < LOG_LEVEL_INFO ? route.logLevel : LOG_LEVEL_INFO;
-        LogUtil::logRequest(logLevel, rd, logConfig);
+        LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
     }
 
     void incCounter(Stats::Counter c, int count = 1) {
