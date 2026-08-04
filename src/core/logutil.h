@@ -37,6 +37,7 @@ enum RequestStatus { Response, Accept, Error };
 class RequestData {
 public:
     QString routeId;
+    int logLevel;
     RequestStatus status;
     HttpRequestData requestData;
     HttpResponseData responseData;
@@ -48,7 +49,8 @@ public:
     QHostAddress fromAddress;
 
     RequestData()
-        : status(Response),
+        : logLevel(-1),
+          status(Response),
           responseBodySize(-1),
           targetOverHttp(false),
           retry(false),
@@ -77,7 +79,7 @@ void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
 void logVariantWithContent(int level, const Variant &data, const QString &contentField,
                            const char *fmt, ...);
 void logRequest(int level, const RequestData &data, const Config &config = Config());
-void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...);
+void logForRoute(int level, const RouteInfo &routeInfo, const char *fmt, ...);
 
 } // namespace LogUtil
 

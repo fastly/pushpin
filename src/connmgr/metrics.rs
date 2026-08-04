@@ -14,12 +14,22 @@
  * limitations under the License.
  */
 
-#ifndef URL_H
-#define URL_H
+use prometheus::Counter;
+use std::sync::OnceLock;
 
-#include <QUrl>
+static TOTAL_REQUESTS: OnceLock<Counter> = OnceLock::new();
 
-// Type alias for URL handling - this will be replaced with a custom implementation later
-using Url = QUrl;
+pub fn total_requests() -> &'static Counter {
+    TOTAL_REQUESTS.get_or_init(|| {
+        prometheus::register_counter!(
+            "connmgr_requests_total",
+            "Total number of requests processed by connmgr"
+        )
+        .expect("failed to register total_requests counter")
+    })
+}
 
-#endif // URL_H
+pub fn init() {
+    // Pre-initialize metrics so they appear even before any requests arrive.
+    let _ = total_requests();
+}

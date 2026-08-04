@@ -36,7 +36,7 @@
 WsSession::WsSession()
     : nextReqId(0),
       debug(false),
-      logLevel(LOG_LEVEL_DEBUG),
+      logLevel(-1),
       targetTrusted(false),
       ttl(0),
       inProcessPublishQueue(false),

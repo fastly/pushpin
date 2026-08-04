@@ -283,7 +283,7 @@ class HttpFilterInner {
 public:
     HttpFilter::Mode mode;
     std::unique_ptr<ZhttpRequest> req;
-    Url uri;
+    CowUrl uri;
     HttpHeaders headers;
     QByteArray origContent;
     bool haveResponseHeader;
@@ -295,7 +295,7 @@ public:
     HttpFilterInner(HttpFilter::Mode _mode)
         : mode(_mode), haveResponseHeader(false), responseSizeMax(-1) {}
 
-    void setup(ZhttpManager *zhttpOut, const Url &_uri, const HttpHeaders &_headers,
+    void setup(ZhttpManager *zhttpOut, const CowUrl &_uri, const HttpHeaders &_headers,
                const Variant &passthroughData, const QByteArray &content, int _responseSizeMax) {
         uri = _uri;
         headers = _headers;
@@ -441,23 +441,30 @@ HttpFilter::HttpFilter(Mode mode) {
 }
 
 void HttpFilter::start(const Filter::Context &context, const QByteArray &content) {
-    Url url = Url(context.subscriptionMeta.value("url"), Url::StrictMode);
-    if (!url.isValid()) {
+    QString urlString = context.subscriptionMeta.value("url");
+    if (urlString.isEmpty()) {
         Result r;
-        r.errorMessage = "invalid or missing url value";
+        r.errorMessage = "missing url value";
         finished(r);
         return;
     }
 
-    Url currentUri = context.currentUri;
+    CowUrl currentUri = context.currentUri;
     if (currentUri.scheme() == "wss")
         currentUri.setScheme("https");
     else if (currentUri.scheme() == "ws")
         currentUri.setScheme("http");
 
-    Url destUri = currentUri.resolved(url);
+    // Handle relative URLs by resolving against currentUri
+    CowUrl destUri = currentUri.resolved(urlString);
+    if (!destUri.isValid()) {
+        Result r;
+        r.errorMessage = "invalid url value";
+        finished(r);
+        return;
+    }
 
-    Url requestUri = context.requestUri;
+    CowUrl requestUri = context.requestUri;
     int requestPort = requestUri.port(requestUri.scheme() == "https" ? 443 : 80);
     int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 

@@ -16,28 +16,26 @@
 
 use crate::core::http1::protocol;
 use std::io;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
-    Io(io::Error),
-    Protocol(protocol::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Protocol(#[from] protocol::Error),
+    #[error("request too large (max {0})")]
     RequestTooLarge(usize),
+    #[error("response has too many headers (max {0})")]
     ResponseTooManyHeaders(usize),
+    #[error("response during continue")]
     ResponseDuringContinue,
+    #[error("further input not allowed")]
     FurtherInputNotAllowed,
+    #[error("buffer exceeded")]
     BufferExceeded,
+    #[error("unusable")]
     Unusable,
+    #[error("internal: {0}")]
     Internal(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
-    }
-}
-
-impl From<protocol::Error> for Error {
-    fn from(e: protocol::Error) -> Self {
-        Self::Protocol(e)
-    }
 }

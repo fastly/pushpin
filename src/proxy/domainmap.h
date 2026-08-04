@@ -143,7 +143,7 @@ public:
               session(false),
               separateStats(false),
               grip(true),
-              logLevel(LOG_LEVEL_DEBUG) {}
+              logLevel(-1) {}
     };
 
     DomainMap();

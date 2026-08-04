@@ -24,8 +24,8 @@
 #ifndef HTTPREQUEST_H
 #define HTTPREQUEST_H
 
+#include "cowurl.h"
 #include "httpheaders.h"
-#include "url.h"
 #include <QHostAddress>
 #include <boost/signals2.hpp>
 
@@ -60,7 +60,7 @@ public:
     virtual void setClientCert(const QString &cert, const QString &key) = 0;
     virtual void setBackendData(const QString &data) = 0;
 
-    virtual void start(const QString &method, const Url &uri, const HttpHeaders &headers) = 0;
+    virtual void start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) = 0;
     virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) = 0;
 
     // May call this multiple times
@@ -77,7 +77,7 @@ public:
     virtual ErrorCondition errorCondition() const = 0;
 
     virtual QString requestMethod() const = 0;
-    virtual Url requestUri() const = 0;
+    virtual CowUrl requestUri() const = 0;
     virtual HttpHeaders requestHeaders() const = 0;
 
     virtual int responseCode() const = 0;

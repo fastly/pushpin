@@ -16,15 +16,14 @@
  * limitations under the License.
  */
 
+use crate::core::log::ffi::int_to_optional_level_filter;
 use std::ffi::CString;
-use std::os::raw::c_int;
 use std::ptr;
 
 /// Route parameters returned by DomainMap lookups
-#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct RouteParams {
-    pub log_level: c_int,
+    pub log_level: Option<log::LevelFilter>,
 }
 
 /// Rust wrapper for DomainMap FFI
@@ -68,7 +67,7 @@ impl DomainMap {
             None => ptr::null(),
         };
 
-        let mut ffi_params = crate::ffi::DomainMapRouteParams { log_level: 0 };
+        let mut ffi_params = crate::ffi::DomainMapRouteParams { log_level: -1 };
 
         let result = unsafe {
             crate::ffi::domainmap_entry_params(
@@ -79,13 +78,13 @@ impl DomainMap {
             )
         };
 
-        if result == 0 {
-            Some(RouteParams {
-                log_level: ffi_params.log_level,
-            })
-        } else {
-            None
+        if result != 0 {
+            return None;
         }
+
+        let log_level = int_to_optional_level_filter(ffi_params.log_level);
+
+        Some(RouteParams { log_level })
     }
 }
 

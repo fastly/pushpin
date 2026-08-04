@@ -111,8 +111,8 @@ errorMessage); if(!ok_)
                                 return WsControlPacket();
                         }
 
-                        msg.uri = Url::fromEncoded(getString(vitem, pn, "uri",
-false, &ok_, errorMessage).toUtf8(), Url::StrictMode); if(!ok_)
+                        msg.uri = CowUrl::fromEncoded(getString(vitem, pn, "uri",
+false, &ok_, errorMessage).toUtf8(), CowUrl::StrictMode); if(!ok_)
                         {
                                 if(ok)
                                         *ok = false;
@@ -341,7 +341,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (typeId(vitem["uri"]) != VariantType::ByteArray)
                 return false;
 
-            item.uri = Url::fromEncoded(vitem["uri"].toByteArray(), Url::StrictMode);
+            item.uri = CowUrl::fromEncoded(vitem["uri"].toByteArray(), CowUrl::StrictMode);
         }
 
         if (vitem.contains("content-type")) {

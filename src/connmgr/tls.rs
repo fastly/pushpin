@@ -31,9 +31,11 @@ use openssl::ssl::{
 };
 use openssl::x509::X509;
 use std::any::Any;
+use std::array;
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::fs;
 use std::future::Future;
@@ -105,6 +107,14 @@ const TEST_KEY: &str = concat!(
     "X7Rmwy1AQ2WKrwOSy4d3xDs=\n",
     "-----END PRIVATE KEY-----"
 );
+
+const TLS_RECORD_MAX: usize = 16 * 1024;
+
+thread_local! {
+    // Per-thread buffer that a set of slices can be coalesced into, for converting vectored
+    // writes into individual writes.
+    static WRITE_BUF: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(TLS_RECORD_MAX));
+}
 
 enum IdentityError {
     InvalidName,
@@ -450,6 +460,18 @@ impl From<ssl::Error> for TlsStreamError {
                 Some(e) => Self::Ssl(e.clone()),
                 None => Self::Io(io::Error::from(io::ErrorKind::Other)),
             },
+        }
+    }
+}
+
+// Implemented on the reference type so it can be converted without consuming
+impl<'a> TryFrom<&'a TlsStreamError> for &'a io::Error {
+    type Error = ();
+
+    fn try_from(e: &'a TlsStreamError) -> Result<Self, Self::Error> {
+        match e {
+            TlsStreamError::Io(e) => Ok(e),
+            _ => Err(()),
         }
     }
 }
@@ -840,6 +862,42 @@ where
     }
 }
 
+/// Helper function for converting vectored writes into individual writes. If the input slices are
+/// small enough (not exceeding `max_len`), then this function copies them into a contiguous
+/// buffer `dest` and returns it. Otherwise, this function returns the first non-empty input
+/// slice, if any.
+fn coalesced_or_first_non_empty<'a>(
+    bufs: &'a [io::IoSlice],
+    dest: &'a mut Vec<u8>,
+    max_len: usize,
+) -> Option<&'a [u8]> {
+    dest.clear();
+
+    let mut first_non_empty = None;
+
+    for buf in bufs {
+        if buf.is_empty() {
+            continue;
+        }
+
+        first_non_empty.get_or_insert(buf.as_ref());
+
+        let remaining_capacity = dest.capacity() - dest.len();
+
+        if buf.len() > cmp::min(max_len, remaining_capacity) {
+            break;
+        }
+
+        dest.extend_from_slice(buf);
+    }
+
+    if !dest.is_empty() {
+        Some(dest)
+    } else {
+        first_non_empty
+    }
+}
+
 impl<T> Read for TlsStream<T>
 where
     T: Read + Write + Any + Send,
@@ -861,6 +919,23 @@ where
             Ok(size) => Ok(size),
             Err(e) => Err(e.into_io_error()),
         }
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        // The openssl crate does not provide an efficient write_vectored implementation, so we
+        // provide our own here. Mainly we want to avoid wrapping lots of small slices in
+        // individual TLS packets, e.g. an HTTP header section being encoded into hundreds of TLS
+        // packets when it ought to fit in one.
+
+        // Slices larger than this should not be copied.
+        const SLICE_COPY_MAX: usize = 512;
+
+        WRITE_BUF.with_borrow_mut(|write_buf| {
+            // Prepare/determine a single slice to write
+            let buf = coalesced_or_first_non_empty(bufs, write_buf, SLICE_COPY_MAX).unwrap_or(&[]);
+
+            self.write(buf)
+        })
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -957,12 +1032,32 @@ impl TlsOp {
     }
 }
 
+#[derive(Copy, Clone)]
+#[repr(usize)]
+enum TlsOpType {
+    Handshake,
+    Shutdown,
+    Read,
+    Write,
+}
+
+impl TlsOpType {
+    // The number of variants
+    const COUNT: usize = 4;
+}
+
+fn interests_for_op(stream: &TlsStream<TcpStream>, op_type: TlsOpType) -> Option<mio::Interest> {
+    match op_type {
+        TlsOpType::Handshake => stream.interests_for_handshake(),
+        TlsOpType::Shutdown => stream.interests_for_shutdown(),
+        TlsOpType::Read => stream.interests_for_read(),
+        TlsOpType::Write => stream.interests_for_write(),
+    }
+}
+
 pub struct TlsWaker {
     registration: RefCell<Option<Registration>>,
-    handshake: TlsOp,
-    shutdown: TlsOp,
-    read: TlsOp,
-    write: TlsOp,
+    ops: [TlsOp; TlsOpType::COUNT],
 }
 
 #[allow(clippy::new_without_default)]
@@ -970,10 +1065,7 @@ impl TlsWaker {
     pub fn new() -> Self {
         Self {
             registration: RefCell::new(None),
-            handshake: TlsOp::new(),
-            shutdown: TlsOp::new(),
-            read: TlsOp::new(),
-            write: TlsOp::new(),
+            ops: array::from_fn(|_| TlsOp::new()),
         }
     }
 
@@ -986,7 +1078,7 @@ impl TlsWaker {
 
         registration.clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
 
-        for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+        for op in &self.ops {
             op.set_readiness(readiness);
         }
 
@@ -996,6 +1088,10 @@ impl TlsWaker {
     fn take_registration(&self) -> Registration {
         self.registration.borrow_mut().take().unwrap()
     }
+
+    fn op(&self, op_type: TlsOpType) -> &TlsOp {
+        &self.ops[op_type as usize]
+    }
 }
 
 impl RefWake for TlsWaker {
@@ -1004,7 +1100,7 @@ impl RefWake for TlsWaker {
             self.registration()
                 .clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
 
-            for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+            for op in &self.ops {
                 op.apply_readiness(readiness);
             }
         }
@@ -1119,6 +1215,53 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
             stream: Some(s),
         }
     }
+
+    /// Helper method for implementing I/O poll methods
+    fn do_poll<C, R, E>(
+        &mut self,
+        cx: &mut Context,
+        op_type: TlsOpType,
+        stream_call: C,
+    ) -> Poll<Result<R, E>>
+    where
+        C: FnOnce(&mut TlsStream<TcpStream>) -> Result<R, E>,
+        for<'e> &'e E: TryInto<&'e io::Error>,
+    {
+        let registration = self.waker.registration();
+        let op = self.waker.op(op_type);
+        let stream = self.stream.as_mut().unwrap();
+
+        let interests = interests_for_op(stream, op_type);
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
+            return Poll::Pending;
+        }
+
+        match stream_call(stream) {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(e) => {
+                if let Ok(e) = (&e).try_into() {
+                    if e.kind() == io::ErrorKind::WouldBlock {
+                        let interests = interests_for_op(stream, op_type).unwrap();
+                        op.clear_readiness(interests);
+                        op.set_waker(cx.waker(), interests);
+
+                        return Poll::Pending;
+                    }
+                }
+
+                Poll::Ready(Err(e))
+            }
+        }
+    }
 }
 
 impl Drop for AsyncTlsStream<'_> {
@@ -1137,41 +1280,11 @@ impl AsyncRead for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let f = &mut *self;
-
-        let registration = f.waker.registration();
-        let op = &f.waker.read;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_read();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.read(buf) {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_read().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.do_poll(cx, TlsOpType::Read, |s| s.read(buf))
     }
 
     fn cancel(&mut self) {
-        let op = &self.waker.read;
+        let op = self.waker.op(TlsOpType::Read);
 
         op.clear_waker();
     }
@@ -1183,75 +1296,23 @@ impl AsyncWrite for AsyncTlsStream<'_> {
         cx: &mut Context,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        let f = &mut *self;
+        self.do_poll(cx, TlsOpType::Write, |s| s.write(buf))
+    }
 
-        let registration = f.waker.registration();
-        let op = &f.waker.write;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_write();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.write(buf) {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_write().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        self.do_poll(cx, TlsOpType::Write, |s| s.write_vectored(bufs))
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        let f = &mut *self;
-
-        let registration = f.waker.registration();
-        let op = &f.waker.shutdown;
-        let stream = f.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_shutdown();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.shutdown() {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_shutdown().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.do_poll(cx, TlsOpType::Shutdown, |s| s.shutdown())
     }
 
     fn is_writable(&self) -> bool {
-        let op = &self.waker.write;
+        let op = self.waker.op(TlsOpType::Write);
         let stream = self.stream.as_ref().unwrap();
 
         if let Some(interests) = stream.interests_for_write() {
@@ -1262,8 +1323,8 @@ impl AsyncWrite for AsyncTlsStream<'_> {
     }
 
     fn cancel(&mut self) {
-        let write_op = &self.waker.write;
-        let shutdown_op = &self.waker.shutdown;
+        let write_op = self.waker.op(TlsOpType::Write);
+        let shutdown_op = self.waker.op(TlsOpType::Shutdown);
 
         write_op.clear_waker();
         shutdown_op.clear_waker();
@@ -1278,43 +1339,14 @@ impl Future for EnsureHandshakeFuture<'_, '_> {
     type Output = Result<(), TlsStreamError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &mut *self;
-
-        let registration = f.s.waker.registration();
-        let op = &f.s.waker.handshake;
-        let stream = f.s.stream.as_mut().unwrap();
-
-        let interests = stream.interests_for_handshake();
-
-        if let Some(interests) = interests {
-            if !op.readiness().contains_any(interests) {
-                op.set_waker(cx.waker(), interests);
-
-                return Poll::Pending;
-            }
-        }
-
-        if !registration.pull_from_budget_with_waker(cx.waker()) {
-            return Poll::Pending;
-        }
-
-        match stream.ensure_handshake() {
-            Ok(()) => Poll::Ready(Ok(())),
-            Err(TlsStreamError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                let interests = stream.interests_for_handshake().unwrap();
-                op.clear_readiness(interests);
-                op.set_waker(cx.waker(), interests);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
+        self.s
+            .do_poll(cx, TlsOpType::Handshake, |s| s.ensure_handshake())
     }
 }
 
 impl Drop for EnsureHandshakeFuture<'_, '_> {
     fn drop(&mut self) {
-        let op = &self.s.waker.handshake;
+        let op = self.s.waker.op(TlsOpType::Handshake);
 
         op.clear_waker();
     }
@@ -1530,6 +1562,77 @@ mod tests {
                 Ok(chain) => assert_eq!(Some(chain.len()), t.expected_len),
                 Err(_) => assert!(t.expected_len.is_none(), "test={}", t.name),
             }
+        }
+    }
+
+    #[test]
+    fn test_coalesce() {
+        struct Test {
+            name: &'static str,
+            bufs: &'static [&'static str],
+            dest_capacity: usize,
+            max_len: usize,
+            expected: Option<&'static str>,
+        }
+
+        let tests = [
+            Test {
+                name: "all-fit",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: Some("applebanana"),
+            },
+            Test {
+                name: "empty",
+                bufs: &[],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: None,
+            },
+            Test {
+                name: "all-empty",
+                bufs: &[""],
+                dest_capacity: 100,
+                max_len: 10,
+                expected: None,
+            },
+            Test {
+                name: "first-fit-by-len",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 5,
+                expected: Some("apple"),
+            },
+            Test {
+                name: "first-fit-by-capacity",
+                bufs: &["apple", "banana"],
+                dest_capacity: 8,
+                max_len: 10,
+                expected: Some("apple"),
+            },
+            Test {
+                name: "none-fit",
+                bufs: &["apple", "banana"],
+                dest_capacity: 100,
+                max_len: 4,
+                expected: Some("apple"),
+            },
+        ];
+
+        for t in tests {
+            let bufs: Vec<io::IoSlice> = t
+                .bufs
+                .iter()
+                .map(|s| io::IoSlice::new(s.as_bytes()))
+                .collect();
+
+            let mut dest = Vec::with_capacity(t.dest_capacity);
+
+            let ret = coalesced_or_first_non_empty(&bufs, &mut dest, t.max_len)
+                .map(|b| str::from_utf8(b).unwrap());
+
+            assert_eq!(ret, t.expected, "test={}", t.name);
         }
     }
 }

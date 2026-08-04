@@ -17,6 +17,7 @@
 
 mod batch;
 mod listener;
+mod metrics;
 mod origind;
 mod pool;
 mod track;
@@ -32,21 +33,19 @@ pub mod websocket;
 
 use self::client::Client;
 use self::server::Server;
-use crate::core::fs::{set_group, set_user};
+use crate::core::config::{NetListenConfig, UnixListenConfig};
 use crate::core::log::DebugLogger;
+use crate::core::net::{bind_unix_config, NetListener};
+use crate::core::prometheus::PrometheusServer;
 use crate::core::zmq::SpecInfo;
 use crate::observability;
 use ipnet::IpNet;
 use log::{debug, info};
-use mio::net::UnixListener;
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::error::Error;
-use std::fs;
-use std::io;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -105,11 +104,9 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
-pub struct DebugSocketConfig {
-    pub path: PathBuf,
-    pub mode: Option<u32>,
-    pub user: Option<String>,
-    pub group: Option<String>,
+pub struct PrometheusConfig {
+    pub listen_config: NetListenConfig,
+    pub prefix: String,
 }
 
 pub struct Config {
@@ -135,7 +132,8 @@ pub struct Config {
     pub certs_dir: PathBuf,
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
-    pub debug_socket: Option<DebugSocketConfig>,
+    pub debug_socket: Option<UnixListenConfig>,
+    pub prometheus: Option<PrometheusConfig>,
     pub origind_path: Option<String>,
     pub origind_rate: u8,
     pub otel_endpoint: Option<String>,
@@ -147,6 +145,7 @@ pub struct App {
     _server: Option<Server>,
     _client: Option<Client>,
     _debug_logger: Option<DebugLogger>,
+    _prometheus: Option<PrometheusServer>,
 }
 
 impl App {
@@ -161,55 +160,28 @@ impl App {
 
         let mut debug_logger = None;
 
-        if let Some(DebugSocketConfig {
-            path,
-            mode,
-            user,
-            group,
-        }) = &config.debug_socket
-        {
-            // Ensure pipe file doesn't exist
-            match fs::remove_file(path) {
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => panic!("{}", e),
-            }
-
-            let l = match UnixListener::bind(path) {
-                Ok(l) => l,
-                Err(e) => return Err(format!("failed to bind {:?}: {}", path, e)),
-            };
-
-            if let Some(mode) = mode {
-                let perms = fs::Permissions::from_mode(*mode);
-
-                if let Err(e) = fs::set_permissions(path, perms) {
-                    return Err(format!("failed to set mode on {:?}: {}", path, e));
-                }
-            }
-
-            if let Some(user) = user {
-                if let Err(e) = set_user(path, user) {
-                    return Err(format!(
-                        "failed to set user {:?} on {:?}: {}",
-                        user, path, e
-                    ));
-                }
-            }
-
-            if let Some(group) = group {
-                if let Err(e) = set_group(path, group) {
-                    return Err(format!(
-                        "failed to set group {:?} on {:?}: {}",
-                        group, path, e
-                    ));
-                }
-            }
+        if let Some(spec) = &config.debug_socket {
+            let l = bind_unix_config(spec).map_err(|e| format!("debug socket: {}", e))?;
 
             // Scale the log queue with the number of workers
             let queue_max = (config.workers * 1000) + 1000;
 
             debug_logger = Some(DebugLogger::new(l, queue_max));
+        }
+
+        let mut prometheus = None;
+
+        if let Some(config) = &config.prometheus {
+            metrics::init();
+
+            let l = NetListener::bind_config(&config.listen_config)
+                .map_err(|e| format!("prometheus listener: {e}"))?;
+
+            prometheus = Some(PrometheusServer::new(
+                l,
+                &config.prefix,
+                prometheus::default_registry().clone(),
+            ));
         }
 
         let zmq_context = Arc::new(zmq::Context::new());
@@ -446,6 +418,7 @@ impl App {
             _server: server,
             _client: client,
             _debug_logger: debug_logger,
+            _prometheus: prometheus,
         })
     }
 

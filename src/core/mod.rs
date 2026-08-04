@@ -19,6 +19,7 @@ pub mod buffer;
 pub mod channel;
 pub mod config;
 pub mod counter;
+pub mod cow;
 pub mod defer;
 pub mod encrypt;
 pub mod event;
@@ -33,6 +34,7 @@ pub mod list;
 pub mod log;
 pub mod memorypool;
 pub mod net;
+pub mod prometheus;
 pub mod reactor;
 pub mod security;
 pub mod select;
@@ -43,6 +45,7 @@ pub mod thread;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
+pub mod url;
 pub mod waker;
 pub mod zmq;
 
@@ -137,6 +140,11 @@ mod tests {
         unsafe { ffi::cowstring_test(out_ex) == 0 }
     }
 
+    fn cowurl_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::cowurl_test(out_ex) == 0 }
+    }
+
     fn httpheaders_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::httpheaders_test(out_ex) == 0 }
@@ -180,6 +188,11 @@ mod tests {
     #[test]
     fn cowstring() {
         run_cpp(cowstring_test);
+    }
+
+    #[test]
+    fn cowurl() {
+        run_cpp(cowurl_test);
     }
 
     #[test]

@@ -351,7 +351,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["uri"]) != VariantType::ByteArray)
             return false;
 
-        uri = Url::fromEncoded(obj["uri"].toByteArray(), Url::StrictMode);
+        uri = CowUrl::fromEncoded(obj["uri"].toByteArray(), CowUrl::StrictMode);
     }
 
     headers.clear();
@@ -479,7 +479,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
     }
 
     if (obj.contains("backend-data")) {
-        if (typeId(obj["backend-data"]) != QMetaType::QByteArray)
+        if (typeId(obj["backend-data"]) != VariantType::ByteArray)
             return false;
 
         backendData = QString::fromUtf8(obj["backend-data"].toByteArray());

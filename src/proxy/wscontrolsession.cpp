@@ -23,8 +23,8 @@
 
 #include "wscontrolsession.h"
 
+#include "cowurl.h"
 #include "timer.h"
-#include "url.h"
 #include "wscontrolmanager.h"
 #include <QDateTime>
 #include <assert.h>
@@ -51,7 +51,7 @@ public:
     bool separateStats;
     QByteArray channelPrefix;
     int logLevel;
-    Url uri;
+    CowUrl uri;
     bool targetTrusted;
     Connection requestTimerConnection;
 
@@ -275,7 +275,7 @@ QByteArray WsControlSession::peer() const { return d->peer; }
 QByteArray WsControlSession::cid() const { return d->cid; }
 
 void WsControlSession::start(bool debug, const QByteArray &routeId, bool separateStats,
-                             const QByteArray &channelPrefix, int logLevel, const Url &uri,
+                             const QByteArray &channelPrefix, int logLevel, const CowUrl &uri,
                              bool targetTrusted) {
     d->debug = debug;
     d->route = routeId;
