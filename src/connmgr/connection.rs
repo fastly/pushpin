@@ -5898,12 +5898,12 @@ where
                 &tls_waker_data,
             ));
 
-            loop {
+            let ret = loop {
                 // ABR: select contains read
                 let ret = select_2(client_connect.as_mut(), pin!(zsess_in.recv_msg())).await;
 
                 match ret {
-                    Select2::R1(ret) => break ret?,
+                    Select2::R1(ret) => break ret,
                     Select2::R2(ret) => {
                         let zreq = ret?;
 
@@ -5911,7 +5911,16 @@ where
                         server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
                     }
                 }
-            }
+            };
+
+            let status = match &ret {
+                Ok(_) => "success",
+                Err(_) => "error",
+            };
+
+            metrics::total_connects().with_label_values(&[status]).inc();
+
+            ret?
         };
 
         let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);

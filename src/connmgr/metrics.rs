@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-use prometheus::Counter;
+use prometheus::{opts, Counter, CounterVec};
 use std::sync::OnceLock;
 
 static TOTAL_REQUESTS: OnceLock<Counter> = OnceLock::new();
+static TOTAL_CONNECTS: OnceLock<CounterVec> = OnceLock::new();
 
 pub fn total_requests() -> &'static Counter {
     TOTAL_REQUESTS.get_or_init(|| {
@@ -29,7 +30,25 @@ pub fn total_requests() -> &'static Counter {
     })
 }
 
+pub fn total_connects() -> &'static CounterVec {
+    TOTAL_CONNECTS.get_or_init(|| {
+        prometheus::register_counter_vec!(
+            opts!(
+                "connmgr_connects_total",
+                "Total number of outbound connections attempted by connmgr"
+            ),
+            &["status"]
+        )
+        .expect("failed to register connmgr_connects counter")
+    })
+}
+
 pub fn init() {
     // Pre-initialize metrics so they appear even before any requests arrive.
+
     let _ = total_requests();
+
+    for status in ["success", "error"] {
+        let _ = total_connects().with_label_values(&[status]);
+    }
 }
