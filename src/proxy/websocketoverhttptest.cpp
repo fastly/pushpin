@@ -103,7 +103,7 @@ public:
             return;
         }
 
-        Url uri = req->requestUri();
+        CowUrl uri = req->requestUri();
         HttpHeaders headers = req->requestHeaders();
         QByteArray body = req->readBody();
 
@@ -255,7 +255,7 @@ static void io(std::function<void(int)> loop_wait) {
     bool clientError = false;
     client.error.connect([&] { clientError = true; });
 
-    client.start(Url("ws://localhost/ws"), HttpHeaders());
+    client.start(CowUrl("ws://localhost/ws"), HttpHeaders());
 
     while (!clientConnected && !clientError)
         loop_wait(10);
@@ -314,7 +314,7 @@ static void replay(std::function<void(int)> loop_wait) {
     bool clientError = false;
     client.error.connect([&] { clientError = true; });
 
-    client.start(Url("ws://localhost/ws"), HttpHeaders());
+    client.start(CowUrl("ws://localhost/ws"), HttpHeaders());
 
     while (!clientConnected && !clientError)
         loop_wait(10);

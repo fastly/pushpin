@@ -351,7 +351,7 @@ private:
         zresp.code = 200;
         zresp.reason = "OK";
 
-        QByteArray encPath = zreq.uri.path(Url::FullyEncoded).toUtf8();
+        QByteArray encPath = zreq.uri.path(CowUrl::FullyEncoded).toUtf8();
 
         UrlQuery query(zreq.uri.query());
         QString hold = query.queryItemValue("hold");

@@ -34,6 +34,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
+use crate::connmgr::metrics;
 use crate::connmgr::origind;
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
@@ -55,6 +56,7 @@ use crate::core::io::{
     io_split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper,
     WriteHalf,
 };
+use crate::core::log::with_max_level;
 use crate::core::memorypool;
 use crate::core::net::{AsyncTcpStream, SocketAddr};
 use crate::core::reactor::Reactor;
@@ -1590,6 +1592,8 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
             Err(e) => return Err(e),
         }
     };
+
+    metrics::total_requests().inc();
 
     let req_ref = req_header.get();
 
@@ -3376,18 +3380,12 @@ fn server_stream_process_req_header(
         }
     }
 
-    let mut log_level = log::Level::Debug;
+    let mut max_level = None;
 
     if let Some(route) = route {
         if let Some(domainmap) = domainmap {
             if let Some(params) = domainmap.lookup(route, Some(req.uri)) {
-                log_level = match params.log_level {
-                    i32::MIN..=0 => log::Level::Error,
-                    1 => log::Level::Warn,
-                    2 => log::Level::Info,
-                    3 => log::Level::Debug,
-                    4..=i32::MAX => log::Level::Trace,
-                };
+                max_level = params.log_level;
             }
         }
     }
@@ -3410,15 +3408,12 @@ fn server_stream_process_req_header(
         }
     };
 
-    log!(
-        log_level,
-        "server-conn {}: request: {} {}://{}{}",
-        id,
-        req.method,
-        scheme,
-        host,
-        req.uri
-    );
+    with_max_level(max_level, || {
+        debug!(
+            "server-conn {}: request: {} {}://{}{}",
+            id, req.method, scheme, host, req.uri
+        );
+    });
 
     let ws_req_data: Option<WsReqData> = if websocket {
         *ws_accept = match validate_ws_request(req, ws_version, ws_key) {
@@ -3516,6 +3511,8 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
             Err(e) => return Err(e),
         }
     };
+
+    metrics::total_requests().inc();
 
     let req_ref = req_header.get();
 
@@ -3779,13 +3776,9 @@ where
                 };
 
                 // First call can't fail
-                let (size, overflowed) = prepare_body
+                let size = prepare_body
                     .prepare(rdata.body, true)
                     .expect("infallible prepare call failed");
-
-                if overflowed > 0 {
-                    debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-                }
 
                 // We confirmed above that the data will fit in the buffer
                 assert!(size == rdata.body.len());
@@ -3904,13 +3897,9 @@ where
     };
 
     // First call can't fail
-    let (size, overflowed) = prepare_body
+    let size = prepare_body
         .prepare(rdata.body, !rdata.more)
         .expect("infallible prepare call failed");
-
-    if overflowed > 0 {
-        debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-    }
 
     // We confirmed above that the data will fit in the buffer
     assert!(size == rdata.body.len());
@@ -4061,12 +4050,7 @@ where
 
                     match &zresp.get().ptype {
                         zhttppacket::ResponsePacket::Data(rdata) => {
-                            let (size, overflowed) =
-                                prepare_body.prepare(rdata.body, !rdata.more)?;
-
-                            if overflowed > 0 {
-                                debug!("server-conn {}: overflowing {} bytes", id, overflowed);
-                            }
+                            let size = prepare_body.prepare(rdata.body, !rdata.more)?;
 
                             if size < rdata.body.len() {
                                 return Err(Error::BufferExceeded);

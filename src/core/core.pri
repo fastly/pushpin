@@ -1,9 +1,12 @@
 HEADERS += \
 	$$PWD/cowbytearray.h \
 	$$PWD/cowstring.h \
-	$$PWD/url.h \
+	$$PWD/cowurl.h \
 	$$PWD/urlquery.h \
 	$$PWD/variant.h
+
+SOURCES += \
+	$$PWD/cowurl.cpp
 
 HEADERS += \
 	$$PWD/zmqcontext.h \

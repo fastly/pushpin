@@ -9,4 +9,4 @@ after_includes = """
 
 [parse]
 parse_deps = true
-include = ["jsonwebtoken", "zmq"]
+include = ["jsonwebtoken", "url", "zmq"]

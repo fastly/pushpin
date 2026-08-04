@@ -26,12 +26,12 @@
 
 #include "callback.h"
 #include "clientsession.h"
+#include "cowurl.h"
 #include "filter.h"
 #include "inspectdata.h"
 #include "instruct.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
-#include "url.h"
 #include "zhttprequest.h"
 #include <boost/signals2.hpp>
 
@@ -99,7 +99,7 @@ public:
 
     Instruct::HoldMode holdMode() const;
     ZhttpRequest::Rid rid() const;
-    Url requestUri() const;
+    CowUrl requestUri() const;
     bool isRetry() const;
     QString statsRoute() const;
     QString sid() const;

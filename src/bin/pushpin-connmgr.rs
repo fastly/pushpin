@@ -17,7 +17,8 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::connmgr::{run, App, Config, DebugSocketConfig, ListenConfig, ListenSpec};
+use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec, PrometheusConfig};
+use pushpin::core::config::{NetListenConfig, UnixListenConfig};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
 use std::error::Error;
@@ -64,6 +65,7 @@ struct Args {
     allow_compression: bool,
     deny_out_internal: bool,
     debug_socket: Option<String>,
+    prometheus: Option<String>,
     origind: Option<String>,
     origind_rate: u8,
     otel_endpoint: Option<String>,
@@ -116,6 +118,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         allow_compression: args.allow_compression,
         deny: Vec::new(),
         debug_socket: None,
+        prometheus: None,
         origind_path: args.origind,
         origind_rate: args.origind_rate,
         otel_endpoint: args.otel_endpoint,
@@ -124,76 +127,49 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     };
 
     for v in args.listen.iter() {
-        let mut parts = v.split(',');
+        let mut net: NetListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse listen: {}", e))?;
 
-        // There's always a first part
-        let part1 = parts.next().unwrap();
-
-        let mut stream = true;
-        let mut tls = false;
-        let mut default_cert = None;
-        let mut local = false;
-        let mut mode = None;
-        let mut user = None;
-        let mut group = None;
-
-        for part in parts {
-            let (k, v) = match part.find('=') {
-                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
-                None => (part, ""),
+        let stream = {
+            let params = match &mut net {
+                NetListenConfig::Tcp(c) => &mut c.params,
+                NetListenConfig::Unix(c) => &mut c.params,
             };
 
-            match k {
-                "req" => stream = false,
-                "stream" => stream = true,
-                "tls" => tls = true,
-                "default-cert" => default_cert = Some(String::from(v)),
-                "local" => local = true,
-                "mode" => match u32::from_str_radix(v, 8) {
-                    Ok(x) => mode = Some(x),
-                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
-                },
-                "user" => user = Some(String::from(v)),
-                "group" => group = Some(String::from(v)),
-                _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
-            }
-        }
+            let req = params.remove("req").is_some();
+            let stream = params.remove("stream").is_some();
 
-        let spec = if local {
-            ListenSpec::Local {
-                path: PathBuf::from(part1),
-                mode,
-                user,
-                group,
-            }
-        } else {
-            let port_pos = match part1.rfind(':') {
-                Some(pos) => pos + 1,
-                None => 0,
-            };
+            // Stream mode indicated by presence of stream param or absence of req param
+            stream || !req
+        };
 
-            let port = &part1[port_pos..];
-            if port.parse::<u16>().is_err() {
-                return Err(format!("failed to parse listen: invalid port {}", port).into());
-            }
+        let spec = match net {
+            NetListenConfig::Tcp(mut c) => {
+                let tls = c.params.remove("tls").is_some();
+                let default_cert = c.params.remove("default-cert");
 
-            let addr = if port_pos > 0 {
-                String::from(part1)
-            } else {
-                format!("0.0.0.0:{}", part1)
-            };
-
-            let addr = match addr.parse() {
-                Ok(addr) => addr,
-                Err(e) => {
-                    return Err(format!("failed to parse listen: {}", e).into());
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
                 }
-            };
 
-            ListenSpec::Tcp {
-                addr,
-                tls,
-                default_cert,
+                ListenSpec::Tcp {
+                    addr: c.addr,
+                    tls,
+                    default_cert,
+                }
+            }
+            NetListenConfig::Unix(c) => {
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
+                }
+
+                ListenSpec::Local {
+                    path: c.path,
+                    mode: c.mode,
+                    user: c.user,
+                    group: c.group,
+                }
             }
         };
 
@@ -207,41 +183,39 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
     }
 
     if let Some(v) = &args.debug_socket {
-        let mut parts = v.split(',');
+        let spec: UnixListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse debug-socket: {}", e))?;
 
-        // There's always a first part
-        let part1 = parts.next().unwrap();
-
-        let mut mode = None;
-        let mut user = None;
-        let mut group = None;
-
-        for part in parts {
-            let (k, v) = match part.find('=') {
-                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
-                None => (part, ""),
-            };
-
-            match k {
-                "mode" => match u32::from_str_radix(v, 8) {
-                    Ok(x) => mode = Some(x),
-                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
-                },
-                "user" => user = Some(String::from(v)),
-                "group" => group = Some(String::from(v)),
-                _ => {
-                    return Err(
-                        format!("failed to parse debug-socket: invalid param: {}", part).into(),
-                    )
-                }
-            }
+        if let Some(k) = spec.params.keys().next() {
+            return Err(format!("failed to parse debug-socket: invalid param: {}", k).into());
         }
 
-        config.debug_socket = Some(DebugSocketConfig {
-            path: PathBuf::from(part1),
-            mode,
-            user,
-            group,
+        config.debug_socket = Some(spec);
+    }
+
+    if let Some(v) = &args.prometheus {
+        let mut spec: NetListenConfig = match v.parse() {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(format!("failed to parse prometheus: {}", e).into());
+            }
+        };
+
+        let params = match &mut spec {
+            NetListenConfig::Tcp(c) => &mut c.params,
+            NetListenConfig::Unix(c) => &mut c.params,
+        };
+
+        let prefix = params.remove("prefix").unwrap_or_default();
+
+        if let Some(k) = params.keys().next() {
+            return Err(format!("failed to parse prometheus: invalid param: {}", k).into());
+        }
+
+        config.prometheus = Some(PrometheusConfig {
+            listen_config: spec,
+            prefix,
         });
     }
 
@@ -434,6 +408,13 @@ fn main() {
                 .num_args(1)
                 .value_name("path")
                 .help("Unix socket for serving debug logs"),
+        )
+        .arg(
+            Arg::new("prometheus")
+                .long("prometheus")
+                .num_args(1)
+                .value_name("[addr:]port[,params...]")
+                .help("Address/port to serve Prometheus metrics on"),
         )
         .arg(
             Arg::new("origind")
@@ -679,6 +660,8 @@ fn main() {
 
     let debug_socket = matches.get_one::<String>("debug-socket").cloned();
 
+    let prometheus = matches.get_one::<String>("prometheus").cloned();
+
     let origind = matches.get_one::<String>("origind");
 
     let origind_rate = matches
@@ -728,6 +711,7 @@ fn main() {
         allow_compression,
         deny_out_internal,
         debug_socket,
+        prometheus,
         origind: origind.cloned(),
         origind_rate,
         otel_endpoint,

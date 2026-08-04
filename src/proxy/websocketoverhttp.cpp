@@ -958,7 +958,7 @@ void WebSocketOverHttp::setClientCert(const QString &cert, const QString &key) {
 
 void WebSocketOverHttp::setBackendData(const QString &data) { d->backendData = data; }
 
-void WebSocketOverHttp::start(const Url &uri, const HttpHeaders &headers) {
+void WebSocketOverHttp::start(const CowUrl &uri, const HttpHeaders &headers) {
     assert(d->state == Idle);
 
     d->requestData.uri = uri;
@@ -985,7 +985,7 @@ void WebSocketOverHttp::respondError([[maybe_unused]] int code,
 
 WebSocket::State WebSocketOverHttp::state() const { return d->state; }
 
-Url WebSocketOverHttp::requestUri() const { return d->requestData.uri; }
+CowUrl WebSocketOverHttp::requestUri() const { return d->requestData.uri; }
 
 HttpHeaders WebSocketOverHttp::requestHeaders() const { return d->requestData.headers; }
 

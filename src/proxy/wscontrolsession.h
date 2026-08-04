@@ -24,8 +24,8 @@
 #ifndef WSCONTROLSESSION_H
 #define WSCONTROLSESSION_H
 
+#include "cowurl.h"
 #include "packet/wscontrolpacket.h"
-#include "url.h"
 #include "websocket.h"
 #include "wscontrol.h"
 #include <QByteArray>
@@ -46,7 +46,8 @@ public:
     QByteArray cid() const;
 
     void start(bool debug, const QByteArray &routeId, bool separateStats,
-               const QByteArray &channelPrefix, int logLevel, const Url &uri, bool targetTrusted);
+               const QByteArray &channelPrefix, int logLevel, const CowUrl &uri,
+               bool targetTrusted);
     void sendGripMessage(const QByteArray &message);
     void sendNeedKeepAlive();
     void sendSubscribe(const QByteArray &channel);

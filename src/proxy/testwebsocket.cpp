@@ -146,7 +146,7 @@ void TestWebSocket::setClientCert([[maybe_unused]] const QString &cert,
 
 void TestWebSocket::setBackendData(const QString &data) { Q_UNUSED(data); }
 
-void TestWebSocket::start(const Url &uri, const HttpHeaders &headers) {
+void TestWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->request.uri = uri;
     d->request.headers = headers;
 
@@ -180,7 +180,7 @@ WebSocket::State TestWebSocket::state() const {
         return Closing;
 }
 
-Url TestWebSocket::requestUri() const { return d->request.uri; }
+CowUrl TestWebSocket::requestUri() const { return d->request.uri; }
 
 HttpHeaders TestWebSocket::requestHeaders() const { return d->request.headers; }
 

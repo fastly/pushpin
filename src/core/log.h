@@ -45,7 +45,11 @@ void log_warning(const char *fmt, ...);
 void log_info(const char *fmt, ...);
 void log_debug(const char *fmt, ...);
 
-// Log without prefixing or anything. Useful for forwarding log data
+/// If `outputLevel` is non-negative then the configured output level is overridden, otherwise
+/// this function behaves the same as `log`.
+void logWithOutputLevel(int outputLevel, int level, const char *fmt, ...);
+
+/// Log without prefixing or anything. Useful for forwarding log data
 void log_raw(const char *line);
 
 #endif

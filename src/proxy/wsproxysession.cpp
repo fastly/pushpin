@@ -24,6 +24,7 @@
 #include "wsproxysession.h"
 
 #include "connectionmanager.h"
+#include "cowurl.h"
 #include "defercall.h"
 #include "inspectdata.h"
 #include "jwt.h"
@@ -34,7 +35,6 @@
 #include "statsmanager.h"
 #include "testwebsocket.h"
 #include "timer.h"
-#include "url.h"
 #include "websocketoverhttp.h"
 #include "wscontrol.h"
 #include "wscontrolmanager.h"
@@ -386,7 +386,7 @@ public:
         if (!route.asHost.isEmpty())
             ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-        QByteArray path = requestData.uri.path(Url::FullyEncoded).toUtf8();
+        QByteArray path = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
         if (route.pathRemove > 0)
             path = path.mid(route.pathRemove);
@@ -394,7 +394,7 @@ public:
         if (!route.pathPrepend.isEmpty())
             path = route.pathPrepend + path;
 
-        requestData.uri.setPath(QString::fromUtf8(path), Url::StrictMode);
+        requestData.uri.setPath(QString::fromUtf8(path), CowUrl::StrictMode);
 
         sigIss = defaultSigIss;
         sigKey = defaultSigKey;
@@ -463,7 +463,7 @@ public:
 
         target = targets.takeFirst();
 
-        Url uri = requestData.uri;
+        CowUrl uri = requestData.uri;
         if (target.ssl)
             uri.setScheme("wss");
         else
@@ -485,7 +485,7 @@ public:
                     --pathRemove;
 
                 if (pathRemove > 0)
-                    uri.setPath(uri.path(Url::FullyEncoded).mid(pathRemove));
+                    uri.setPath(uri.path(CowUrl::FullyEncoded).mid(pathRemove));
             }
 
             outSock = std::make_unique<TestWebSocket>();
@@ -701,6 +701,8 @@ public:
         if (route.separateStats)
             rd.routeId = route.id;
 
+        rd.logLevel = route.logLevel;
+
         if (responseCode != -1) {
             rd.status = LogUtil::Response;
             rd.responseData.code = responseCode;
@@ -793,7 +795,8 @@ public:
         QString reason = inSock->peerCloseReason();
 
         auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
-        LogUtil::logForRoute(routeInfo, "inbound connection for %s closed: code=%d reason=[%s]",
+        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                             "inbound connection for %s closed: code=%d reason=[%s]",
                              qPrintable(inSock->requestUri().path()), code, qPrintable(reason));
 
         cleanupInSock();
@@ -810,7 +813,8 @@ public:
         WebSocket::ErrorCondition e = inSock->errorCondition();
 
         auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
-        LogUtil::logForRoute(routeInfo, "inbound connection for %s error state=%d, condition=%d",
+        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                             "inbound connection for %s error state=%d, condition=%d",
                              qPrintable(inSock->requestUri().path()), (int)state, (int)e);
 
         cleanupInSock();
@@ -913,7 +917,8 @@ public:
         QString reason = outSock->peerCloseReason();
 
         auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
-        LogUtil::logForRoute(routeInfo, "outbound connection to %s closed: code=%d reason=[%s]",
+        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                             "outbound connection to %s closed: code=%d reason=[%s]",
                              qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
 
         cleanupOutSock();
@@ -931,7 +936,8 @@ public:
         log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
         auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
-        LogUtil::logForRoute(routeInfo, "outbound connection to %s error state=%d, condition=%d",
+        LogUtil::logForRoute(LOG_LEVEL_DEBUG, routeInfo,
+                             "outbound connection to %s error state=%d, condition=%d",
                              qPrintable(outSock->requestUri().path()), (int)state, (int)e);
 
         if (detached) {

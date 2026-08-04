@@ -28,6 +28,11 @@ static void log(int level, const char *fmt, va_list ap) {
     ffi::log_log(level, str.toUtf8().data());
 }
 
+static void logWithOutputLevel(int outputLevel, int level, const char *fmt, va_list ap) {
+    QString str = QString::vasprintf(fmt, ap);
+    ffi::log_log_with_max_level(outputLevel, level, str.toUtf8().data());
+}
+
 bool log_init(const QString &outputFile) {
     int ret;
 
@@ -79,6 +84,13 @@ void log_debug(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
     log(LOG_LEVEL_DEBUG, fmt, ap);
+    va_end(ap);
+}
+
+void logWithOutputLevel(int outputLevel, int level, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    logWithOutputLevel(outputLevel, level, fmt, ap);
     va_end(ap);
 }
 

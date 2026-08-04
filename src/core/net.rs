@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
+use crate::core::config::{NetListenConfig, UnixListenConfig};
 use crate::core::event::ReadinessExt;
+use crate::core::fs::{set_group, set_user};
 use crate::core::io::{AsyncRead, AsyncWrite};
 use crate::core::reactor::IoEvented;
 use crate::core::task::get_reactor;
@@ -24,6 +26,7 @@ use socket2::Socket;
 use std::fmt;
 use std::future::Future;
 use std::io::{self, Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::pin::Pin;
@@ -65,10 +68,51 @@ impl fmt::Display for SocketAddr {
     }
 }
 
+pub fn bind_unix_config(config: &UnixListenConfig) -> Result<UnixListener, String> {
+    // Remove any existing socket file before binding.
+    match std::fs::remove_file(&config.path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("failed to remove {:?}: {}", config.path, e)),
+    }
+
+    let listener = UnixListener::bind(&config.path)
+        .map_err(|e| format!("failed to bind {:?}: {}", config.path, e))?;
+
+    if let Some(mode) = config.mode {
+        let perms = std::fs::Permissions::from_mode(mode);
+        std::fs::set_permissions(&config.path, perms)
+            .map_err(|e| format!("failed to set permissions on {:?}: {}", config.path, e))?;
+    }
+
+    if let Some(user) = &config.user {
+        set_user(&config.path, user)
+            .map_err(|e| format!("failed to set user on {:?}: {}", config.path, e))?;
+    }
+
+    if let Some(group) = &config.group {
+        set_group(&config.path, group)
+            .map_err(|e| format!("failed to set group on {:?}: {}", config.path, e))?;
+    }
+
+    Ok(listener)
+}
+
 #[derive(Debug)]
 pub enum NetListener {
     Tcp(TcpListener),
     Unix(UnixListener),
+}
+
+impl NetListener {
+    pub fn bind_config(config: &NetListenConfig) -> Result<Self, String> {
+        match config {
+            NetListenConfig::Tcp(c) => TcpListener::bind(c.addr)
+                .map(Self::Tcp)
+                .map_err(|e| format!("failed to bind {}: {}", c.addr, e)),
+            NetListenConfig::Unix(c) => bind_unix_config(c).map(Self::Unix),
+        }
+    }
 }
 
 #[derive(Debug)]

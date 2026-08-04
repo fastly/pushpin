@@ -16,9 +16,12 @@
 
 use config::{Config, ConfigError};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 #[cfg(not(test))]
 use config::File;
@@ -545,12 +548,258 @@ mod ffi {
     }
 }
 
+/// Address specification for a TCP listener. Supports parsing from a comma-separated string: the
+/// first field is an address — a bare port number (e.g. `"9001"`) expands to `0.0.0.0:9001`, and
+/// a `host:port` pair is used as-is. Remaining fields are `key` or `key=value` pairs; unrecognized
+/// ones are collected into `params`.
+pub struct TcpListenConfig {
+    pub addr: std::net::SocketAddr,
+    pub params: HashMap<String, String>,
+}
+
+impl FromStr for TcpListenConfig {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(',');
+
+        // There is always a first part.
+        let first = parts.next().unwrap();
+
+        let addr: std::net::SocketAddr = if let Ok(addr) = first.parse() {
+            addr
+        } else if let Ok(port) = first.parse::<u16>() {
+            (IpAddr::V4(Ipv4Addr::UNSPECIFIED), port).into()
+        } else {
+            return Err(format!("invalid TCP address or port: {}", first));
+        };
+
+        let mut params = HashMap::new();
+
+        for part in parts {
+            let (k, v) = match part.find('=') {
+                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
+                None => (part, ""),
+            };
+            params.insert(k.to_string(), v.to_string());
+        }
+
+        Ok(Self { addr, params })
+    }
+}
+
+/// Address specification for a Unix socket listener. Supports parsing from a comma-separated
+/// string: the first field is the socket path, and remaining fields are `key` or `key=value`
+/// pairs. Recognized keys are `mode` (octal permissions), `user`, and `group`. Unrecognized ones
+/// are collected into `params`.
+pub struct UnixListenConfig {
+    pub path: PathBuf,
+    pub mode: Option<u32>,
+    pub user: Option<String>,
+    pub group: Option<String>,
+    pub params: HashMap<String, String>,
+}
+
+impl FromStr for UnixListenConfig {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(',');
+
+        // There is always a first part.
+        let path = PathBuf::from(parts.next().unwrap());
+
+        let mut mode = None;
+        let mut user = None;
+        let mut group = None;
+        let mut params = HashMap::new();
+
+        for part in parts {
+            let (k, v) = match part.find('=') {
+                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
+                None => (part, ""),
+            };
+
+            match k {
+                "mode" => match u32::from_str_radix(v, 8) {
+                    Ok(x) => mode = Some(x),
+                    Err(e) => return Err(format!("failed to parse mode: {}", e)),
+                },
+                "user" => user = Some(String::from(v)),
+                "group" => group = Some(String::from(v)),
+                _ => {
+                    params.insert(k.to_string(), v.to_string());
+                }
+            }
+        }
+
+        Ok(Self {
+            path,
+            mode,
+            user,
+            group,
+            params,
+        })
+    }
+}
+
+pub enum NetListenConfig {
+    Tcp(TcpListenConfig),
+    Unix(UnixListenConfig),
+}
+
+impl FromStr for NetListenConfig {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split(',');
+
+        // There is always a first part.
+        let first = parts.next().unwrap();
+
+        let mut local = false;
+        let mut rest: Vec<&str> = Vec::new();
+
+        for part in parts {
+            let k = match part.find('=') {
+                Some(pos) => &part[..pos],
+                None => part,
+            };
+            if k == "local" {
+                local = true;
+            } else {
+                rest.push(part);
+            }
+        }
+
+        // Reconstruct a string for the inner parser: first field + remaining params.
+        let inner = if rest.is_empty() {
+            first.to_string()
+        } else {
+            format!("{},{}", first, rest.join(","))
+        };
+
+        if local {
+            Ok(Self::Unix(inner.parse()?))
+        } else {
+            Ok(Self::Tcp(inner.parse()?))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::{ensure_example_config, test_dir};
     use std::error::Error;
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
     use std::path::PathBuf;
+
+    #[test]
+    fn tcp_listen_config_port_only() {
+        let c: TcpListenConfig = "9001".parse().unwrap();
+        assert_eq!(c.addr, SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 9001));
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn tcp_listen_config_host_port() {
+        let c: TcpListenConfig = "127.0.0.1:9001".parse().unwrap();
+        assert_eq!(c.addr, "127.0.0.1:9001".parse().unwrap());
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn tcp_listen_config_ipv6() {
+        let c: TcpListenConfig = "[::1]:9001".parse().unwrap();
+        assert_eq!(c.addr, SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 9001));
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn tcp_listen_config_params() {
+        let c: TcpListenConfig = "9001,tls,default-cert=mycert".parse().unwrap();
+        assert_eq!(c.addr, SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 9001));
+        assert_eq!(c.params["tls"], "");
+        assert_eq!(c.params["default-cert"], "mycert");
+    }
+
+    #[test]
+    fn tcp_listen_config_invalid() {
+        assert!("notanaddr".parse::<TcpListenConfig>().is_err());
+    }
+
+    #[test]
+    fn unix_listen_config_path_only() {
+        let c: UnixListenConfig = "/tmp/foo.sock".parse().unwrap();
+        assert_eq!(c.path, PathBuf::from("/tmp/foo.sock"));
+        assert_eq!(c.mode, None);
+        assert_eq!(c.user, None);
+        assert_eq!(c.group, None);
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn unix_listen_config_all_known_params() {
+        let c: UnixListenConfig = "/tmp/foo.sock,mode=0600,user=www,group=www"
+            .parse()
+            .unwrap();
+        assert_eq!(c.path, PathBuf::from("/tmp/foo.sock"));
+        assert_eq!(c.mode, Some(0o600));
+        assert_eq!(c.user.as_deref(), Some("www"));
+        assert_eq!(c.group.as_deref(), Some("www"));
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn unix_listen_config_unknown_params() {
+        let c: UnixListenConfig = "/tmp/foo.sock,req".parse().unwrap();
+        assert_eq!(c.params["req"], "");
+    }
+
+    #[test]
+    fn unix_listen_config_bad_mode() {
+        assert!("/tmp/foo.sock,mode=notoctal"
+            .parse::<UnixListenConfig>()
+            .is_err());
+    }
+
+    #[test]
+    fn net_listen_config_tcp_port_only() {
+        let NetListenConfig::Tcp(c) = "9001".parse().unwrap() else {
+            panic!("expected Tcp")
+        };
+        assert_eq!(c.addr, SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 9001));
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn net_listen_config_tcp_with_params() {
+        let NetListenConfig::Tcp(c) = "9001,tls,default-cert=mycert".parse().unwrap() else {
+            panic!("expected Tcp")
+        };
+        assert_eq!(c.addr, SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 9001));
+        assert_eq!(c.params["tls"], "");
+        assert_eq!(c.params["default-cert"], "mycert");
+    }
+
+    #[test]
+    fn net_listen_config_unix_via_local() {
+        let NetListenConfig::Unix(c) = "/tmp/foo.sock,local,mode=0600".parse().unwrap() else {
+            panic!("expected Unix")
+        };
+        assert_eq!(c.path, PathBuf::from("/tmp/foo.sock"));
+        assert_eq!(c.mode, Some(0o600));
+        assert!(c.params.is_empty());
+    }
+
+    #[test]
+    fn net_listen_config_unix_unknown_params() {
+        let NetListenConfig::Unix(c) = "/tmp/foo.sock,local,req".parse().unwrap() else {
+            panic!("expected Unix")
+        };
+        assert_eq!(c.params["req"], "");
+    }
 
     struct TestArgs {
         name: &'static str,

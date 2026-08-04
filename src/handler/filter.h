@@ -24,8 +24,8 @@
 #ifndef FILTER_H
 #define FILTER_H
 
+#include "cowurl.h"
 #include "ratelimiter.h"
-#include "url.h"
 #include "zhttprequest.h"
 #include <QHash>
 #include <QString>
@@ -58,8 +58,8 @@ public:
 
         // For network access
         ZhttpManager *zhttpOut;
-        Url requestUri; // What was fetched at session start
-        Url currentUri; // Where we are now, potentially after following next links
+        CowUrl requestUri; // What was fetched at session start
+        CowUrl currentUri; // Where we are now, potentially after following next links
         QString route;
         bool trusted;
         std::shared_ptr<RateLimiter> limiter;
