@@ -32,6 +32,7 @@ pub mod list;
 pub mod log;
 pub mod memorypool;
 pub mod net;
+pub mod prometheus;
 pub mod reactor;
 pub mod select;
 pub mod shuffle;

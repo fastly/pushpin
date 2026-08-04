@@ -17,7 +17,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec};
+use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec, PrometheusConfig};
 use pushpin::core::config::{NetListenConfig, UnixListenConfig};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
@@ -65,6 +65,7 @@ struct Args {
     allow_compression: bool,
     deny_out_internal: bool,
     debug_socket: Option<String>,
+    prometheus: Option<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -112,6 +113,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         allow_compression: args.allow_compression,
         deny: Vec::new(),
         debug_socket: None,
+        prometheus: None,
     };
 
     for v in args.listen.iter() {
@@ -174,10 +176,37 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         let spec: UnixListenConfig = v
             .parse()
             .map_err(|e| format!("failed to parse debug-socket: {}", e))?;
+
         if let Some(k) = spec.params.keys().next() {
             return Err(format!("failed to parse debug-socket: invalid param: {}", k).into());
         }
+
         config.debug_socket = Some(spec);
+    }
+
+    if let Some(v) = &args.prometheus {
+        let mut spec: NetListenConfig = match v.parse() {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(format!("failed to parse prometheus: {}", e).into());
+            }
+        };
+
+        let params = match &mut spec {
+            NetListenConfig::Tcp(c) => &mut c.params,
+            NetListenConfig::Unix(c) => &mut c.params,
+        };
+
+        let prefix = params.remove("prefix").unwrap_or_default();
+
+        if let Some(k) = params.keys().next() {
+            return Err(format!("failed to parse prometheus: invalid param: {}", k).into());
+        }
+
+        config.prometheus = Some(PrometheusConfig {
+            listen_config: spec,
+            prefix,
+        });
     }
 
     run(&config)
@@ -369,6 +398,13 @@ fn main() {
                 .num_args(1)
                 .value_name("path")
                 .help("Unix socket for serving debug logs"),
+        )
+        .arg(
+            Arg::new("prometheus")
+                .long("prometheus")
+                .num_args(1)
+                .value_name("[addr:]port[,params...]")
+                .help("Address/port to serve Prometheus metrics on"),
         )
         .arg(
             Arg::new("sizes")
@@ -573,6 +609,8 @@ fn main() {
 
     let debug_socket = matches.get_one::<String>("debug-socket").cloned();
 
+    let prometheus = matches.get_one::<String>("prometheus").cloned();
+
     // If no zmq server specs are set (needed by client mode), specify
     // default listen configuration in order to enable server mode. This
     // means if zmq server specs are set, then server mode won't be enabled
@@ -605,6 +643,7 @@ fn main() {
         allow_compression,
         deny_out_internal,
         debug_socket,
+        prometheus,
     };
 
     if let Err(e) = process_args_and_run(args) {

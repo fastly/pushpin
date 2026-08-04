@@ -34,6 +34,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
+use crate::connmgr::metrics;
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
 use crate::connmgr::tls::{AsyncTlsStream, TlsConfigCache, TlsStream, TlsWaker, VerifyMode};
@@ -1533,6 +1534,8 @@ async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
             Err(e) => return Err(e),
         }
     };
+
+    metrics::total_requests().inc();
 
     let req_ref = req_header.get();
 
@@ -3408,6 +3411,8 @@ async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
             Err(e) => return Err(e),
         }
     };
+
+    metrics::total_requests().inc();
 
     let req_ref = req_header.get();
 
