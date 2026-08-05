@@ -63,9 +63,9 @@ impl SpanProcessor for ErrorOnlyProcessor {
 /// Record an HTTP status code as error if >= 500.
 pub fn trace_status_code(code: u16) {
     tracing::Span::current().record("http.status_code", code as i64);
-    if code >= 500 {
-        tracing::error!(http.status_code = code, "request failed");
-    }
+    //if code >= 500 {
+    //    tracing::error!(http.status_code = code, "request failed");
+    //}
 }
 
 pub enum WsCloseSource {
@@ -83,9 +83,9 @@ pub fn trace_ws_close_code(code: u16, source: WsCloseSource) {
             tracing::Span::current().record("ws.server_close_code", code as i64);
         }
     }
-    if code >= 1002 {
-        tracing::error!(ws.close_code = code, "websocket closed abnormally");
-    }
+    //if code >= 1002 {
+    //    tracing::error!(ws.close_code = code, "websocket closed abnormally");
+    //}
 }
 
 /// Initialize OpenTelemetry tracing with an OTLP HTTP exporter.
