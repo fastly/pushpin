@@ -113,7 +113,6 @@ static void roundtrip() {
     original["test"] = "roundtrip";
     original["number"] = 42;
 
-    // Serialize with Rust serde_json
     QByteArray json = Json::toString(original);
 
     // Deserialize back
@@ -132,27 +131,25 @@ static void compatibilityWithQtJson() {
     testData["number"] = 42;
     testData["bool"] = true;
 
-    // Serialize with Qt JSON
     QByteArray qtJson =
         QJsonDocument(QJsonObject::fromVariantMap(testData)).toJson(QJsonDocument::Compact);
 
-    // Serialize with Rust serde_json
-    QByteArray rustJson = Json::toString(testData);
+    QByteArray json = Json::toString(testData);
 
     // Both should parse to equivalent structures
     QJsonDocument qtDoc = QJsonDocument::fromJson(qtJson);
-    QJsonDocument rustDoc = QJsonDocument::fromJson(rustJson);
+    QJsonDocument doc = QJsonDocument::fromJson(json);
 
     TEST_ASSERT_EQ(qtDoc.isObject(), true);
-    TEST_ASSERT_EQ(rustDoc.isObject(), true);
+    TEST_ASSERT_EQ(doc.isObject(), true);
 
     // The objects should be equivalent (though order might differ)
     QJsonObject qtObj = qtDoc.object();
-    QJsonObject rustObj = rustDoc.object();
+    QJsonObject obj = doc.object();
 
-    TEST_ASSERT_EQ(rustObj["string"], qtObj["string"]);
-    TEST_ASSERT_EQ(rustObj["number"], qtObj["number"]);
-    TEST_ASSERT_EQ(rustObj["bool"], qtObj["bool"]);
+    TEST_ASSERT_EQ(obj["string"], qtObj["string"]);
+    TEST_ASSERT_EQ(obj["number"], qtObj["number"]);
+    TEST_ASSERT_EQ(obj["bool"], qtObj["bool"]);
 }
 
 static void scalarValues() {
