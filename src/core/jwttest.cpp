@@ -22,11 +22,10 @@
  */
 
 #include "jwt.h"
+#include "json.h"
 #include "qtcompat.h"
 #include "test.h"
 #include "variant.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 
 static const char *test_ec_private_key_pem =
     "-----BEGIN PRIVATE KEY-----\n"
@@ -148,8 +147,7 @@ static void es256EncodeDecode() {
     VariantMap claim;
     claim["iss"] = "nobody";
 
-    QByteArray claimJson =
-        QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
+    QByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
     QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
@@ -158,12 +156,11 @@ static void es256EncodeDecode() {
     QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
     TEST_ASSERT(!resultJson.isNull());
 
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
-    TEST_ASSERT(error.error == QJsonParseError::NoError);
-    TEST_ASSERT(doc.isObject());
+    Variant result_variant = Json::fromString(resultJson);
+    TEST_ASSERT(result_variant.isValid());
+    TEST_ASSERT(typeId(result_variant) == VariantType::Map);
 
-    VariantMap result = doc.object().toVariantMap();
+    VariantMap result = result_variant.toMap();
     TEST_ASSERT_EQ(result["iss"], "nobody");
 }
 
@@ -179,8 +176,7 @@ static void rs256EncodeDecode() {
     VariantMap claim;
     claim["iss"] = "nobody";
 
-    QByteArray claimJson =
-        QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
+    QByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
     QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson, privateKey);
@@ -189,12 +185,11 @@ static void rs256EncodeDecode() {
     QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);
     TEST_ASSERT(!resultJson.isNull());
 
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
-    TEST_ASSERT(error.error == QJsonParseError::NoError);
-    TEST_ASSERT(doc.isObject());
+    Variant result_variant = Json::fromString(resultJson);
+    TEST_ASSERT(result_variant.isValid());
+    TEST_ASSERT(typeId(result_variant) == VariantType::Map);
 
-    VariantMap result = doc.object().toVariantMap();
+    VariantMap result = result_variant.toMap();
     TEST_ASSERT_EQ(result["iss"], "nobody");
 }
 
