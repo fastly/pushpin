@@ -29,10 +29,14 @@
 namespace VariantType {
 enum Type {
     Invalid = QMetaType::UnknownType,
+    Nullptr = QMetaType::Nullptr,
     Bool = QMetaType::Bool,
     Int = QMetaType::Int,
-    Double = QMetaType::Double,
+    UInt = QMetaType::UInt,
     LongLong = QMetaType::LongLong,
+    ULongLong = QMetaType::ULongLong,
+    Float = QMetaType::Float,
+    Double = QMetaType::Double,
     String = QMetaType::QString,
     ByteArray = QMetaType::QByteArray,
     Hash = QMetaType::QVariantHash,

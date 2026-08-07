@@ -153,6 +153,7 @@ pub mod ffi {
         pub fn cowstring_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn cowurl_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn httpheaders_test(out_ex: *mut TestException) -> libc::c_int;
+        pub fn json_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn jwt_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn timer_test(out_ex: *mut TestException) -> libc::c_int;
         pub fn defercall_test(out_ex: *mut TestException) -> libc::c_int;

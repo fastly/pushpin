@@ -68,6 +68,7 @@ HEADERS += \
 	$$PWD/timerwheel.h \
 	$$PWD/reactor.h \
 	$$PWD/executor.h \
+	$$PWD/json.h \
 	$$PWD/jwt.h \
 	$$PWD/timer.h \
 	$$PWD/defercall.h \
@@ -103,6 +104,7 @@ SOURCES += \
 	$$PWD/timerwheel.cpp \
 	$$PWD/reactor.cpp \
 	$$PWD/executor.cpp \
+	$$PWD/json.cpp \
 	$$PWD/jwt.cpp \
 	$$PWD/timer.cpp \
 	$$PWD/defercall.cpp \
