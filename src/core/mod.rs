@@ -144,6 +144,11 @@ mod tests {
         unsafe { ffi::httpheaders_test(out_ex) == 0 }
     }
 
+    fn json_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::json_test(out_ex) == 0 }
+    }
+
     fn jwt_test(out_ex: &mut TestException) -> bool {
         // SAFETY: safe to call
         unsafe { ffi::jwt_test(out_ex) == 0 }
@@ -192,6 +197,11 @@ mod tests {
     #[test]
     fn httpheaders() {
         run_cpp(httpheaders_test);
+    }
+
+    #[test]
+    fn json() {
+        run_cpp(json_test);
     }
 
     #[test]

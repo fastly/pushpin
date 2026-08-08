@@ -3,6 +3,7 @@ SOURCES += \
 	$$PWD/cowstringtest.cpp \
 	$$PWD/cowurltest.cpp \
 	$$PWD/httpheaderstest.cpp \
+	$$PWD/jsontest.cpp \
 	$$PWD/jwttest.cpp \
 	$$PWD/timertest.cpp \
 	$$PWD/defercalltest.cpp \

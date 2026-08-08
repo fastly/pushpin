@@ -23,12 +23,11 @@
 
 #include "jwt.h"
 
+#include "json.h"
+#include "qtcompat.h"
 #include "variant.h"
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QString>
 
 namespace Jwt {
 
@@ -184,8 +183,7 @@ QByteArray encode(const Variant &claim, const EncodingKey &key) {
         return QByteArray();
     }
 
-    QByteArray claimJson =
-        QJsonDocument(QJsonObject::fromVariantMap(claim.toMap())).toJson(QJsonDocument::Compact);
+    QByteArray claimJson = Json::toString(claim.toMap());
     if (claimJson.isNull())
         return QByteArray();
 
@@ -212,12 +210,11 @@ Variant decode(const QByteArray &token, const DecodingKey &key) {
     if (claimJson.isEmpty())
         return Variant();
 
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(claimJson, &error);
-    if (error.error != QJsonParseError::NoError || !doc.isObject())
+    Variant result = Json::fromString(claimJson);
+    if (!result.isValid() || typeId(result) != VariantType::Map)
         return Variant();
 
-    return doc.object().toVariantMap();
+    return result;
 }
 
 } // namespace Jwt
