@@ -29,6 +29,19 @@
 
 using namespace VariantUtil;
 
+static WsControlMessage::MessageType messageTypeFromString(const QString &s) {
+    if (s == "text")
+        return WsControlMessage::Text;
+    else if (s == "binary")
+        return WsControlMessage::Binary;
+    else if (s == "ping")
+        return WsControlMessage::Ping;
+    else if (s == "pong")
+        return WsControlMessage::Pong;
+    else
+        return (WsControlMessage::MessageType)-1;
+}
+
 WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QString *errorMessage) {
     QString pn = "grip control packet";
 
@@ -65,6 +78,8 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
         out.type = SendDelayed;
     else if (type == "flush-delayed")
         out.type = FlushDelayed;
+    else if (type == "auto-respond")
+        out.type = AutoRespond;
     else {
         setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
         return WsControlMessage();
@@ -136,15 +151,9 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
         }
 
         if (!typeStr.isNull()) {
-            if (typeStr == "text")
-                out.messageType = Text;
-            else if (typeStr == "binary")
-                out.messageType = Binary;
-            else if (typeStr == "ping")
-                out.messageType = Ping;
-            else if (typeStr == "pong")
-                out.messageType = Pong;
-            else {
+            out.messageType = messageTypeFromString(typeStr);
+
+            if ((int)out.messageType < 0) {
                 setError(ok, errorMessage,
                          QString("%1 contains 'message-type' with unknown value").arg(pn));
                 return WsControlMessage();
@@ -154,44 +163,20 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
             out.messageType = Text;
         }
 
-        if (keyedObjectContains(in, "content-bin")) {
-            Variant vcontentBin = keyedObjectGetValue(in, "content-bin");
+        bool isBin = false;
+        out.content = getBytes(in, pn, "content", "content-bin", false, &ok_, errorMessage, &isBin);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return WsControlMessage();
+        }
 
-            if (typeId(in) == VariantType::Map) // JSON input
-            {
-                if (typeId(vcontentBin) != VariantType::String) {
-                    setError(ok, errorMessage,
-                             QString("%1 contains 'content-bin' with wrong type").arg(pn));
-                    return WsControlMessage();
-                }
-
-                out.content = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
-            } else {
-                if (typeId(vcontentBin) != VariantType::ByteArray) {
-                    setError(ok, errorMessage,
-                             QString("%1 contains 'content-bin' with wrong type").arg(pn));
-                    return WsControlMessage();
-                }
-
-                out.content = vcontentBin.toByteArray();
-            }
-
-            if (((int)out.messageType) == -1)
+        if (((int)out.messageType) == -1) {
+            if (isBin) {
                 out.messageType = Binary;
-        } else if (keyedObjectContains(in, "content")) {
-            Variant vcontent = keyedObjectGetValue(in, "content");
-            if (typeId(vcontent) == VariantType::ByteArray)
-                out.content = vcontent.toByteArray();
-            else if (typeId(vcontent) == VariantType::String)
-                out.content = vcontent.toString().toUtf8();
-            else {
-                setError(ok, errorMessage,
-                         QString("%1 contains 'content' with wrong type").arg(pn));
-                return WsControlMessage();
-            }
-
-            if (((int)out.messageType) == -1)
+            } else {
                 out.messageType = Text;
+            }
         }
 
         if (!out.content.isNull()) {
@@ -223,6 +208,88 @@ WsControlMessage WsControlMessage::fromVariant(const Variant &in, bool *ok, QStr
 
             if (!mode.isNull())
                 out.keepAliveMode = mode.toUtf8();
+        }
+    } else if (out.type == AutoRespond) {
+        QString matchTypeStr = getString(in, pn, "match-message-type", false, &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return WsControlMessage();
+        }
+
+        if (!matchTypeStr.isNull()) {
+            out.matchMessageType = messageTypeFromString(matchTypeStr);
+
+            if ((int)out.matchMessageType < 0) {
+                setError(ok, errorMessage,
+                         QString("%1 contains 'match-message-type' with unknown value").arg(pn));
+                return WsControlMessage();
+            }
+        }
+
+        bool isBin = false;
+        out.matchContent = getBytes(in, pn, "match-content", "match-content-bin", false, &ok_,
+                                    errorMessage, &isBin);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return WsControlMessage();
+        }
+
+        // If match-content specified, default match-message-type to the input type
+        if (!out.matchContent.isNull() && ((int)out.matchMessageType) < 0) {
+            if (isBin) {
+                out.matchMessageType = Binary;
+            } else {
+                out.matchMessageType = Text;
+            }
+        }
+
+        out.matchContentPtr = getString(in, pn, "match-content-ptr", false, &ok_, errorMessage);
+        if (!ok_) {
+            if (ok)
+                *ok = false;
+            return WsControlMessage();
+        }
+
+        // match-message-type or match-content must be specified to accept response config
+        if (((int)out.matchMessageType) >= 0 || !out.matchContent.isNull()) {
+            QString typeStr = getString(in, pn, "message-type", false, &ok_, errorMessage);
+            if (!ok_) {
+                if (ok)
+                    *ok = false;
+                return WsControlMessage();
+            }
+
+            if (!typeStr.isNull()) {
+                out.messageType = messageTypeFromString(typeStr);
+
+                if ((int)out.messageType < 0) {
+                    setError(ok, errorMessage,
+                             QString("%1 contains 'message-type' with unknown value").arg(pn));
+                    return WsControlMessage();
+                }
+            } else {
+                // Default
+                out.messageType = Text;
+            }
+
+            isBin = false;
+            out.content =
+                getBytes(in, pn, "content", "content-bin", false, &ok_, errorMessage, &isBin);
+            if (!ok_) {
+                if (ok)
+                    *ok = false;
+                return WsControlMessage();
+            }
+
+            if (((int)out.messageType) < 0) {
+                if (isBin) {
+                    out.messageType = Binary;
+                } else {
+                    out.messageType = Text;
+                }
+            }
         }
     }
 

@@ -92,6 +92,7 @@ HEADERS += \
 	$$PWD/zrpcmanager.h \
 	$$PWD/zrpcrequest.h \
 	$$PWD/statusreasons.h \
+	$$PWD/jsonpointer.h \
 	$$PWD/inspectdata.h \
 	$$PWD/cors.h \
 	$$PWD/simplehttpserver.h \
@@ -125,6 +126,7 @@ SOURCES += \
 	$$PWD/zrpcmanager.cpp \
 	$$PWD/zrpcrequest.cpp \
 	$$PWD/statusreasons.cpp \
+	$$PWD/jsonpointer.cpp \
 	$$PWD/cors.cpp \
 	$$PWD/simplehttpserver.cpp \
 	$$PWD/stats.cpp \

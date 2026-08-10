@@ -35,6 +35,17 @@
 
 using Connection = boost::signals2::scoped_connection;
 
+static WebSocket::Frame::Type contentTypeToFrameType(const QString &contentType) {
+    if (contentType == "binary")
+        return WebSocket::Frame::Binary;
+    else if (contentType == "ping")
+        return WebSocket::Frame::Ping;
+    else if (contentType == "pong")
+        return WebSocket::Frame::Pong;
+    else
+        return WebSocket::Frame::Text;
+}
+
 class WsControlSession::Private {
 public:
     WsControlSession *q;
@@ -200,15 +211,7 @@ public:
         }
 
         if (item.type == WsControlPacket::Item::Send) {
-            WebSocket::Frame::Type type;
-            if (item.contentType == "binary")
-                type = WebSocket::Frame::Binary;
-            else if (item.contentType == "ping")
-                type = WebSocket::Frame::Ping;
-            else if (item.contentType == "pong")
-                type = WebSocket::Frame::Pong;
-            else
-                type = WebSocket::Frame::Text;
+            WebSocket::Frame::Type type = contentTypeToFrameType(item.contentType);
 
             // For sends, don't ack until written
 
@@ -230,6 +233,21 @@ public:
                 q->keepAliveSetupEventReceived(WsControl::NoKeepAlive, -1);
         } else if (item.type == WsControlPacket::Item::Refresh) {
             q->refreshEventReceived();
+        } else if (item.type == WsControlPacket::Item::AutoRespond) {
+            WsControl::AutoRespondConfig config;
+
+            if (!item.matchContentType.isEmpty())
+                config.matchType = contentTypeToFrameType(item.matchContentType);
+
+            config.matchContent = item.matchContent;
+            config.matchContentPtr = item.matchContentPtr;
+
+            if (!item.contentType.isEmpty())
+                config.type = contentTypeToFrameType(item.contentType);
+
+            config.content = item.message;
+
+            q->autoRespondEventReceived(config);
         } else if (item.type == WsControlPacket::Item::Close) {
             q->closeEventReceived(item.code, item.reason);
         } else if (item.type == WsControlPacket::Item::Detach) {

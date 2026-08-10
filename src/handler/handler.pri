@@ -1,7 +1,6 @@
 HEADERS += \
 	$$PWD/deferred.h \
 	$$PWD/variantutil.h \
-	$$PWD/jsonpointer.h \
 	$$PWD/jsonpatch.h \
 	$$PWD/detectrule.h \
 	$$PWD/lastids.h \
@@ -32,7 +31,6 @@ HEADERS += \
 SOURCES += \
 	$$PWD/deferred.cpp \
 	$$PWD/variantutil.cpp \
-	$$PWD/jsonpointer.cpp \
 	$$PWD/jsonpatch.cpp \
 	$$PWD/sessionrequest.cpp \
 	$$PWD/requeststate.cpp \
