@@ -4504,10 +4504,12 @@ fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
 async fn client_connect_to_origind<'a>(
     log_id: &str,
     rdata: &zhttppacket::RequestData<'_, '_>,
+    use_tls: bool,
     uri_host: &str,
     connect_host: &str,
     connect_port: u16,
     origindman: &origind::OrigindManager,
+    service_id: &str,
     mtls_config: Option<origind::MtlsConfig>,
 ) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let host = if rdata.trust_connect_host {
@@ -4516,13 +4518,22 @@ async fn client_connect_to_origind<'a>(
         uri_host
     };
 
+    let tls_config = if use_tls {
+        Some(origind::TlsConfig {
+            cert_hostname: host,
+            check_cert: !rdata.ignore_tls_errors,
+            mtls: mtls_config,
+        })
+    } else {
+        None
+    };
+
     let stream = origindman
-        .connect_tls(
+        .connect(
             connect_host,
             connect_port,
-            host,
-            !rdata.ignore_tls_errors,
-            mtls_config,
+            service_id,
+            origind::ConnectionOptions { tls: tls_config },
         )
         .await
         .map_err(|e| {
@@ -4567,20 +4578,24 @@ async fn client_connect<'a>(
     };
 
     if let Some(origindman) = origindman {
-        // Parse mTLS configuration if available
-        let mtls_config = origind::MtlsConfig::from_backend_data(rdata.backend_data)?;
+        if !rdata.backend_data.is_empty() {
+            let backend_config = origind::BackendConfig::from_json(rdata.backend_data)?;
+            let mtls_config = backend_config.mtls();
 
-        if use_tls && (mtls_config.is_some() || origind_rate > ((random() % 100) as u8)) {
-            return client_connect_to_origind(
-                log_id,
-                rdata,
-                uri_host,
-                connect_host,
-                connect_port,
-                origindman,
-                mtls_config,
-            )
-            .await;
+            if mtls_config.is_some() || origind_rate > ((random() % 100) as u8) {
+                return client_connect_to_origind(
+                    log_id,
+                    rdata,
+                    use_tls,
+                    uri_host,
+                    connect_host,
+                    connect_port,
+                    origindman,
+                    &backend_config.service_id,
+                    mtls_config,
+                )
+                .await;
+            }
         }
     }
 
