@@ -25,12 +25,11 @@
 
 #include "format.h"
 #include "idformat.h"
+#include "json.h"
 #include "log.h"
 #include "variant.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 
 #define REQUEST_TIMEOUT_SECS 10
 
@@ -496,8 +495,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
             vmap[it.key()] = it.value();
         }
 
-        QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
-        headers += HttpHeader("Sub-Meta", doc.toJson(QJsonDocument::Compact));
+        headers += HttpHeader("Sub-Meta", Json::toString(vmap));
     }
 
     {
@@ -508,8 +506,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
             vmap[it.key()] = it.value();
         }
 
-        QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
-        headers += HttpHeader("Pub-Meta", doc.toJson(QJsonDocument::Compact));
+        headers += HttpHeader("Pub-Meta", Json::toString(vmap));
     }
 
     {

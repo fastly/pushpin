@@ -44,8 +44,6 @@
 #include "zwebsocket.h"
 #include <QDateTime>
 #include <QHostAddress>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QRandomGenerator>
 #include <assert.h>
 

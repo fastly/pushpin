@@ -24,12 +24,11 @@
 #include "testwebsocket.h"
 
 #include "defercall.h"
+#include "json.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "statusreasons.h"
 #include "urlquery.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <assert.h>
 
 #define BUFFER_SIZE 200000
@@ -87,11 +86,10 @@ public:
                 response.headers += HttpHeader("Sec-WebSocket-Extensions", "grip");
 
                 foreach (const QString &channel, channels) {
-                    QJsonObject obj;
+                    VariantMap obj;
                     obj["type"] = QString("subscribe");
                     obj["channel"] = channel;
-                    inFrames +=
-                        Frame(Frame::Text, QByteArray("c:") + QJsonDocument(obj).toJson(), false);
+                    inFrames += Frame(Frame::Text, QByteArray("c:") + Json::toString(obj), false);
                 }
             }
 

@@ -25,6 +25,7 @@
 #include "cowstring.h"
 #include "domainmap.h"
 #include "eventloop.h"
+#include "json.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -41,8 +42,6 @@
 #include "zmqsocket.h"
 #include "zmqvalve.h"
 #include <QDir>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <boost/signals2.hpp>
 #include <chrono>
 #include <thread>
@@ -480,12 +479,11 @@ private:
         QByteArray hold;
 
         if (acceptHeaders.get("Content-Type") == "application/grip-instruct") {
-            QJsonParseError e;
-            QJsonDocument doc = QJsonDocument::fromJson(acceptIn, &e);
-            TEST_ASSERT(e.error == QJsonParseError::NoError);
-            TEST_ASSERT(doc.isObject());
+            Variant doc = Json::fromString(acceptIn);
+            TEST_ASSERT(doc.isValid());
+            TEST_ASSERT(typeId(doc) == VariantType::Map);
 
-            jsonInstruct = doc.object().toVariantMap();
+            jsonInstruct = doc.toMap();
 
             if (jsonInstruct.contains("hold"))
                 hold = jsonInstruct["hold"].toMap().value("mode").toString().toUtf8();
@@ -719,12 +717,11 @@ static void passthroughJsonp(TestState &state, std::function<void(int)> loop_wai
     TEST_ASSERT(wrapper->in.endsWith("});\n"));
     QByteArray dataRaw = wrapper->in.mid(9, wrapper->in.size() - 9 - 3);
 
-    QJsonParseError e;
-    QJsonDocument doc = QJsonDocument::fromJson(dataRaw, &e);
-    TEST_ASSERT(e.error == QJsonParseError::NoError);
-    TEST_ASSERT(doc.isObject());
+    Variant doc = Json::fromString(dataRaw);
+    TEST_ASSERT(doc.isValid());
+    TEST_ASSERT(typeId(doc) == VariantType::Map);
 
-    VariantMap data = doc.object().toVariantMap();
+    VariantMap data = doc.toMap();
 
     TEST_ASSERT_EQ(data["code"].toInt(), 200);
     TEST_ASSERT_EQ(data["body"].toByteArray(), QByteArray("{\"hello\": \"world\"}"));

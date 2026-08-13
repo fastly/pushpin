@@ -29,8 +29,6 @@
 #include "qtcompat.h"
 #include "variant.h"
 #include <QDateTime>
-#include <QJsonDocument>
-#include <QJsonObject>
 
 static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key) {
     VariantMap claim;

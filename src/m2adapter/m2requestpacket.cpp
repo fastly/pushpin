@@ -23,11 +23,10 @@
 
 #include "m2requestpacket.h"
 
+#include "json.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "variant.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QSet>
 
 static bool isAllCaps(const QString &s) {
@@ -141,12 +140,11 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in) {
         }
     } else // ByteArray
     {
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(vheaders.toByteArray(), &error);
-        if (error.error != QJsonParseError::NoError || !doc.isObject())
+        Variant doc = Json::fromString(vheaders.toByteArray());
+        if (!doc.isValid() || typeId(doc) != VariantType::Map)
             return false;
 
-        VariantMap headersMap = doc.object().toVariantMap();
+        VariantMap headersMap = doc.toMap();
         for (auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit) {
             const QString &key = vit.key();
             const Variant &val = vit.value();
@@ -204,12 +202,11 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in) {
         downloadCredits = m2headers.value("DOWNLOAD_CREDITS").toInt();
 
     if (m2method == "JSON") {
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(body, &error);
-        if (error.error != QJsonParseError::NoError || !doc.isObject())
+        Variant doc = Json::fromString(body);
+        if (!doc.isValid() || typeId(doc) != VariantType::Map)
             return false;
 
-        VariantMap data = doc.object().toVariantMap();
+        VariantMap data = doc.toMap();
         if (!data.contains("type") || typeId(data["type"]) != VariantType::String)
             return false;
 
