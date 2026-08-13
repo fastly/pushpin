@@ -31,6 +31,7 @@
 #include "defercall.h"
 #include "inspectdata.h"
 #include "inspectrequest.h"
+#include "json.h"
 #include "layertracker.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
@@ -46,9 +47,6 @@
 #include "zrpcchecker.h"
 #include "zrpcmanager.h"
 #include <QHostAddress>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <assert.h>
 
 #define MAX_SHARED_REQUEST_BODY 100000
@@ -107,8 +105,7 @@ static bool validMethod(const QString &in) {
 }
 
 static QByteArray serializeJsonString(const QString &s) {
-    QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s))
-                         .toJson(QJsonDocument::Compact);
+    QByteArray tmp = Json::toString(VariantList() << s);
 
     assert(tmp.length() >= 4);
     assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -527,8 +524,7 @@ public:
                     vheaders[h.first.asQByteArray()] = h.second.asQByteArray();
             }
 
-            QByteArray headersJson =
-                QJsonDocument(QJsonObject::fromVariantMap(vheaders)).toJson(QJsonDocument::Compact);
+            QByteArray headersJson = Json::toString(vheaders);
             if (headersJson.isNull())
                 return QByteArray();
 
@@ -621,12 +617,9 @@ public:
 
         HttpHeaders headers;
         if (query.hasQueryItem("_headers")) {
-            QJsonParseError e;
-            QJsonDocument doc = QJsonDocument::fromJson(
-                parsePercentEncoding(
-                    query.queryItemValue("_headers", CowUrl::FullyEncoded).toUtf8()),
-                &e);
-            if (e.error != QJsonParseError::NoError || !doc.isObject()) {
+            Variant doc = Json::fromString(parsePercentEncoding(
+                query.queryItemValue("_headers", CowUrl::FullyEncoded).toUtf8()));
+            if (!doc.isValid() || typeId(doc) != VariantType::Map) {
                 log_debug("requestsession: id=%s invalid _headers parameter, rejecting",
                           rid.second.data());
                 *ok = false;
@@ -634,7 +627,7 @@ public:
                 return false;
             }
 
-            VariantMap headersMap = doc.object().toVariantMap();
+            VariantMap headersMap = doc.toMap();
 
             for (auto vit = headersMap.constBegin(); vit != headersMap.constEnd(); ++vit) {
                 if (typeId(vit.value()) != VariantType::String) {

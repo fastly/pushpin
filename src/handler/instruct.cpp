@@ -24,12 +24,11 @@
 #include "instruct.h"
 
 #include "filter.h"
+#include "json.h"
 #include "qtcompat.h"
 #include "statusreasons.h"
 #include "variant.h"
 #include "variantutil.h"
-#include <QJsonDocument>
-#include <QJsonObject>
 
 #define DEFAULT_RESPONSE_TIMEOUT 55
 #define MINIMUM_RESPONSE_TIMEOUT 5
@@ -323,19 +322,18 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
             return Instruct();
         }
 
-        QJsonParseError e;
-        QJsonDocument doc = QJsonDocument::fromJson(response.body, &e);
-        if (e.error != QJsonParseError::NoError) {
+        Variant doc = Json::fromString(response.body);
+        if (!doc.isValid()) {
             setError(ok, errorMessage, "failed to parse application/grip-instruct content as JSON");
             return Instruct();
         }
 
-        if (!doc.isObject()) {
+        if (typeId(doc) != VariantType::Map) {
             setError(ok, errorMessage, "instruct must be an object");
             return Instruct();
         }
 
-        VariantMap minstruct = doc.object().toVariantMap();
+        VariantMap minstruct = doc.toMap();
 
         bool ok_;
 

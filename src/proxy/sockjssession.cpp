@@ -25,6 +25,7 @@
 
 #include "bufferlist.h"
 #include "defercall.h"
+#include "json.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "qtcompat.h"
@@ -34,9 +35,6 @@
 #include "variant.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <assert.h>
 
 using std::map;
@@ -349,16 +347,15 @@ public:
                 param = query.queryItemValue("d").toUtf8();
             }
 
-            QJsonParseError error;
-            QJsonDocument doc = QJsonDocument::fromJson(param, &error);
-            if (error.error != QJsonParseError::NoError || !doc.isArray()) {
+            Variant doc = Json::fromString(param);
+            if (!doc.isValid() || typeId(doc) != VariantType::List) {
                 requests.insert(
                     _req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
                 respondError(_req, 400, "Bad Request", "Payload expected");
                 return;
             }
 
-            VariantList messages = doc.array().toVariantList();
+            VariantList messages = doc.toList();
 
             QList<Frame> frames;
             int bytes = 0;
@@ -486,8 +483,7 @@ public:
                 VariantList messages;
                 messages += QString::fromUtf8(frame.data);
 
-                QByteArray arrayJson = QJsonDocument(QJsonArray::fromVariantList(messages))
-                                           .toJson(QJsonDocument::Compact);
+                QByteArray arrayJson = Json::toString(messages);
                 Frame f(Frame::Text, "a" + arrayJson, false);
 
                 pendingWrites += WriteItem(WriteItem::User, frame.data.size());
@@ -687,14 +683,13 @@ public:
 
                 QByteArray data = bufs.toByteArray();
 
-                QJsonParseError e;
-                QJsonDocument doc = QJsonDocument::fromJson(data, &e);
-                if (e.error != QJsonParseError::NoError || !doc.isArray()) {
+                Variant doc = Json::fromString(data);
+                if (!doc.isValid() || typeId(doc) != VariantType::List) {
                     error = true;
                     break;
                 }
 
-                VariantList messages = doc.array().toVariantList();
+                VariantList messages = doc.toList();
 
                 QList<Frame> frames;
                 int bytes = 0;

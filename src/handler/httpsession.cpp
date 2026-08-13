@@ -28,6 +28,7 @@
 #include "defercall.h"
 #include "filterstack.h"
 #include "httpsessionupdatemanager.h"
+#include "json.h"
 #include "jsonpatch.h"
 #include "log.h"
 #include "logutil.h"
@@ -43,9 +44,6 @@
 #include "variantutil.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QRandomGenerator>
 #include <assert.h>
 
@@ -59,14 +57,9 @@
 static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPatch) {
     QByteArray body;
 
-    QJsonParseError e;
-    QJsonDocument doc = QJsonDocument::fromJson(in, &e);
-    if (e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray())) {
-        Variant vbody;
-        if (doc.isObject())
-            vbody = doc.object().toVariantMap();
-        else // IsArray
-            vbody = doc.array().toVariantList();
+    Variant vdoc = Json::fromString(in);
+    if (vdoc.isValid() && (typeId(vdoc) == VariantType::Map || typeId(vdoc) == VariantType::List)) {
+        Variant vbody = vdoc;
 
         QString errorMessage;
         vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
@@ -74,13 +67,7 @@ static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPa
             vbody = VariantUtil::convertToJsonStyle(vbody);
         if (vbody.isValid() &&
             (typeId(vbody) == VariantType::Map || typeId(vbody) == VariantType::List)) {
-            QJsonDocument doc;
-            if (typeId(vbody) == VariantType::Map)
-                doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
-            else // List
-                doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
-
-            body = doc.toJson(QJsonDocument::Compact);
+            body = Json::toString(vbody);
 
             if (in.endsWith("\r\n"))
                 body += "\r\n";
@@ -847,8 +834,7 @@ private:
 
                     result["body"] = QString::fromUtf8(body);
 
-                    QByteArray resultJson = QJsonDocument(QJsonObject::fromVariantMap(result))
-                                                .toJson(QJsonDocument::Compact);
+                    QByteArray resultJson = Json::toString(result);
 
                     body = "/**/" + adata.jsonpCallback + '(' + resultJson + ");\n";
                 } else {

@@ -24,6 +24,7 @@
 #include "sockjsmanager.h"
 
 #include "bufferlist.h"
+#include "json.h"
 #include "log.h"
 #include "qtcompat.h"
 #include "sockjssession.h"
@@ -33,9 +34,6 @@
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <QCryptographicHash>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QRandomGenerator>
 #include <QtGlobal>
 #include <assert.h>
@@ -65,8 +63,7 @@ const char *iframeHtmlTemplate =
     "</html>\n";
 
 static QByteArray serializeJsonString(const QString &s) {
-    QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(VariantList() << s))
-                         .toJson(QJsonDocument::Compact);
+    QByteArray tmp = Json::toString(VariantList() << s);
 
     assert(tmp.length() >= 4);
     assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
@@ -303,15 +300,10 @@ public:
             headers += HttpHeader("Content-Type", "text/plain");
 
         QByteArray body;
-        if (data.isValid()) {
-            QJsonDocument doc;
-            if (typeId(data) == VariantType::Map)
-                doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
-            else // List
-                doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
 
-            body = doc.toJson(QJsonDocument::Compact);
-        }
+        if (data.isValid())
+            body = Json::toString(data);
+
         if (!prefix.isEmpty())
             body.prepend(prefix);
 

@@ -25,6 +25,7 @@
 
 #include "defercall.h"
 #include "httpheaders.h"
+#include "json.h"
 #include "log.h"
 #include "simplehttpserver.h"
 #include "timer.h"
@@ -34,9 +35,6 @@
 #include "zmqsocket.h"
 #include "zutil.h"
 #include <QDateTime>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QVector>
 #include <assert.h>
 
 // Make this somewhat big since PUB is lossy
@@ -759,8 +757,7 @@ public:
         if (outputFormat == TnetStringFormat) {
             buf = prefix + " T" + TnetString::fromVariant(vpacket);
         } else if (outputFormat == JsonFormat) {
-            QJsonObject obj = QJsonObject::fromVariantHash(vpacket.toHash());
-            buf = prefix + " J" + QJsonDocument(obj).toJson(QJsonDocument::Compact);
+            buf = prefix + " J" + Json::toString(vpacket.toHash());
         }
 
         if (!buf.isEmpty()) {

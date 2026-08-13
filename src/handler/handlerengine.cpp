@@ -23,9 +23,7 @@
 
 #include "handlerengine.h"
 
-#include "cidset.h"
 #include "conncheckworker.h"
-#include "controlrequest.h"
 #include "defercall.h"
 #include "deferred.h"
 #include "detectrule.h"
@@ -34,6 +32,7 @@
 #include "httpsessionupdatemanager.h"
 #include "inspectdata.h"
 #include "instruct.h"
+#include "json.h"
 #include "jsonpointer.h"
 #include "lastids.h"
 #include "log.h"
@@ -69,9 +68,6 @@
 #include "zrpcmanager.h"
 #include "zrpcrequest.h"
 #include "zutil.h"
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <algorithm>
 #include <assert.h>
 
@@ -296,17 +292,8 @@ private:
                     jsonData = requestData.body;
                 }
 
-                QJsonParseError e;
-                QJsonDocument doc = QJsonDocument::fromJson(jsonData, &e);
-                if (e.error != QJsonParseError::NoError)
-                    continue;
-
-                Variant vdata;
-                if (doc.isObject())
-                    vdata = doc.object().toVariantMap();
-                else if (doc.isArray())
-                    vdata = doc.array().toVariantList();
-                else
+                Variant vdata = Json::fromString(jsonData);
+                if (!vdata.isValid())
                     continue;
 
                 JsonPointer ptr = JsonPointer::resolve(&vdata, rule.sidPtr);
@@ -2184,9 +2171,8 @@ private:
         Variant data;
         bool ok_;
         if (message.length() > 0 && message[0] == 'J') {
-            QJsonParseError e;
-            QJsonDocument doc = QJsonDocument::fromJson(message.mid(1).asQByteArray(), &e);
-            if (e.error != QJsonParseError::NoError) {
+            Variant doc = Json::fromString(message.mid(1).asQByteArray());
+            if (!doc.isValid()) {
                 if (errorMessage)
                     *errorMessage =
                         QString("received message with invalid format (json parse failed)");
@@ -2195,8 +2181,8 @@ private:
                 return data;
             }
 
-            if (doc.isObject()) {
-                data = doc.object().toVariantMap();
+            if (typeId(doc) == VariantType::Map) {
+                data = doc.toMap();
             } else {
                 if (errorMessage)
                     *errorMessage =
@@ -2389,17 +2375,12 @@ private:
                        item.type == WsControlPacket::Item::Cancel) {
                 removeWsSession(s);
             } else if (item.type == WsControlPacket::Item::Grip) {
-                QJsonParseError e;
-                QJsonDocument doc = QJsonDocument::fromJson(item.message, &e);
-                if (e.error != QJsonParseError::NoError || (!doc.isObject() && !doc.isArray())) {
+                Variant data = Json::fromString(item.message);
+                if (!data.isValid() ||
+                    (typeId(data) != VariantType::Map && typeId(data) != VariantType::List)) {
                     log_debug("grip control message is not valid json");
                     continue;
                 }
-
-                if (doc.isObject())
-                    data = doc.object().toVariantMap();
-                else // IsArray
-                    data = doc.array().toVariantList();
 
                 QString errorMessage;
                 WsControlMessage cm = WsControlMessage::fromVariant(data, &ok, &errorMessage);
@@ -2708,19 +2689,18 @@ private:
             httpControlRespond(req, 200, "OK", "Pushpin API\n");
         } else if (path == "/publish") {
             if (req->requestMethod() == "POST") {
-                QJsonParseError e;
-                QJsonDocument doc = QJsonDocument::fromJson(req->requestBody(), &e);
-                if (e.error != QJsonParseError::NoError) {
+                Variant doc = Json::fromString(req->requestBody());
+                if (!doc.isValid()) {
                     httpControlRespond(req, 400, "Bad Request", "Body is not valid JSON.\n");
                     return;
                 }
 
-                if (!doc.isObject()) {
+                if (typeId(doc) != VariantType::Map) {
                     httpControlRespond(req, 400, "Bad Request", "Invalid format.\n");
                     return;
                 }
 
-                VariantMap mdata = doc.object().toVariantMap();
+                VariantMap mdata = doc.toMap();
                 VariantList vitems;
 
                 if (!mdata.contains("items")) {
@@ -2750,8 +2730,7 @@ private:
                 if (responseContentType == "application/json") {
                     VariantMap obj;
                     obj["message"] = message;
-                    QString body = QJsonDocument(QJsonObject::fromVariantMap(obj))
-                                       .toJson(QJsonDocument::Compact);
+                    QString body = QString::fromUtf8(Json::toString(obj));
                     httpControlRespond(req, 200, "OK", body + "\n", responseContentType,
                                        HttpHeaders(), items.count());
                 } else // Text/plain
@@ -2775,8 +2754,7 @@ private:
                 if (responseContentType == "application/json") {
                     VariantMap obj;
                     obj["message"] = message;
-                    QString body = QJsonDocument(QJsonObject::fromVariantMap(obj))
-                                       .toJson(QJsonDocument::Compact);
+                    QString body = QString::fromUtf8(Json::toString(obj));
                     httpControlRespond(req, 200, "OK", body + "\n", responseContentType,
                                        HttpHeaders());
                 } else // Text/plain

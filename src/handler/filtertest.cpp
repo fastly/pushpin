@@ -21,13 +21,12 @@
  */
 
 #include "filter.h"
+#include "json.h"
 #include "log.h"
 #include "ratelimiter.h"
 #include "test.h"
 #include "zhttpmanager.h"
 #include <QDir>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <boost/signals2.hpp>
 #include <unordered_map>
 
@@ -119,12 +118,12 @@ public:
                 return;
             }
 
-            QJsonDocument subMetaDoc =
-                QJsonDocument::fromJson(req->requestHeaders().get("Sub-Meta").asQByteArray());
-            QJsonObject subMeta = subMetaDoc.object();
-            QJsonDocument pubMetaDoc =
-                QJsonDocument::fromJson(req->requestHeaders().get("Pub-Meta").asQByteArray());
-            QJsonObject pubMeta = pubMetaDoc.object();
+            Variant subMetaDoc =
+                Json::fromString(req->requestHeaders().get("Sub-Meta").asQByteArray());
+            VariantMap subMeta = subMetaDoc.toMap();
+            Variant pubMetaDoc =
+                Json::fromString(req->requestHeaders().get("Pub-Meta").asQByteArray());
+            VariantMap pubMeta = pubMetaDoc.toMap();
 
             QString prepend = subMeta["prepend"].toString();
             QString append = pubMeta["append"].toString();
