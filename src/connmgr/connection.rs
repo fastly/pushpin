@@ -1372,7 +1372,7 @@ where
     }
 }
 
-#[tracing::instrument(name = "error_response", skip_all, fields(http.status_code, error = ?e))]
+#[tracing::instrument(name = "error_response", skip_all, fields(http.status_code, otel.status_code, error = ?e))]
 async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     mut resp: server::Response<'_, R, W>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (memorypool::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -2607,7 +2607,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tracing::instrument(name = "stream_websocket", skip_all, fields(connection.id = %log_id, ws.client_close_code, ws.server_close_code))]
+#[tracing::instrument(name = "stream_websocket", skip_all, fields(connection.id = %log_id, ws.client_close_code, ws.server_close_code, otel.status_code))]
 async fn stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
@@ -3575,7 +3575,7 @@ struct StreamRespondScratch {
 #[tracing::instrument(
     name = "stream_respond",
     skip_all,
-    fields(connection.id = %id, http.status_code)
+    fields(connection.id = %id, http.status_code, otel.status_code)
 )]
 async fn server_stream_respond<'buf, 'st, 'headers, 'resp: 'headers, 'zs, 'tr, R, W, R1, R2>(
     id: &'zs str,
