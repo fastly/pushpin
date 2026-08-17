@@ -66,7 +66,7 @@ use crate::core::task::{poll_async, CancellationToken};
 use crate::core::time::Timeout;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
-use crate::observability::{trace_status_code, trace_ws_close_code, WsCloseSource};
+use crate::core::tracing::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use crate::proxy::domainmap::DomainMap;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;

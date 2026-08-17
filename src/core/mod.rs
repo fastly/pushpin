@@ -45,6 +45,7 @@ pub mod thread;
 pub mod time;
 pub mod timer;
 pub mod tnetstring;
+pub mod tracing;
 pub mod url;
 pub mod waker;
 pub mod zmq;

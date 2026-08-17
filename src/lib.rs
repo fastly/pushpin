@@ -25,7 +25,6 @@
 pub mod connmgr;
 pub mod core;
 pub mod handler;
-pub mod observability;
 pub mod proxy;
 /// cbindgen:ignore
 pub mod publish;

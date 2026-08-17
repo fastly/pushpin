@@ -38,7 +38,7 @@ use crate::core::log::DebugLogger;
 use crate::core::net::{bind_unix_config, NetListener};
 use crate::core::prometheus::PrometheusServer;
 use crate::core::zmq::SpecInfo;
-//use crate::observability;
+//use crate::core::tracing;
 use ipnet::IpNet;
 use log::{debug, info};
 use signal_hook;
@@ -461,7 +461,7 @@ impl App {
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     debug!("starting...");
 
-    //observability::init_tracing(
+    //tracing::init_tracing(
     //    "pushpin-connmgr",
     //    config.otel_endpoint.as_deref(),
     //    config.otel_resource_attributes.as_deref(),
@@ -483,7 +483,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         info!("stopping...");
     }
 
-    //observability::shutdown_tracing();
+    //tracing::shutdown_tracing();
 
     debug!("stopped");
 
