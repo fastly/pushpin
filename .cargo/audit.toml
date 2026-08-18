@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # Title: Denial of Service via Stack Exhaustion
+    # Crate: time
+    # SAFETY: We don't use any parsing features
+    "RUSTSEC-2026-0009"
+]
