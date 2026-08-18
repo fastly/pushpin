@@ -20,38 +20,33 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include "runnerapp.h"
 #include <QCoreApplication>
 #include <QTimer>
-#include "runnerapp.h"
 
-class RunnerAppMain
-{
+class RunnerAppMain {
 public:
-	RunnerApp *app;
+    RunnerApp *app;
 
-	void start()
-	{
-		app = new RunnerApp;
-		app->quit.connect(boost::bind(&RunnerAppMain::app_quit, this, boost::placeholders::_1));
-		app->start();
-	}
+    void start() {
+        app = new RunnerApp;
+        app->quit.connect(boost::bind(&RunnerAppMain::app_quit, this, boost::placeholders::_1));
+        app->start();
+    }
 
-	void app_quit(int returnCode)
-	{
-		delete app;
-		QCoreApplication::exit(returnCode);
-	}
+    void app_quit(int returnCode) {
+        delete app;
+        QCoreApplication::exit(returnCode);
+    }
 };
 
 extern "C" {
 
-int runner_main(int argc, char **argv)
-{
-	QCoreApplication qapp(argc, argv);
+int runner_main(int argc, char **argv) {
+    QCoreApplication qapp(argc, argv);
 
-	RunnerAppMain appMain;
-	QTimer::singleShot(0, [&appMain]() {appMain.start();});
-	return qapp.exec();
+    RunnerAppMain appMain;
+    QTimer::singleShot(0, [&appMain]() { appMain.start(); });
+    return qapp.exec();
 }
-
 }

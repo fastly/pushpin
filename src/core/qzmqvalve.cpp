@@ -24,118 +24,90 @@
 
 #include "qzmqvalve.h"
 
-#include "qzmqsocket.h"
 #include "defercall.h"
+#include "qzmqsocket.h"
 
 namespace QZmq {
 
-class Valve::Private
-{
+class Valve::Private {
 public:
-	Valve *q;
-	QZmq::Socket *sock;
-	bool isOpen;
-	bool pendingRead;
-	int maxReadsPerEvent;
-	boost::signals2::scoped_connection rrConnection;
-	DeferCall deferCall;
+    Valve *q;
+    QZmq::Socket *sock;
+    bool isOpen;
+    bool pendingRead;
+    int maxReadsPerEvent;
+    boost::signals2::scoped_connection rrConnection;
+    DeferCall deferCall;
 
-	Private(Valve *_q) :
-		q(_q),
-		sock(0),
-		isOpen(false),
-		pendingRead(false),
-		maxReadsPerEvent(100)
-	{
-	}
+    Private(Valve *_q) : q(_q), sock(0), isOpen(false), pendingRead(false), maxReadsPerEvent(100) {}
 
-	void setup(QZmq::Socket *_sock)
-	{
-		sock = _sock;
-		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
-	}
+    void setup(QZmq::Socket *_sock) {
+        sock = _sock;
+        rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+    }
 
-	void queueRead()
-	{
-		if(pendingRead)
-			return;
+    void queueRead() {
+        if (pendingRead)
+            return;
 
-		pendingRead = true;
-		deferCall.defer([=] { queuedRead(); });
-	}
+        pendingRead = true;
+        deferCall.defer([=] { queuedRead(); });
+    }
 
-	void tryRead()
-	{
-		std::weak_ptr<Private> self = q->d;
+    void tryRead() {
+        std::weak_ptr<Private> self = q->d;
 
-		int count = 0;
-		while(isOpen && sock->canRead())
-		{
-			if(count >= maxReadsPerEvent)
-			{
-				queueRead();
-				return;
-			}
+        int count = 0;
+        while (isOpen && sock->canRead()) {
+            if (count >= maxReadsPerEvent) {
+                queueRead();
+                return;
+            }
 
-			QList<QByteArray> msg = sock->read();
+            QList<QByteArray> msg = sock->read();
 
-			if(!msg.isEmpty())
-			{
-				q->readyRead(msg);
-				if(self.expired())
-					return;
-			}
+            if (!msg.isEmpty()) {
+                q->readyRead(msg);
+                if (self.expired())
+                    return;
+            }
 
-			++count;
-		}
-	}
+            ++count;
+        }
+    }
 
-	void sock_readyRead()
-	{
-		if(pendingRead)
-			return;
+    void sock_readyRead() {
+        if (pendingRead)
+            return;
 
-		tryRead();
-	}
+        tryRead();
+    }
 
-	void queuedRead()
-	{
-		pendingRead = false;
-		tryRead();
-	}
+    void queuedRead() {
+        pendingRead = false;
+        tryRead();
+    }
 };
 
-Valve::Valve(QZmq::Socket *sock)
-{
-	d = std::make_shared<Private>(this);
-	d->setup(sock);
+Valve::Valve(QZmq::Socket *sock) {
+    d = std::make_shared<Private>(this);
+    d->setup(sock);
 }
 
 Valve::~Valve() = default;
 
-bool Valve::isOpen() const
-{
-	return d->isOpen;
+bool Valve::isOpen() const { return d->isOpen; }
+
+void Valve::setMaxReadsPerEvent(int max) { d->maxReadsPerEvent = max; }
+
+void Valve::open() {
+    if (!d->isOpen) {
+        d->isOpen = true;
+        if (!d->pendingRead && d->sock->canRead())
+            d->queueRead();
+    }
 }
 
-void Valve::setMaxReadsPerEvent(int max)
-{
-	d->maxReadsPerEvent = max;
-}
+void Valve::close() { d->isOpen = false; }
 
-void Valve::open()
-{
-	if(!d->isOpen)
-	{
-		d->isOpen = true;
-		if(!d->pendingRead && d->sock->canRead())
-			d->queueRead();
-	}
-}
-
-void Valve::close()
-{
-	d->isOpen = false;
-}
-
-}
+} // namespace QZmq

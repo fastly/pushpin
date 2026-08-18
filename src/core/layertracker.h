@@ -23,27 +23,25 @@
 
 #include <QList>
 
-class LayerTracker
-{
+class LayerTracker {
 public:
-	LayerTracker();
+    LayerTracker();
 
-	void reset();
+    void reset();
 
-	void addPlain(int plain);
-	void specifyEncoded(int encoded, int plain);
-	int finished(int encoded);
+    void addPlain(int plain);
+    void specifyEncoded(int encoded, int plain);
+    int finished(int encoded);
 
 private:
-	class Item
-	{
-	public:
-		int plain;
-		int encoded;
-	};
+    class Item {
+    public:
+        int plain;
+        int encoded;
+    };
 
-	int plain_;
-	QList<Item> items_;
+    int plain_;
+    QList<Item> items_;
 };
 
 #endif

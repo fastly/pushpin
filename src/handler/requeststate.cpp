@@ -25,136 +25,124 @@
 
 #include "qtcompat.h"
 
-RequestState RequestState::fromVariant(const QVariant &in)
-{
-	if(typeId(in) != QMetaType::QVariantHash)
-		return RequestState();
+RequestState RequestState::fromVariant(const QVariant &in) {
+    if (typeId(in) != QMetaType::QVariantHash)
+        return RequestState();
 
-	QVariantHash r = in.toHash();
-	RequestState rs;
+    QVariantHash r = in.toHash();
+    RequestState rs;
 
-	if(!r.contains("rid") || typeId(r["rid"]) != QMetaType::QVariantHash)
-		return RequestState();
+    if (!r.contains("rid") || typeId(r["rid"]) != QMetaType::QVariantHash)
+        return RequestState();
 
-	QVariantHash vrid = r["rid"].toHash();
+    QVariantHash vrid = r["rid"].toHash();
 
-	if(!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
-		return RequestState();
+    if (!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
+        return RequestState();
 
-	if(!vrid.contains("id") || typeId(vrid["id"]) != QMetaType::QByteArray)
-		return RequestState();
+    if (!vrid.contains("id") || typeId(vrid["id"]) != QMetaType::QByteArray)
+        return RequestState();
 
-	rs.rid = ZhttpRequest::Rid(vrid["sender"].toByteArray(), vrid["id"].toByteArray());
+    rs.rid = ZhttpRequest::Rid(vrid["sender"].toByteArray(), vrid["id"].toByteArray());
 
-	if(!r.contains("in-seq") || !canConvert(r["in-seq"], QMetaType::Int))
-		return RequestState();
+    if (!r.contains("in-seq") || !canConvert(r["in-seq"], QMetaType::Int))
+        return RequestState();
 
-	rs.inSeq = r["in-seq"].toInt();
+    rs.inSeq = r["in-seq"].toInt();
 
-	if(!r.contains("out-seq") || !canConvert(r["out-seq"], QMetaType::Int))
-		return RequestState();
+    if (!r.contains("out-seq") || !canConvert(r["out-seq"], QMetaType::Int))
+        return RequestState();
 
-	rs.outSeq = r["out-seq"].toInt();
+    rs.outSeq = r["out-seq"].toInt();
 
-	if(!r.contains("out-credits") || !canConvert(r["out-credits"], QMetaType::Int))
-		return RequestState();
+    if (!r.contains("out-credits") || !canConvert(r["out-credits"], QMetaType::Int))
+        return RequestState();
 
-	rs.outCredits = r["out-credits"].toInt();
+    rs.outCredits = r["out-credits"].toInt();
 
-	if(r.contains("router-resp"))
-	{
-		if(typeId(r["router-resp"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("router-resp")) {
+        if (typeId(r["router-resp"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.routerResp = r["router-resp"].toBool();
-	}
+        rs.routerResp = r["router-resp"].toBool();
+    }
 
-	if(r.contains("response-code"))
-	{
-		if(!canConvert(r["response-code"], QMetaType::Int))
-			return RequestState();
+    if (r.contains("response-code")) {
+        if (!canConvert(r["response-code"], QMetaType::Int))
+            return RequestState();
 
-		rs.responseCode = r["response-code"].toInt();
-	}
+        rs.responseCode = r["response-code"].toInt();
+    }
 
-	if(r.contains("peer-address"))
-	{
-		if(typeId(r["peer-address"]) != QMetaType::QByteArray)
-			return RequestState();
+    if (r.contains("peer-address")) {
+        if (typeId(r["peer-address"]) != QMetaType::QByteArray)
+            return RequestState();
 
-		if(!rs.peerAddress.setAddress(QString::fromUtf8(r["peer-address"].toByteArray())))
-			return RequestState();
-	}
+        if (!rs.peerAddress.setAddress(QString::fromUtf8(r["peer-address"].toByteArray())))
+            return RequestState();
+    }
 
-	if(r.contains("logical-peer-address"))
-	{
-		if(typeId(r["logical-peer-address"]) != QMetaType::QByteArray)
-			return RequestState();
+    if (r.contains("logical-peer-address")) {
+        if (typeId(r["logical-peer-address"]) != QMetaType::QByteArray)
+            return RequestState();
 
-		if(!rs.logicalPeerAddress.setAddress(QString::fromUtf8(r["logical-peer-address"].toByteArray())))
-			return RequestState();
-	}
+        if (!rs.logicalPeerAddress.setAddress(
+                QString::fromUtf8(r["logical-peer-address"].toByteArray())))
+            return RequestState();
+    }
 
-	if(r.contains("https"))
-	{
-		if(typeId(r["https"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("https")) {
+        if (typeId(r["https"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.isHttps = r["https"].toBool();
-	}
+        rs.isHttps = r["https"].toBool();
+    }
 
-	if(r.contains("debug"))
-	{
-		if(typeId(r["debug"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("debug")) {
+        if (typeId(r["debug"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.debug = r["debug"].toBool();
-	}
+        rs.debug = r["debug"].toBool();
+    }
 
-	if(r.contains("is-retry"))
-	{
-		if(typeId(r["is-retry"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("is-retry")) {
+        if (typeId(r["is-retry"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.isRetry = r["is-retry"].toBool();
-	}
+        rs.isRetry = r["is-retry"].toBool();
+    }
 
-	if(r.contains("auto-cross-origin"))
-	{
-		if(typeId(r["auto-cross-origin"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("auto-cross-origin")) {
+        if (typeId(r["auto-cross-origin"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.autoCrossOrigin = r["auto-cross-origin"].toBool();
-	}
+        rs.autoCrossOrigin = r["auto-cross-origin"].toBool();
+    }
 
-	if(r.contains("jsonp-callback"))
-	{
-		if(typeId(r["jsonp-callback"]) != QMetaType::QByteArray)
-			return RequestState();
+    if (r.contains("jsonp-callback")) {
+        if (typeId(r["jsonp-callback"]) != QMetaType::QByteArray)
+            return RequestState();
 
-		rs.jsonpCallback = r["jsonp-callback"].toByteArray();
-	}
+        rs.jsonpCallback = r["jsonp-callback"].toByteArray();
+    }
 
-	if(r.contains("jsonp-extended-response"))
-	{
-		if(typeId(r["jsonp-extended-response"]) != QMetaType::Bool)
-			return RequestState();
+    if (r.contains("jsonp-extended-response")) {
+        if (typeId(r["jsonp-extended-response"]) != QMetaType::Bool)
+            return RequestState();
 
-		rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
-	}
+        rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
+    }
 
-	if(r.contains("unreported-time"))
-	{
-		if(!canConvert(r["unreported-time"], QMetaType::Int))
-			return RequestState();
+    if (r.contains("unreported-time")) {
+        if (!canConvert(r["unreported-time"], QMetaType::Int))
+            return RequestState();
 
-		rs.unreportedTime = r["unreported-time"].toInt();
-	}
+        rs.unreportedTime = r["unreported-time"].toInt();
+    }
 
-	if(r.contains("user-data"))
-	{
-		rs.userData = r["user-data"];
-	}
+    if (r.contains("user-data")) {
+        rs.userData = r["user-data"];
+    }
 
-	return rs;
+    return rs;
 }

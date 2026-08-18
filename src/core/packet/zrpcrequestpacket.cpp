@@ -25,58 +25,53 @@
 
 #include "qtcompat.h"
 
-QVariant ZrpcRequestPacket::toVariant() const
-{
-	QVariantHash obj;
+QVariant ZrpcRequestPacket::toVariant() const {
+    QVariantHash obj;
 
-	if(!from.isEmpty())
-		obj["from"] = from;
+    if (!from.isEmpty())
+        obj["from"] = from;
 
-	if(!id.isEmpty())
-		obj["id"] = id;
+    if (!id.isEmpty())
+        obj["id"] = id;
 
-	obj["method"] = method.toUtf8();
+    obj["method"] = method.toUtf8();
 
-	if(!args.isEmpty())
-		obj["args"] = args;
+    if (!args.isEmpty())
+        obj["args"] = args;
 
-	return obj;
+    return obj;
 }
 
-bool ZrpcRequestPacket::fromVariant(const QVariant &in)
-{
-	if(typeId(in) != QMetaType::QVariantHash)
-		return false;
+bool ZrpcRequestPacket::fromVariant(const QVariant &in) {
+    if (typeId(in) != QMetaType::QVariantHash)
+        return false;
 
-	QVariantHash obj = in.toHash();
+    QVariantHash obj = in.toHash();
 
-	if(obj.contains("from"))
-	{
-		if(typeId(obj["from"]) != QMetaType::QByteArray)
-			return false;
+    if (obj.contains("from")) {
+        if (typeId(obj["from"]) != QMetaType::QByteArray)
+            return false;
 
-		from = obj["from"].toByteArray();
-	}
+        from = obj["from"].toByteArray();
+    }
 
-	if(obj.contains("id"))
-	{
-		if(typeId(obj["id"]) != QMetaType::QByteArray)
-			return false;
+    if (obj.contains("id")) {
+        if (typeId(obj["id"]) != QMetaType::QByteArray)
+            return false;
 
-		id = obj["id"].toByteArray();
-	}
+        id = obj["id"].toByteArray();
+    }
 
-	if(!obj.contains("method") || typeId(obj["method"]) != QMetaType::QByteArray)
-		return false;
-	method = QString::fromUtf8(obj["method"].toByteArray());
+    if (!obj.contains("method") || typeId(obj["method"]) != QMetaType::QByteArray)
+        return false;
+    method = QString::fromUtf8(obj["method"].toByteArray());
 
-	if(obj.contains("args"))
-	{
-		if(typeId(obj["args"]) != QMetaType::QVariantHash)
-			return false;
+    if (obj.contains("args")) {
+        if (typeId(obj["args"]) != QMetaType::QVariantHash)
+            return false;
 
-		args = obj["args"].toHash();
-	}
+        args = obj["args"].toHash();
+    }
 
-	return true;
+    return true;
 }

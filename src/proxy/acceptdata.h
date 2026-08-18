@@ -24,84 +24,78 @@
 #ifndef ACCEPTDATA_H
 #define ACCEPTDATA_H
 
-#include <QList>
 #include "httpheaders.h"
+#include "inspectdata.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
-#include "inspectdata.h"
 #include "zhttprequest.h"
+#include <QList>
 
-class AcceptData
-{
+class AcceptData {
 public:
-	class Request
-	{
-	public:
-		ZhttpRequest::Rid rid;
-		bool https;
-		QHostAddress peerAddress;
-		QHostAddress logicalPeerAddress;
-		bool debug;
-		bool isRetry;
-		bool autoCrossOrigin;
-		QByteArray jsonpCallback;
-		bool jsonpExtendedResponse;
-		int unreportedTime;
+    class Request {
+    public:
+        ZhttpRequest::Rid rid;
+        bool https;
+        QHostAddress peerAddress;
+        QHostAddress logicalPeerAddress;
+        bool debug;
+        bool isRetry;
+        bool autoCrossOrigin;
+        QByteArray jsonpCallback;
+        bool jsonpExtendedResponse;
+        int unreportedTime;
 
-		// zhttp
-		int responseCode;
-		int inSeq;
-		int outSeq;
-		int outCredits;
-		bool routerResp;
-		QVariant userData;
+        // zhttp
+        int responseCode;
+        int inSeq;
+        int outSeq;
+        int outCredits;
+        bool routerResp;
+        QVariant userData;
 
-		Request() :
-			https(false),
-			debug(false),
-			isRetry(false),
-			autoCrossOrigin(false),
-			jsonpExtendedResponse(false),
-			unreportedTime(-1),
-			responseCode(-1),
-			inSeq(-1),
-			outSeq(-1),
-			outCredits(-1),
-			routerResp(false)
-		{
-		}
-	};
+        Request()
+            : https(false),
+              debug(false),
+              isRetry(false),
+              autoCrossOrigin(false),
+              jsonpExtendedResponse(false),
+              unreportedTime(-1),
+              responseCode(-1),
+              inSeq(-1),
+              outSeq(-1),
+              outCredits(-1),
+              routerResp(false) {}
+    };
 
-	QList<Request> requests;
-	HttpRequestData requestData;
-	HttpRequestData origRequestData;
+    QList<Request> requests;
+    HttpRequestData requestData;
+    HttpRequestData origRequestData;
 
-	bool haveInspectData;
-	InspectData inspectData;
+    bool haveInspectData;
+    InspectData inspectData;
 
-	bool haveResponse;
-	HttpResponseData response;
+    bool haveResponse;
+    HttpResponseData response;
 
-	QByteArray route;
-	bool separateStats;
-	QByteArray channelPrefix;
-	int logLevel;
-	QList<QByteArray> channels;
-	bool trusted; // whether a trusted target was used
-	bool useSession;
-	bool responseSent;
-	QVariantList connMaxPackets;
+    QByteArray route;
+    bool separateStats;
+    QByteArray channelPrefix;
+    int logLevel;
+    QList<QByteArray> channels;
+    bool trusted; // whether a trusted target was used
+    bool useSession;
+    bool responseSent;
+    QVariantList connMaxPackets;
 
-	AcceptData() :
-		haveInspectData(false),
-		haveResponse(false),
-		separateStats(false),
-		logLevel(-1),
-		trusted(false),
-		useSession(false),
-		responseSent(false)
-	{
-	}
+    AcceptData()
+        : haveInspectData(false),
+          haveResponse(false),
+          separateStats(false),
+          logLevel(-1),
+          trusted(false),
+          useSession(false),
+          responseSent(false) {}
 };
 
 #endif

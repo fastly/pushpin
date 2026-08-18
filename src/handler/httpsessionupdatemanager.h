@@ -29,20 +29,19 @@
 class QUrl;
 class HttpSession;
 
-class HttpSessionUpdateManager
-{
+class HttpSessionUpdateManager {
 public:
-	HttpSessionUpdateManager();
-	~HttpSessionUpdateManager();
+    HttpSessionUpdateManager();
+    ~HttpSessionUpdateManager();
 
-	// no-op if session already registered and resetTimeout=false
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout = false);
+    // no-op if session already registered and resetTimeout=false
+    void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout = false);
 
-	void unregisterSession(HttpSession *hs);
+    void unregisterSession(HttpSession *hs);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

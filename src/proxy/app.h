@@ -24,16 +24,15 @@
 #ifndef APP_H
 #define APP_H
 
-class App
-{
+class App {
 public:
-	App();
-	~App();
+    App();
+    ~App();
 
-	int run();
+    int run();
 
 private:
-	class Private;
+    class Private;
 };
 
 #endif

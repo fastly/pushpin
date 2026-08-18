@@ -27,16 +27,15 @@
 #include <QByteArray>
 #include <QVariant>
 
-class ZrpcRequestPacket
-{
+class ZrpcRequestPacket {
 public:
-	QByteArray from;
-	QByteArray id;
-	QString method;
-	QVariantHash args;
+    QByteArray from;
+    QByteArray id;
+    QString method;
+    QVariantHash args;
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+    QVariant toVariant() const;
+    bool fromVariant(const QVariant &in);
 };
 
 #endif

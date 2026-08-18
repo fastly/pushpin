@@ -23,19 +23,19 @@
 
 #include "updater.h"
 
-#include <QSysInfo>
-#include <QDateTime>
-#include <QUrlQuery>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QCryptographicHash>
-#include <QHostInfo>
-#include "qtcompat.h"
-#include "log.h"
-#include "timer.h"
 #include "httpheaders.h"
+#include "log.h"
+#include "qtcompat.h"
+#include "timer.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QHostInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSysInfo>
+#include <QUrlQuery>
 
 #define CHECK_INTERVAL (24 * 60 * 60 * 1000)
 #define REPORT_INTERVAL (15 * 60 * 1000)
@@ -43,221 +43,202 @@
 #define USER_AGENT "Pushpin-Updater"
 #define MAX_RESPONSE_SIZE 50000
 
-static QString getOs()
-{
+static QString getOs() {
 #if defined(Q_OS_MAC)
-	return "mac";
+    return "mac";
 #elif defined(Q_OS_LINUX)
-	return "linux";
+    return "linux";
 #elif defined(Q_OS_FREEBSD)
-	return "freebsd";
+    return "freebsd";
 #elif defined(Q_OS_NETBSD)
-	return "netbsd";
+    return "netbsd";
 #elif defined(Q_OS_OPENBSD)
-	return "openbsd";
+    return "openbsd";
 #elif defined(Q_OS_UNIX)
-	return "unix";
+    return "unix";
 #else
-	return QString();
+    return QString();
 #endif
 }
 
-static QString getArch()
-{
-	return QString::number(sizeof(void *) * 8);
-}
+static QString getArch() { return QString::number(sizeof(void *) * 8); }
 
-class Updater::Private
-{
+class Updater::Private {
 public:
-	struct ReqConnections {
-		Connection readyReadConnection;
-		Connection errorConnection;
-	};
+    struct ReqConnections {
+        Connection readyReadConnection;
+        Connection errorConnection;
+    };
 
-	Updater *q;
-	Mode mode;
-	bool quiet;
-	QString currentVersion;
-	QString org;
-	ZhttpManager *zhttpManager;
-	std::unique_ptr<Timer> timer;
-	std::unique_ptr<ZhttpRequest> req;
-	Report report;
-	QDateTime lastLogTime;
-	ReqConnections reqConnections;
-	Connection timerConnection;
+    Updater *q;
+    Mode mode;
+    bool quiet;
+    QString currentVersion;
+    QString org;
+    ZhttpManager *zhttpManager;
+    std::unique_ptr<Timer> timer;
+    std::unique_ptr<ZhttpRequest> req;
+    Report report;
+    QDateTime lastLogTime;
+    ReqConnections reqConnections;
+    Connection timerConnection;
 
-	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
-		q(_q),
-		mode(_mode),
-		quiet(_quiet),
-		currentVersion(_currentVersion),
-		org(_org),
-		zhttpManager(zhttp)
-	{
-		timer = std::make_unique<Timer>();
-		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
-		timer->setInterval(mode == ReportMode ? REPORT_INTERVAL : CHECK_INTERVAL);
-		timer->start();
+    Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion,
+            const QString &_org, ZhttpManager *zhttp)
+        : q(_q),
+          mode(_mode),
+          quiet(_quiet),
+          currentVersion(_currentVersion),
+          org(_org),
+          zhttpManager(zhttp) {
+        timer = std::make_unique<Timer>();
+        timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+        timer->setInterval(mode == ReportMode ? REPORT_INTERVAL : CHECK_INTERVAL);
+        timer->start();
 
-		report.connectionsMax = -1; // stale
-	}
+        report.connectionsMax = -1; // stale
+    }
 
-	void cleanupRequest()
-	{
-		reqConnections = ReqConnections();
-		req.reset();
-	}
+    void cleanupRequest() {
+        reqConnections = ReqConnections();
+        req.reset();
+    }
 
 private:
-	void doRequest()
-	{
-		req = std::unique_ptr<ZhttpRequest>(zhttpManager->createRequest());
-		reqConnections = {
-			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
-			req->error.connect(boost::bind(&Private::req_error, this))
-		};
+    void doRequest() {
+        req = std::unique_ptr<ZhttpRequest>(zhttpManager->createRequest());
+        reqConnections = {req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
+                          req->error.connect(boost::bind(&Private::req_error, this))};
 
-		req->setIgnorePolicies(true);
-		req->setIgnoreTlsErrors(true);
-		req->setQuiet(quiet);
+        req->setIgnorePolicies(true);
+        req->setIgnoreTlsErrors(true);
+        req->setQuiet(quiet);
 
-		QUrl url(CHECK_URL);
+        QUrl url(CHECK_URL);
 
-		QUrlQuery query;
-		query.addQueryItem("package", "pushpin");
-		query.addQueryItem("version", currentVersion);
-		QString os = getOs();
-		if(!os.isEmpty())
-			query.addQueryItem("os", os);
-		QString arch = getArch();
-		if(!arch.isEmpty())
-			query.addQueryItem("arch", arch);
-		if(!org.isEmpty())
-			query.addQueryItem("org", org);
+        QUrlQuery query;
+        query.addQueryItem("package", "pushpin");
+        query.addQueryItem("version", currentVersion);
+        QString os = getOs();
+        if (!os.isEmpty())
+            query.addQueryItem("os", os);
+        QString arch = getArch();
+        if (!arch.isEmpty())
+            query.addQueryItem("arch", arch);
+        if (!org.isEmpty())
+            query.addQueryItem("org", org);
 
-		if(mode == ReportMode)
-		{
-			QString host = QHostInfo::localHostName();
-			QString hashedHost = QString::fromUtf8(QCryptographicHash::hash(host.toUtf8(), QCryptographicHash::Sha1).toHex());
-			query.addQueryItem("id", hashedHost);
+        if (mode == ReportMode) {
+            QString host = QHostInfo::localHostName();
+            QString hashedHost = QString::fromUtf8(
+                QCryptographicHash::hash(host.toUtf8(), QCryptographicHash::Sha1).toHex());
+            query.addQueryItem("id", hashedHost);
 
-			int cmax = (report.connectionsMax > 0 ? report.connectionsMax : 0);
-			query.addQueryItem("cmax", QString::number(cmax));
-			query.addQueryItem("cminutes", QString::number(report.connectionsMinutes));
-			query.addQueryItem("recv", QString::number(report.messagesReceived));
-			query.addQueryItem("sent", QString::number(report.messagesSent));
-			query.addQueryItem("ops", QString::number(report.ops));
+            int cmax = (report.connectionsMax > 0 ? report.connectionsMax : 0);
+            query.addQueryItem("cmax", QString::number(cmax));
+            query.addQueryItem("cminutes", QString::number(report.connectionsMinutes));
+            query.addQueryItem("recv", QString::number(report.messagesReceived));
+            query.addQueryItem("sent", QString::number(report.messagesSent));
+            query.addQueryItem("ops", QString::number(report.ops));
 
-			report.connectionsMax = -1; // stale
-			report.connectionsMinutes = 0;
-			report.messagesReceived = 0;
-			report.messagesSent = 0;
-			report.ops = 0;
-		}
+            report.connectionsMax = -1; // stale
+            report.connectionsMinutes = 0;
+            report.messagesReceived = 0;
+            report.messagesSent = 0;
+            report.ops = 0;
+        }
 
-		url.setQuery(query);
+        url.setQuery(query);
 
-		HttpHeaders headers;
+        HttpHeaders headers;
 #ifdef USER_AGENT
-		headers += HttpHeader("User-Agent", USER_AGENT);
+        headers += HttpHeader("User-Agent", USER_AGENT);
 #endif
-		log_debug("updater: checking for updates: %s", qPrintable(url.toString()));
-		req->start("GET", url, headers);
-		req->endBody();
-	}
+        log_debug("updater: checking for updates: %s", qPrintable(url.toString()));
+        req->start("GET", url, headers);
+        req->endBody();
+    }
 
-	void req_readyRead()
-	{
-		if(req->bytesAvailable() > MAX_RESPONSE_SIZE)
-		{
-			log_debug("updater: check failed, response too large");
-			cleanupRequest();
-			return;
-		}
+    void req_readyRead() {
+        if (req->bytesAvailable() > MAX_RESPONSE_SIZE) {
+            log_debug("updater: check failed, response too large");
+            cleanupRequest();
+            return;
+        }
 
-		if(!req->isFinished())
-			return;
+        if (!req->isFinished())
+            return;
 
-		if(req->responseCode() != 200)
-		{
-			log_debug("updater: check failed, response code: %d", req->responseCode());
-			cleanupRequest();
-			return;
-		}
+        if (req->responseCode() != 200) {
+            log_debug("updater: check failed, response code: %d", req->responseCode());
+            cleanupRequest();
+            return;
+        }
 
-		QByteArray rawBody = req->readBody();
-		cleanupRequest();
+        QByteArray rawBody = req->readBody();
+        cleanupRequest();
 
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(rawBody, &e);
-		if(e.error != QJsonParseError::NoError || !doc.isObject())
-		{
-			log_debug("updater: check failed, unexpected response body format");
-			return;
-		}
+        QJsonParseError e;
+        QJsonDocument doc = QJsonDocument::fromJson(rawBody, &e);
+        if (e.error != QJsonParseError::NoError || !doc.isObject()) {
+            log_debug("updater: check failed, unexpected response body format");
+            return;
+        }
 
-		log_debug("updater: check finished");
+        log_debug("updater: check finished");
 
-		QVariantMap body = doc.object().toVariantMap();
+        QVariantMap body = doc.object().toVariantMap();
 
-		if(body.contains("updates") && typeId(body["updates"]) == QMetaType::QVariantList)
-		{
-			QVariantList updates = body["updates"].toList();
-			if(!updates.isEmpty() && typeId(updates[0]) == QMetaType::QVariantMap)
-			{
-				QVariantMap update = updates[0].toMap();
-				QString version = update.value("version").toString();
-				QString link = update.value("link").toString();
+        if (body.contains("updates") && typeId(body["updates"]) == QMetaType::QVariantList) {
+            QVariantList updates = body["updates"].toList();
+            if (!updates.isEmpty() && typeId(updates[0]) == QMetaType::QVariantMap) {
+                QVariantMap update = updates[0].toMap();
+                QString version = update.value("version").toString();
+                QString link = update.value("link").toString();
 
-				QDateTime now = QDateTime::currentDateTime();
+                QDateTime now = QDateTime::currentDateTime();
 
-				if(!version.isEmpty() && (lastLogTime.isNull() || now >= lastLogTime.addMSecs(CHECK_INTERVAL - (REPORT_INTERVAL / 2))))
-				{
-					lastLogTime = now;
+                if (!version.isEmpty() &&
+                    (lastLogTime.isNull() ||
+                     now >= lastLogTime.addMSecs(CHECK_INTERVAL - (REPORT_INTERVAL / 2)))) {
+                    lastLogTime = now;
 
-					QString msg = QString("New version of Pushpin available! version=%1").arg(version);
-					if(!link.isEmpty())
-						msg += QString(" %1").arg(link);
-					log_info("%s", qPrintable(msg));
-				}
-			}
-		}
-	}
+                    QString msg =
+                        QString("New version of Pushpin available! version=%1").arg(version);
+                    if (!link.isEmpty())
+                        msg += QString(" %1").arg(link);
+                    log_info("%s", qPrintable(msg));
+                }
+            }
+        }
+    }
 
-	void req_error()
-	{
-		log_debug("updater: check failed, req error: %d", (int)req->errorCondition());
-		cleanupRequest();
-	}
+    void req_error() {
+        log_debug("updater: check failed, req error: %d", (int)req->errorCondition());
+        cleanupRequest();
+    }
 
-	void timer_timeout()
-	{
-		if(!req)
-			doRequest();
-	}
+    void timer_timeout() {
+        if (!req)
+            doRequest();
+    }
 };
 
-Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp)
-{
-	d = new Private(this, mode, quiet, currentVersion, org, zhttp);
+Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org,
+                 ZhttpManager *zhttp) {
+    d = new Private(this, mode, quiet, currentVersion, org, zhttp);
 }
 
-Updater::~Updater()
-{
-	delete d;
-}
+Updater::~Updater() { delete d; }
 
-void Updater::setReport(const Report &report)
-{
-	// update the current report data
+void Updater::setReport(const Report &report) {
+    // update the current report data
 
-	if(d->report.connectionsMax == -1 || report.connectionsMax > d->report.connectionsMax)
-		d->report.connectionsMax = report.connectionsMax;
+    if (d->report.connectionsMax == -1 || report.connectionsMax > d->report.connectionsMax)
+        d->report.connectionsMax = report.connectionsMax;
 
-	d->report.connectionsMinutes += report.connectionsMinutes;
-	d->report.messagesReceived += report.messagesReceived;
-	d->report.messagesSent += report.messagesSent;
-	d->report.ops += report.ops;
+    d->report.connectionsMinutes += report.connectionsMinutes;
+    d->report.messagesReceived += report.messagesReceived;
+    d->report.messagesSent += report.messagesSent;
+    d->report.ops += report.ops;
 }

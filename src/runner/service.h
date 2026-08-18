@@ -28,46 +28,45 @@
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
-using SignalStr = boost::signals2::signal<void(const QString&)>;
+using SignalStr = boost::signals2::signal<void(const QString &)>;
 using Connection = boost::signals2::scoped_connection;
 
-class Service : public QObject
-{
-	Q_OBJECT
+class Service : public QObject {
+    Q_OBJECT
 
 public:
-	Service(QObject *parent = 0);
-	~Service();
+    Service(QObject *parent = 0);
+    ~Service();
 
-	QString name() const;
+    QString name() const;
 
-	virtual QStringList arguments() const = 0;
-	virtual bool acceptSighup() const;
-	virtual bool alwaysLogStatus() const;
-	virtual bool isStarted() const;
+    virtual QStringList arguments() const = 0;
+    virtual bool acceptSighup() const;
+    virtual bool alwaysLogStatus() const;
+    virtual bool isStarted() const;
 
-	virtual bool preStart();
-	virtual void start();
-	virtual void postStart();
-	virtual void stop();
-	virtual void postStop();
-	virtual QString formatLogLine(const QString &line) const;
+    virtual bool preStart();
+    virtual void start();
+    virtual void postStart();
+    virtual void stop();
+    virtual void postStop();
+    virtual QString formatLogLine(const QString &line) const;
 
-	void sendSighup();
+    void sendSighup();
 
-	Signal started;
-	Signal stopped;
-	SignalStr logLine;
-	SignalStr error;
+    Signal started;
+    Signal stopped;
+    SignalStr logLine;
+    SignalStr error;
 
 protected:
-	void setName(const QString &name);
-	void setStandardOutputFile(const QString &file);
-	void setPidFile(const QString &file);
+    void setName(const QString &name);
+    void setStandardOutputFile(const QString &file);
+    void setPidFile(const QString &file);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

@@ -25,74 +25,64 @@
 
 #include "qtcompat.h"
 
-QVariant ZrpcResponsePacket::toVariant() const
-{
-	QVariantHash obj;
+QVariant ZrpcResponsePacket::toVariant() const {
+    QVariantHash obj;
 
-	if(!id.isEmpty())
-		obj["id"] = id;
+    if (!id.isEmpty())
+        obj["id"] = id;
 
-	obj["success"] = success;
+    obj["success"] = success;
 
-	if(success)
-	{
-		if(typeId(value) == QMetaType::QString)
-			obj["value"] = value.toString().toUtf8();
-		else
-			obj["value"] = value;
-	}
-	else
-	{
-		obj["condition"] = condition;
+    if (success) {
+        if (typeId(value) == QMetaType::QString)
+            obj["value"] = value.toString().toUtf8();
+        else
+            obj["value"] = value;
+    } else {
+        obj["condition"] = condition;
 
-		if(value.isValid())
-		{
-			if(typeId(value) == QMetaType::QString)
-				obj["value"] = value.toString().toUtf8();
-			else
-				obj["value"] = value;
-		}
-	}
+        if (value.isValid()) {
+            if (typeId(value) == QMetaType::QString)
+                obj["value"] = value.toString().toUtf8();
+            else
+                obj["value"] = value;
+        }
+    }
 
-	return obj;
+    return obj;
 }
 
-bool ZrpcResponsePacket::fromVariant(const QVariant &in)
-{
-	if(typeId(in) != QMetaType::QVariantHash)
-		return false;
+bool ZrpcResponsePacket::fromVariant(const QVariant &in) {
+    if (typeId(in) != QMetaType::QVariantHash)
+        return false;
 
-	QVariantHash obj = in.toHash();
+    QVariantHash obj = in.toHash();
 
-	if(obj.contains("id"))
-	{
-		if(typeId(obj["id"]) != QMetaType::QByteArray)
-			return false;
+    if (obj.contains("id")) {
+        if (typeId(obj["id"]) != QMetaType::QByteArray)
+            return false;
 
-		id = obj["id"].toByteArray();
-	}
+        id = obj["id"].toByteArray();
+    }
 
-	if(!obj.contains("success") || typeId(obj["success"]) != QMetaType::Bool)
-		return false;
-	success = obj["success"].toBool();
+    if (!obj.contains("success") || typeId(obj["success"]) != QMetaType::Bool)
+        return false;
+    success = obj["success"].toBool();
 
-	value.clear();
-	condition.clear();
-	if(success)
-	{
-		if(!obj.contains("value"))
-			return false;
-		value = obj["value"];
-	}
-	else
-	{
-		if(!obj.contains("condition") || typeId(obj["condition"]) != QMetaType::QByteArray)
-			return false;
-		condition = obj["condition"].toByteArray();
+    value.clear();
+    condition.clear();
+    if (success) {
+        if (!obj.contains("value"))
+            return false;
+        value = obj["value"];
+    } else {
+        if (!obj.contains("condition") || typeId(obj["condition"]) != QMetaType::QByteArray)
+            return false;
+        condition = obj["condition"].toByteArray();
 
-		if(obj.contains("value"))
-			value = obj["value"];
-	}
+        if (obj.contains("value"))
+            value = obj["value"];
+    }
 
-	return true;
+    return true;
 }

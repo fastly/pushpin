@@ -39,86 +39,74 @@ namespace QZmq {
 
 class Context;
 
-class Socket
-{
+class Socket {
 public:
-	enum Type
-	{
-		Pair,
-		Dealer,
-		Router,
-		Req,
-		Rep,
-		Push,
-		Pull,
-		Pub,
-		Sub
-	};
+    enum Type { Pair, Dealer, Router, Req, Rep, Push, Pull, Pub, Sub };
 
-	Socket(Type type);
-	Socket(Type type, Context *context);
-	~Socket();
+    Socket(Type type);
+    Socket(Type type, Context *context);
+    ~Socket();
 
-	// 0 means drop queue and don't block, -1 means infinite (default = -1)
-	void setShutdownWaitTime(int msecs);
+    // 0 means drop queue and don't block, -1 means infinite (default = -1)
+    void setShutdownWaitTime(int msecs);
 
-	// if enabled, messages are queued internally until the socket is able
-	//   to accept them. the messagesWritten signal is emitted once writes
-	//   have succeeded. otherwise, messages are passed directly to
-	//   zmq_send and dropped if they can't be written. default enabled.
-	// disabling the queue is good for socket types where the HWM has a
-	//   drop policy. enabling the queue is good when the HWM has a
-	//   blocking policy.
-	void setWriteQueueEnabled(bool enable);
+    // if enabled, messages are queued internally until the socket is able
+    //   to accept them. the messagesWritten signal is emitted once writes
+    //   have succeeded. otherwise, messages are passed directly to
+    //   zmq_send and dropped if they can't be written. default enabled.
+    // disabling the queue is good for socket types where the HWM has a
+    //   drop policy. enabling the queue is good when the HWM has a
+    //   blocking policy.
+    void setWriteQueueEnabled(bool enable);
 
-	void subscribe(const QByteArray &filter);
-	void unsubscribe(const QByteArray &filter);
+    void subscribe(const QByteArray &filter);
+    void unsubscribe(const QByteArray &filter);
 
-	QByteArray identity() const;
-	void setIdentity(const QByteArray &id);
+    QByteArray identity() const;
+    void setIdentity(const QByteArray &id);
 
-	// deprecated, zmq 2.x
-	int hwm() const;
-	void setHwm(int hwm);
+    // deprecated, zmq 2.x
+    int hwm() const;
+    void setHwm(int hwm);
 
-	int sendHwm() const;
-	int receiveHwm() const;
-	void setSendHwm(int hwm);
-	void setReceiveHwm(int hwm);
+    int sendHwm() const;
+    int receiveHwm() const;
+    void setSendHwm(int hwm);
+    void setReceiveHwm(int hwm);
 
-	void setImmediateEnabled(bool on);
-	void setRouterMandatoryEnabled(bool on);
-	void setProbeRouterEnabled(bool on);
+    void setImmediateEnabled(bool on);
+    void setRouterMandatoryEnabled(bool on);
+    void setProbeRouterEnabled(bool on);
 
-	void setTcpKeepAliveEnabled(bool on);
-	void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
+    void setTcpKeepAliveEnabled(bool on);
+    void setTcpKeepAliveParameters(int idle = -1, int count = -1, int interval = -1);
 
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
+    void connectToAddress(const QString &addr);
+    bool bind(const QString &addr);
 
-	bool canRead() const;
+    bool canRead() const;
 
-	// returns true if this object believes the next write to zmq will
-	//   succeed immediately. note that it starts out false until the
-	//   value is discovered. also note that the write could still end up
-	//   needing to be queued, if the conditions change in between.
-	bool canWriteImmediately() const;
+    // returns true if this object believes the next write to zmq will
+    //   succeed immediately. note that it starts out false until the
+    //   value is discovered. also note that the write could still end up
+    //   needing to be queued, if the conditions change in between.
+    bool canWriteImmediately() const;
 
-	QList<QByteArray> read();
-	void write(const QList<QByteArray> &message);
+    QList<QByteArray> read();
+    void write(const QList<QByteArray> &message);
 
-	Signal readyRead;
-	SignalInt messagesWritten;
+    Signal readyRead;
+    SignalInt messagesWritten;
 
 private:
-	Socket(const Socket &) = delete;
-	Socket &operator=(const Socket &) = delete;
+    Socket(const Socket &) = delete;
+    Socket &operator=(const Socket &) = delete;
 
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
-}
+} // namespace QZmq
 
 #endif

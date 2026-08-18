@@ -36,10 +36,12 @@ namespace ZUtil {
 
 bool bindSpec(QZmq::Socket *sock, const QString &spec, int ipcFileMode, QString *errorMessage = 0);
 
-bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage = 0);
+bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ipcFileMode,
+                 QString *errorMessage = 0);
 
-bool setupSocket(QZmq::Socket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage = 0);
+bool setupSocket(QZmq::Socket *sock, const QString &spec, bool bind, int ipcFileMode,
+                 QString *errorMessage = 0);
 
-}
+} // namespace ZUtil
 
 #endif

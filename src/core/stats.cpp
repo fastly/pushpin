@@ -24,10 +24,9 @@
 
 namespace Stats {
 
-void Counters::add(const Counters &other)
-{
-    for(int n = 0; n < STATS_COUNTERS_MAX; ++n)
+void Counters::add(const Counters &other) {
+    for (int n = 0; n < STATS_COUNTERS_MAX; ++n)
         inc((Counter)n, other._values[n]);
 }
 
-}
+} // namespace Stats

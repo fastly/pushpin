@@ -22,102 +22,79 @@
 
 #include "connectionmanager.h"
 
-#include <assert.h>
-#include <QHash>
 #include "uuidutil.h"
+#include <QHash>
+#include <assert.h>
 
-class ConnectionManager::Private
-{
+class ConnectionManager::Private {
 public:
-	class Item
-	{
-	public:
-		QPair<QByteArray, QByteArray> rid;
-		WebSocket *sock;
-		QByteArray cid;
-		WsProxySession *proxy;
+    class Item {
+    public:
+        QPair<QByteArray, QByteArray> rid;
+        WebSocket *sock;
+        QByteArray cid;
+        WsProxySession *proxy;
 
-		Item() :
-			sock(0),
-			proxy(0)
-		{
-		}
-	};
+        Item() : sock(0), proxy(0) {}
+    };
 
-	QHash<WebSocket*, Item*> itemsBySock;
-	QHash<QByteArray, Item*> itemsByCid;
+    QHash<WebSocket *, Item *> itemsBySock;
+    QHash<QByteArray, Item *> itemsByCid;
 
-	Private()
-	{
-	}
+    Private() {}
 
-	~Private()
-	{
-		clearItemsBySock();
-	}
+    ~Private() { clearItemsBySock(); }
 
-	void clearItemsBySock()
-	{
-		qDeleteAll(itemsBySock);
-		itemsBySock.clear();
-		itemsByCid.clear();
-	}
+    void clearItemsBySock() {
+        qDeleteAll(itemsBySock);
+        itemsBySock.clear();
+        itemsByCid.clear();
+    }
 };
 
-ConnectionManager::ConnectionManager()
-{
-	d = new Private;
+ConnectionManager::ConnectionManager() { d = new Private; }
+
+ConnectionManager::~ConnectionManager() { delete d; }
+
+QByteArray ConnectionManager::addConnection(WebSocket *sock) {
+    assert(!d->itemsBySock.contains(sock));
+
+    Private::Item *i = new Private::Item;
+    i->sock = sock;
+    i->cid = UuidUtil::createUuid();
+    d->itemsBySock[i->sock] = i;
+    d->itemsByCid[i->cid] = i;
+
+    return i->cid;
 }
 
-ConnectionManager::~ConnectionManager()
-{
-	delete d;
+QByteArray ConnectionManager::getConnection(WebSocket *sock) const {
+    Private::Item *i = d->itemsBySock.value(sock);
+    if (!i)
+        return QByteArray();
+
+    return i->cid;
 }
 
-QByteArray ConnectionManager::addConnection(WebSocket *sock)
-{
-	assert(!d->itemsBySock.contains(sock));
-
-	Private::Item *i = new Private::Item;
-	i->sock = sock;
-	i->cid = UuidUtil::createUuid();
-	d->itemsBySock[i->sock] = i;
-	d->itemsByCid[i->cid] = i;
-
-	return i->cid;
+void ConnectionManager::removeConnection(WebSocket *sock) {
+    Private::Item *i = d->itemsBySock.value(sock);
+    assert(i);
+    d->itemsBySock.remove(sock);
+    d->itemsByCid.remove(i->cid);
+    delete i;
 }
 
-QByteArray ConnectionManager::getConnection(WebSocket *sock) const
-{
-	Private::Item *i = d->itemsBySock.value(sock);
-	if(!i)
-		return QByteArray();
+WsProxySession *ConnectionManager::getProxyForConnection(const QByteArray &cid) const {
+    Private::Item *i = d->itemsByCid.value(cid);
+    if (!i)
+        return 0;
 
-	return i->cid;
+    return i->proxy;
 }
 
-void ConnectionManager::removeConnection(WebSocket *sock)
-{
-	Private::Item *i = d->itemsBySock.value(sock);
-	assert(i);
-	d->itemsBySock.remove(sock);
-	d->itemsByCid.remove(i->cid);
-	delete i;
-}
+void ConnectionManager::setProxyForConnection(WebSocket *sock, WsProxySession *proxy) {
+    Private::Item *i = d->itemsBySock.value(sock);
+    assert(i);
 
-WsProxySession *ConnectionManager::getProxyForConnection(const QByteArray &cid) const
-{
-	Private::Item *i = d->itemsByCid.value(cid);
-	if(!i)
-		return 0;
-
-	return i->proxy;
-}
-
-void ConnectionManager::setProxyForConnection(WebSocket *sock, WsProxySession *proxy)
-{
-	Private::Item *i = d->itemsBySock.value(sock);
-	assert(i);
-
-	i->proxy = proxy;
+    i->proxy = proxy;
 }

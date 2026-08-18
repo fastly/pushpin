@@ -20,70 +20,68 @@
  *
  */
 
-#include "test.h"
 #include "httpheaders.h"
+#include "test.h"
 
-static void parseParameters()
-{
-	HttpHeaders h;
-	h += HttpHeader("Fruit", "apple");
-	h += HttpHeader("Fruit", "banana");
-	h += HttpHeader("Fruit", "cherry");
+static void parseParameters() {
+    HttpHeaders h;
+    h += HttpHeader("Fruit", "apple");
+    h += HttpHeader("Fruit", "banana");
+    h += HttpHeader("Fruit", "cherry");
 
-	QList<HttpHeaderParameters> params = h.getAllAsParameters("Fruit");
-	TEST_ASSERT_EQ(params.count(), 3);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
+    QList<HttpHeaderParameters> params = h.getAllAsParameters("Fruit");
+    TEST_ASSERT_EQ(params.count(), 3);
+    TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
+    TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
+    TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
 
-	h.clear();
-	h += HttpHeader("Fruit", "apple, banana, cherry");
+    h.clear();
+    h += HttpHeader("Fruit", "apple, banana, cherry");
 
-	params = h.getAllAsParameters("Fruit");
-	TEST_ASSERT_EQ(params.count(), 3);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
+    params = h.getAllAsParameters("Fruit");
+    TEST_ASSERT_EQ(params.count(), 3);
+    TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
+    TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
+    TEST_ASSERT_EQ(params[2][0].first, QByteArray("cherry"));
 
-	h.clear();
-	h += HttpHeader("Fruit", "apple; type=\"granny, smith\", banana; type=\"\\\"yellow\\\"\"");
+    h.clear();
+    h += HttpHeader("Fruit", "apple; type=\"granny, smith\", banana; type=\"\\\"yellow\\\"\"");
 
-	params = h.getAllAsParameters("Fruit");
-	TEST_ASSERT_EQ(params.count(), 2);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[0][1].second, QByteArray("granny, smith"));
-	TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
-	TEST_ASSERT_EQ(params[1][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[1][1].second, QByteArray("\"yellow\""));
+    params = h.getAllAsParameters("Fruit");
+    TEST_ASSERT_EQ(params.count(), 2);
+    TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
+    TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
+    TEST_ASSERT_EQ(params[0][1].second, QByteArray("granny, smith"));
+    TEST_ASSERT_EQ(params[1][0].first, QByteArray("banana"));
+    TEST_ASSERT_EQ(params[1][1].first, QByteArray("type"));
+    TEST_ASSERT_EQ(params[1][1].second, QByteArray("\"yellow\""));
 
-	h.clear();
-	h += HttpHeader("Fruit", "\"apple");
+    h.clear();
+    h += HttpHeader("Fruit", "\"apple");
 
-	QList<QByteArray> l = h.getAll("Fruit");
-	TEST_ASSERT_EQ(l.count(), 1);
-	TEST_ASSERT_EQ(l[0], QByteArray("\"apple"));
+    QList<QByteArray> l = h.getAll("Fruit");
+    TEST_ASSERT_EQ(l.count(), 1);
+    TEST_ASSERT_EQ(l[0], QByteArray("\"apple"));
 
-	h.clear();
-	h += HttpHeader("Fruit", "\"apple\\");
+    h.clear();
+    h += HttpHeader("Fruit", "\"apple\\");
 
-	l = h.getAll("Fruit");
-	TEST_ASSERT_EQ(l.count(), 1);
-	TEST_ASSERT_EQ(l[0], QByteArray("\"apple\\"));
+    l = h.getAll("Fruit");
+    TEST_ASSERT_EQ(l.count(), 1);
+    TEST_ASSERT_EQ(l[0], QByteArray("\"apple\\"));
 
-	h.clear();
-	h += HttpHeader("Fruit", "apple; type=gala, banana; type=\"yellow, cherry");
+    h.clear();
+    h += HttpHeader("Fruit", "apple; type=gala, banana; type=\"yellow, cherry");
 
-	params = h.getAllAsParameters("Fruit");
-	TEST_ASSERT_EQ(params.count(), 1);
-	TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
-	TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
-	TEST_ASSERT_EQ(params[0][1].second, QByteArray("gala"));
+    params = h.getAllAsParameters("Fruit");
+    TEST_ASSERT_EQ(params.count(), 1);
+    TEST_ASSERT_EQ(params[0][0].first, QByteArray("apple"));
+    TEST_ASSERT_EQ(params[0][1].first, QByteArray("type"));
+    TEST_ASSERT_EQ(params[0][1].second, QByteArray("gala"));
 }
 
-extern "C" int httpheaders_test(ffi::TestException *out_ex)
-{
-	TEST_CATCH(parseParameters());
+extern "C" int httpheaders_test(ffi::TestException *out_ex) {
+    TEST_CATCH(parseParameters());
 
-	return 0;
+    return 0;
 }

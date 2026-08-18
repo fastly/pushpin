@@ -29,34 +29,33 @@
 #include <QList>
 #include <boost/signals2.hpp>
 
-using SignalList = boost::signals2::signal<void(const QList<QByteArray>&)>;
+using SignalList = boost::signals2::signal<void(const QList<QByteArray> &)>;
 using Connection = boost::signals2::scoped_connection;
 
 namespace QZmq {
 
 class Socket;
 
-class Valve
-{
+class Valve {
 public:
-	Valve(QZmq::Socket *sock);
-	~Valve();
+    Valve(QZmq::Socket *sock);
+    ~Valve();
 
-	bool isOpen() const;
+    bool isOpen() const;
 
-	void setMaxReadsPerEvent(int max);
+    void setMaxReadsPerEvent(int max);
 
-	void open();
-	void close();
+    void open();
+    void close();
 
-	SignalList readyRead;
+    SignalList readyRead;
 
 private:
-	class Private;
-	friend class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::shared_ptr<Private> d;
 };
 
-}
+} // namespace QZmq
 
 #endif

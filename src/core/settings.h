@@ -28,29 +28,28 @@
 
 class QSettings;
 
-class Settings
-{
+class Settings {
 public:
-	Settings(const QString &fileName);
-	~Settings();
+    Settings(const QString &fileName);
+    ~Settings();
 
-	bool contains(const QString &key) const;
-	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
-	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
-	int adjustedPort(const QString &key, int defaultValue = -1) const;
+    bool contains(const QString &key) const;
+    QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    int adjustedPort(const QString &key, int defaultValue = -1) const;
 
-	void setIpcPrefix(const QString &s);
-	void setPortOffset(int x);
+    void setIpcPrefix(const QString &s);
+    void setPortOffset(int x);
 
 private:
-	QSettings *main_;
-	QSettings *include_;
-	QString libdir_;
-	QString rundir_;
-	QString ipcPrefix_;
-	int portOffset_;
+    QSettings *main_;
+    QSettings *include_;
+    QString libdir_;
+    QString rundir_;
+    QString ipcPrefix_;
+    int portOffset_;
 
-	QString resolveVars(const QString &in) const;
+    QString resolveVars(const QString &in) const;
 };
 
 #endif

@@ -38,45 +38,44 @@ class HttpHeaders;
 
 class SimpleHttpServerPrivate;
 
-class SimpleHttpRequest
-{
+class SimpleHttpRequest {
 public:
-	~SimpleHttpRequest();
+    ~SimpleHttpRequest();
 
-	QString requestMethod() const;
-	QByteArray requestUri() const;
-	HttpHeaders requestHeaders() const;
-	QByteArray requestBody() const;
+    QString requestMethod() const;
+    QByteArray requestUri() const;
+    HttpHeaders requestHeaders() const;
+    QByteArray requestBody() const;
 
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
-	void respond(int code, const QByteArray &reason, const QString &body);
+    void respond(int code, const QByteArray &reason, const HttpHeaders &headers,
+                 const QByteArray &body);
+    void respond(int code, const QByteArray &reason, const QString &body);
 
-	Signal finished;
+    Signal finished;
 
 private:
-	class Private;
-	friend class Private;
-	friend class SimpleHttpServerPrivate;
-	Private *d;
+    class Private;
+    friend class Private;
+    friend class SimpleHttpServerPrivate;
+    Private *d;
 
-	SimpleHttpRequest(int headersSizeMax, int bodySizeMax);
+    SimpleHttpRequest(int headersSizeMax, int bodySizeMax);
 };
 
-class SimpleHttpServer
-{
+class SimpleHttpServer {
 public:
-	SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax);
-	~SimpleHttpServer();
+    SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax);
+    ~SimpleHttpServer();
 
-	bool listen(const QHostAddress &addr, int port);
-	bool listenLocal(const QString &name);
-	SimpleHttpRequest *takeNext();
+    bool listen(const QHostAddress &addr, int port);
+    bool listenLocal(const QString &name);
+    SimpleHttpRequest *takeNext();
 
-	Signal requestReady;
+    Signal requestReady;
 
 private:
-	friend class SimpleHttpServerPrivate;
-	SimpleHttpServerPrivate *d;
+    friend class SimpleHttpServerPrivate;
+    SimpleHttpServerPrivate *d;
 };
 
 #endif

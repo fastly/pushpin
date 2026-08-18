@@ -21,17 +21,15 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
 #include "handlerapp.h"
+#include <QCoreApplication>
 
 extern "C" {
 
-int handler_main(int argc, char **argv)
-{
-	QCoreApplication qapp(argc, argv);
+int handler_main(int argc, char **argv) {
+    QCoreApplication qapp(argc, argv);
 
-	HandlerApp app;
-	return app.run();
+    HandlerApp app;
+    return app.run();
 }
-
 }

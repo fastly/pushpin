@@ -33,52 +33,45 @@ class ZrpcRequestPacket;
 class ZrpcResponsePacket;
 class ZrpcManager;
 
-class ZrpcRequest
-{
+class ZrpcRequest {
 public:
-	enum ErrorCondition
-	{
-		ErrorGeneric,
-		ErrorFormat,
-		ErrorUnavailable,
-		ErrorTimeout
-	};
+    enum ErrorCondition { ErrorGeneric, ErrorFormat, ErrorUnavailable, ErrorTimeout };
 
-	ZrpcRequest(ZrpcManager *manager);
-	virtual ~ZrpcRequest();
+    ZrpcRequest(ZrpcManager *manager);
+    virtual ~ZrpcRequest();
 
-	QByteArray from() const;
-	QByteArray id() const;
-	QString method() const;
-	QVariantHash args() const;
-	bool success() const;
-	QVariant result() const;
-	ErrorCondition errorCondition() const;
-	QByteArray errorConditionString() const;
+    QByteArray from() const;
+    QByteArray id() const;
+    QString method() const;
+    QVariantHash args() const;
+    bool success() const;
+    QVariant result() const;
+    ErrorCondition errorCondition() const;
+    QByteArray errorConditionString() const;
 
-	void start(const QString &method, const QVariantHash &args = QVariantHash());
-	void respond(const QVariant &result = QVariant());
-	void respondError(const QByteArray &condition, const QVariant &result = QVariant());
+    void start(const QString &method, const QVariantHash &args = QVariantHash());
+    void respond(const QVariant &result = QVariant());
+    void respondError(const QByteArray &condition, const QVariant &result = QVariant());
 
-	void setError(ErrorCondition condition, const QVariant &result = QVariant());
+    void setError(ErrorCondition condition, const QVariant &result = QVariant());
 
-	Signal finished;
-	Signal destroyed;
+    Signal finished;
+    Signal destroyed;
 
 protected:
-	virtual void onSuccess();
-	virtual void onError();
+    virtual void onSuccess();
+    virtual void onError();
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 
-	friend class ZrpcManager;
-	ZrpcRequest();
-	void setupClient(ZrpcManager *manager);
-	void setupServer(ZrpcManager *manager);
-	void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet);
-	void handle(const ZrpcResponsePacket &packet);
+    friend class ZrpcManager;
+    ZrpcRequest();
+    void setupClient(ZrpcManager *manager);
+    void setupServer(ZrpcManager *manager);
+    void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet);
+    void handle(const ZrpcResponsePacket &packet);
 };
 
 #endif

@@ -36,34 +36,33 @@ namespace QZmq {
 
 class ReqMessage;
 
-class RepRouter
-{
+class RepRouter {
 public:
-	RepRouter();
-	~RepRouter();
+    RepRouter();
+    ~RepRouter();
 
-	void setShutdownWaitTime(int msecs);
+    void setShutdownWaitTime(int msecs);
 
-	void connectToAddress(const QString &addr);
-	bool bind(const QString &addr);
+    void connectToAddress(const QString &addr);
+    bool bind(const QString &addr);
 
-	bool canRead() const;
+    bool canRead() const;
 
-	ReqMessage read();
-	void write(const ReqMessage &message);
+    ReqMessage read();
+    void write(const ReqMessage &message);
 
-	Signal readyRead;
-	SignalInt messagesWritten;
+    Signal readyRead;
+    SignalInt messagesWritten;
 
 private:
-	RepRouter(const RepRouter &) = delete;
-	RepRouter &operator=(const RepRouter &) = delete;
+    RepRouter(const RepRouter &) = delete;
+    RepRouter &operator=(const RepRouter &) = delete;
 
-	class Private;
-	friend class Private;
-	std::unique_ptr<Private> d;
+    class Private;
+    friend class Private;
+    std::unique_ptr<Private> d;
 };
 
-}
+} // namespace QZmq
 
 #endif

@@ -32,42 +32,35 @@ class QString;
 
 class ZhttpManager;
 
-class Updater
-{
+class Updater {
 public:
-	enum Mode
-	{
-		CheckMode,
-		ReportMode
-	};
+    enum Mode { CheckMode, ReportMode };
 
-	class Report
-	{
-	public:
-		int connectionsMax;
-		int connectionsMinutes;
-		int messagesReceived;
-		int messagesSent;
-		int ops;
+    class Report {
+    public:
+        int connectionsMax;
+        int connectionsMinutes;
+        int messagesReceived;
+        int messagesSent;
+        int ops;
 
-		Report() :
-			connectionsMax(0),
-			connectionsMinutes(0),
-			messagesReceived(0),
-			messagesSent(0),
-			ops(0)
-		{
-		}
-	};
+        Report()
+            : connectionsMax(0),
+              connectionsMinutes(0),
+              messagesReceived(0),
+              messagesSent(0),
+              ops(0) {}
+    };
 
-	Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp);
-	~Updater();
+    Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org,
+            ZhttpManager *zhttp);
+    ~Updater();
 
-	void setReport(const Report &report);
+    void setReport(const Report &report);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

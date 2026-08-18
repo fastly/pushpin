@@ -21,17 +21,15 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
 #include "app.h"
+#include <QCoreApplication>
 
 extern "C" {
 
-int proxy_main(int argc, char **argv)
-{
-	QCoreApplication qapp(argc, argv);
+int proxy_main(int argc, char **argv) {
+    QCoreApplication qapp(argc, argv);
 
-	App app;
-	return app.run();
+    App app;
+    return app.run();
 }
-
 }

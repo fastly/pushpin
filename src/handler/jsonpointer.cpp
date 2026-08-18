@@ -23,540 +23,443 @@
 
 #include "jsonpointer.h"
 
-#include <assert.h>
-#include <QStringList>
 #include "qtcompat.h"
+#include <QStringList>
+#include <assert.h>
 
-JsonPointer::JsonPointer() :
-	isNull_(true)
-{
+JsonPointer::JsonPointer() : isNull_(true) {}
+
+QVariant *JsonPointer::root() { return root_; }
+
+JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, ConstFunc func,
+                                             void *data) const {
+    // if there are more refs after current ref, step into current
+    if (refIndex + 1 < refs_.count()) {
+        const Ref &ref = refs_[refIndex];
+
+        assert(ref.type != Ref::Self);
+
+        if (ref.type == Ref::Object) {
+            if (typeId(*i) == QMetaType::QVariantHash) {
+                QVariantHash h = i->toHash();
+                if (!h.contains(ref.name))
+                    return ExecError;
+
+                return execute(&h[ref.name], refIndex + 1, func, data);
+            } else // Map
+            {
+                QVariantMap m = i->toMap();
+                if (!m.contains(ref.name))
+                    return ExecError;
+
+                return execute(&m[ref.name], refIndex + 1, func, data);
+            }
+        } else // Array
+        {
+            QVariantList l = i->toList();
+            if (ref.index < 0 || ref.index >= l.count())
+                return ExecError;
+
+            return execute(&l[ref.index], refIndex + 1, func, data);
+        }
+    }
+
+    // ensure ref is correct type
+    const Ref &ref = refs_[refIndex];
+    if (ref.type == Ref::Object &&
+        (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
+        return ExecError;
+    else if (ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
+        return ExecError;
+
+    func(i, refs_[refIndex], data);
+    return ExecContinue;
 }
 
-QVariant *JsonPointer::root()
-{
-	return root_;
+JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func func, void *data) {
+    // if there are more refs after current ref, step into current
+    if (refIndex + 1 < refs_.count()) {
+        const Ref &ref = refs_[refIndex];
+        if (ref.type == Ref::Object) {
+            if (typeId(*i) == QMetaType::QVariantHash) {
+                QVariantHash h = i->toHash();
+                if (!h.contains(ref.name))
+                    return ExecError;
+
+                ExecStatus ret = execute(&h[ref.name], refIndex + 1, func, data);
+                if (ret == ExecChanged)
+                    *i = h;
+                return ret;
+            } else // Map
+            {
+                QVariantMap m = i->toMap();
+                if (!m.contains(ref.name))
+                    return ExecError;
+
+                ExecStatus ret = execute(&m[ref.name], refIndex + 1, func, data);
+                if (ret == ExecChanged)
+                    *i = m;
+                return ret;
+            }
+        } else if (ref.type == Ref::Array) {
+            QVariantList l = i->toList();
+            if (ref.index < 0 || ref.index >= l.count())
+                return ExecError;
+
+            ExecStatus ret = execute(&l[ref.index], refIndex + 1, func, data);
+            if (ret == ExecChanged)
+                *i = l;
+            return ret;
+        }
+    }
+
+    // ensure ref is correct type
+    const Ref &ref = refs_[refIndex];
+    if (ref.type == Ref::Object &&
+        (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
+        return ExecError;
+    else if (ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
+        return ExecError;
+
+    if (func(i, refs_[refIndex], data))
+        return ExecChanged;
+    else
+        return ExecContinue;
 }
 
-JsonPointer::ExecStatus JsonPointer::execute(const QVariant *i, int refIndex, ConstFunc func, void *data) const
-{
-	// if there are more refs after current ref, step into current
-	if(refIndex + 1 < refs_.count())
-	{
-		const Ref &ref = refs_[refIndex];
-
-		assert(ref.type != Ref::Self);
-
-		if(ref.type == Ref::Object)
-		{
-			if(typeId(*i) == QMetaType::QVariantHash)
-			{
-				QVariantHash h = i->toHash();
-				if(!h.contains(ref.name))
-					return ExecError;
-
-				return execute(&h[ref.name], refIndex + 1, func, data);
-			}
-			else // Map
-			{
-				QVariantMap m = i->toMap();
-				if(!m.contains(ref.name))
-					return ExecError;
-
-				return execute(&m[ref.name], refIndex + 1, func, data);
-			}
-		}
-		else // Array
-		{
-			QVariantList l = i->toList();
-			if(ref.index < 0 || ref.index >= l.count())
-				return ExecError;
-
-			return execute(&l[ref.index], refIndex + 1, func, data);
-		}
-	}
-
-	// ensure ref is correct type
-	const Ref &ref = refs_[refIndex];
-	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
-		return ExecError;
-	else if(ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
-		return ExecError;
-
-	func(i, refs_[refIndex], data);
-	return ExecContinue;
+bool JsonPointer::execute(ConstFunc func, void *data) const {
+    if (!refs_.isEmpty()) {
+        return (execute(root_, 0, func, data) != ExecError);
+    } else {
+        func(root_, Ref(), data);
+        return true;
+    }
 }
 
-JsonPointer::ExecStatus JsonPointer::execute(QVariant *i, int refIndex, Func func, void *data)
-{
-	// if there are more refs after current ref, step into current
-	if(refIndex + 1 < refs_.count())
-	{
-		const Ref &ref = refs_[refIndex];
-		if(ref.type == Ref::Object)
-		{
-			if(typeId(*i) == QMetaType::QVariantHash)
-			{
-				QVariantHash h = i->toHash();
-				if(!h.contains(ref.name))
-					return ExecError;
-
-				ExecStatus ret = execute(&h[ref.name], refIndex + 1, func, data);
-				if(ret == ExecChanged)
-					*i = h;
-				return ret;
-			}
-			else // Map
-			{
-				QVariantMap m = i->toMap();
-				if(!m.contains(ref.name))
-					return ExecError;
-
-				ExecStatus ret = execute(&m[ref.name], refIndex + 1, func, data);
-				if(ret == ExecChanged)
-					*i = m;
-				return ret;
-			}
-		}
-		else if(ref.type == Ref::Array)
-		{
-			QVariantList l = i->toList();
-			if(ref.index < 0 || ref.index >= l.count())
-				return ExecError;
-
-			ExecStatus ret = execute(&l[ref.index], refIndex + 1, func, data);
-			if(ret == ExecChanged)
-				*i = l;
-			return ret;
-		}
-	}
-
-	// ensure ref is correct type
-	const Ref &ref = refs_[refIndex];
-	if(ref.type == Ref::Object && (typeId(*i) != QMetaType::QVariantHash && typeId(*i) != QMetaType::QVariantMap))
-		return ExecError;
-	else if(ref.type == Ref::Array && typeId(*i) != QMetaType::QVariantList)
-		return ExecError;
-
-	if(func(i, refs_[refIndex], data))
-		return ExecChanged;
-	else
-		return ExecContinue;
+bool JsonPointer::execute(Func func, void *data) {
+    if (!refs_.isEmpty()) {
+        return (execute(root_, 0, func, data) != ExecError);
+    } else {
+        func(root_, Ref(), data);
+        return true;
+    }
 }
 
-bool JsonPointer::execute(ConstFunc func, void *data) const
-{
-	if(!refs_.isEmpty())
-	{
-		return (execute(root_, 0, func, data) != ExecError);
-	}
-	else
-	{
-		func(root_, Ref(), data);
-		return true;
-	}
+static void existsFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data) {
+    QVariant &ret = *((QVariant *)data);
+
+    if (ref.type == JsonPointer::Ref::Self) {
+        ret = true;
+    } else if (ref.type == JsonPointer::Ref::Object) {
+        if (typeId(*v) == QMetaType::QVariantHash)
+            ret = v->toHash().contains(ref.name);
+        else // Map
+            ret = v->toMap().contains(ref.name);
+    } else // Array
+    {
+        QVariantList l = v->toList();
+        ret = (ref.index >= 0 && ref.index < l.count());
+    }
 }
 
-bool JsonPointer::execute(Func func, void *data)
-{
-	if(!refs_.isEmpty())
-	{
-		return (execute(root_, 0, func, data) != ExecError);
-	}
-	else
-	{
-		func(root_, Ref(), data);
-		return true;
-	}
+bool JsonPointer::exists() const {
+    QVariant ret;
+    if (execute(existsFunc, &ret))
+        return ret.toBool();
+    else
+        return false;
 }
 
-static void existsFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data)
-{
-	QVariant &ret = *((QVariant *)data);
+static void valueFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data) {
+    QVariant &ret = *((QVariant *)data);
 
-	if(ref.type == JsonPointer::Ref::Self)
-	{
-		ret = true;
-	}
-	else if(ref.type == JsonPointer::Ref::Object)
-	{
-		if(typeId(*v) == QMetaType::QVariantHash)
-			ret = v->toHash().contains(ref.name);
-		else // Map
-			ret = v->toMap().contains(ref.name);
-	}
-	else // Array
-	{
-		QVariantList l = v->toList();
-		ret = (ref.index >= 0 && ref.index < l.count());
-	}
+    if (ref.type == JsonPointer::Ref::Self) {
+        ret = *v;
+    } else if (ref.type == JsonPointer::Ref::Object) {
+        if (typeId(*v) == QMetaType::QVariantHash)
+            ret = v->toHash().value(ref.name);
+        else // Map
+            ret = v->toMap().value(ref.name);
+    } else // Array
+    {
+        QVariantList l = v->toList();
+        if (ref.index >= 0 && ref.index < l.count())
+            ret = l[ref.index];
+    }
 }
 
-bool JsonPointer::exists() const
-{
-	QVariant ret;
-	if(execute(existsFunc, &ret))
-		return ret.toBool();
-	else
-		return false;
+QVariant JsonPointer::value() const {
+    QVariant ret;
+    if (execute(valueFunc, &ret))
+        return ret;
+    else
+        return QVariant();
 }
 
-static void valueFunc(const QVariant *v, const JsonPointer::Ref &ref, void *data)
-{
-	QVariant &ret = *((QVariant *)data);
+static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data) {
+    QVariant &ret = *((QVariant *)data);
 
-	if(ref.type == JsonPointer::Ref::Self)
-	{
-		ret = *v;
-	}
-	else if(ref.type == JsonPointer::Ref::Object)
-	{
-		if(typeId(*v) == QMetaType::QVariantHash)
-			ret = v->toHash().value(ref.name);
-		else // Map
-			ret = v->toMap().value(ref.name);
-	}
-	else // Array
-	{
-		QVariantList l = v->toList();
-		if(ref.index >= 0 && ref.index < l.count())
-			ret = l[ref.index];
-	}
+    if (ref.type == JsonPointer::Ref::Self) {
+        ret = false;
+        return false; // technically an error, since we can't remove the root
+    } else if (ref.type == JsonPointer::Ref::Object) {
+        if (typeId(*v) == QMetaType::QVariantHash) {
+            QVariantHash h = v->toHash();
+            if (h.contains(ref.name)) {
+                ret = true;
+                h.remove(ref.name);
+                *v = h;
+                return true;
+            } else
+                return false;
+        } else // Map
+        {
+            QVariantMap m = v->toMap();
+            if (m.contains(ref.name)) {
+                ret = true;
+                m.remove(ref.name);
+                *v = m;
+                return true;
+            } else
+                return false;
+        }
+    } else // Array
+    {
+        QVariantList l = v->toList();
+        if (ref.index >= 0 && ref.index < l.count()) {
+            ret = true;
+            l.removeAt(ref.index);
+            *v = l;
+            return true;
+        } else
+            return false;
+    }
 }
 
-QVariant JsonPointer::value() const
-{
-	QVariant ret;
-	if(execute(valueFunc, &ret))
-		return ret;
-	else
-		return QVariant();
+bool JsonPointer::remove() {
+    QVariant ret;
+    if (execute(removeFunc, &ret))
+        return ret.toBool();
+    else
+        return false;
 }
 
-static bool removeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
-{
-	QVariant &ret = *((QVariant *)data);
+static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data) {
+    QVariant &ret = *((QVariant *)data);
 
-	if(ref.type == JsonPointer::Ref::Self)
-	{
-		ret = false;
-		return false; // technically an error, since we can't remove the root
-	}
-	else if(ref.type == JsonPointer::Ref::Object)
-	{
-		if(typeId(*v) == QMetaType::QVariantHash)
-		{
-			QVariantHash h = v->toHash();
-			if(h.contains(ref.name))
-			{
-				ret = true;
-				h.remove(ref.name);
-				*v = h;
-				return true;
-			}
-			else
-				return false;
-		}
-		else // Map
-		{
-			QVariantMap m = v->toMap();
-			if(m.contains(ref.name))
-			{
-				ret = true;
-				m.remove(ref.name);
-				*v = m;
-				return true;
-			}
-			else
-				return false;
-		}
-	}
-	else // Array
-	{
-		QVariantList l = v->toList();
-		if(ref.index >= 0 && ref.index < l.count())
-		{
-			ret = true;
-			l.removeAt(ref.index);
-			*v = l;
-			return true;
-		}
-		else
-			return false;
-	}
+    if (ref.type == JsonPointer::Ref::Self) {
+        ret = *v;
+        return false; // technically an error, since we can't remove the root
+    } else if (ref.type == JsonPointer::Ref::Object) {
+        if (typeId(*v) == QMetaType::QVariantHash) {
+            QVariantHash h = v->toHash();
+            if (h.contains(ref.name)) {
+                ret = h.value(ref.name);
+                h.remove(ref.name);
+                *v = h;
+                return true;
+            } else
+                return false;
+        } else // Map
+        {
+            QVariantMap m = v->toMap();
+            if (m.contains(ref.name)) {
+                ret = m.value(ref.name);
+                m.remove(ref.name);
+                *v = m;
+                return true;
+            } else
+                return false;
+        }
+    } else // Array
+    {
+        QVariantList l = v->toList();
+        if (ref.index >= 0 && ref.index < l.count()) {
+            ret = l[ref.index];
+            l.removeAt(ref.index);
+            *v = l;
+            return true;
+        } else
+            return false;
+    }
 }
 
-bool JsonPointer::remove()
-{
-	QVariant ret;
-	if(execute(removeFunc, &ret))
-		return ret.toBool();
-	else
-		return false;
+QVariant JsonPointer::take() {
+    QVariant ret;
+    if (execute(takeFunc, &ret))
+        return ret;
+    else
+        return QVariant();
 }
 
-static bool takeFunc(QVariant *v, const JsonPointer::Ref &ref, void *data)
-{
-	QVariant &ret = *((QVariant *)data);
+static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data) {
+    QPair<QVariant, QVariant> &data = *((QPair<QVariant, QVariant> *)_data);
 
-	if(ref.type == JsonPointer::Ref::Self)
-	{
-		ret = *v;
-		return false; // technically an error, since we can't remove the root
-	}
-	else if(ref.type == JsonPointer::Ref::Object)
-	{
-		if(typeId(*v) == QMetaType::QVariantHash)
-		{
-			QVariantHash h = v->toHash();
-			if(h.contains(ref.name))
-			{
-				ret = h.value(ref.name);
-				h.remove(ref.name);
-				*v = h;
-				return true;
-			}
-			else
-				return false;
-		}
-		else // Map
-		{
-			QVariantMap m = v->toMap();
-			if(m.contains(ref.name))
-			{
-				ret = m.value(ref.name);
-				m.remove(ref.name);
-				*v = m;
-				return true;
-			}
-			else
-				return false;
-		}
-	}
-	else // Array
-	{
-		QVariantList l = v->toList();
-		if(ref.index >= 0 && ref.index < l.count())
-		{
-			ret = l[ref.index];
-			l.removeAt(ref.index);
-			*v = l;
-			return true;
-		}
-		else
-			return false;
-	}
+    if (ref.type == JsonPointer::Ref::Self) {
+        *v = data.first;
+        data.second = true;
+        return true;
+    } else if (ref.type == JsonPointer::Ref::Object) {
+        if (typeId(*v) == QMetaType::QVariantHash) {
+            QVariantHash h = v->toHash();
+            h[ref.name] = data.first;
+            *v = h;
+            data.second = true;
+            return true;
+        } else // Map
+        {
+            QVariantMap m = v->toMap();
+            m[ref.name] = data.first;
+            *v = m;
+            data.second = true;
+            return true;
+        }
+    } else // Array
+    {
+        QVariantList l = v->toList();
+        if (ref.index == -1) {
+            // append
+            l += data.first;
+            *v = l;
+            data.second = true;
+            return true;
+        } else if (ref.index >= 0 && ref.index < l.count()) {
+            l[ref.index] = data.first;
+            *v = l;
+            data.second = true;
+            return true;
+        } else
+            return false;
+    }
 }
 
-QVariant JsonPointer::take()
-{
-	QVariant ret;
-	if(execute(takeFunc, &ret))
-		return ret;
-	else
-		return QVariant();
+bool JsonPointer::setValue(const QVariant &value) {
+    QPair<QVariant, QVariant> data;
+    data.first = value;
+    if (execute(setValueFunc, &data))
+        return data.second.toBool();
+    else
+        return false;
 }
 
-static bool setValueFunc(QVariant *v, const JsonPointer::Ref &ref, void *_data)
-{
-	QPair<QVariant, QVariant> &data = *((QPair<QVariant, QVariant> *)_data);
+bool JsonPointer::isWithin(const QString &bPointerStr, const QString &aPointerStr) {
+    if (!aPointerStr.startsWith('/') || !bPointerStr.startsWith('/') || aPointerStr == bPointerStr)
+        return false;
 
-	if(ref.type == JsonPointer::Ref::Self)
-	{
-		*v = data.first;
-		data.second = true;
-		return true;
-	}
-	else if(ref.type == JsonPointer::Ref::Object)
-	{
-		if(typeId(*v) == QMetaType::QVariantHash)
-		{
-			QVariantHash h = v->toHash();
-			h[ref.name] = data.first;
-			*v = h;
-			data.second = true;
-			return true;
-		}
-		else // Map
-		{
-			QVariantMap m = v->toMap();
-			m[ref.name] = data.first;
-			*v = m;
-			data.second = true;
-			return true;
-		}
-	}
-	else // Array
-	{
-		QVariantList l = v->toList();
-		if(ref.index == -1)
-		{
-			// append
-			l += data.first;
-			*v = l;
-			data.second = true;
-			return true;
-		}
-		else if(ref.index >= 0 && ref.index < l.count())
-		{
-			l[ref.index] = data.first;
-			*v = l;
-			data.second = true;
-			return true;
-		}
-		else
-			return false;
-	}
+    QStringList aParts = aPointerStr.split('/').mid(1);
+    QStringList bParts = bPointerStr.split('/').mid(1);
+
+    if (aParts.count() >= bParts.count())
+        return false;
+
+    for (int n = 0; n < aParts.count(); ++n) {
+        if (aParts[n] != bParts[n])
+            return false;
+    }
+
+    return true;
 }
 
-bool JsonPointer::setValue(const QVariant &value)
-{
-	QPair<QVariant, QVariant> data;
-	data.first = value;
-	if(execute(setValueFunc, &data))
-		return data.second.toBool();
-	else
-		return false;
-}
+JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QString *errorMessage) {
+    if (!pointerStr.startsWith('/')) {
+        if (errorMessage)
+            *errorMessage = "pointer must start with /";
+        return JsonPointer();
+    }
 
-bool JsonPointer::isWithin(const QString &bPointerStr, const QString &aPointerStr)
-{
-	if(!aPointerStr.startsWith('/') || !bPointerStr.startsWith('/') || aPointerStr == bPointerStr)
-		return false;
+    JsonPointer ptr;
+    ptr.isNull_ = false;
+    ptr.root_ = data;
 
-	QStringList aParts = aPointerStr.split('/').mid(1);
-	QStringList bParts = bPointerStr.split('/').mid(1);
+    // root
+    if (pointerStr.length() == 1)
+        return ptr;
 
-	if(aParts.count() >= bParts.count())
-		return false;
+    QVariant i = *ptr.root_;
+    QStringList parts = pointerStr.split('/').mid(1);
+    foreach (const QString &part, parts) {
+        if (part.isEmpty()) {
+            if (errorMessage)
+                *errorMessage = "reference cannot be empty";
+            return JsonPointer();
+        }
 
-	for(int n = 0; n < aParts.count(); ++n)
-	{
-		if(aParts[n] != bParts[n])
-			return false;
-	}
+        QString p = part;
+        p.replace("~1", "/");
+        p.replace("~0", "~");
 
-	return true;
-}
+        // validate and step into previous reference, if any
+        if (!ptr.refs_.isEmpty()) {
+            const Ref &prevRef = ptr.refs_[ptr.refs_.count() - 1];
 
-JsonPointer JsonPointer::resolve(QVariant *data, const QString &pointerStr, QString *errorMessage)
-{
-	if(!pointerStr.startsWith('/'))
-	{
-		if(errorMessage)
-			*errorMessage = "pointer must start with /";
-		return JsonPointer();
-	}
+            if (prevRef.type == Ref::Object) {
+                assert(typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap);
 
-	JsonPointer ptr;
-	ptr.isNull_ = false;
-	ptr.root_ = data;
+                if (typeId(i) == QMetaType::QVariantHash) {
+                    QVariantHash h = i.toHash();
+                    if (!h.contains(prevRef.name)) {
+                        if (errorMessage)
+                            *errorMessage = QString("cannot step into undefined reference: key=%1")
+                                                .arg(prevRef.name);
+                        return JsonPointer();
+                    }
 
-	// root
-	if(pointerStr.length() == 1)
-		return ptr;
+                    i = h[prevRef.name];
+                } else // Map
+                {
+                    QVariantMap m = i.toMap();
+                    if (!m.contains(prevRef.name)) {
+                        if (errorMessage)
+                            *errorMessage = QString("cannot step into undefined reference: key=%1")
+                                                .arg(prevRef.name);
+                        return JsonPointer();
+                    }
 
-	QVariant i = *ptr.root_;
-	QStringList parts = pointerStr.split('/').mid(1);
-	foreach(const QString &part, parts)
-	{
-		if(part.isEmpty())
-		{
-			if(errorMessage)
-				*errorMessage = "reference cannot be empty";
-			return JsonPointer();
-		}
+                    i = m[prevRef.name];
+                }
+            } else // Array
+            {
+                QVariantList l = i.toList();
+                if (prevRef.index < 0 || prevRef.index >= l.count()) {
+                    if (errorMessage)
+                        *errorMessage = QString("cannot step into undefined reference: index=%1")
+                                            .arg(prevRef.index);
+                    return JsonPointer();
+                }
 
-		QString p = part;
-		p.replace("~1", "/");
-		p.replace("~0", "~");
+                i = l[prevRef.index];
+            }
+        }
 
-		// validate and step into previous reference, if any
-		if(!ptr.refs_.isEmpty())
-		{
-			const Ref &prevRef = ptr.refs_[ptr.refs_.count() - 1];
+        if (typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap) {
+            ptr.refs_ += Ref(p);
+        } else if (typeId(i) == QMetaType::QVariantList) {
+            QVariantList l = i.toList();
+            if (p == "-") {
+                ptr.refs_ += Ref(-1);
+            } else {
+                bool ok;
+                int index = p.toInt(&ok);
+                if (!ok) {
+                    if (errorMessage)
+                        *errorMessage = "index must be an integer";
+                    return JsonPointer();
+                }
 
-			if(prevRef.type == Ref::Object)
-			{
-				assert(typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap);
+                if (index < 0 || index >= l.count()) {
+                    if (errorMessage)
+                        *errorMessage = "index out of range";
+                    return JsonPointer();
+                }
 
-				if(typeId(i) == QMetaType::QVariantHash)
-				{
-					QVariantHash h = i.toHash();
-					if(!h.contains(prevRef.name))
-					{
-						if(errorMessage)
-							*errorMessage = QString("cannot step into undefined reference: key=%1").arg(prevRef.name);
-						return JsonPointer();
-					}
+                ptr.refs_ += Ref(index);
+            }
+        } else {
+            if (errorMessage)
+                *errorMessage = "non-container value cannot have child reference";
+            return JsonPointer();
+        }
+    }
 
-					i = h[prevRef.name];
-				}
-				else // Map
-				{
-					QVariantMap m = i.toMap();
-					if(!m.contains(prevRef.name))
-					{
-						if(errorMessage)
-							*errorMessage = QString("cannot step into undefined reference: key=%1").arg(prevRef.name);
-						return JsonPointer();
-					}
-
-					i = m[prevRef.name];
-				}
-			}
-			else // Array
-			{
-				QVariantList l = i.toList();
-				if(prevRef.index < 0 || prevRef.index >= l.count())
-				{
-					if(errorMessage)
-						*errorMessage = QString("cannot step into undefined reference: index=%1").arg(prevRef.index);
-					return JsonPointer();
-				}
-
-				i = l[prevRef.index];
-			}
-		}
-
-		if(typeId(i) == QMetaType::QVariantHash || typeId(i) == QMetaType::QVariantMap)
-		{
-			ptr.refs_ += Ref(p);
-		}
-		else if(typeId(i) == QMetaType::QVariantList)
-		{
-			QVariantList l = i.toList();
-			if(p == "-")
-			{
-				ptr.refs_ += Ref(-1);
-			}
-			else
-			{
-				bool ok;
-				int index = p.toInt(&ok);
-				if(!ok)
-				{
-					if(errorMessage)
-						*errorMessage = "index must be an integer";
-					return JsonPointer();
-				}
-
-				if(index < 0 || index >= l.count())
-				{
-					if(errorMessage)
-						*errorMessage = "index out of range";
-					return JsonPointer();
-				}
-
-				ptr.refs_ += Ref(index);
-			}
-		}
-		else
-		{
-			if(errorMessage)
-				*errorMessage = "non-container value cannot have child reference";
-			return JsonPointer();
-		}
-	}
-
-	return ptr;
+    return ptr;
 }

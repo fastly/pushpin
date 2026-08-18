@@ -22,62 +22,63 @@
 #ifndef PUSHPIN_TEST_H
 #define PUSHPIN_TEST_H
 
+#include "rust/bindings.h"
 #include "string.h"
 #include <QtTest/QtTest>
-#include "rust/bindings.h"
 
-class TestException
-{
+class TestException {
 public:
     std::string file;
     int line;
     std::string message;
 
-    TestException(const std::string &file, int line, const std::string &message) :
-        file(file),
-        line(line),
-        message(message)
-    {
-    }
+    TestException(const std::string &file, int line, const std::string &message)
+        : file(file), line(line), message(message) {}
 
-    void toFfi(ffi::TestException *dest) const
-    {
+    void toFfi(ffi::TestException *dest) const {
         ffi::test_exception_set(dest, file.c_str(), line, message.c_str());
     }
 };
 
-inline void test_assert(bool cond, const char *condStr, const char *file, int line)
-{
-    if(!cond)
+inline void test_assert(bool cond, const char *condStr, const char *file, int line) {
+    if (!cond)
         throw TestException(file, line, std::string("assertion failed: ") + condStr);
 }
 
 // uses QtTest to stringify values
 template <typename T1, typename T2>
-inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line)
-{
-    if(!(left == right))
-        throw TestException(file, line, std::string("assertion `left == right` failed\n  left: ") + QTest::toString(left) + "\n right: " + QTest::toString(right));
+inline void test_assert_eq(const T1 &left, const T2 &right, const char *file, int line) {
+    if (!(left == right))
+        throw TestException(file, line,
+                            std::string("assertion `left == right` failed\n  left: ") +
+                                QTest::toString(left) + "\n right: " + QTest::toString(right));
 }
 
 // if cond is false, throws an exception with similar message as rust's assert macro
-#define TEST_ASSERT(cond) \
-do {\
-    test_assert(static_cast<bool>(cond), #cond, __FILE__, __LINE__);\
-} while (false)
+#define TEST_ASSERT(cond)                                                                          \
+    do {                                                                                           \
+        test_assert(static_cast<bool>(cond), #cond, __FILE__, __LINE__);                           \
+    } while (false)
 
 // if left != right, throws an exception with similar message as rust's assert_eq macro
-#define TEST_ASSERT_EQ(left, right) \
-do {\
-    test_assert_eq(left, right, __FILE__, __LINE__);\
-} while (false)
+#define TEST_ASSERT_EQ(left, right)                                                                \
+    do {                                                                                           \
+        test_assert_eq(left, right, __FILE__, __LINE__);                                           \
+    } while (false)
 
-// for running a test and catching an exception if any. expects local variable ffi::TestException* out_ex to exist
-#define TEST_CATCH(statement) try { statement; } catch(const TestException &ex) { ex.toFfi(out_ex); return 1; }
+// for running a test and catching an exception if any. expects local variable ffi::TestException*
+// out_ex to exist
+#define TEST_CATCH(statement)                                                                      \
+    try {                                                                                          \
+        statement;                                                                                 \
+    } catch (const TestException &ex) {                                                            \
+        ex.toFfi(out_ex);                                                                          \
+        return 1;                                                                                  \
+    }
 
 // expects a test function that takes a wait function as an argument. the wait
 // function can be used by the test to wait for a number of milliseconds while
 // the event loop runs.
-void test_with_event_loop(std::function<void (std::function<void (int)>)> f);
+void test_with_event_loop(std::function<void(std::function<void(int)>)> f);
 
 #endif

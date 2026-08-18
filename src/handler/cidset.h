@@ -23,9 +23,9 @@
 #ifndef CIDSET_H
 #define CIDSET_H
 
+#include <QMetaType>
 #include <QSet>
 #include <QString>
-#include <QMetaType>
 
 typedef QSet<QString> CidSet;
 Q_DECLARE_METATYPE(CidSet);

@@ -21,23 +21,21 @@
 
 #include "test.h"
 
+#include "eventloop.h"
 #include <chrono>
 #include <thread>
-#include "eventloop.h"
 
 using namespace std::chrono_literals;
 
-void test_with_event_loop(std::function<void (std::function<void (int)>)> f)
-{
-	EventLoop loop(100);
+void test_with_event_loop(std::function<void(std::function<void(int)>)> f) {
+    EventLoop loop(100);
 
-	auto loop_wait = [&](int ms) {
-		for(int i = ms; i > 0; i -= 10)
-		{
-			std::this_thread::sleep_for(10ms);
-			loop.step();
-		}
-	};
+    auto loop_wait = [&](int ms) {
+        for (int i = ms; i > 0; i -= 10) {
+            std::this_thread::sleep_for(10ms);
+            loop.step();
+        }
+    };
 
-	f(loop_wait);
+    f(loop_wait);
 }
