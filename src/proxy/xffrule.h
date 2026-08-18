@@ -23,17 +23,12 @@
 #ifndef XFFRULE_H
 #define XFFRULE_H
 
-class XffRule
-{
+class XffRule {
 public:
-	int truncate;
-	bool append;
+    int truncate;
+    bool append;
 
-	XffRule() :
-		truncate(-1),
-		append(false)
-	{
-	}
+    XffRule() : truncate(-1), append(false) {}
 };
 
 #endif

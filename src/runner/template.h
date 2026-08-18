@@ -29,10 +29,11 @@
 namespace Template {
 
 QString render(const QString &content, const QVariantMap &context, QString *error = 0);
-bool renderFile(const QString &inFile, const QString &outFile, const QVariantMap &context, QString *error = 0);
+bool renderFile(const QString &inFile, const QString &outFile, const QVariantMap &context,
+                QString *error = 0);
 
 void dumpTemplate(const QString &content);
 
-}
+} // namespace Template
 
 #endif

@@ -26,21 +26,17 @@
 #include <QByteArray>
 #include <QVariant>
 
-class ZrpcResponsePacket
-{
+class ZrpcResponsePacket {
 public:
-	QByteArray id;
-	bool success;
-	QVariant value;
-	QByteArray condition;
+    QByteArray id;
+    bool success;
+    QVariant value;
+    QByteArray condition;
 
-	ZrpcResponsePacket() :
-		success(false)
-	{
-	}
+    ZrpcResponsePacket() : success(false) {}
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+    QVariant toVariant() const;
+    bool fromVariant(const QVariant &in);
 };
 
 #endif

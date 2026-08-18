@@ -23,84 +23,75 @@
 
 #include "conncheckworker.h"
 
-#include "qtcompat.h"
-#include "zrpcrequest.h"
 #include "controlrequest.h"
+#include "qtcompat.h"
 #include "statsmanager.h"
+#include "zrpcrequest.h"
 
-ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
-	req_(req)
-{
-	QVariantHash args = req_->args();
+ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient,
+                                 StatsManager *stats)
+    : req_(req) {
+    QVariantHash args = req_->args();
 
-	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
-	{
-		respondError("bad-request");
-		return;
-	}
+    if (!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList) {
+        respondError("bad-request");
+        return;
+    }
 
-	QVariantList vids = args["ids"].toList();
+    QVariantList vids = args["ids"].toList();
 
-	foreach(const QVariant &vid, vids)
-	{
-		if(typeId(vid) != QMetaType::QByteArray)
-		{
-			respondError("bad-request");
-			return;
-		}
+    foreach (const QVariant &vid, vids) {
+        if (typeId(vid) != QMetaType::QByteArray) {
+            respondError("bad-request");
+            return;
+        }
 
-		cids_ += QString::fromUtf8(vid.toByteArray());
-	}
+        cids_ += QString::fromUtf8(vid.toByteArray());
+    }
 
-	foreach(const QString &cid, cids_)
-	{
-		if(!stats->checkConnection(cid.toUtf8()))
-			missing_ += cid;
-	}
+    foreach (const QString &cid, cids_) {
+        if (!stats->checkConnection(cid.toUtf8()))
+            missing_ += cid;
+    }
 
-	if(!missing_.isEmpty())
-	{
-		// ask the proxy about any cids we don't know about
-		connCheck_ = std::unique_ptr<Deferred>(ControlRequest::connCheck(proxyControlClient, missing_));
-		finishedConnection_ = connCheck_->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
-		return;
-	}
+    if (!missing_.isEmpty()) {
+        // ask the proxy about any cids we don't know about
+        connCheck_ =
+            std::unique_ptr<Deferred>(ControlRequest::connCheck(proxyControlClient, missing_));
+        finishedConnection_ = connCheck_->finished.connect(
+            boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
+        return;
+    }
 
-	doFinish();
+    doFinish();
 }
 
-void ConnCheckWorker::respondError(const QByteArray &condition)
-{
-	req_->respondError(condition);
-	setFinished(true);
+void ConnCheckWorker::respondError(const QByteArray &condition) {
+    req_->respondError(condition);
+    setFinished(true);
 }
 
-void ConnCheckWorker::doFinish()
-{
-	foreach(const QString &cid, missing_)
-		cids_.remove(cid);
+void ConnCheckWorker::doFinish() {
+    foreach (const QString &cid, missing_)
+        cids_.remove(cid);
 
-	QVariantList result;
-	foreach(const QString &cid, cids_)
-		result += cid.toUtf8();
+    QVariantList result;
+    foreach (const QString &cid, cids_)
+        result += cid.toUtf8();
 
-	req_->respond(result);
-	setFinished(true);
+    req_->respond(result);
+    setFinished(true);
 }
 
-void ConnCheckWorker::proxyConnCheck_finished(const DeferredResult &result)
-{
-	if(result.success)
-	{
-		CidSet found = result.value.value<CidSet>();
+void ConnCheckWorker::proxyConnCheck_finished(const DeferredResult &result) {
+    if (result.success) {
+        CidSet found = result.value.value<CidSet>();
 
-		foreach(const QString &cid, found)
-			missing_.remove(cid);
+        foreach (const QString &cid, found)
+            missing_.remove(cid);
 
-		doFinish();
-	}
-	else
-	{
-		respondError("proxy-request-failed");
-	}
+        doFinish();
+    } else {
+        respondError("proxy-request-failed");
+    }
 }

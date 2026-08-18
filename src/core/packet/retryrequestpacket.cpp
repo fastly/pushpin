@@ -25,347 +25,321 @@
 
 #include "qtcompat.h"
 
-RetryRequestPacket::RetryRequestPacket() :
-	haveInspectInfo(false),
-	retrySeq(-1)
-{
+RetryRequestPacket::RetryRequestPacket() : haveInspectInfo(false), retrySeq(-1) {}
+
+QVariant RetryRequestPacket::toVariant() const {
+    QVariantHash obj;
+
+    QVariantList vrequests;
+    foreach (const Request &r, requests) {
+        QVariantHash vrequest;
+
+        QVariantHash vrid;
+        vrid["sender"] = r.rid.first;
+        vrid["id"] = r.rid.second;
+
+        vrequest["rid"] = vrid;
+
+        if (r.https)
+            vrequest["https"] = true;
+
+        if (!r.peerAddress.isNull())
+            vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
+
+        if (r.debug)
+            vrequest["debug"] = true;
+
+        if (r.autoCrossOrigin)
+            vrequest["auto-cross-origin"] = true;
+
+        if (!r.jsonpCallback.isEmpty())
+            vrequest["jsonp-callback"] = r.jsonpCallback;
+
+        if (r.jsonpExtendedResponse)
+            vrequest["jsonp-extended-response"] = true;
+
+        if (r.unreportedTime > 0)
+            vrequest["unreported-time"] = r.unreportedTime;
+
+        vrequest["in-seq"] = r.inSeq;
+        vrequest["out-seq"] = r.outSeq;
+        vrequest["out-credits"] = r.outCredits;
+
+        if (r.routerResp)
+            vrequest["router-resp"] = r.routerResp;
+
+        if (r.userData.isValid())
+            vrequest["user-data"] = r.userData;
+
+        vrequests += vrequest;
+    }
+
+    obj["requests"] = vrequests;
+
+    QVariantHash vrequestData;
+
+    vrequestData["method"] = requestData.method.toLatin1();
+    vrequestData["uri"] = requestData.uri.toEncoded();
+
+    QVariantList vheaders;
+    foreach (const HttpHeader &h, requestData.headers) {
+        QVariantList vheader;
+        vheader += h.first;
+        vheader += h.second;
+        vheaders += QVariant(vheader);
+    }
+    vrequestData["headers"] = vheaders;
+
+    vrequestData["body"] = requestData.body;
+
+    obj["request-data"] = vrequestData;
+
+    if (haveInspectInfo) {
+        QVariantHash vinspect;
+
+        vinspect["no-proxy"] = !inspectInfo.doProxy;
+
+        if (!inspectInfo.sharingKey.isEmpty())
+            vinspect["sharing-key"] = inspectInfo.sharingKey;
+
+        if (!inspectInfo.sid.isEmpty())
+            vinspect["sid"] = inspectInfo.sid;
+
+        if (!inspectInfo.lastIds.isEmpty()) {
+            QVariantHash vlastIds;
+
+            QHashIterator<QByteArray, QByteArray> it(inspectInfo.lastIds);
+            while (it.hasNext()) {
+                it.next();
+
+                vlastIds[QString::fromUtf8(it.key())] = it.value();
+            }
+
+            vinspect["last-ids"] = vlastIds;
+        }
+
+        if (inspectInfo.userData.isValid())
+            vinspect["user-data"] = inspectInfo.userData;
+
+        obj["inspect"] = vinspect;
+    }
+
+    if (!route.isEmpty())
+        obj["route"] = route;
+
+    if (retrySeq >= 0)
+        obj["retry-seq"] = retrySeq;
+
+    return obj;
 }
 
-QVariant RetryRequestPacket::toVariant() const
-{
-	QVariantHash obj;
+bool RetryRequestPacket::fromVariant(const QVariant &in) {
+    if (typeId(in) != QMetaType::QVariantHash)
+        return false;
 
-	QVariantList vrequests;
-	foreach(const Request &r, requests)
-	{
-		QVariantHash vrequest;
+    QVariantHash obj = in.toHash();
 
-		QVariantHash vrid;
-		vrid["sender"] = r.rid.first;
-		vrid["id"] = r.rid.second;
+    if (!obj.contains("requests") || typeId(obj["requests"]) != QMetaType::QVariantList)
+        return false;
 
-		vrequest["rid"] = vrid;
+    requests.clear();
+    foreach (const QVariant &i, obj["requests"].toList()) {
+        if (typeId(i) != QMetaType::QVariantHash)
+            return false;
 
-		if(r.https)
-			vrequest["https"] = true;
+        QVariantHash vrequest = i.toHash();
 
-		if(!r.peerAddress.isNull())
-			vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
+        Request r;
 
-		if(r.debug)
-			vrequest["debug"] = true;
+        if (!vrequest.contains("rid") || typeId(vrequest["rid"]) != QMetaType::QVariantHash)
+            return false;
 
-		if(r.autoCrossOrigin)
-			vrequest["auto-cross-origin"] = true;
+        QVariantHash vrid = vrequest["rid"].toHash();
 
-		if(!r.jsonpCallback.isEmpty())
-			vrequest["jsonp-callback"] = r.jsonpCallback;
+        QByteArray sender, id;
 
-		if(r.jsonpExtendedResponse)
-			vrequest["jsonp-extended-response"] = true;
+        if (!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
+            return false;
 
-		if(r.unreportedTime > 0)
-			vrequest["unreported-time"] = r.unreportedTime;
+        sender = vrid["sender"].toByteArray();
 
-		vrequest["in-seq"] = r.inSeq;
-		vrequest["out-seq"] = r.outSeq;
-		vrequest["out-credits"] = r.outCredits;
+        if (!vrid.contains("id") || typeId(vrid["id"]) != QMetaType::QByteArray)
+            return false;
 
-		if(r.routerResp)
-			vrequest["router-resp"] = r.routerResp;
+        id = vrid["id"].toByteArray();
 
-		if(r.userData.isValid())
-			vrequest["user-data"] = r.userData;
+        r.rid = Rid(sender, id);
 
-		vrequests += vrequest;
-	}
+        if (vrequest.contains("https")) {
+            if (typeId(vrequest["https"]) != QMetaType::Bool)
+                return false;
 
-	obj["requests"] = vrequests;
+            r.https = vrequest["https"].toBool();
+        }
 
-	QVariantHash vrequestData;
+        if (vrequest.contains("peer-address")) {
+            if (typeId(vrequest["peer-address"]) != QMetaType::QByteArray)
+                return false;
 
-	vrequestData["method"] = requestData.method.toLatin1();
-	vrequestData["uri"] = requestData.uri.toEncoded();
+            r.peerAddress = QHostAddress(QString::fromUtf8(vrequest["peer-address"].toByteArray()));
+        }
 
-	QVariantList vheaders;
-	foreach(const HttpHeader &h, requestData.headers)
-	{
-		QVariantList vheader;
-		vheader += h.first;
-		vheader += h.second;
-		vheaders += QVariant(vheader);
-	}
-	vrequestData["headers"] = vheaders;
+        if (vrequest.contains("debug")) {
+            if (typeId(vrequest["debug"]) != QMetaType::Bool)
+                return false;
 
-	vrequestData["body"] = requestData.body;
+            r.debug = vrequest["debug"].toBool();
+        }
 
-	obj["request-data"] = vrequestData;
+        if (vrequest.contains("auto-cross-origin")) {
+            if (typeId(vrequest["auto-cross-origin"]) != QMetaType::Bool)
+                return false;
 
-	if(haveInspectInfo)
-	{
-		QVariantHash vinspect;
+            r.autoCrossOrigin = vrequest["auto-cross-origin"].toBool();
+        }
 
-		vinspect["no-proxy"] = !inspectInfo.doProxy;
+        if (vrequest.contains("jsonp-callback")) {
+            if (typeId(vrequest["jsonp-callback"]) != QMetaType::QByteArray)
+                return false;
 
-		if(!inspectInfo.sharingKey.isEmpty())
-			vinspect["sharing-key"] = inspectInfo.sharingKey;
+            r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
 
-		if(!inspectInfo.sid.isEmpty())
-			vinspect["sid"] = inspectInfo.sid;
+            if (vrequest.contains("jsonp-extended-response")) {
+                if (typeId(vrequest["jsonp-extended-response"]) != QMetaType::Bool)
+                    return false;
 
-		if(!inspectInfo.lastIds.isEmpty())
-		{
-			QVariantHash vlastIds;
+                r.jsonpExtendedResponse = vrequest["jsonp-extended-response"].toBool();
+            }
+        }
 
-			QHashIterator<QByteArray, QByteArray> it(inspectInfo.lastIds);
-			while(it.hasNext())
-			{
-				it.next();
+        if (vrequest.contains("unreported-time")) {
+            if (!canConvert(vrequest["unreported-time"], QMetaType::Int))
+                return false;
 
-				vlastIds[QString::fromUtf8(it.key())] = it.value();
-			}
+            r.unreportedTime = vrequest["unreported-time"].toInt();
+        }
 
-			vinspect["last-ids"] = vlastIds;
-		}
+        if (!vrequest.contains("in-seq") || !canConvert(vrequest["in-seq"], QMetaType::Int))
+            return false;
+        r.inSeq = vrequest["in-seq"].toInt();
 
-		if(inspectInfo.userData.isValid())
-			vinspect["user-data"] = inspectInfo.userData;
+        if (!vrequest.contains("out-seq") || !canConvert(vrequest["out-seq"], QMetaType::Int))
+            return false;
+        r.outSeq = vrequest["out-seq"].toInt();
 
-		obj["inspect"] = vinspect;
-	}
+        if (!vrequest.contains("out-credits") ||
+            !canConvert(vrequest["out-credits"], QMetaType::Int))
+            return false;
+        r.outCredits = vrequest["out-credits"].toInt();
 
-	if(!route.isEmpty())
-		obj["route"] = route;
+        if (vrequest.contains("router-resp")) {
+            if (typeId(vrequest["router-resp"]) != QMetaType::Bool)
+                return false;
 
-	if(retrySeq >= 0)
-		obj["retry-seq"] = retrySeq;
+            r.routerResp = vrequest["router-resp"].toBool();
+        }
 
-	return obj;
-}
+        if (vrequest.contains("user-data"))
+            r.userData = vrequest["user-data"];
 
-bool RetryRequestPacket::fromVariant(const QVariant &in)
-{
-	if(typeId(in) != QMetaType::QVariantHash)
-		return false;
+        requests += r;
+    }
 
-	QVariantHash obj = in.toHash();
+    if (!obj.contains("request-data") || typeId(obj["request-data"]) != QMetaType::QVariantHash)
+        return false;
+    QVariantHash vrequestData = obj["request-data"].toHash();
 
-	if(!obj.contains("requests") || typeId(obj["requests"]) != QMetaType::QVariantList)
-		return false;
+    if (!vrequestData.contains("method") || typeId(vrequestData["method"]) != QMetaType::QByteArray)
+        return false;
+    requestData.method = QString::fromLatin1(vrequestData["method"].toByteArray());
 
-	requests.clear();
-	foreach(const QVariant &i, obj["requests"].toList())
-	{
-		if(typeId(i) != QMetaType::QVariantHash)
-			return false;
+    if (!vrequestData.contains("uri") || typeId(vrequestData["uri"]) != QMetaType::QByteArray)
+        return false;
+    requestData.uri = QUrl::fromEncoded(vrequestData["uri"].toByteArray(), QUrl::StrictMode);
 
-		QVariantHash vrequest = i.toHash();
+    requestData.headers.clear();
+    if (vrequestData.contains("headers")) {
+        if (typeId(vrequestData["headers"]) != QMetaType::QVariantList)
+            return false;
 
-		Request r;
+        foreach (const QVariant &i, vrequestData["headers"].toList()) {
+            QVariantList list = i.toList();
+            if (list.count() != 2)
+                return false;
 
-		if(!vrequest.contains("rid") || typeId(vrequest["rid"]) != QMetaType::QVariantHash)
-			return false;
+            if (typeId(list[0]) != QMetaType::QByteArray ||
+                typeId(list[1]) != QMetaType::QByteArray)
+                return false;
 
-		QVariantHash vrid = vrequest["rid"].toHash();
+            requestData.headers +=
+                QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
+        }
+    }
 
-		QByteArray sender, id;
+    if (!vrequestData.contains("body") || typeId(vrequestData["body"]) != QMetaType::QByteArray)
+        return false;
+    requestData.body = vrequestData["body"].toByteArray();
 
-		if(!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
-			return false;
+    if (obj.contains("inspect")) {
+        if (typeId(obj["inspect"]) != QMetaType::QVariantHash)
+            return false;
+        QVariantHash vinspect = obj["inspect"].toHash();
 
-		sender = vrid["sender"].toByteArray();
+        if (!vinspect.contains("no-proxy") || typeId(vinspect["no-proxy"]) != QMetaType::Bool)
+            return false;
+        inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
 
-		if(!vrid.contains("id") || typeId(vrid["id"]) != QMetaType::QByteArray)
-			return false;
+        inspectInfo.sharingKey.clear();
+        if (vinspect.contains("sharing-key")) {
+            if (typeId(vinspect["sharing-key"]) != QMetaType::QByteArray)
+                return false;
 
-		id = vrid["id"].toByteArray();
+            inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
+        }
 
-		r.rid = Rid(sender, id);
+        if (vinspect.contains("sid")) {
+            if (typeId(vinspect["sid"]) != QMetaType::QByteArray)
+                return false;
 
-		if(vrequest.contains("https"))
-		{
-			if(typeId(vrequest["https"]) != QMetaType::Bool)
-				return false;
+            inspectInfo.sid = vinspect["sid"].toByteArray();
+        }
 
-			r.https = vrequest["https"].toBool();
-		}
+        if (vinspect.contains("last-ids")) {
+            if (typeId(vinspect["last-ids"]) != QMetaType::QVariantHash)
+                return false;
 
-		if(vrequest.contains("peer-address"))
-		{
-			if(typeId(vrequest["peer-address"]) != QMetaType::QByteArray)
-				return false;
+            QVariantHash vlastIds = vinspect["last-ids"].toHash();
+            QHashIterator<QString, QVariant> it(vlastIds);
+            while (it.hasNext()) {
+                it.next();
 
-			r.peerAddress = QHostAddress(QString::fromUtf8(vrequest["peer-address"].toByteArray()));
-		}
+                if (typeId(it.value()) != QMetaType::QByteArray)
+                    return false;
 
-		if(vrequest.contains("debug"))
-		{
-			if(typeId(vrequest["debug"]) != QMetaType::Bool)
-				return false;
+                QByteArray key = it.key().toUtf8();
+                QByteArray val = it.value().toByteArray();
+                inspectInfo.lastIds.insert(key, val);
+            }
+        }
 
-			r.debug = vrequest["debug"].toBool();
-		}
+        inspectInfo.userData = vinspect["user-data"];
 
-		if(vrequest.contains("auto-cross-origin"))
-		{
-			if(typeId(vrequest["auto-cross-origin"]) != QMetaType::Bool)
-				return false;
+        haveInspectInfo = true;
+    }
 
-			r.autoCrossOrigin = vrequest["auto-cross-origin"].toBool();
-		}
+    if (obj.contains("route")) {
+        if (typeId(obj["route"]) != QMetaType::QByteArray)
+            return false;
 
-		if(vrequest.contains("jsonp-callback"))
-		{
-			if(typeId(vrequest["jsonp-callback"]) != QMetaType::QByteArray)
-				return false;
+        route = obj["route"].toByteArray();
+    }
 
-			r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
+    if (obj.contains("retry-seq")) {
+        if (!canConvert(obj["retry-seq"], QMetaType::Int))
+            return false;
 
-			if(vrequest.contains("jsonp-extended-response"))
-			{
-				if(typeId(vrequest["jsonp-extended-response"]) != QMetaType::Bool)
-					return false;
+        retrySeq = obj["retry-seq"].toInt();
+    }
 
-				r.jsonpExtendedResponse = vrequest["jsonp-extended-response"].toBool();
-			}
-		}
-
-		if(vrequest.contains("unreported-time"))
-		{
-			if(!canConvert(vrequest["unreported-time"], QMetaType::Int))
-				return false;
-
-			r.unreportedTime = vrequest["unreported-time"].toInt();
-		}
-
-		if(!vrequest.contains("in-seq") || !canConvert(vrequest["in-seq"], QMetaType::Int))
-			return false;
-		r.inSeq = vrequest["in-seq"].toInt();
-
-		if(!vrequest.contains("out-seq") || !canConvert(vrequest["out-seq"], QMetaType::Int))
-			return false;
-		r.outSeq = vrequest["out-seq"].toInt();
-
-		if(!vrequest.contains("out-credits") || !canConvert(vrequest["out-credits"], QMetaType::Int))
-			return false;
-		r.outCredits = vrequest["out-credits"].toInt();
-
-		if(vrequest.contains("router-resp"))
-		{
-			if(typeId(vrequest["router-resp"]) != QMetaType::Bool)
-				return false;
-
-			r.routerResp = vrequest["router-resp"].toBool();
-		}
-
-		if(vrequest.contains("user-data"))
-			r.userData = vrequest["user-data"];
-
-		requests += r;
-	}
-
-	if(!obj.contains("request-data") || typeId(obj["request-data"]) != QMetaType::QVariantHash)
-		return false;
-	QVariantHash vrequestData = obj["request-data"].toHash();
-
-	if(!vrequestData.contains("method") || typeId(vrequestData["method"]) != QMetaType::QByteArray)
-		return false;
-	requestData.method = QString::fromLatin1(vrequestData["method"].toByteArray());
-
-	if(!vrequestData.contains("uri") || typeId(vrequestData["uri"]) != QMetaType::QByteArray)
-		return false;
-	requestData.uri = QUrl::fromEncoded(vrequestData["uri"].toByteArray(), QUrl::StrictMode);
-
-	requestData.headers.clear();
-	if(vrequestData.contains("headers"))
-	{
-		if(typeId(vrequestData["headers"]) != QMetaType::QVariantList)
-			return false;
-
-		foreach(const QVariant &i, vrequestData["headers"].toList())
-		{
-			QVariantList list = i.toList();
-			if(list.count() != 2)
-				return false;
-
-			if(typeId(list[0]) != QMetaType::QByteArray || typeId(list[1]) != QMetaType::QByteArray)
-				return false;
-
-			requestData.headers += QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
-		}
-	}
-
-	if(!vrequestData.contains("body") || typeId(vrequestData["body"]) != QMetaType::QByteArray)
-		return false;
-	requestData.body = vrequestData["body"].toByteArray();
-
-	if(obj.contains("inspect"))
-	{
-		if(typeId(obj["inspect"]) != QMetaType::QVariantHash)
-			return false;
-		QVariantHash vinspect = obj["inspect"].toHash();
-
-		if(!vinspect.contains("no-proxy") || typeId(vinspect["no-proxy"]) != QMetaType::Bool)
-			return false;
-		inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
-
-		inspectInfo.sharingKey.clear();
-		if(vinspect.contains("sharing-key"))
-		{
-			if(typeId(vinspect["sharing-key"]) != QMetaType::QByteArray)
-				return false;
-
-			inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
-		}
-
-		if(vinspect.contains("sid"))
-		{
-			if(typeId(vinspect["sid"]) != QMetaType::QByteArray)
-				return false;
-
-			inspectInfo.sid = vinspect["sid"].toByteArray();
-		}
-
-		if(vinspect.contains("last-ids"))
-		{
-			if(typeId(vinspect["last-ids"]) != QMetaType::QVariantHash)
-				return false;
-
-			QVariantHash vlastIds = vinspect["last-ids"].toHash();
-			QHashIterator<QString, QVariant> it(vlastIds);
-			while(it.hasNext())
-			{
-				it.next();
-
-				if(typeId(it.value()) != QMetaType::QByteArray)
-					return false;
-
-				QByteArray key = it.key().toUtf8();
-				QByteArray val = it.value().toByteArray();
-				inspectInfo.lastIds.insert(key, val);
-			}
-		}
-
-		inspectInfo.userData = vinspect["user-data"];
-
-		haveInspectInfo = true;
-	}
-
-	if(obj.contains("route"))
-	{
-		if(typeId(obj["route"]) != QMetaType::QByteArray)
-			return false;
-
-		route = obj["route"].toByteArray();
-	}
-
-	if(obj.contains("retry-seq"))
-	{
-		if(!canConvert(obj["retry-seq"], QMetaType::Int))
-			return false;
-
-		retrySeq = obj["retry-seq"].toInt();
-	}
-
-	return true;
+    return true;
 }

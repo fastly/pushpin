@@ -26,19 +26,15 @@
 #include <QByteArray>
 #include <QVariant>
 
-class InspectData
-{
+class InspectData {
 public:
-	bool doProxy;
-	QByteArray sharingKey;
-	QByteArray sid;
-	QHash<QByteArray, QByteArray> lastIds;
-	QVariant userData;
+    bool doProxy;
+    QByteArray sharingKey;
+    QByteArray sid;
+    QHash<QByteArray, QByteArray> lastIds;
+    QVariant userData;
 
-	InspectData() :
-		doProxy(false)
-	{
-	}
+    InspectData() : doProxy(false) {}
 };
 
 #endif

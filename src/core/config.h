@@ -27,17 +27,16 @@
 
 namespace Config {
 
-class Config
-{
+class Config {
 public:
-	QString version;
-	QString configDir;
-	QString libDir;
+    QString version;
+    QString configDir;
+    QString libDir;
 };
 
 // value is thread local
-Config & get();
+Config &get();
 
-}
+} // namespace Config
 
 #endif

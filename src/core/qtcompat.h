@@ -23,17 +23,15 @@
 #include <QMetaType>
 #include <QVariant>
 
-inline QMetaType::Type typeId(const QVariant &v)
-{
+inline QMetaType::Type typeId(const QVariant &v) {
 #if QT_VERSION >= 0x060000
-	return (QMetaType::Type)v.typeId();
+    return (QMetaType::Type)v.typeId();
 #else
-	return (QMetaType::Type)v.type();
+    return (QMetaType::Type)v.type();
 #endif
 }
 
-inline bool canConvert(const QVariant &v, QMetaType::Type type)
-{
+inline bool canConvert(const QVariant &v, QMetaType::Type type) {
 #if QT_VERSION >= 0x060000
     return v.canConvert(QMetaType(type));
 #else

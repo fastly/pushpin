@@ -25,48 +25,35 @@
 #include <QDir>
 #include <QProcess>
 
-PushpinProxyService::PushpinProxyService(
-	const QString &binFile,
-	const QString &configFile,
-	const QString &runDir,
-	const QString &logDir,
-	const QString &ipcPrefix,
-	const QString &filePrefix,
-	int logLevel,
-	const QStringList &routeLines,
-	bool quietCheck)
-{
-	args_ += binFile;
-	args_ += "--config=" + configFile;
+PushpinProxyService::PushpinProxyService(const QString &binFile, const QString &configFile,
+                                         const QString &runDir, const QString &logDir,
+                                         const QString &ipcPrefix, const QString &filePrefix,
+                                         int logLevel, const QStringList &routeLines,
+                                         bool quietCheck) {
+    args_ += binFile;
+    args_ += "--config=" + configFile;
 
-	if(!ipcPrefix.isEmpty())
-		args_ += "--ipc-prefix=" + ipcPrefix;
+    if (!ipcPrefix.isEmpty())
+        args_ += "--ipc-prefix=" + ipcPrefix;
 
-	if(!logDir.isEmpty())
-	{
-		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-proxy.log");
-		setStandardOutputFile(QProcess::nullDevice());
-	}
+    if (!logDir.isEmpty()) {
+        args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-proxy.log");
+        setStandardOutputFile(QProcess::nullDevice());
+    }
 
-	if(logLevel >= 0)
-		args_ += "--loglevel=" + QString::number(logLevel);
+    if (logLevel >= 0)
+        args_ += "--loglevel=" + QString::number(logLevel);
 
-	foreach(const QString &route, routeLines)
-		args_ += "--route=" + route;
+    foreach (const QString &route, routeLines)
+        args_ += "--route=" + route;
 
-	if(quietCheck)
-		args_ += "--quiet-check";
+    if (quietCheck)
+        args_ += "--quiet-check";
 
-	setName("proxy");
-	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-proxy.pid"));
+    setName("proxy");
+    setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-proxy.pid"));
 }
 
-QStringList PushpinProxyService::arguments() const
-{
-	return args_;
-}
+QStringList PushpinProxyService::arguments() const { return args_; }
 
-bool PushpinProxyService::acceptSighup() const
-{
-	return true;
-}
+bool PushpinProxyService::acceptSighup() const { return true; }

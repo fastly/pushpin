@@ -17,51 +17,49 @@
 #ifndef EVENTLOOP_H
 #define EVENTLOOP_H
 
-#include <memory>
-#include <optional>
-#include <list>
 #include "event.h"
 #include "rust/bindings.h"
+#include <list>
+#include <memory>
+#include <optional>
 
-class EventLoop
-{
+class EventLoop {
 public:
-	EventLoop(int capacity);
-	~EventLoop();
+    EventLoop(int capacity);
+    ~EventLoop();
 
-	// disable copying
-	EventLoop(const EventLoop &) = delete;
-	EventLoop & operator=(const EventLoop &) = delete;
+    // disable copying
+    EventLoop(const EventLoop &) = delete;
+    EventLoop &operator=(const EventLoop &) = delete;
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
+    std::optional<int> step();
+    int exec();
+    void exit(int code);
 
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	std::tuple<int, std::unique_ptr<Event::SetReadiness>> registerCustom(void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
+    int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
+    int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
+    std::tuple<int, std::unique_ptr<Event::SetReadiness>>
+    registerCustom(void (*cb)(void *, uint8_t), void *ctx);
+    void deregister(int id);
 
-	void addCleanupHandler(void (*handler)(void *), void *ctx);
-	void removeCleanupHandler(void (*handler)(void *), void *ctx);
+    void addCleanupHandler(void (*handler)(void *), void *ctx);
+    void removeCleanupHandler(void (*handler)(void *), void *ctx);
 
-	static EventLoop *instance();
+    static EventLoop *instance();
 
 private:
-	class CleanupHandler
-	{
-	public:
-		void (*handler)(void *);
-		void *ctx;
+    class CleanupHandler {
+    public:
+        void (*handler)(void *);
+        void *ctx;
 
-		bool operator==(const CleanupHandler &other) const
-		{
-			return (other.handler == handler && other.ctx == ctx);
-		}
-	};
+        bool operator==(const CleanupHandler &other) const {
+            return (other.handler == handler && other.ctx == ctx);
+        }
+    };
 
-	ffi::EventLoopRaw *inner_;
-	std::list<CleanupHandler> cleanupHandlers_;
+    ffi::EventLoopRaw *inner_;
+    std::list<CleanupHandler> cleanupHandlers_;
 };
 
 #endif

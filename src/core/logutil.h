@@ -24,76 +24,60 @@
 #ifndef LOGUTIL_H
 #define LOGUTIL_H
 
-#include <QHostAddress>
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include <QHostAddress>
 
 namespace LogUtil {
 
-enum RequestStatus
-{
-	Response,
-	Accept,
-	Error
+enum RequestStatus { Response, Accept, Error };
+
+class RequestData {
+public:
+    QString routeId;
+    RequestStatus status;
+    HttpRequestData requestData;
+    HttpResponseData responseData;
+    int responseBodySize;
+    QString targetStr;
+    bool targetOverHttp;
+    bool retry;
+    void *sharedBy;
+    QHostAddress fromAddress;
+
+    RequestData()
+        : status(Response),
+          responseBodySize(-1),
+          targetOverHttp(false),
+          retry(false),
+          sharedBy(0) {}
 };
 
-class RequestData
-{
+class Config {
 public:
-	QString routeId;
-	RequestStatus status;
-	HttpRequestData requestData;
-	HttpResponseData responseData;
-	int responseBodySize;
-	QString targetStr;
-	bool targetOverHttp;
-	bool retry;
-	void *sharedBy;
-	QHostAddress fromAddress;
+    bool fromAddress;
+    bool userAgent;
 
-	RequestData() :
-		status(Response),
-		responseBodySize(-1),
-		targetOverHttp(false),
-		retry(false),
-		sharedBy(0)
-	{
-	}
+    Config() : fromAddress(false), userAgent(false) {}
 };
 
-class Config
-{
+class RouteInfo {
 public:
-	bool fromAddress;
-	bool userAgent;
+    QString id;
+    int logLevel;
 
-	Config() :
-		fromAddress(false),
-		userAgent(false)
-	{
-	}
-};
-
-class RouteInfo
-{
-public:
-	QString id;
-	int logLevel;
-
-	RouteInfo(const QString &initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG) :
-		id(initId),
-		logLevel(initLogLevel)
-	{
-	}
+    RouteInfo(const QString &initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG)
+        : id(initId), logLevel(initLogLevel) {}
 };
 
 void logVariant(int level, const QVariant &data, const char *fmt, ...);
 void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
-void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
+void logVariantWithContent(int level, const QVariant &data, const QString &contentField,
+                           const char *fmt, ...);
 void logRequest(int level, const RequestData &data, const Config &config = Config());
 void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...);
 
-}
+} // namespace LogUtil
 
 #endif

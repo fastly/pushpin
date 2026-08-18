@@ -25,16 +25,7 @@
 
 namespace TnetString {
 
-enum Type
-{
-	ByteArray,
-	Int,
-	Double,
-	Bool,
-	Null,
-	Hash,
-	List
-};
+enum Type { ByteArray, Int, Double, Bool, Null, Hash, List };
 
 QByteArray fromByteArray(const QByteArray &in);
 QByteArray fromInt(qint64 in);
@@ -46,14 +37,16 @@ QByteArray fromList(const QVariantList &in);
 QByteArray fromVariant(const QVariant &in);
 
 bool check(const QByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize);
-QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dataSize,
+                       bool *ok = 0);
 qint64 toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 double toDouble(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 bool toBool(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 void toNull(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 QVariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
 QVariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize, bool *ok = 0);
+QVariant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize,
+                   bool *ok = 0);
 QVariant toVariant(const QByteArray &in, int offset = 0, bool *ok = 0);
 
 QString byteArrayToEscapedString(const QByteArray &in);
@@ -61,6 +54,6 @@ QString byteArrayToEscapedString(const QByteArray &in);
 // pass >= 0 for pretty print, -1 for compact
 QString variantToString(const QVariant &in, int indent = 0);
 
-}
+} // namespace TnetString
 
 #endif

@@ -26,19 +26,18 @@
 
 namespace QZmq {
 
-class Context
-{
+class Context {
 public:
-	Context(int ioThreads = 1);
-	~Context();
+    Context(int ioThreads = 1);
+    ~Context();
 
-	// the zmq context
-	void *context() { return context_; }
+    // the zmq context
+    void *context() { return context_; }
 
 private:
-	void *context_;
+    void *context_;
 };
 
-}
+} // namespace QZmq
 
 #endif

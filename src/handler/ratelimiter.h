@@ -28,30 +28,28 @@
 
 class QString;
 
-class RateLimiter
-{
+class RateLimiter {
 public:
-	class Action
-	{
-	public:
-		virtual ~Action() {}
+    class Action {
+    public:
+        virtual ~Action() {}
 
-		virtual bool execute() = 0;
-	};
+        virtual bool execute() = 0;
+    };
 
-	RateLimiter();
-	~RateLimiter();
+    RateLimiter();
+    ~RateLimiter();
 
-	void setRate(int actionsPerSecond);
-	void setHwm(int hwm);
-	void setBatchWaitEnabled(bool on);
+    void setRate(int actionsPerSecond);
+    void setHwm(int hwm);
+    void setBatchWaitEnabled(bool on);
 
-	bool addAction(const QString &key, Action *action, int weight = 1);
-	Action *lastAction(const QString &key) const;
+    bool addAction(const QString &key, Action *action, int weight = 1);
+    Action *lastAction(const QString &key) const;
 
 private:
-	class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    std::shared_ptr<Private> d;
 };
 
 #endif

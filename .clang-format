@@ -1,0 +1,15 @@
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Use 4 spaces to match rustfmt
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+
+# Keep braces on the same line (Rust/Modern C++ style)
+BreakBeforeBraces: Attach
+
+# Clean layout
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+AccessModifierOffset: -4
+ColumnLimit: 100

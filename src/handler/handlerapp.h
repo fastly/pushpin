@@ -24,16 +24,15 @@
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
 
-class HandlerApp
-{
+class HandlerApp {
 public:
-	HandlerApp();
-	~HandlerApp();
+    HandlerApp();
+    ~HandlerApp();
 
-	int run();
+    int run();
 
 private:
-	class Private;
+    class Private;
 };
 
 #endif

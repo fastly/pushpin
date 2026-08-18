@@ -24,47 +24,44 @@
 #ifndef REQUESTSTATE_H
 #define REQUESTSTATE_H
 
-#include <QByteArray>
-#include <QVariant>
-#include <QHostAddress>
 #include "zhttprequest.h"
+#include <QByteArray>
+#include <QHostAddress>
+#include <QVariant>
 
-class RequestState
-{
+class RequestState {
 public:
-	ZhttpRequest::Rid rid;
-	int responseCode;
-	int inSeq;
-	int outSeq;
-	int outCredits;
-	bool routerResp;
-	QHostAddress peerAddress;
-	QHostAddress logicalPeerAddress;
-	bool isHttps;
-	bool debug;
-	bool isRetry;
-	bool autoCrossOrigin;
-	QByteArray jsonpCallback;
-	bool jsonpExtendedResponse;
-	int unreportedTime;
-	QVariant userData;
+    ZhttpRequest::Rid rid;
+    int responseCode;
+    int inSeq;
+    int outSeq;
+    int outCredits;
+    bool routerResp;
+    QHostAddress peerAddress;
+    QHostAddress logicalPeerAddress;
+    bool isHttps;
+    bool debug;
+    bool isRetry;
+    bool autoCrossOrigin;
+    QByteArray jsonpCallback;
+    bool jsonpExtendedResponse;
+    int unreportedTime;
+    QVariant userData;
 
-	RequestState() :
-		responseCode(-1),
-		inSeq(0),
-		outSeq(0),
-		outCredits(0),
-		routerResp(false),
-		isHttps(false),
-		debug(false),
-		isRetry(false),
-		autoCrossOrigin(false),
-		jsonpExtendedResponse(false),
-		unreportedTime(-1)
-	{
-	}
+    RequestState()
+        : responseCode(-1),
+          inSeq(0),
+          outSeq(0),
+          outCredits(0),
+          routerResp(false),
+          isHttps(false),
+          debug(false),
+          isRetry(false),
+          autoCrossOrigin(false),
+          jsonpExtendedResponse(false),
+          unreportedTime(-1) {}
 
-	static RequestState fromVariant(const QVariant &in);
+    static RequestState fromVariant(const QVariant &in);
 };
 
 #endif

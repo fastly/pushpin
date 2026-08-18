@@ -25,18 +25,14 @@
 
 #include "../httpheaders.h"
 
-class HttpResponseData
-{
+class HttpResponseData {
 public:
-	int code;
-	QByteArray reason;
-	HttpHeaders headers;
-	QByteArray body;
+    int code;
+    QByteArray reason;
+    HttpHeaders headers;
+    QByteArray body;
 
-	HttpResponseData() :
-		code(-1)
-	{
-	}
+    HttpResponseData() : code(-1) {}
 };
 
 #endif

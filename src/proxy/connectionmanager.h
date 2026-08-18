@@ -23,33 +23,32 @@
 #ifndef CONNECTIONMANAGER_H
 #define CONNECTIONMANAGER_H
 
-#include <QPair>
 #include <QByteArray>
+#include <QPair>
 
 class WebSocket;
 class WsProxySession;
 
-class ConnectionManager
-{
+class ConnectionManager {
 public:
-	ConnectionManager();
-	~ConnectionManager();
+    ConnectionManager();
+    ~ConnectionManager();
 
-	// returns cid
-	QByteArray addConnection(WebSocket *sock);
+    // returns cid
+    QByteArray addConnection(WebSocket *sock);
 
-	// returns cid or empty
-	QByteArray getConnection(WebSocket *sock) const;
+    // returns cid or empty
+    QByteArray getConnection(WebSocket *sock) const;
 
-	void removeConnection(WebSocket *sock);
+    void removeConnection(WebSocket *sock);
 
-	WsProxySession *getProxyForConnection(const QByteArray &cid) const;
+    WsProxySession *getProxyForConnection(const QByteArray &cid) const;
 
-	void setProxyForConnection(WebSocket *sock, WsProxySession *proxy);
+    void setProxyForConnection(WebSocket *sock, WsProxySession *proxy);
 
 private:
-	class Private;
-	Private *d;
+    class Private;
+    Private *d;
 };
 
 #endif

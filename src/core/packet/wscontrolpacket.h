@@ -26,71 +26,66 @@
 
 #include <QByteArray>
 #include <QList>
-#include <QVariant>
 #include <QUrl>
+#include <QVariant>
 
-class WsControlPacket
-{
+class WsControlPacket {
 public:
-	class Item
-	{
-	public:
-		enum Type
-		{
-			Here,
-			KeepAlive,
-			Gone,
-			Grip,
-			NeedKeepAlive,
-			Subscribe,
-			Cancel,
-			Send,
-			KeepAliveSetup,
-			Refresh,
-			Close,
-			Detach,
-			Ack
-		};
+    class Item {
+    public:
+        enum Type {
+            Here,
+            KeepAlive,
+            Gone,
+            Grip,
+            NeedKeepAlive,
+            Subscribe,
+            Cancel,
+            Send,
+            KeepAliveSetup,
+            Refresh,
+            Close,
+            Detach,
+            Ack
+        };
 
-		QByteArray cid;
-		Type type;
-		QByteArray requestId;
-		QUrl uri;
-		QByteArray contentType;
-		QByteArray message;
-		bool queue;
-		int code;
-		QByteArray reason;
-		bool debug;
-		QByteArray route;
-		bool separateStats;
-		QByteArray channelPrefix;
-		int logLevel;
-		bool trusted;
-		QByteArray channel;
-		int ttl;
-		int timeout;
-		QByteArray keepAliveMode;
+        QByteArray cid;
+        Type type;
+        QByteArray requestId;
+        QUrl uri;
+        QByteArray contentType;
+        QByteArray message;
+        bool queue;
+        int code;
+        QByteArray reason;
+        bool debug;
+        QByteArray route;
+        bool separateStats;
+        QByteArray channelPrefix;
+        int logLevel;
+        bool trusted;
+        QByteArray channel;
+        int ttl;
+        int timeout;
+        QByteArray keepAliveMode;
 
-		Item() :
-			type((Type)-1),
-			queue(false),
-			code(-1),
-			debug(false),
-			separateStats(false),
-			logLevel(-1),
-			trusted(false),
-			ttl(-1),
-			timeout(-1)
-		{
-		}
-	};
+        Item()
+            : type((Type)-1),
+              queue(false),
+              code(-1),
+              debug(false),
+              separateStats(false),
+              logLevel(-1),
+              trusted(false),
+              ttl(-1),
+              timeout(-1) {}
+    };
 
-	QByteArray from;
-	QList<Item> items;
+    QByteArray from;
+    QList<Item> items;
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+    QVariant toVariant() const;
+    bool fromVariant(const QVariant &in);
 };
 
 #endif

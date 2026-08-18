@@ -24,36 +24,35 @@
 #ifndef WSCONTROLMANAGER_H
 #define WSCONTROLMANAGER_H
 
-#include <memory>
 #include "packet/wscontrolpacket.h"
+#include <memory>
 
 class WsControlSession;
 
-class WsControlManager
-{
+class WsControlManager {
 public:
-	WsControlManager();
-	~WsControlManager();
+    WsControlManager();
+    ~WsControlManager();
 
-	void setIdentity(const QByteArray &id);
-	void setIpcFileMode(int mode);
+    void setIdentity(const QByteArray &id);
+    void setIpcFileMode(int mode);
 
-	bool setInitSpecs(const QStringList &specs);
-	bool setStreamSpecs(const QStringList &specs);
+    bool setInitSpecs(const QStringList &specs);
+    bool setStreamSpecs(const QStringList &specs);
 
-	WsControlSession *createSession(const QByteArray &cid);
+    WsControlSession *createSession(const QByteArray &cid);
 
 private:
-	class Private;
-	std::shared_ptr<Private> d;
+    class Private;
+    std::shared_ptr<Private> d;
 
-	friend class WsControlSession;
-	void link(WsControlSession *s, const QByteArray &cid);
-	void unlink(const QByteArray &cid);
-	void writeInit(const WsControlPacket::Item &item);
-	void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress);
-	void registerKeepAlive(WsControlSession *s);
-	void unregisterKeepAlive(WsControlSession *s);
+    friend class WsControlSession;
+    void link(WsControlSession *s, const QByteArray &cid);
+    void unlink(const QByteArray &cid);
+    void writeInit(const WsControlPacket::Item &item);
+    void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress);
+    void registerKeepAlive(WsControlSession *s);
+    void unregisterKeepAlive(WsControlSession *s);
 };
 
 #endif

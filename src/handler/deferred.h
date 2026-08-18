@@ -24,47 +24,39 @@
 #ifndef DEFERRED_H
 #define DEFERRED_H
 
+#include "defercall.h"
 #include <QVariant>
 #include <boost/signals2.hpp>
-#include "defercall.h"
 
-class DeferredResult
-{
+class DeferredResult {
 public:
-	bool success;
-	QVariant value;
+    bool success;
+    QVariant value;
 
-	DeferredResult() :
-		success(false)
-	{
-	}
+    DeferredResult() : success(false) {}
 
-	DeferredResult(bool _success, const QVariant &_value = QVariant()) :
-		success(_success),
-		value(_value)
-	{
-	}
+    DeferredResult(bool _success, const QVariant &_value = QVariant())
+        : success(_success), value(_value) {}
 };
 
 Q_DECLARE_METATYPE(DeferredResult)
 
-class Deferred
-{
+class Deferred {
 public:
-	virtual ~Deferred();
+    virtual ~Deferred();
 
-	boost::signals2::signal<void(const DeferredResult&)> finished;
+    boost::signals2::signal<void(const DeferredResult &)> finished;
 
 protected:
-	Deferred();
+    Deferred();
 
-	void setFinished(bool ok, const QVariant &value = QVariant());
+    void setFinished(bool ok, const QVariant &value = QVariant());
 
 private:
-	DeferredResult result_;
-	DeferCall deferCall_;
+    DeferredResult result_;
+    DeferCall deferCall_;
 
-	void doFinish();
+    void doFinish();
 };
 
 #endif

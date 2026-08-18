@@ -23,74 +23,44 @@
 
 #include "qzmqreprouter.h"
 
-#include "qzmqsocket.h"
 #include "qzmqreqmessage.h"
+#include "qzmqsocket.h"
 
 namespace QZmq {
 
-class RepRouter::Private
-{
+class RepRouter::Private {
 public:
-	RepRouter *q;
-	std::unique_ptr<Socket> sock;
-	Connection mWConnection;
-	Connection rrConnection;
+    RepRouter *q;
+    std::unique_ptr<Socket> sock;
+    Connection mWConnection;
+    Connection rrConnection;
 
-	Private(RepRouter *_q) :
-		q(_q)
-	{
-		sock = std::make_unique<Socket>(Socket::Router);
-		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
-		mWConnection = sock->messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this,  boost::placeholders::_1));
-	}
+    Private(RepRouter *_q) : q(_q) {
+        sock = std::make_unique<Socket>(Socket::Router);
+        rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+        mWConnection = sock->messagesWritten.connect(
+            boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
+    }
 
-	void sock_messagesWritten(int count)
-	{
-		q->messagesWritten(count);
-	}
+    void sock_messagesWritten(int count) { q->messagesWritten(count); }
 
-	void sock_readyRead()
-	{
-		q->readyRead();
-	}
+    void sock_readyRead() { q->readyRead(); }
 };
 
-RepRouter::RepRouter()
-{
-	d = std::make_unique<Private>(this);
-}
+RepRouter::RepRouter() { d = std::make_unique<Private>(this); }
 
 RepRouter::~RepRouter() = default;
 
-void RepRouter::setShutdownWaitTime(int msecs)
-{
-	d->sock->setShutdownWaitTime(msecs);
-}
+void RepRouter::setShutdownWaitTime(int msecs) { d->sock->setShutdownWaitTime(msecs); }
 
-void RepRouter::connectToAddress(const QString &addr)
-{
-	d->sock->connectToAddress(addr);
-}
+void RepRouter::connectToAddress(const QString &addr) { d->sock->connectToAddress(addr); }
 
-bool RepRouter::bind(const QString &addr)
-{
-	return d->sock->bind(addr);
-}
+bool RepRouter::bind(const QString &addr) { return d->sock->bind(addr); }
 
-bool RepRouter::canRead() const
-{
-	return d->sock->canRead();
-}
+bool RepRouter::canRead() const { return d->sock->canRead(); }
 
-ReqMessage RepRouter::read()
-{
-	return ReqMessage(d->sock->read());
-}
+ReqMessage RepRouter::read() { return ReqMessage(d->sock->read()); }
 
-void RepRouter::write(const ReqMessage &message)
-{
-	d->sock->write(message.toRawMessage());
-}
+void RepRouter::write(const ReqMessage &message) { d->sock->write(message.toRawMessage()); }
 
-}
-
+} // namespace QZmq

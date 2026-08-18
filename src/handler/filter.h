@@ -24,14 +24,14 @@
 #ifndef FILTER_H
 #define FILTER_H
 
-#include <QString>
-#include <QStringList>
+#include "ratelimiter.h"
+#include "zhttprequest.h"
 #include <QHash>
 #include <QMetaType>
+#include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <boost/signals2.hpp>
-#include "zhttprequest.h"
-#include "ratelimiter.h"
 
 #define MESSAGEFILTERSTACK_SIZE_MAX 5
 
@@ -41,113 +41,101 @@
 
 class ZhttpManager;
 
-class Filter
-{
+class Filter {
 public:
-	enum SendAction
-	{
-		Send,
-		Drop
-	};
+    enum SendAction { Send, Drop };
 
-	enum Targets
-	{
-		MessageDelivery = 0x01,
-		MessageContent  = 0x02,
-		ResponseContent = 0x04,
-	};
+    enum Targets {
+        MessageDelivery = 0x01,
+        MessageContent = 0x02,
+        ResponseContent = 0x04,
+    };
 
-	class Context
-	{
-	public:
-		QHash<QString, QString> prevIds;
-		QHash<QString, QString> subscriptionMeta;
-		QHash<QString, QString> publishMeta;
+    class Context {
+    public:
+        QHash<QString, QString> prevIds;
+        QHash<QString, QString> subscriptionMeta;
+        QHash<QString, QString> publishMeta;
 
-		// for network access
-		ZhttpManager *zhttpOut;
-		QUrl currentUri;
-		QString route;
-		bool trusted;
-		std::shared_ptr<RateLimiter> limiter;
-		int responseSizeMax;
+        // for network access
+        ZhttpManager *zhttpOut;
+        QUrl currentUri;
+        QString route;
+        bool trusted;
+        std::shared_ptr<RateLimiter> limiter;
+        int responseSizeMax;
 
-		Context() :
-			zhttpOut(0),
-			trusted(false),
-			responseSizeMax(DEFAULT_FILTER_RESPONSE_SIZE_MAX)
-		{
-		}
-	};
+        Context()
+            : zhttpOut(0), trusted(false), responseSizeMax(DEFAULT_FILTER_RESPONSE_SIZE_MAX) {}
+    };
 
-	class MessageFilter
-	{
-	public:
-		class Result
-		{
-		public:
-			SendAction sendAction;
-			QByteArray content;
-			QString errorMessage; // non-null on error
-		};
+    class MessageFilter {
+    public:
+        class Result {
+        public:
+            SendAction sendAction;
+            QByteArray content;
+            QString errorMessage; // non-null on error
+        };
 
-		virtual ~MessageFilter();
+        virtual ~MessageFilter();
 
-		// may emit finished immediately
-		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray()) = 0;
+        // may emit finished immediately
+        virtual void start(const Filter::Context &context,
+                           const QByteArray &content = QByteArray()) = 0;
 
-		boost::signals2::signal<void(const Result&)> finished;
-	};
+        boost::signals2::signal<void(const Result &)> finished;
+    };
 
-	class MessageFilterStack : public MessageFilter
-	{
-	public:
-		MessageFilterStack(const QStringList &filterNames);
+    class MessageFilterStack : public MessageFilter {
+    public:
+        MessageFilterStack(const QStringList &filterNames);
 
-		// reimplemented
-		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray());
+        // reimplemented
+        virtual void start(const Filter::Context &context,
+                           const QByteArray &content = QByteArray());
 
-	private:
-		std::vector<std::unique_ptr<MessageFilter>> filters_;
-		Filter::Context context_;
-		QByteArray content_;
-		SendAction lastSendAction_;
-		boost::signals2::scoped_connection finishedConnection_;
+    private:
+        std::vector<std::unique_ptr<MessageFilter>> filters_;
+        Filter::Context context_;
+        QByteArray content_;
+        SendAction lastSendAction_;
+        boost::signals2::scoped_connection finishedConnection_;
 
-		void nextFilter();
-		void filterFinished(const Result &result);
-	};
+        void nextFilter();
+        void filterFinished(const Result &result);
+    };
 
-	virtual ~Filter();
+    virtual ~Filter();
 
-	const QString & name() const { return name_; }
-	const Context & context() const { return context_; }
-	QString errorMessage() const { return errorMessage_; }
+    const QString &name() const { return name_; }
+    const Context &context() const { return context_; }
+    QString errorMessage() const { return errorMessage_; }
 
-	void setContext(const Context &context) { context_ = context; }
+    void setContext(const Context &context) { context_ = context; }
 
-	virtual SendAction sendAction() const;
+    virtual SendAction sendAction() const;
 
-	// return null array on error
-	virtual QByteArray update(const QByteArray &data);
-	virtual QByteArray finalize();
+    // return null array on error
+    virtual QByteArray update(const QByteArray &data);
+    virtual QByteArray finalize();
 
-	QByteArray process(const QByteArray &data);
+    QByteArray process(const QByteArray &data);
 
-	static Filter *create(const QString &name);
-	static MessageFilter *createMessageFilter(const QString &name);
-	static QStringList names();
-	static Targets targets(const QString &name);
+    static Filter *create(const QString &name);
+    static MessageFilter *createMessageFilter(const QString &name);
+    static QStringList names();
+    static Targets targets(const QString &name);
 
 protected:
-	Filter(const QString &name = QString());
+    Filter(const QString &name = QString());
 
-	void setError(const QString &s) { errorMessage_ = s; }
+    void setError(const QString &s) { errorMessage_ = s; }
 
 private:
-	QString name_;
-	Context context_;
-	QString errorMessage_;
+    QString name_;
+    Context context_;
+    QString errorMessage_;
 };
 
 #endif
