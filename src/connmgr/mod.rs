@@ -38,7 +38,7 @@ use crate::core::log::DebugLogger;
 use crate::core::net::{bind_unix_config, NetListener};
 use crate::core::prometheus::PrometheusServer;
 use crate::core::zmq::SpecInfo;
-//use crate::core::tracing;
+use crate::core::tracing;
 use ipnet::IpNet;
 use log::{debug, info};
 use signal_hook;
@@ -461,12 +461,12 @@ impl App {
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     debug!("starting...");
 
-    //tracing::init_tracing(
-    //    "pushpin-connmgr",
-    //    config.otel_endpoint.as_deref(),
-    //    config.otel_resource_attributes.as_deref(),
-    //)
-    //.unwrap_or_else(|e| panic!("failed to initialize tracing: {}", e));
+    tracing::init_tracing(
+        "pushpin-connmgr",
+        config.otel_endpoint.as_deref(),
+        config.otel_resource_attributes.as_deref(),
+    )
+    .unwrap_or_else(|e| panic!("failed to initialize tracing: {}", e));
 
     {
         let a = match App::new(config) {
@@ -483,7 +483,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         info!("stopping...");
     }
 
-    //tracing::shutdown_tracing();
+    tracing::shutdown_tracing();
 
     debug!("stopped");
 
