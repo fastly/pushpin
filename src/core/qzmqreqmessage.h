@@ -24,6 +24,9 @@
 #ifndef QZMQREQMESSAGE_H
 #define QZMQREQMESSAGE_H
 
+#include <QByteArray>
+#include <QList>
+
 namespace QZmq {
 
 class ReqMessage
