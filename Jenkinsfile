@@ -67,21 +67,21 @@ if (ref in releaseBranches) {
   cache = false
   cleanMergedRefs = true
   tagName = 'jenkins/release'
-  slackChannel = '#fanout-eng'
+  slackChannel = '#fanout-bots'
 } else if (ref =~ /^.*\/jenkins$/) {
   pushDeb = true
   cache = false
-  namedBuild = ref.replaceAll('/jenkins', '').replaceAll('/', '-')
+  namedBuild = ref.replaceAll('/jenkins', '').replaceAll('/', '-').replaceAll('_', '-')
   slackChannel = emailToSlack[params.author_email]
   tagName = 'jenkins/named'
 } else if (ref =~ /^.*-stable$/) {
   pushDeb = true
   cache = false
-  namedBuild = ref.replaceAll('-stable', '').replaceAll('/', '-')
+  namedBuild = ref.replaceAll('-stable', '').replaceAll('/', '-').replaceAll('_', '-')
   slackChannel = emailToSlack[params.author_email]
   tagName = 'jenkins/stable'
 } else {
-  namedBuild = ref.replaceAll('/', '-')
+  namedBuild = ref.replaceAll('/', '-').replaceAll('_', '-')
 }
 
 fastlyPipeline(script: this, buildTimeout: BUILD_TIMEOUT, ignoreTags: true, slackChannel: slackChannel) {
