@@ -2,8 +2,14 @@
 nullstring :=
 space := $(nullstring) # end of the line
 
+cargo_flags := $(CARGO_FLAGS)
+
 ifdef RELEASE
-cargo_flags = $(space)--offline --locked --release
+cargo_flags += --offline --locked --release
+endif
+
+ifneq ($(strip $(cargo_flags)),)
+cargo_flags := $(space)$(strip $(cargo_flags))
 endif
 
 ifdef TOOLCHAIN

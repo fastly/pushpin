@@ -31,9 +31,11 @@ handler_bin.target = $$bin_dir/pushpin-handler
 handler_bin.depends = $$target_dir/pushpin-handler
 handler_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-handler $$bin_dir/pushpin-handler
 
-runner_legacy_bin.target = $$root_dir/pushpin-legacy
-runner_legacy_bin.depends = $$target_dir/pushpin-legacy
-runner_legacy_bin.commands = cp -a $$target_dir/pushpin-legacy $$root_dir/pushpin-legacy
+include_legacy_runner {
+    runner_legacy_bin.target = $$root_dir/pushpin-legacy
+    runner_legacy_bin.depends = $$target_dir/pushpin-legacy
+    runner_legacy_bin.commands = cp -a $$target_dir/pushpin-legacy $$root_dir/pushpin-legacy
+}
 
 runner_bin.target = $$root_dir/pushpin
 runner_bin.depends = $$target_dir/pushpin
@@ -47,8 +49,11 @@ QMAKE_EXTRA_TARGETS += \
 	connmgr_bin \
 	m2adapter_bin \
 	proxy_bin \
-	handler_bin \
-	runner_legacy_bin \
+	handler_bin
+
+include_legacy_runner:QMAKE_EXTRA_TARGETS += runner_legacy_bin
+
+QMAKE_EXTRA_TARGETS += \
 	runner_bin \
 	publish_bin
 
@@ -56,8 +61,11 @@ PRE_TARGETDEPS += \
 	$$bin_dir/pushpin-connmgr \
 	$$bin_dir/m2adapter \
 	$$bin_dir/pushpin-proxy \
-	$$bin_dir/pushpin-handler \
-	$$root_dir/pushpin-legacy \
+	$$bin_dir/pushpin-handler
+
+include_legacy_runner:PRE_TARGETDEPS += $$root_dir/pushpin-legacy
+
+PRE_TARGETDEPS += \
 	$$root_dir/pushpin \
 	$$bin_dir/pushpin-publish
 
@@ -74,14 +82,19 @@ PRE_TARGETDEPS += pushpin.conf.inst
 
 unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
+
 	binfiles.files = \
 		$$bin_dir/pushpin-connmgr \
 		$$bin_dir/m2adapter \
 		$$bin_dir/pushpin-proxy \
-		$$bin_dir/pushpin-handler \
-		$$root_dir/pushpin-legacy \
+		$$bin_dir/pushpin-handler
+
+	include_legacy_runner:binfiles.files += $$root_dir/pushpin-legacy
+
+	binfiles.files += \
 		$$root_dir/pushpin \
 		$$bin_dir/pushpin-publish
+
 	binfiles.CONFIG += no_check_exist executable
 
 	symlinks.path = $$BINDIR

@@ -14,59 +14,86 @@
  * limitations under the License.
  */
 
-use clap::Parser;
-use log::{error, info, LevelFilter};
-use pushpin::core::log::{ensure_init_simple_logger, get_simple_logger, local_offset_check};
-use pushpin::runner::service::start_services;
-use pushpin::runner::{open_log_file, ArgsData, CliArgs, Settings};
-use std::env;
-use std::error::Error;
-use std::process;
+#[cfg(version_ge_2)]
+mod inner {
+    use clap::Parser;
+    use log::{error, info, LevelFilter};
+    use pushpin::core::log::{ensure_init_simple_logger, get_simple_logger, local_offset_check};
+    use pushpin::runner::service::start_services;
+    use pushpin::runner::{open_log_file, ArgsData, CliArgs, Settings};
+    use std::env;
+    use std::error::Error;
+    use std::process::{self, ExitCode};
 
-/// Main entry point for the Pushpin application
-fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
-    let args_data = ArgsData::new(args)?;
-    let settings = Settings::new(&env::current_dir()?, args_data)?;
+    /// Main entry point for the Pushpin application
+    fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
+        let args_data = ArgsData::new(args)?;
+        let settings = Settings::new(&env::current_dir()?, args_data)?;
 
-    let log_file = match settings.log_file.clone() {
-        Some(x) => match open_log_file(x) {
-            Ok(x) => Some(x),
-            Err(_) => {
-                error!("unable to open log file. logging to standard out.");
-                None
-            }
-        },
-        None => None,
-    };
-    ensure_init_simple_logger(log_file, true);
-    log::set_logger(get_simple_logger()).unwrap();
-    let ll = settings
-        .log_levels
-        .get("")
-        .unwrap_or_else(|| settings.log_levels.get("default").unwrap());
-    let level = match ll {
-        0 => LevelFilter::Error,
-        1 => LevelFilter::Warn,
-        2 => LevelFilter::Info,
-        3 => LevelFilter::Debug,
-        4..=u8::MAX => LevelFilter::Trace,
-    };
-    log::set_max_level(level);
+        let log_file = match settings.log_file.clone() {
+            Some(x) => match open_log_file(x) {
+                Ok(x) => Some(x),
+                Err(_) => {
+                    error!("unable to open log file. logging to standard out.");
+                    None
+                }
+            },
+            None => None,
+        };
+        ensure_init_simple_logger(log_file, true);
+        log::set_logger(get_simple_logger()).unwrap();
+        let ll = settings
+            .log_levels
+            .get("")
+            .unwrap_or_else(|| settings.log_levels.get("default").unwrap());
+        let level = match ll {
+            0 => LevelFilter::Error,
+            1 => LevelFilter::Warn,
+            2 => LevelFilter::Info,
+            3 => LevelFilter::Debug,
+            4..=u8::MAX => LevelFilter::Trace,
+        };
+        log::set_max_level(level);
 
-    local_offset_check();
+        local_offset_check();
 
-    info!("using config: {:?}", settings.config_file.display());
-    start_services(settings);
+        info!("using config: {:?}", settings.config_file.display());
+        start_services(settings);
 
-    Ok(())
+        Ok(())
+    }
+
+    pub fn main() -> ExitCode {
+        let args = CliArgs::parse();
+        info!("starting...");
+
+        if let Err(e) = process_args_and_run(args) {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+
+        ExitCode::SUCCESS
+    }
 }
 
-fn main() {
-    let args = CliArgs::parse();
-    info!("starting...");
+#[cfg(not(version_ge_2))]
+mod inner {
+    use pushpin::core::call_c_main;
+    use pushpin::import_cpp;
+    use std::env;
+    use std::process::ExitCode;
 
-    if let Err(e) = process_args_and_run(args) {
-        eprintln!("Error: {}", e);
-        process::exit(1);
+    import_cpp! {
+        fn runner_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
     }
+
+    pub fn main() -> ExitCode {
+        unsafe { ExitCode::from(call_c_main(runner_main, env::args_os())) }
+    }
+}
+
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    inner::main()
 }

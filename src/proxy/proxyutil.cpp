@@ -160,11 +160,23 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
     if (!trustedClient && gripEnabled) {
         applyGripSig(logprefix, object, &requestData->headers, sigIss, sigKey);
 
+        QStringList features = QStringList() << "status"
+                                             << "session"
+                                             << "link:next"
+                                             << "link:gone"
+                                             << "filter:skip-self"
+                                             << "filter:skip-users"
+                                             << "filter:require-sub"
+                                             << "filter:build-id"
+                                             << "filter:var-subst"
+#ifdef VERSION_GE_2
+                                             << "filter:http-check"
+                                             << "filter:http-modify"
+#endif
+            ;
+
         requestData->headers.removeAll("Grip-Feature");
-        requestData->headers +=
-            HttpHeader("Grip-Feature", "status, session, link:next, link:gone, filter:skip-self, "
-                                       "filter:skip-users, filter:require-sub, filter:build-id, "
-                                       "filter:var-subst, filter:http-check, filter:http-modify");
+        requestData->headers += HttpHeader("Grip-Feature", features.join(", ").toUtf8());
 
         if (!idata.sid.isEmpty()) {
             requestData->headers.removeAll("Grip-Session-Id");
