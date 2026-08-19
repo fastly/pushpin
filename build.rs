@@ -28,6 +28,29 @@ fn get_version() -> String {
     version
 }
 
+fn get_version_int() -> Result<u32, Box<dyn Error>> {
+    let version = env!("CARGO_PKG_VERSION");
+
+    let version = match version.find('-') {
+        Some(pos) => &version[..pos],
+        None => version,
+    };
+
+    let mut v = 0;
+
+    for x in version.split('.') {
+        let x: u8 = match x.parse() {
+            Ok(x) => x,
+            Err(e) => return Err(format!("cannot parse numeric version component {x}: {e}").into()),
+        };
+
+        v <<= 8;
+        v |= x as u32;
+    }
+
+    Ok(v)
+}
+
 #[derive(Clone)]
 struct LibVersion {
     maj: u16,
@@ -124,6 +147,7 @@ fn write_cpp_conf_pri(
     release: bool,
     include_paths: &[&Path],
     deny_warnings: bool,
+    version_ge_2: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut out = Vec::new();
 
@@ -133,6 +157,11 @@ fn write_cpp_conf_pri(
         writeln!(&mut out, "CONFIG += release")?;
     } else {
         writeln!(&mut out, "CONFIG += debug")?;
+    }
+
+    if version_ge_2 {
+        writeln!(&mut out)?;
+        writeln!(&mut out, "DEFINES += VERSION_GE_2")?;
     }
 
     writeln!(&mut out)?;
@@ -157,6 +186,7 @@ fn write_postbuild_conf_pri(
     config_dir: &str,
     run_dir: &str,
     log_dir: &str,
+    include_legacy_runner: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut out = Vec::new();
 
@@ -165,6 +195,11 @@ fn write_postbuild_conf_pri(
     writeln!(&mut out, "CONFIGDIR = {}/pushpin", config_dir)?;
     writeln!(&mut out, "RUNDIR = {}/pushpin", run_dir)?;
     writeln!(&mut out, "LOGDIR = {}/pushpin", log_dir)?;
+
+    if include_legacy_runner {
+        writeln!(&mut out)?;
+        writeln!(&mut out, "CONFIG += include_legacy_runner")?;
+    }
 
     write_if_different(dest, &out)
 }
@@ -509,12 +544,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
+    let version_ge_2 = get_version_int()? >= 0x020000;
+
     write_cpp_conf_pri(
         &cpp_build_dir.join("conf.pri"),
         profile == "release",
         &include_paths,
         deny_warnings,
+        version_ge_2,
     )?;
+
+    let include_legacy_runner = cfg!(feature = "legacy-runner");
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
@@ -523,6 +563,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &config_dir,
         &run_dir,
         &log_dir,
+        include_legacy_runner,
     )?;
 
     if cfg!(feature = "do-qmake") {
@@ -564,6 +605,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-env=APP_VERSION={}", get_version());
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
     println!("cargo:rustc-env=LIB_DIR={}/pushpin", lib_dir);
+
+    if version_ge_2 {
+        println!("cargo:rustc-cfg=version_ge_2");
+    }
 
     println!("cargo:rustc-cfg=qt_lib_prefix=\"{}\"", qt_lib_prefix);
 

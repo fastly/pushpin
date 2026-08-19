@@ -235,6 +235,8 @@ static void messageFilters(std::function<void(int)> loop_wait) {
     }
 }
 
+#ifdef VERSION_GE_2
+
 static void httpCheck(std::function<void(int)> loop_wait) {
     TestState state(loop_wait);
 
@@ -358,11 +360,16 @@ static void httpModifyExternal(std::function<void(int)> loop_wait) {
     }
 }
 
+#endif
+
 extern "C" int filter_test(ffi::TestException *out_ex) {
     TEST_CATCH(test_with_event_loop(messageFilters));
+
+#ifdef VERSION_GE_2
     TEST_CATCH(test_with_event_loop(httpCheck));
     TEST_CATCH(test_with_event_loop(httpModify));
     TEST_CATCH(test_with_event_loop(httpModifyExternal));
+#endif
 
     return 0;
 }

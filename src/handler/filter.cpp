@@ -253,6 +253,8 @@ public:
     virtual QByteArray finalize() { return QByteArray(""); }
 };
 
+#ifdef VERSION_GE_2
+
 class HttpFilterInner;
 
 class HttpFilter : public Filter::MessageFilter {
@@ -541,6 +543,8 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 
 void HttpFilter::inner_finished(const Result &r) { finished(r); }
 
+#endif // VERSION_GE_2
+
 } // namespace
 
 Filter::MessageFilter::~MessageFilter() = default;
@@ -593,10 +597,12 @@ Filter::MessageFilter *Filter::createMessageFilter(const QString &name) {
         return new BuildIdFilter;
     else if (name == "var-subst")
         return new VarSubstFilter;
+#ifdef VERSION_GE_2
     else if (name == "http-check")
         return new HttpFilter(HttpFilter::Check);
     else if (name == "http-modify")
         return new HttpFilter(HttpFilter::Modify);
+#endif
     else
         return 0;
 }
@@ -607,8 +613,11 @@ QStringList Filter::names() {
                           << "require-sub"
                           << "build-id"
                           << "var-subst"
+#ifdef VERSION_GE_2
                           << "http-check"
-                          << "http-modify");
+                          << "http-modify"
+#endif
+    );
 }
 
 Filter::Targets Filter::targets(const QString &name) {
@@ -622,10 +631,12 @@ Filter::Targets Filter::targets(const QString &name) {
         return Filter::Targets(Filter::MessageContent | Filter::ResponseContent);
     else if (name == "var-subst")
         return Filter::MessageContent;
+#ifdef VERSION_GE_2
     else if (name == "http-check")
         return Filter::MessageDelivery;
     else if (name == "http-modify")
         return Filter::Targets(Filter::MessageDelivery | Filter::MessageContent);
+#endif
     else
         return Filter::Targets(0);
 }
