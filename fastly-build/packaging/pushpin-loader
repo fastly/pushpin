@@ -539,7 +539,19 @@ def make_routes(service, backend, sig_keys_dir, backends_dir):
 
     target += ",backendinfo={}".format(backend_file)
 
-    routes = []
+    share_key = backend.get("share_key") or service_id
+
+    route_id_parts = [
+        # For wasm services, the backend part of the route ID is the backend
+        # name as-is.
+        "{}:{}".format(service_id, backend_name),
+        # For vcl services, the backend part of the route ID is encoded in a
+        # vcl-specific way and it contains a share key. It may also contain
+        # "F_". Since we don't know in advance which backends use "F_" or
+        # not, we include both forms for all backends.
+        "{}:{}--{}".format(service_id, share_key, vclify_backend(backend_name)),
+        "{}:{}--F_{}".format(service_id, share_key, vclify_backend(backend_name)),
+    ]
 
     if int(backend.get("loader-grip-enabled", "0")):
         cond_opts = "prefix=g:ck:{}:".format(service_id)
@@ -584,39 +596,22 @@ def make_routes(service, backend, sig_keys_dir, backends_dir):
         if service.log_level is not None:
             cond_opts += f",log_level={service.log_level}"
 
-        routes.append(
-            'id="gr:ht:{}:{}",{} {}'.format(
-                service_id, escape_route_param(backend_name), cond_opts, target
-            )
-        )
-        routes.append(
-            'id="gr:ws:{}:{}",{} {}'.format(
-                service_id, escape_route_param(backend_name), cond_opts, target
-            )
-        )
+        # http and websockets, with grip
+        route_id_prefixes = ["gr:ht:", "gr:ws:"]
     else:
         cond_opts = "no_grip"
-
-        share_key = backend.get("share_key") or service_id
 
         if service.log_level is not None:
             cond_opts += f",log_level={service.log_level}"
 
-        routes.append(
-            'id="ws:{}:{}",{} {}'.format(
-                service_id, escape_route_param(backend_name), cond_opts, target
-            )
-        )
-        routes.append(
-            "id=ws:{}:{}--{},{} {}".format(
-                service_id, share_key, vclify_backend(backend_name), cond_opts, target
-            )
-        )
-        routes.append(
-            "id=ws:{}:{}--F_{},{} {}".format(
-                service_id, share_key, vclify_backend(backend_name), cond_opts, target
-            )
-        )
+        # websockets only, without grip
+        route_id_prefixes = ["ws:"]
+
+    routes = []
+    for id_part in route_id_parts:
+        for id_prefix in route_id_prefixes:
+            route_id = escape_route_param(f"{id_prefix}{id_part}")
+            routes.append(f'id="{route_id}",{cond_opts} {target}')
 
     return routes
 
