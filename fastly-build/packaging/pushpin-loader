@@ -26,6 +26,8 @@ import os
 PKG_VERSION = "1.0.0"
 TEST = False
 
+BULK_SIZE = 100
+
 PUSHPIN_ENABLED_FLAG = "loader-pushpin-enabled"
 GRIP_ENABLED_FLAG = "loader-pushpin-grip-enabled"
 WOH_ENABLED_FLAG = "loader-pushpin-woh-enabled"
@@ -157,7 +159,7 @@ class BaseClient(object):
     def get_request_details(self):
         raise NotImplementedError()
 
-    def request(self, url, accept, inm=None):
+    def request(self, url, accept, inm=None, body=None):
         connect_hostport, conn_type, host, headers = self.get_request_details()
 
         # Use an established connection, open a new one if that fails.
@@ -173,12 +175,14 @@ class BaseClient(object):
                 else:
                     self.conn = HTTPConnection(connect_hostport)
             try:
-                return self.request_on_conn(self.conn, url, accept, inm, host, headers)
+                return self.request_on_conn(
+                    self.conn, url, accept, inm, host, headers, body
+                )
             except Exception:
                 if not reuse:
                     raise
 
-    def request_on_conn(self, conn, url, accept, inm, host, custom_headers):
+    def request_on_conn(self, conn, url, accept, inm, host, custom_headers, body):
         headers = {
             "Accept-Encoding": "gzip",
             "Accept": accept,
@@ -195,7 +199,8 @@ class BaseClient(object):
         nredirs = 0
 
         while True:
-            conn.request("GET", url, None, headers)
+            method = "POST" if body is not None else "GET"
+            conn.request(method, url, body, headers)
             resp = conn.getresponse()
             data = resp.read()
 
@@ -444,26 +449,43 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
             if service.woh_enabled:
                 backend["loader-woh-enabled"] = "1"
 
-        if service.grip_enabled:
-            logging.debug(
-                "fetching extensions for service {} ({}/{})".format(
-                    service_id, i + 1, len(pushpin_services)
-                )
-            )
-
-            resp = internal_client.request(
-                "/service-extensions/{}".format(service_id), "application/json"
-            )
-            if resp.status == 200:
-                service.extensions = json.loads(resp.data)
-            elif resp.status == 404:
-                pass
-            else:
-                raise ValueError(
-                    "unexpected status from internal api: {}".format(resp.status)
-                )
-
         service_backends[service_id] = (service, backends)
+
+    grip_services = [k for k, v in service_backends.items() if v[0].grip_enabled]
+
+    for base in range(0, len(grip_services), BULK_SIZE):
+        service_ids = grip_services[base : (base + BULK_SIZE)]
+
+        logging.debug(
+            "fetching extensions for {} services ({}/{})".format(
+                len(service_ids), base + len(service_ids), len(grip_services)
+            )
+        )
+
+        resp = internal_client.request(
+            "/service-extensions/",
+            "application/json",
+            body=json.dumps(service_ids).encode("utf-8"),
+        )
+        if resp.status == 200:
+            service_extensions = json.loads(resp.data)
+            if len(service_extensions) != len(service_ids):
+                raise ValueError(
+                    f"response contained an unexpected number of items (expected={len(service_ids)}, got={len(service_extensions)})"
+                )
+
+            for i, extensions in enumerate(service_extensions):
+                if extensions:
+                    service, _ = service_backends[service_ids[i]]
+                    service.extensions = extensions
+        elif resp.status == 404:
+            pass
+        else:
+            raise ValueError(
+                "unexpected status from internal api: {}: {}".format(
+                    resp.status, repr(resp.data)
+                )
+            )
 
     return service_backends
 
