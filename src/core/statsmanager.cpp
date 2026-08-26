@@ -34,7 +34,7 @@
 #include "variant.h"
 #include "zmqsocket.h"
 #include "zutil.h"
-#include <QDateTime>
+#include "datetime.h"
 #include <assert.h>
 
 // Make this somewhat big since PUB is lossy
@@ -406,7 +406,7 @@ public:
         prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent, "message_sent",
                                               "counter", "Number of messages sent to clients");
 
-        startTime = QDateTime::currentMSecsSinceEpoch();
+        startTime = DateTime::currentMSecsSinceEpoch();
 
         connectionsMaxes.lastRefresh = startTime;
     }
@@ -711,7 +711,7 @@ public:
         if (!report) {
             report = new Report;
             report->routeId = routeId;
-            report->startTime = QDateTime::currentMSecsSinceEpoch();
+            report->startTime = DateTime::currentMSecsSinceEpoch();
             reports[routeId] = report;
         }
 
@@ -1158,7 +1158,7 @@ public:
         counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
         counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
 
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         report->addCounters(counters, now);
         combinedReport.addCounters(counters, now);
@@ -1224,7 +1224,7 @@ public:
     void flushReport(const QByteArray &routeId) {
         Report *report = getOrCreateReport(routeId);
 
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         StatsPacket p = reportToPacket(report, routeId, now);
 
@@ -1273,7 +1273,7 @@ private:
             combinedCounts = Counts();
         }
 
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         QSet<QByteArray> needSendNext;
 
@@ -1296,7 +1296,7 @@ private:
     }
 
     void report_timeout() {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         QList<StatsPacket> reportPackets;
         QList<Report *> toDelete;
@@ -1333,7 +1333,7 @@ private:
     }
 
     void refresh_timeout() {
-        int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+        int64_t currentTime = DateTime::currentMSecsSinceEpoch();
 
         // Time must go forward
         if (currentTime > startTime) {
@@ -1350,7 +1350,7 @@ private:
     }
 
     void externalConnectionsMax_timeout() {
-        int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+        int64_t currentTime = DateTime::currentMSecsSinceEpoch();
 
         expireExternalConnectionsMaxes(currentTime);
     }
@@ -1463,7 +1463,7 @@ void StatsManager::addMessage(const QString &channel, const QString &itemId,
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId,
                                  ConnectionType type, const QHostAddress &peerAddress, bool ssl,
                                  bool quiet, int reportOffset) {
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     bool replacing = false;
     int64_t lastReport = now;
@@ -1539,7 +1539,7 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger, const QByt
     if (!c)
         return 0;
 
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
     QByteArray routeId = c->routeId;
     int unreportedTime = 0;
 
@@ -1594,7 +1594,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel,
     Private::SubscriptionKey subKey(mode, channel);
     Private::Subscription *s = d->subscriptionsByKey.value(subKey);
     if (!s) {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         // Add the subscription if we didn't have it
         s = new Private::Subscription;
@@ -1612,7 +1612,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel,
         s->subscriberCount = subscriberCount;
 
         if (s->linger) {
-            int64_t now = QDateTime::currentMSecsSinceEpoch();
+            int64_t now = DateTime::currentMSecsSinceEpoch();
 
             // If this was a lingering subscription, return it to normal
             s->linger = false;
@@ -1622,7 +1622,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel,
 
             d->sendSubscribed(s);
         } else if (s->subscriberCount != oldSubscriberCount) {
-            int64_t now = QDateTime::currentMSecsSinceEpoch();
+            int64_t now = DateTime::currentMSecsSinceEpoch();
 
             // Process soon
             s->lastRefresh = now - SHOULD_PROCESS_TIME(d->subscriptionTtl);
@@ -1639,7 +1639,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 
     if (linger) {
         if (!s->linger) {
-            int64_t now = QDateTime::currentMSecsSinceEpoch();
+            int64_t now = DateTime::currentMSecsSinceEpoch();
 
             s->linger = true;
 
@@ -1665,7 +1665,7 @@ void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks) {
 
     Private::Report *report = d->getOrCreateReport(routeId);
 
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     report->addMessageReceived(blocks, now);
     d->combinedReport.addMessageReceived(blocks, now);
@@ -1677,7 +1677,7 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 
     Private::Report *report = d->getOrCreateReport(routeId);
 
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     report->addMessageSent(transport, blocks, now);
     d->combinedReport.addMessageSent(transport, blocks, now);
@@ -1689,14 +1689,14 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, uint3
 
     Private::Report *report = d->getOrCreateReport(routeId);
 
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     report->incCounter(c, count, now);
     d->combinedReport.incCounter(c, count, now);
 }
 
 void StatsManager::addRequestsReceived(uint32_t count) {
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     d->combinedCounts.requestsReceived += count;
     d->combinedReport.addRequestsReceived(count, now);
@@ -1714,7 +1714,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
         return false;
 
     if (packet.type == StatsPacket::Connected || packet.type == StatsPacket::Disconnected) {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         bool replacing = false;
         int64_t lastReport = now;
@@ -1815,7 +1815,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
         return replacing;
     } else if (packet.type == StatsPacket::ConnectionsMax) {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         d->mergeExternalConnectionsMax(packet, now);
 
@@ -1852,7 +1852,7 @@ int64_t StatsManager::lastRetrySeq(const QByteArray &source) const {
 StatsPacket StatsManager::getConnMaxPacket(const QByteArray &routeId) {
     Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId);
 
-    int64_t now = QDateTime::currentMSecsSinceEpoch();
+    int64_t now = DateTime::currentMSecsSinceEpoch();
 
     return d->getConnMaxPacket(routeId, &cm, now);
 }

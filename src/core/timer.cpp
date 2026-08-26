@@ -25,7 +25,7 @@
 
 #include "eventloop.h"
 #include "timerwheel.h"
-#include <QDateTime>
+#include "datetime.h"
 #include <QTimer>
 #include <assert.h>
 
@@ -59,7 +59,7 @@ private:
 };
 
 TimerManager::TimerManager(int capacity) : wheel_(TimerWheel(capacity)) {
-    startTime_ = QDateTime::currentMSecsSinceEpoch();
+    startTime_ = DateTime::currentMSecsSinceEpoch();
     currentTicks_ = 0;
 
     t_ = std::make_unique<QTimer>();
@@ -71,7 +71,7 @@ TimerManager::TimerManager(int capacity) : wheel_(TimerWheel(capacity)) {
 }
 
 int TimerManager::add(int msec, Timer *r) {
-    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+    int64_t currentTime = DateTime::currentMSecsSinceEpoch();
 
     int64_t expiresTicks;
     if (msec <= 0) {
@@ -96,13 +96,13 @@ int TimerManager::add(int msec, Timer *r) {
 void TimerManager::remove(int key) {
     wheel_.remove(key);
 
-    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+    int64_t currentTime = DateTime::currentMSecsSinceEpoch();
 
     updateTimeout(currentTime);
 }
 
 void TimerManager::t_timeout() {
-    int64_t currentTime = QDateTime::currentMSecsSinceEpoch();
+    int64_t currentTime = DateTime::currentMSecsSinceEpoch();
 
     // Time must go forward
     if (currentTime > startTime_) {

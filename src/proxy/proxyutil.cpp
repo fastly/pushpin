@@ -28,12 +28,12 @@
 #include "log.h"
 #include "qtcompat.h"
 #include "variant.h"
-#include <QDateTime>
+#include "datetime.h"
 
 static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key) {
     VariantMap claim;
     claim["iss"] = QString::fromUtf8(iss);
-    claim["exp"] = QDateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600;
+    claim["exp"] = DateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600;
     return Jwt::encode(claim, key);
 }
 
@@ -45,7 +45,7 @@ static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
     VariantMap claim = claimObj.toMap();
 
     int exp = claim.value("exp").toInt();
-    if (exp <= 0 || (int)QDateTime::currentDateTimeUtc().toSecsSinceEpoch() >= exp)
+    if (exp <= 0 || (int)DateTime::currentDateTimeUtc().toSecsSinceEpoch() >= exp)
         return false;
 
     return true;

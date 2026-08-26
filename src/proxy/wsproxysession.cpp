@@ -42,7 +42,7 @@
 #include "zhttpmanager.h"
 #include "zroutes.h"
 #include "zwebsocket.h"
-#include <QDateTime>
+#include "datetime.h"
 #include <QHostAddress>
 #include <QRandomGenerator>
 #include <assert.h>
@@ -258,7 +258,7 @@ public:
     bool acceptGripMessages;
     QByteArray messagePrefix;
     bool detached;
-    QDateTime activityTime;
+    DateTime activityTime;
     QByteArray publicCid;
     std::unique_ptr<Timer> keepAliveTimer;
     WsControl::KeepAliveMode keepAliveMode;
@@ -343,7 +343,7 @@ public:
         publicCid = _publicCid;
 
         if (statsManager)
-            activityTime = QDateTime::currentDateTimeUtc();
+            activityTime = DateTime::currentDateTimeUtc();
 
         inSock = std::unique_ptr<WebSocket>(sock);
         inWSConnection = InWSConnections{
@@ -679,7 +679,7 @@ public:
 
     void tryLogActivity() {
         if (statsManager && !activityTime.isNull()) {
-            QDateTime now = QDateTime::currentDateTimeUtc();
+            DateTime now = DateTime::currentDateTimeUtc();
             if (now >= activityTime.addMSecs(ACTIVITY_TIMEOUT)) {
                 statsManager->addActivity(route.id);
 

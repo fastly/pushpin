@@ -26,7 +26,7 @@
 #include "log.h"
 #include "template.h"
 #include "variant.h"
-#include <QDateTime>
+#include "datetime.h"
 #include <QDir>
 #include <QProcess>
 
@@ -117,7 +117,7 @@ QString Mongrel2Service::filterLogLine(const int level, const QString &line) con
     if (level > logLevel_) {
         return QString();
     }
-    QString tstr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+    QString tstr = DateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
     switch (level) {
     case LOG_LEVEL_DEBUG:
         return "[DEBUG] " + tstr + " " + line;

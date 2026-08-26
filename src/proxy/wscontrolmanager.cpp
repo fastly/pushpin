@@ -33,7 +33,7 @@
 #include "zmqsocket.h"
 #include "zmqvalve.h"
 #include "zutil.h"
-#include <QDateTime>
+#include "datetime.h"
 #include <assert.h>
 #include <boost/signals2.hpp>
 
@@ -194,7 +194,7 @@ public:
         if (keepAliveRegistrations.contains(s))
             return;
 
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         KeepAliveRegistration *r = new KeepAliveRegistration;
         r->s = s;
@@ -287,7 +287,7 @@ private:
     }
 
     void refresh_timeout() {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         QHash<QByteArray, WsControlPacket> packets;
 

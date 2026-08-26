@@ -27,7 +27,7 @@
 PublishLastIds::PublishLastIds(int maxCapacity) : maxCapacity_(maxCapacity) {}
 
 void PublishLastIds::set(const QString &channel, const QString &id) {
-    QDateTime now = QDateTime::currentDateTimeUtc();
+    DateTime now = DateTime::currentDateTimeUtc();
 
     if (table_.contains(channel)) {
         Item &i = table_[channel];
