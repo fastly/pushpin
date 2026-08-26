@@ -23,6 +23,7 @@
 
 #include "statsmanager.h"
 
+#include "datetime.h"
 #include "defercall.h"
 #include "httpheaders.h"
 #include "json.h"
@@ -34,7 +35,6 @@
 #include "variant.h"
 #include "zmqsocket.h"
 #include "zutil.h"
-#include "datetime.h"
 #include <assert.h>
 
 // Make this somewhat big since PUB is lossy

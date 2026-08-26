@@ -27,6 +27,7 @@
 #include "config.h"
 #include "cowbytearray.h"
 #include "cowstring.h"
+#include "datetime.h"
 #include "layertracker.h"
 #include "log.h"
 #include "logutil.h"
@@ -42,7 +43,6 @@
 #include "zmqvalve.h"
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include "datetime.h"
 #include <QDir>
 #include <QElapsedTimer>
 #include <QHash>

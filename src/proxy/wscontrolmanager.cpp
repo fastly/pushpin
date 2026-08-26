@@ -23,6 +23,7 @@
 
 #include "wscontrolmanager.h"
 
+#include "datetime.h"
 #include "log.h"
 #include "logutil.h"
 #include "timer.h"
@@ -33,7 +34,6 @@
 #include "zmqsocket.h"
 #include "zmqvalve.h"
 #include "zutil.h"
-#include "datetime.h"
 #include <assert.h>
 #include <boost/signals2.hpp>
 

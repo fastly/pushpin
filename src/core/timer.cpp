@@ -23,9 +23,9 @@
 
 #include "timer.h"
 
+#include "datetime.h"
 #include "eventloop.h"
 #include "timerwheel.h"
-#include "datetime.h"
 #include <QTimer>
 #include <assert.h>
 
