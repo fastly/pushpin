@@ -46,6 +46,7 @@
 #include <QHostAddress>
 #include <QRandomGenerator>
 #include <assert.h>
+#include <optional>
 
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
@@ -258,7 +259,7 @@ public:
     bool acceptGripMessages;
     QByteArray messagePrefix;
     bool detached;
-    DateTime activityTime;
+    std::optional<DateTime> activityTime;
     QByteArray publicCid;
     std::unique_ptr<Timer> keepAliveTimer;
     WsControl::KeepAliveMode keepAliveMode;
@@ -678,13 +679,13 @@ public:
     }
 
     void tryLogActivity() {
-        if (statsManager && !activityTime.isNull()) {
+        if (statsManager && activityTime.has_value()) {
             DateTime now = DateTime::currentDateTimeUtc();
-            if (now >= activityTime.addMSecs(ACTIVITY_TIMEOUT)) {
+            if (now >= activityTime->addMSecs(ACTIVITY_TIMEOUT)) {
                 statsManager->addActivity(route.id);
 
-                activityTime = activityTime.addMSecs(
-                    (activityTime.msecsTo(now) / ACTIVITY_TIMEOUT) * ACTIVITY_TIMEOUT);
+                activityTime = activityTime->addMSecs(
+                    (activityTime->msecsTo(now) / ACTIVITY_TIMEOUT) * ACTIVITY_TIMEOUT);
             }
         }
     }

@@ -17,10 +17,51 @@
 #ifndef DATETIME_H
 #define DATETIME_H
 
-#include <QDateTime>
+#include <chrono>
+#include <cstdint>
 
-// QDateTime-like type that currently aliases QDateTime, to assist with reducing direct dependency
-// on Qt. The API is designed to allow cheap conversion to/from QDateTime.
-using DateTime = QDateTime;
+// Date/time type wrapping std::chrono::system_clock::time_point.
+class DateTime {
+public:
+    using time_point = std::chrono::system_clock::time_point;
+
+    DateTime() = default;
+
+    static DateTime currentDateTimeUtc() {
+        DateTime dt;
+        dt.inner_ = std::chrono::system_clock::now();
+        return dt;
+    }
+
+    static int64_t currentMSecsSinceEpoch() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    }
+
+    int64_t toSecsSinceEpoch() const {
+        return std::chrono::duration_cast<std::chrono::seconds>(inner_.time_since_epoch()).count();
+    }
+
+    DateTime addMSecs(int64_t msecs) const {
+        DateTime dt;
+        dt.inner_ = inner_ + std::chrono::milliseconds(msecs);
+        return dt;
+    }
+
+    int64_t msecsTo(const DateTime &other) const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(other.inner_ - inner_).count();
+    }
+
+    friend bool operator==(const DateTime &a, const DateTime &b) { return a.inner_ == b.inner_; }
+    friend bool operator!=(const DateTime &a, const DateTime &b) { return a.inner_ != b.inner_; }
+    friend bool operator<(const DateTime &a, const DateTime &b) { return a.inner_ < b.inner_; }
+    friend bool operator<=(const DateTime &a, const DateTime &b) { return a.inner_ <= b.inner_; }
+    friend bool operator>(const DateTime &a, const DateTime &b) { return a.inner_ > b.inner_; }
+    friend bool operator>=(const DateTime &a, const DateTime &b) { return a.inner_ >= b.inner_; }
+
+private:
+    time_point inner_;
+};
 
 #endif

@@ -23,12 +23,13 @@
 #include "mongrel2service.h"
 #include "tnetstring.h"
 
-#include "datetime.h"
 #include "log.h"
 #include "template.h"
 #include "variant.h"
 #include <QDir>
 #include <QProcess>
+#include <chrono>
+#include <ctime>
 
 Mongrel2Service::Mongrel2Service(const QString &binFile, const QString &configFile,
                                  const QString &serverName, const QString &runDir,
@@ -117,7 +118,14 @@ QString Mongrel2Service::filterLogLine(const int level, const QString &line) con
     if (level > logLevel_) {
         return QString();
     }
-    QString tstr = DateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+    auto tp = std::chrono::system_clock::now();
+    int ms =
+        (int)(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count() %
+              1000);
+    std::time_t t = std::chrono::system_clock::to_time_t(tp);
+    char tbuf[20];
+    std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
+    QString tstr = QString::asprintf("%s.%03d", tbuf, ms);
     switch (level) {
     case LOG_LEVEL_DEBUG:
         return "[DEBUG] " + tstr + " " + line;
