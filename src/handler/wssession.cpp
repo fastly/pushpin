@@ -23,13 +23,13 @@
 
 #include "wssession.h"
 
+#include "datetime.h"
 #include "defercall.h"
 #include "filter.h"
 #include "log.h"
 #include "publishformat.h"
 #include "publishitem.h"
 #include "timer.h"
-#include <QDateTime>
 
 #define WSCONTROL_REQUEST_TIMEOUT 8000
 
@@ -253,7 +253,7 @@ void WsSession::setupRequestTimer() {
                 lowestTime = time;
         }
 
-        int until = int(lowestTime - QDateTime::currentMSecsSinceEpoch());
+        int until = int(lowestTime - DateTime::currentMSecsSinceEpoch());
 
         requestTimer->start(qMax(until, 0));
     } else {
@@ -273,7 +273,7 @@ void WsSession::delayedTimer_timeout() {
     QByteArray message = delayedMessage;
     delayedMessage.clear();
 
-    pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
+    pendingRequests[reqId] = DateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
     setupRequestTimer();
 
     WsControlPacket::Item i;

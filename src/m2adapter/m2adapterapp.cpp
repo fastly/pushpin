@@ -27,6 +27,7 @@
 #include "config.h"
 #include "cowbytearray.h"
 #include "cowstring.h"
+#include "datetime.h"
 #include "layertracker.h"
 #include "log.h"
 #include "logutil.h"
@@ -42,7 +43,6 @@
 #include "zmqvalve.h"
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -1215,7 +1215,7 @@ public:
             Session *s = conn->session;
 
             // Update lastActive
-            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            qint64 now = DateTime::currentMSecsSinceEpoch();
             sessionsByLastActive.remove(QPair<qint64, Session *>(s->lastActive, s));
             s->lastActive = now;
             sessionsByLastActive.insert(QPair<qint64, Session *>(s->lastActive, s), s);
@@ -1408,7 +1408,7 @@ public:
         if (seq != -1)
             ++(s->inSeq);
 
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 now = DateTime::currentMSecsSinceEpoch();
 
         if (s->lastRefresh < 0 && !s->zhttpAddress.isEmpty()) {
             // Once we have the peer's address, set up refresh
@@ -2103,7 +2103,7 @@ public:
             return;
         }
 
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 now = DateTime::currentMSecsSinceEpoch();
 
         Rid m2Rid(mreq.sender, mreq.id);
 
@@ -2297,7 +2297,7 @@ public:
 
             sessionsByM2Rid.insert(m2Rid, s);
 
-            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            qint64 now = DateTime::currentMSecsSinceEpoch();
 
             s->lastActive = now;
             sessionsByLastActive.insert(QPair<qint64, Session *>(s->lastActive, s), s);
@@ -2536,7 +2536,7 @@ private slots:
     }
 
     void refresh_timeout() {
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 now = DateTime::currentMSecsSinceEpoch();
 
         refreshM2Connections(now);
         refreshSessions(now);

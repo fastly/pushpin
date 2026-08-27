@@ -24,9 +24,9 @@
 #include "wscontrolsession.h"
 
 #include "cowurl.h"
+#include "datetime.h"
 #include "timer.h"
 #include "wscontrolmanager.h"
-#include <QDateTime>
 #include <assert.h>
 #include <boost/signals2.hpp>
 
@@ -116,7 +116,7 @@ public:
                     lowestTime = time;
             }
 
-            int until = int(lowestTime - QDateTime::currentMSecsSinceEpoch());
+            int until = int(lowestTime - DateTime::currentMSecsSinceEpoch());
 
             requestTimer->start(qMax(until, 0));
         } else {
@@ -132,7 +132,7 @@ public:
         i.requestId = QByteArray::number(reqId);
         i.message = message;
 
-        pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + REQUEST_TIMEOUT;
+        pendingRequests[reqId] = DateTime::currentMSecsSinceEpoch() + REQUEST_TIMEOUT;
         setupRequestTimer();
 
         write(i);
@@ -152,7 +152,7 @@ public:
         i.requestId = QByteArray::number(reqId);
         i.channel = channel;
 
-        pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + REQUEST_TIMEOUT;
+        pendingRequests[reqId] = DateTime::currentMSecsSinceEpoch() + REQUEST_TIMEOUT;
         setupRequestTimer();
 
         write(i);

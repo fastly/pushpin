@@ -23,12 +23,12 @@
 
 #include "sequencer.h"
 
+#include "datetime.h"
 #include "defercall.h"
 #include "log.h"
 #include "publishitem.h"
 #include "publishlastids.h"
 #include "timer.h"
-#include <QDateTime>
 
 #define CHANNEL_PENDING_MAX 100
 #define DEFAULT_PENDING_EXPIRE 5000
@@ -78,7 +78,7 @@ public:
     ~Private() { qDeleteAll(idCacheById); }
 
     void addItem(const PublishItem &item, bool seq) {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
 
         while (!idCacheByExpireTime.isEmpty()) {
             QMap<QPair<int64_t, CachedId *>, CachedId *>::iterator it = idCacheByExpireTime.begin();
@@ -203,7 +203,7 @@ public:
     }
 
     void expireTimer_timeout() {
-        int64_t now = QDateTime::currentMSecsSinceEpoch();
+        int64_t now = DateTime::currentMSecsSinceEpoch();
         int64_t threshold = now - pendingExpireMSecs;
 
         while (!pendingItemsByTime.isEmpty()) {

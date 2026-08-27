@@ -3,6 +3,7 @@ HEADERS += \
 	$$PWD/cowstring.h \
 	$$PWD/cowurl.h \
 	$$PWD/urlquery.h \
+	$$PWD/datetime.h \
 	$$PWD/variant.h
 
 SOURCES += \

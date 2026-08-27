@@ -23,7 +23,7 @@
 #ifndef PUBLISHLASTIDS_H
 #define PUBLISHLASTIDS_H
 
-#include <QDateTime>
+#include "datetime.h"
 #include <QHash>
 #include <QMap>
 #include <QString>
@@ -38,13 +38,13 @@ public:
     QString value(const QString &channel);
 
 private:
-    typedef QPair<QDateTime, QString> TimeStringPair;
+    typedef QPair<DateTime, QString> TimeStringPair;
 
     class Item {
     public:
         QString channel;
         QString id;
-        QDateTime time;
+        DateTime time;
     };
 
     QHash<QString, Item> table_;
