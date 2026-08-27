@@ -544,7 +544,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let version_ge_2 = get_version_int()? >= 0x020000;
+    let version_ge_2 = get_version_int()? >= 0x020000 || cfg!(feature = "breaking-changes");
 
     write_cpp_conf_pri(
         &cpp_build_dir.join("conf.pri"),
@@ -633,6 +633,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=CPP_BUILD_DIR");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=cbindgen.toml");
+    println!("cargo:rerun-if-changed=Cargo.toml");
 
     Ok(())
 }
