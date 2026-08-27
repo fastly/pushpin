@@ -28,12 +28,10 @@ fn get_version() -> String {
     version
 }
 
-fn get_version_int() -> Result<u32, Box<dyn Error>> {
-    let version = env!("CARGO_PKG_VERSION");
-
-    let version = match version.find('-') {
-        Some(pos) => &version[..pos],
-        None => version,
+fn get_compat_version_int() -> Result<u32, Box<dyn Error>> {
+    let version = match env::var("COMPAT_VERSION") {
+        Ok(s) => s,
+        Err(_) => return Ok(0xffffff), // all versions
     };
 
     let mut v = 0;
@@ -544,7 +542,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let version_ge_2 = get_version_int()? >= 0x020000;
+    let version_ge_2 = get_compat_version_int()? >= 0x020000;
 
     write_cpp_conf_pri(
         &cpp_build_dir.join("conf.pri"),
@@ -631,6 +629,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=LOGDIR");
     println!("cargo:rerun-if-env-changed=RUNDIR");
     println!("cargo:rerun-if-env-changed=CPP_BUILD_DIR");
+    println!("cargo:rerun-if-env-changed=COMPAT_VERSION");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=cbindgen.toml");
 
