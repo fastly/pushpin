@@ -33,7 +33,7 @@
 static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key) {
     VariantMap claim;
     claim["iss"] = QString::fromUtf8(iss);
-    claim["exp"] = DateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600;
+    claim["exp"] = (qint64)(DateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600);
     return Jwt::encode(claim, key);
 }
 
