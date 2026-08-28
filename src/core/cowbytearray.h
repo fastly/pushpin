@@ -82,6 +82,7 @@ public:
     CowByteArray(const char *data, ssize_t size = -1) : inner_(data, size) {}
     CowByteArray(ssize_t size, char ch) : inner_(size, ch) {}
     CowByteArray(const QByteArray &other) : inner_(other) {}
+
     CowByteArray &operator=(const CowByteArray &other) {
         inner_ = other.inner_;
         return *this;
@@ -93,6 +94,7 @@ public:
     ssize_t length() const { return size(); }
     const char *data() const { return inner_.data(); }
     char *data() { return inner_.data(); }
+    const char *constData() const { return inner_.constData(); }
 
     ssize_t indexOf(char ch, ssize_t from = 0) const { return inner_.indexOf(ch, from); }
     CowByteArray mid(ssize_t pos, ssize_t len = -1) const { return inner_.mid(pos, len); }
@@ -103,16 +105,24 @@ public:
 
     char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }
     char &operator[](ssize_t i) { return inner_[(qsizetype)i]; }
+
     CowByteArray &operator+=(const CowByteArray &other) {
         inner_ += other.inner_;
         return *this;
     }
+
     CowByteArray &operator+=(char ch) {
         inner_ += ch;
         return *this;
     }
+
     CowByteArray &operator+=(const char *str) {
         inner_ += str;
+        return *this;
+    }
+
+    CowByteArray &operator+=(const QByteArray &other) {
+        inner_ += other;
         return *this;
     }
 
@@ -141,13 +151,16 @@ private:
 inline CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs) {
     return lhs.inner_ + rhs.inner_;
 }
+
 inline CowByteArray operator+(const CowByteArray &lhs, const char *rhs) { return lhs.inner_ + rhs; }
 inline CowByteArray operator+(const char *lhs, const CowByteArray &rhs) { return lhs + rhs.inner_; }
 inline CowByteArray operator+(const CowByteArray &lhs, char rhs) { return lhs.inner_ + rhs; }
 inline CowByteArray operator+(char lhs, const CowByteArray &rhs) { return lhs + rhs.inner_; }
+
 inline CowByteArray operator+(const CowByteArray &lhs, const QByteArray &rhs) {
     return lhs.inner_ + rhs;
 }
+
 inline CowByteArray operator+(const QByteArray &lhs, const CowByteArray &rhs) {
     return lhs + rhs.inner_;
 }
@@ -155,12 +168,15 @@ inline CowByteArray operator+(const QByteArray &lhs, const CowByteArray &rhs) {
 inline bool operator==(const CowByteArray &lhs, const CowByteArray &rhs) {
     return lhs.inner_ == rhs.inner_;
 }
+
 inline bool operator==(const CowByteArray &lhs, const char *const &rhs) {
     return lhs.inner_ == rhs;
 }
+
 inline bool operator==(const char *const &lhs, const CowByteArray &rhs) {
     return lhs == rhs.inner_;
 }
+
 inline bool operator==(const CowByteArray &lhs, const QByteArray &rhs) { return lhs.inner_ == rhs; }
 inline bool operator==(const QByteArray &lhs, const CowByteArray &rhs) { return lhs == rhs.inner_; }
 inline bool operator!=(const CowByteArray &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
@@ -181,6 +197,7 @@ inline CowByteArrayRef &CowByteArrayRef::operator=(const CowByteArray &other) {
     inner_ = other.inner_;
     return *this;
 }
+
 inline CowByteArray CowByteArrayRef::mid(ssize_t pos, ssize_t len) const {
     return inner_.mid(pos, len);
 }
@@ -206,6 +223,7 @@ public:
         inline bool operator==(const iterator &other) const noexcept {
             return inner_ == other.inner_;
         }
+
         inline bool operator!=(const iterator &other) const noexcept {
             return !(inner_ == other.inner_);
         }
@@ -234,6 +252,7 @@ public:
         inline bool operator==(const const_iterator &other) const noexcept {
             return inner_ == other.inner_;
         }
+
         inline bool operator!=(const const_iterator &other) const noexcept {
             return !(inner_ == other.inner_);
         }
@@ -263,14 +282,17 @@ public:
         inner_ += other.asQByteArrayList();
         return *this;
     }
+
     CowByteArrayList &operator+=(const CowByteArray &a) {
         inner_ += a.asQByteArray();
         return *this;
     }
+
     CowByteArrayList &operator+=(const QByteArray &a) {
         inner_ += a;
         return *this;
     }
+
     CowByteArrayList &operator+=(const char *str) {
         inner_ += str;
         return *this;
@@ -279,6 +301,7 @@ public:
     CowByteArrayConstRef operator[](ssize_t index) const {
         return CowByteArrayConstRef(inner_[index]);
     }
+
     CowByteArrayRef operator[](ssize_t index) { return CowByteArrayRef(inner_[index]); }
 
     const QList<QByteArray> &asQByteArrayList() const { return inner_; }

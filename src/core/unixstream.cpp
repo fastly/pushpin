@@ -57,13 +57,13 @@ bool UnixStream::checkConnected() {
     return true;
 }
 
-QByteArray UnixStream::read(int size) {
+CowByteArray UnixStream::read(int size) {
     assert(inner_);
 
     if (size < 0)
         size = DEFAULT_READ_SIZE;
 
-    QByteArray buf(size, 0);
+    CowByteArray buf(size, 0);
     errorCondition_ = 0;
 
     int ret = ffi::unix_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
@@ -72,7 +72,7 @@ QByteArray UnixStream::read(int size) {
         if (errorCondition_ == EAGAIN)
             sn_->clearReadiness(SocketNotifier::Read);
 
-        return QByteArray();
+        return CowByteArray();
     }
 
     buf.resize(ret);
@@ -80,7 +80,7 @@ QByteArray UnixStream::read(int size) {
     return buf;
 }
 
-int UnixStream::write(const QByteArray &buf) {
+int UnixStream::write(const CowByteArray &buf) {
     assert(inner_);
 
     errorCondition_ = 0;

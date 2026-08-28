@@ -19,7 +19,6 @@
 
 #include "readwrite.h"
 #include "rust/bindings.h"
-#include <QByteArray>
 #include <boost/signals2.hpp>
 #include <memory>
 #include <variant>
@@ -45,8 +44,8 @@ public:
     bool checkConnected();
 
     // Reimplemented
-    virtual QByteArray read(int size = -1);
-    virtual int write(const QByteArray &buf);
+    virtual CowByteArray read(int size = -1);
+    virtual int write(const CowByteArray &buf);
     virtual int errorCondition() const { return errorCondition_; }
 
 private:

@@ -134,9 +134,9 @@ static void runIo(std::function<void()> loop_wait) {
 
     TEST_ASSERT_EQ(client.write("hello\n"), 6);
 
-    QByteArray received;
-    while (!received.contains('\n')) {
-        QByteArray buf = s->read();
+    CowByteArray received;
+    while (received.indexOf('\n') == -1) {
+        CowByteArray buf = s->read();
 
         if (buf.isNull()) {
             TEST_ASSERT_EQ(s->errorCondition(), EAGAIN);
@@ -155,7 +155,7 @@ static void runIo(std::function<void()> loop_wait) {
 
     TEST_ASSERT_EQ(received, "hello\n");
 
-    QByteArray written;
+    CowByteArray written;
     received.clear();
 
     // Write until we fill the system buffer
@@ -174,7 +174,7 @@ static void runIo(std::function<void()> loop_wait) {
 
     // Wait for some bytes on the client side
     while (received.isEmpty()) {
-        QByteArray buf = client.read(100000);
+        CowByteArray buf = client.read(100000);
 
         if (buf.isNull()) {
             TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
@@ -192,7 +192,7 @@ static void runIo(std::function<void()> loop_wait) {
     // Now read as much as possible on the client side. This helps the server side gain writability
     // sooner
     while (true) {
-        QByteArray buf = client.read(100000);
+        CowByteArray buf = client.read(100000);
 
         if (buf.isNull()) {
             TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);
@@ -221,7 +221,7 @@ static void runIo(std::function<void()> loop_wait) {
 
     // Read until closed on the client side
     while (true) {
-        QByteArray buf = client.read(100000);
+        CowByteArray buf = client.read(100000);
 
         if (buf.isNull()) {
             TEST_ASSERT_EQ(client.errorCondition(), EAGAIN);

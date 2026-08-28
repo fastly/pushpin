@@ -59,13 +59,13 @@ bool TcpStream::checkConnected() {
     return true;
 }
 
-QByteArray TcpStream::read(int size) {
+CowByteArray TcpStream::read(int size) {
     assert(inner_);
 
     if (size < 0)
         size = DEFAULT_READ_SIZE;
 
-    QByteArray buf(size, 0);
+    CowByteArray buf(size, 0);
     errorCondition_ = 0;
 
     int ret = ffi::tcp_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
@@ -74,7 +74,7 @@ QByteArray TcpStream::read(int size) {
         if (errorCondition_ == EAGAIN)
             sn_->clearReadiness(SocketNotifier::Read);
 
-        return QByteArray();
+        return CowByteArray();
     }
 
     buf.resize(ret);
@@ -82,7 +82,7 @@ QByteArray TcpStream::read(int size) {
     return buf;
 }
 
-int TcpStream::write(const QByteArray &buf) {
+int TcpStream::write(const CowByteArray &buf) {
     assert(inner_);
 
     errorCondition_ = 0;
