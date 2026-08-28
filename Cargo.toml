@@ -54,7 +54,7 @@ section = "net"
 license-file = ["packaging/debian/license-file", "0"]
 
 [features]
-default = ["do-qmake", "do-cpp-build", "legacy-runner"]
+default = ["do-qmake", "do-cpp-build"]
 do-qmake = []
 do-cpp-build = []
 breaking-changes = []
