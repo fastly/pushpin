@@ -30,12 +30,12 @@ Variant ZrpcRequestPacket::toVariant() const {
     VariantHash obj;
 
     if (!from.isEmpty())
-        obj["from"] = from;
+        obj["from"] = from.asQByteArray();
 
     if (!id.isEmpty())
-        obj["id"] = id;
+        obj["id"] = id.asQByteArray();
 
-    obj["method"] = method.toUtf8();
+    obj["method"] = method.toUtf8().asQByteArray();
 
     if (!args.isEmpty())
         obj["args"] = args;

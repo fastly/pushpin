@@ -28,9 +28,9 @@
 class HttpResponseData {
 public:
     int code;
-    QByteArray reason;
+    CowByteArray reason;
     HttpHeaders headers;
-    QByteArray body;
+    CowByteArray body;
 
     HttpResponseData() : code(-1) {}
 };

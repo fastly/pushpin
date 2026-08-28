@@ -30,7 +30,7 @@ Variant ZrpcResponsePacket::toVariant() const {
     VariantHash obj;
 
     if (!id.isEmpty())
-        obj["id"] = id;
+        obj["id"] = id.asQByteArray();
 
     obj["success"] = success;
 
@@ -40,7 +40,7 @@ Variant ZrpcResponsePacket::toVariant() const {
         else
             obj["value"] = value;
     } else {
-        obj["condition"] = condition;
+        obj["condition"] = condition.asQByteArray();
 
         if (value.isValid()) {
             if (typeId(value) == VariantType::String)

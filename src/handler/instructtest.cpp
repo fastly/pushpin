@@ -40,17 +40,17 @@ static void noHold() {
     TEST_ASSERT(ok);
     TEST_ASSERT_EQ(i.holdMode, Instruct::NoHold);
     TEST_ASSERT_EQ(i.response.code, 200);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("OK"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("OK"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
     TEST_ASSERT(!i.response.headers.contains("Grip-Channel"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 
     data.headers += HttpHeader("Grip-Status", "404");
     i = Instruct::fromResponse(data, &ok);
     TEST_ASSERT(ok);
     TEST_ASSERT_EQ(i.holdMode, Instruct::NoHold);
     TEST_ASSERT_EQ(i.response.code, 404);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("Not Found"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("Not Found"));
 
     data.headers.removeAll("Grip-Status");
     data.headers += HttpHeader("Grip-Status", "404 Nothing To See Here");
@@ -58,7 +58,7 @@ static void noHold() {
     TEST_ASSERT(ok);
     TEST_ASSERT_EQ(i.holdMode, Instruct::NoHold);
     TEST_ASSERT_EQ(i.response.code, 404);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("Nothing To See Here"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("Nothing To See Here"));
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
@@ -70,9 +70,9 @@ static void noHold() {
     TEST_ASSERT(ok);
     TEST_ASSERT_EQ(i.holdMode, Instruct::NoHold);
     TEST_ASSERT_EQ(i.response.code, 200);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("OK"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("OK"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 }
 
 static void responseHold() {
@@ -102,7 +102,7 @@ static void responseHold() {
     TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
     TEST_ASSERT(!i.response.headers.contains("Grip-Channel"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
@@ -122,9 +122,9 @@ static void responseHold() {
     TEST_ASSERT_EQ(i.meta.value("foo"), QString("bar"));
     TEST_ASSERT_EQ(i.meta.value("bar"), QString("baz"));
     TEST_ASSERT_EQ(i.response.code, 200);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("OK"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("OK"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 }
 
 static void responseHoldChannelParams() {
@@ -158,7 +158,7 @@ static void responseHoldChannelParams() {
     TEST_ASSERT_EQ(i.channels[2].filters[1], QString("f2"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
     TEST_ASSERT(!i.response.headers.contains("Grip-Channel"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
@@ -187,9 +187,9 @@ static void responseHoldChannelParams() {
     TEST_ASSERT_EQ(i.channels[2].filters[0], QString("f1"));
     TEST_ASSERT_EQ(i.channels[2].filters[1], QString("f2"));
     TEST_ASSERT_EQ(i.response.code, 200);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("OK"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("OK"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 }
 
 static void streamHold() {
@@ -213,7 +213,7 @@ static void streamHold() {
     TEST_ASSERT_EQ(i.channels[2].name, QString("cherry"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
     TEST_ASSERT(!i.response.headers.contains("Grip-Channel"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 
     data.headers.clear();
     data.headers += HttpHeader("Content-Type", "application/grip-instruct");
@@ -228,9 +228,9 @@ static void streamHold() {
     TEST_ASSERT_EQ(i.channels.count(), 1);
     TEST_ASSERT_EQ(i.channels[0].name, QString("test"));
     TEST_ASSERT_EQ(i.response.code, 200);
-    TEST_ASSERT_EQ(i.response.reason, QByteArray("OK"));
+    TEST_ASSERT_EQ(i.response.reason, CowByteArray("OK"));
     TEST_ASSERT_EQ(i.response.headers.get("Content-Type"), CowByteArray("text/plain"));
-    TEST_ASSERT_EQ(i.response.body, QByteArray("hello world"));
+    TEST_ASSERT_EQ(i.response.body, CowByteArray("hello world"));
 }
 
 static void streamHoldKeepAlive() {

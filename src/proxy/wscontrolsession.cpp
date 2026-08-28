@@ -213,11 +213,11 @@ public:
             // For sends, don't ack until written
 
             if (!item.requestId.isEmpty())
-                pendingSendEventWrites += item.requestId;
+                pendingSendEventWrites += item.requestId.asQByteArray();
             else
                 pendingSendEventWrites += QByteArray(); // Placeholder
 
-            q->sendEventReceived(type, item.message, item.queue);
+            q->sendEventReceived(type, item.message.asQByteArray(), item.queue);
         } else if (item.type == WsControlPacket::Item::KeepAliveSetup) {
             if (item.timeout > 0) {
                 WsControl::KeepAliveMode mode;
@@ -231,13 +231,13 @@ public:
         } else if (item.type == WsControlPacket::Item::Refresh) {
             q->refreshEventReceived();
         } else if (item.type == WsControlPacket::Item::Close) {
-            q->closeEventReceived(item.code, item.reason);
+            q->closeEventReceived(item.code, item.reason.asQByteArray());
         } else if (item.type == WsControlPacket::Item::Detach) {
             q->detachEventReceived();
         } else if (item.type == WsControlPacket::Item::Cancel) {
             q->cancelEventReceived();
         } else if (item.type == WsControlPacket::Item::Ack) {
-            int reqId = item.requestId.toInt();
+            int reqId = item.requestId.asQByteArray().toInt();
             if (pendingRequests.contains(reqId)) {
                 pendingRequests.remove(reqId);
                 setupRequestTimer();

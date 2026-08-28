@@ -184,7 +184,7 @@ public:
             return;
         }
 
-        ZrpcRequest *req = clientReqsById.value(p.id);
+        ZrpcRequest *req = clientReqsById.value(p.id.asQByteArray());
         if (!req) {
             log_debug("zrpc client: received message for unknown request id, skipping");
             return;

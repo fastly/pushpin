@@ -322,7 +322,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
             return Instruct();
         }
 
-        Variant doc = Json::fromString(response.body);
+        Variant doc = Json::fromString(response.body.asQByteArray());
         if (!doc.isValid()) {
             setError(ok, errorMessage, "failed to parse application/grip-instruct content as JSON");
             return Instruct();

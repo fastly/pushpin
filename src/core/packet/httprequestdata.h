@@ -24,14 +24,15 @@
 #define HTTPREQUESTDATA_H
 
 #include "../httpheaders.h"
+#include "cowstring.h"
 #include "cowurl.h"
 
 class HttpRequestData {
 public:
-    QString method;
+    CowString method;
     CowUrl uri;
     HttpHeaders headers;
-    QByteArray body;
+    CowByteArray body;
 };
 
 #endif

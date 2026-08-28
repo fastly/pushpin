@@ -184,7 +184,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
         }
 
         if (!idata.lastIds.isEmpty()) {
-            QHashIterator<QByteArray, QByteArray> it(idata.lastIds);
+            QHashIterator<CowByteArray, CowByteArray> it(idata.lastIds);
             while (it.hasNext()) {
                 it.next();
                 requestData->headers +=
@@ -246,7 +246,7 @@ void applyHostHeader(HttpHeaders *headers, const CowUrl &uri) {
     if (uri.port() != -1)
         hostHeader += ':' + QByteArray::number(uri.port());
 
-    if (headers->get("Host").asQByteArray() != hostHeader) {
+    if (headers->get("Host") != hostHeader) {
         headers->removeAll("Host");
         headers->append(HttpHeader("Host", hostHeader));
     }

@@ -141,7 +141,7 @@ void logVariantWithContent(int level, const Variant &data, const QString &conten
 }
 
 void logRequest(int level, const RequestData &data, const Config &config) {
-    QString msg = QString("%1 %2").arg(data.requestData.method,
+    QString msg = QString("%1 %2").arg(data.requestData.method.asQString(),
                                        data.requestData.uri.toString(CowUrl::FullyEncoded));
 
     if (!data.targetStr.isEmpty())

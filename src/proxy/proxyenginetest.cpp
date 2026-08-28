@@ -209,12 +209,12 @@ private:
             if (!responses.contains(zresp.ids.first().id.asQByteArray())) {
                 HttpResponseData rd;
                 rd.code = zresp.code;
-                rd.reason = zresp.reason.asQByteArray();
+                rd.reason = zresp.reason;
                 rd.headers = zresp.headers;
                 responses[zresp.ids.first().id.asQByteArray()] = rd;
             }
 
-            responses[zresp.ids.first().id.asQByteArray()].body += zresp.body.asQByteArray();
+            responses[zresp.ids.first().id.asQByteArray()].body += zresp.body;
             in += zresp.body.asQByteArray();
 
             if (!isWs && !zresp.more) {
@@ -261,7 +261,7 @@ private:
         zreq.fromVariant(v);
 
         HttpRequestData rd;
-        rd.method = zreq.method.asQString();
+        rd.method = zreq.method;
         rd.uri = zreq.uri;
         rd.headers = zreq.headers;
         serverReqs[zreq.ids[0].id.asQByteArray()] = rd;
@@ -288,7 +288,7 @@ private:
             return;
         }
 
-        serverReqs[zreq.ids[0].id.asQByteArray()].body += zreq.body.asQByteArray();
+        serverReqs[zreq.ids[0].id.asQByteArray()].body += zreq.body;
 
         if (zreq.type == ZhttpRequestPacket::Data)
             requestBody += zreq.body.asQByteArray();
@@ -663,8 +663,9 @@ static void passthrough(TestState &state, std::function<void(int)> loop_wait) {
                    43);                           // "200" + "OK" + "Content-Type" + "text/plain" +
                                                   // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 11); // "hello world"
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    43); // "200" + "OK" + "Content-Type" + "text/plain" +
@@ -806,8 +807,9 @@ static void passthroughPostStream(TestState &state, std::function<void(int)> loo
                    43);                           // "200" + "OK" + "Content-Type" + "text/plain" +
                                                   // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 11); // "hello world"
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 11);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    43); // "200" + "OK" + "Content-Type" + "text/plain" +
@@ -868,8 +870,9 @@ static void passthroughPostStreamFail(TestState &state, std::function<void(int)>
     TEST_ASSERT_EQ(p.clientContentBytesReceived, 5); // "hello"
     TEST_ASSERT_EQ(p.clientHeaderBytesSent, 0);
     TEST_ASSERT_EQ(p.clientContentBytesSent, 0);
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 5); // "hello"
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived, 0);
     TEST_ASSERT_EQ(p.serverContentBytesReceived, 0);
@@ -911,8 +914,9 @@ static void acceptResponse(TestState &state, std::function<void(int)> loop_wait)
     TEST_ASSERT_EQ(p.clientContentBytesReceived, 0);
     TEST_ASSERT_EQ(p.clientHeaderBytesSent, 0);
     TEST_ASSERT_EQ(p.clientContentBytesSent, 0);
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    61); // "200" + "OK" + "Grip-Hold" + "response" + "Grip-Channel" +
@@ -957,8 +961,9 @@ static void acceptStream(TestState &state, std::function<void(int)> loop_wait) {
     TEST_ASSERT_EQ(p.clientContentBytesReceived, 0);
     TEST_ASSERT_EQ(p.clientHeaderBytesSent, 0);
     TEST_ASSERT_EQ(p.clientContentBytesSent, 0);
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    60); // "200" + "OK" + "Grip-Hold" + "stream" + "Grip-Channel"
@@ -1024,8 +1029,9 @@ static void acceptNoHold(TestState &state, std::function<void(int)> loop_wait) {
                    43);                           // "200" + "OK" + "Content-Type" + "text/plain" +
                                                   // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 11); // "hello world"
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    54); // "200" + "OK" + "Content-Type" + "text/plain" +
@@ -1093,8 +1099,9 @@ static void passthroughThenAcceptStream(TestState &state, std::function<void(int
     TEST_ASSERT_EQ(p.clientContentBytesReceived, 0);
     TEST_ASSERT_EQ(p.clientHeaderBytesSent, 5); // "200" + "OK"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 110001);
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    64); // "200" + "OK" + "Grip-Hold" + "stream" + "Grip-Channel"
@@ -1140,8 +1147,9 @@ static void passthroughThenAcceptNext(TestState &state, std::function<void(int)>
     TEST_ASSERT_EQ(p.clientHeaderBytesSent,
                    27); // "200" + "OK" + "Content-Type" + "text/plain"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 110001);
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    74); // "200" + "OK" + "Content-Type" + "text/plain" + "Grip-Link" +
@@ -1181,12 +1189,12 @@ static void acceptWithRetry(TestState &state, std::function<void(int)> loop_wait
     int headerBytes = 0;
     int contentBytes = 0;
 
-    headerBytes +=
-        ZhttpManager::estimateRequestHeaderBytes(req1Data.method, req1Data.uri, req1Data.headers);
+    headerBytes += ZhttpManager::estimateRequestHeaderBytes(req1Data.method.asQString(),
+                                                            req1Data.uri, req1Data.headers);
     contentBytes += req1Data.body.size();
 
-    headerBytes +=
-        ZhttpManager::estimateRequestHeaderBytes(req2Data.method, req2Data.uri, req2Data.headers);
+    headerBytes += ZhttpManager::estimateRequestHeaderBytes(req2Data.method.asQString(),
+                                                            req2Data.uri, req2Data.headers);
     contentBytes += req2Data.body.size();
 
     TEST_ASSERT_EQ(state.trackedPackets.size(), 1);
@@ -1268,8 +1276,9 @@ static void passthroughShared(TestState &state, std::function<void(int)> loop_wa
                         // "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" +
                         // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 22); // "hello world" + "hello world"
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 0);
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    43); // "200" + "OK" + "Content-Type" + "text/plain" +
@@ -1366,8 +1375,9 @@ static void passthroughSharedPost(TestState &state, std::function<void(int)> loo
                         // "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" +
                         // "Content-Length" + "11"
     TEST_ASSERT_EQ(p.clientContentBytesSent, 22); // "hello world" + "hello world"
-    TEST_ASSERT_EQ(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                reqData.method, reqData.uri, reqData.headers));
+    TEST_ASSERT_EQ(p.serverHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(reqData.method.asQString(), reqData.uri,
+                                                            reqData.headers));
     TEST_ASSERT_EQ(p.serverContentBytesSent, 11); // "hello world"
     TEST_ASSERT_EQ(p.serverHeaderBytesReceived,
                    43); // "200" + "OK" + "Content-Type" + "text/plain" +

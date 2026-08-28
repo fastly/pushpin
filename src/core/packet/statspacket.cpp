@@ -41,10 +41,10 @@ Variant StatsPacket::toVariant() const {
     VariantHash obj;
 
     if (!from.isEmpty())
-        obj["from"] = from;
+        obj["from"] = from.asQByteArray();
 
     if (!route.isEmpty())
-        obj["route"] = route;
+        obj["route"] = route.asQByteArray();
 
     if (type == Activity) {
         int x = count;
@@ -52,10 +52,10 @@ Variant StatsPacket::toVariant() const {
             x = 0;
         obj["count"] = x;
     } else if (type == Message) {
-        obj["channel"] = channel;
+        obj["channel"] = channel.asQByteArray();
 
         if (!itemId.isNull())
-            obj["item-id"] = itemId;
+            obj["item-id"] = itemId.asQByteArray();
 
         int x = count;
         if (x < 0)
@@ -65,9 +65,9 @@ Variant StatsPacket::toVariant() const {
         if (blocks >= 0)
             obj["blocks"] = blocks;
 
-        obj["transport"] = transport;
+        obj["transport"] = transport.asQByteArray();
     } else if (type == Connected || type == Disconnected) {
-        obj["id"] = connectionId;
+        obj["id"] = connectionId.asQByteArray();
 
         if (type == Connected) {
             if (connectionType == WebSocket)
@@ -87,8 +87,8 @@ Variant StatsPacket::toVariant() const {
             obj["unavailable"] = true;
         }
     } else if (type == Subscribed || type == Unsubscribed) {
-        obj["mode"] = mode;
-        obj["channel"] = channel;
+        obj["mode"] = mode.asQByteArray();
+        obj["channel"] = channel.asQByteArray();
 
         if (type == Subscribed) {
             obj["ttl"] = ttl;
@@ -156,7 +156,7 @@ Variant StatsPacket::toVariant() const {
     return obj;
 }
 
-bool StatsPacket::fromVariant(const QByteArray &_type, const Variant &in) {
+bool StatsPacket::fromVariant(const CowByteArray &_type, const Variant &in) {
     if (typeId(in) != VariantType::Hash)
         return false;
 

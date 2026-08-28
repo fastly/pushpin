@@ -24,9 +24,9 @@
 #ifndef WSCONTROLPACKET_H
 #define WSCONTROLPACKET_H
 
+#include "cowbytearray.h"
 #include "cowurl.h"
 #include "variant.h"
-#include <QByteArray>
 #include <QList>
 
 class WsControlPacket {
@@ -49,25 +49,25 @@ public:
             Ack
         };
 
-        QByteArray cid;
+        CowByteArray cid;
         Type type;
-        QByteArray requestId;
+        CowByteArray requestId;
         CowUrl uri;
-        QByteArray contentType;
-        QByteArray message;
+        CowByteArray contentType;
+        CowByteArray message;
         bool queue;
         int code;
-        QByteArray reason;
+        CowByteArray reason;
         bool debug;
-        QByteArray route;
+        CowByteArray route;
         bool separateStats;
-        QByteArray channelPrefix;
+        CowByteArray channelPrefix;
         int logLevel;
         bool trusted;
-        QByteArray channel;
+        CowByteArray channel;
         int ttl;
         int timeout;
-        QByteArray keepAliveMode;
+        CowByteArray keepAliveMode;
 
         Item()
             : type((Type)-1),
@@ -81,7 +81,7 @@ public:
               timeout(-1) {}
     };
 
-    QByteArray from;
+    CowByteArray from;
     QList<Item> items;
 
     Variant toVariant() const;

@@ -168,12 +168,12 @@ public:
             if (!responses.contains(zresp.ids.first().id.asQByteArray())) {
                 HttpResponseData rd;
                 rd.code = zresp.code;
-                rd.reason = zresp.reason.asQByteArray();
+                rd.reason = zresp.reason;
                 rd.headers = zresp.headers;
                 responses[zresp.ids.first().id.asQByteArray()] = rd;
             }
 
-            responses[zresp.ids.first().id.asQByteArray()].body += zresp.body.asQByteArray();
+            responses[zresp.ids.first().id.asQByteArray()].body += zresp.body;
 
             if (!zresp.more)
                 finished = true;

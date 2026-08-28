@@ -264,7 +264,7 @@ private:
         std::weak_ptr<Private> self = q->d;
 
         foreach (const WsControlPacket::Item &i, p.items) {
-            WsControlSession *s = sessionsByCid.value(i.cid);
+            WsControlSession *s = sessionsByCid.value(i.cid.asQByteArray());
             if (!s) {
                 log_debug("wscontrol: received item for unknown connection id, canceling");
 
@@ -273,13 +273,13 @@ private:
                     WsControlPacket::Item out;
                     out.cid = i.cid;
                     out.type = WsControlPacket::Item::Cancel;
-                    writeStream(out, p.from);
+                    writeStream(out, p.from.asQByteArray());
                 }
 
                 continue;
             }
 
-            s->handle(p.from, i);
+            s->handle(p.from.asQByteArray(), i);
 
             if (self.expired())
                 return;

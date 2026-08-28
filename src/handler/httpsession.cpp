@@ -270,11 +270,13 @@ public:
             if (adata.autoCrossOrigin)
                 Cors::applyCorsHeaders(req->requestHeaders(), &headers);
 
-            incCounter(Stats::ClientHeaderBytesSent,
-                       ZhttpManager::estimateResponseHeaderBytes(
-                           instruct.response.code, instruct.response.reason, headers));
+            incCounter(
+                Stats::ClientHeaderBytesSent,
+                ZhttpManager::estimateResponseHeaderBytes(
+                    instruct.response.code, instruct.response.reason.asQByteArray(), headers));
 
-            req->beginResponse(instruct.response.code, instruct.response.reason, headers);
+            req->beginResponse(instruct.response.code, instruct.response.reason.asQByteArray(),
+                               headers);
 
             if (!instruct.response.body.isEmpty()) {
                 // Apply ResponseContent filters of all channels
@@ -291,7 +293,7 @@ public:
                 fc.subscriptionMeta = instruct.meta;
 
                 FilterStack fs(fc, allFilters);
-                instruct.response.body = fs.process(instruct.response.body);
+                instruct.response.body = fs.process(instruct.response.body.asQByteArray());
                 if (instruct.response.body.isNull()) {
                     errorMessage = QString("filter error: %1").arg(fs.errorMessage());
                     doError();
@@ -300,7 +302,7 @@ public:
 
                 state = SendingFirstInstructResponse;
 
-                firstInstructResponse += instruct.response.body;
+                firstInstructResponse += instruct.response.body.asQByteArray();
                 tryWriteFirstInstructResponse();
                 return;
             }
@@ -705,7 +707,7 @@ private:
 
             QByteArray body;
             if (f.type == PublishFormat::HttpResponse && f.haveBodyPatch)
-                body = applyBodyPatch(instruct.response.body, f.bodyPatch);
+                body = applyBodyPatch(instruct.response.body.asQByteArray(), f.bodyPatch);
             else
                 body = f.body;
 
@@ -1453,8 +1455,8 @@ private:
     void timer_timeout() {
         if (instruct.holdMode == Instruct::ResponseHold) {
             // Send timeout response
-            respond(instruct.response.code, instruct.response.reason, instruct.response.headers,
-                    instruct.response.body);
+            respond(instruct.response.code, instruct.response.reason.asQByteArray(),
+                    instruct.response.headers, instruct.response.body.asQByteArray());
         } else if (instruct.holdMode == Instruct::StreamHold) {
             writeBody(instruct.keepAliveData);
 
