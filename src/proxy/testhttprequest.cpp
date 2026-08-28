@@ -205,7 +205,7 @@ bool TestHttpRequest::isErrored() const {
 
 HttpRequest::ErrorCondition TestHttpRequest::errorCondition() const { return d->errorCondition; }
 
-QString TestHttpRequest::requestMethod() const { return d->request.method; }
+QString TestHttpRequest::requestMethod() const { return d->request.method.asQString(); }
 
 CowUrl TestHttpRequest::requestUri() const { return d->request.uri; }
 
@@ -213,7 +213,7 @@ HttpHeaders TestHttpRequest::requestHeaders() const { return d->request.headers;
 
 int TestHttpRequest::responseCode() const { return d->response.code; }
 
-QByteArray TestHttpRequest::responseReason() const { return d->response.reason; }
+QByteArray TestHttpRequest::responseReason() const { return d->response.reason.asQByteArray(); }
 
 HttpHeaders TestHttpRequest::responseHeaders() const { return d->response.headers; }
 

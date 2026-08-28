@@ -264,7 +264,7 @@ public:
             requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
         log_debug("worker %d: IN id=%s, %s %s", workerId, rid.second.data(),
-                  qPrintable(requestData.method), requestData.uri.toEncoded().data());
+                  qPrintable(requestData.method.asQString()), requestData.uri.toEncoded().data());
 
         bool isHttps = (requestData.uri.scheme() == "https");
         QString host = requestData.uri.host();
@@ -855,8 +855,8 @@ public:
             } else {
                 if (rdata.response.code != -1) {
                     zhttpRequest->resume();
-                    respond(rdata.response.code, rdata.response.reason, rdata.response.headers,
-                            rdata.response.body);
+                    respond(rdata.response.code, rdata.response.reason.asQByteArray(),
+                            rdata.response.headers, rdata.response.body.asQByteArray());
                 } else {
                     zhttpRequest->resume();
                     respondCannotAccept();
@@ -891,8 +891,9 @@ public:
                             bodyRawBuf.truncate(bodyRawBuf.size() - 1);
                     }
 
-                    QByteArray startBuf = makeJsonpStart(responseData.code, responseData.reason,
-                                                         responseData.headers);
+                    QByteArray startBuf =
+                        makeJsonpStart(responseData.code, responseData.reason.asQByteArray(),
+                                       responseData.headers);
                     QByteArray bodyBuf;
                     QByteArray endBuf = makeJsonpEnd();
                     if (!startBuf.isNull())
@@ -942,8 +943,8 @@ public:
                     return;
                 }
 
-                QByteArray buf =
-                    makeJsonpStart(responseData.code, responseData.reason, responseData.headers);
+                QByteArray buf = makeJsonpStart(
+                    responseData.code, responseData.reason.asQByteArray(), responseData.headers);
                 if (buf.isNull()) {
                     state = RespondingInternal;
 
@@ -979,7 +980,7 @@ public:
                     zhttpRequest->bytesWritten.connect(boost::bind(
                         &Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
-                zhttpRequest->beginResponse(responseData.code, responseData.reason,
+                zhttpRequest->beginResponse(responseData.code, responseData.reason.asQByteArray(),
                                             responseData.headers);
             }
         }

@@ -659,7 +659,7 @@ private:
 
         foreach (const HttpHeader &h, responseHeaders) {
             if (h.first.size() >= 10 && qstrnicmp(h.first.data(), "Set-Meta-", 9) == 0) {
-                QByteArray name = h.first.mid(9).asQByteArray();
+                CowByteArray name = h.first.mid(9);
                 if (meta.contains(name))
                     meta.removeAll(name);
                 if (!h.second.isEmpty())
@@ -987,11 +987,13 @@ HttpHeaders WebSocketOverHttp::requestHeaders() const { return d->requestData.he
 
 int WebSocketOverHttp::responseCode() const { return d->responseData.code; }
 
-QByteArray WebSocketOverHttp::responseReason() const { return d->responseData.reason; }
+QByteArray WebSocketOverHttp::responseReason() const {
+    return d->responseData.reason.asQByteArray();
+}
 
 HttpHeaders WebSocketOverHttp::responseHeaders() const { return d->responseData.headers; }
 
-QByteArray WebSocketOverHttp::responseBody() const { return d->responseData.body; }
+QByteArray WebSocketOverHttp::responseBody() const { return d->responseData.body.asQByteArray(); }
 
 int WebSocketOverHttp::framesAvailable() const { return d->inFrames.count(); }
 

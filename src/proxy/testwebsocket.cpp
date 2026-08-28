@@ -101,7 +101,7 @@ public:
             response.code = 404;
             response.reason = StatusReasons::getReason(response.code);
             response.headers += HttpHeader("Content-Type", "text/plain");
-            response.body += QByteArray("no such test resource\n");
+            response.body += "no such test resource\n";
 
             errorCondition = ErrorRejected;
             q->error();
@@ -182,11 +182,11 @@ HttpHeaders TestWebSocket::requestHeaders() const { return d->request.headers; }
 
 int TestWebSocket::responseCode() const { return d->response.code; }
 
-QByteArray TestWebSocket::responseReason() const { return d->response.reason; }
+QByteArray TestWebSocket::responseReason() const { return d->response.reason.asQByteArray(); }
 
 HttpHeaders TestWebSocket::responseHeaders() const { return d->response.headers; }
 
-QByteArray TestWebSocket::responseBody() const { return d->response.body; }
+QByteArray TestWebSocket::responseBody() const { return d->response.body.asQByteArray(); }
 
 int TestWebSocket::framesAvailable() const { return d->inFrames.count(); }
 

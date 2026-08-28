@@ -254,7 +254,7 @@ private:
             result["sharing-key"] = key;
         } else if (shareAll)
             result["sharing-key"] =
-                requestData.method.toLatin1() + '|' + requestData.uri.toEncoded();
+                (requestData.method.toUtf8() + '|' + requestData.uri.toEncoded()).asQByteArray();
 
         if (!sid.isEmpty()) {
             result["sid"] = sid.toUtf8();
@@ -286,10 +286,10 @@ private:
                 QByteArray jsonData;
 
                 if (!rule.jsonParam.isEmpty()) {
-                    UrlQuery tmp(QString::fromUtf8(requestData.body));
+                    UrlQuery tmp(QString::fromUtf8(requestData.body.asQByteArray()));
                     jsonData = tmp.queryItemValue(rule.jsonParam, CowUrl::FullyDecoded).toUtf8();
                 } else {
-                    jsonData = requestData.body;
+                    jsonData = requestData.body.asQByteArray();
                 }
 
                 Variant vdata = Json::fromString(jsonData);
@@ -830,7 +830,7 @@ private:
                 fc.subscriptionMeta = instruct.meta;
 
                 FilterStack fs(fc, allFilters);
-                QByteArray body = fs.process(instruct.response.body);
+                QByteArray body = fs.process(instruct.response.body.asQByteArray());
                 if (body.isNull()) {
                     req->respondError("bad-format",
                                       QString("filter error: %1").arg(fs.errorMessage()).toUtf8());
@@ -843,7 +843,7 @@ private:
 
                 VariantHash vresponse;
                 vresponse["code"] = instruct.response.code;
-                vresponse["reason"] = instruct.response.reason;
+                vresponse["reason"] = instruct.response.reason.asQByteArray();
                 VariantList vheaders;
                 foreach (const HttpHeader &h, instruct.response.headers) {
                     VariantList vheader;
@@ -926,7 +926,9 @@ private:
                     rp.inspectInfo.doProxy = inspectInfo.doProxy;
                     rp.inspectInfo.sharingKey = inspectInfo.sharingKey;
                     rp.inspectInfo.sid = inspectInfo.sid;
-                    rp.inspectInfo.lastIds = inspectInfo.lastIds;
+                    for (auto it = inspectInfo.lastIds.constBegin();
+                         it != inspectInfo.lastIds.constEnd(); ++it)
+                        rp.inspectInfo.lastIds.insert(it.key(), it.value());
                     rp.inspectInfo.userData = inspectInfo.userData;
                 }
 
@@ -966,11 +968,11 @@ private:
             ZhttpRequest::ServerState ss;
             ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
             ss.peerAddress = rs.peerAddress;
-            ss.requestMethod = requestData.method;
+            ss.requestMethod = requestData.method.asQString();
             ss.requestUri = requestData.uri;
             ss.requestUri.setScheme(rs.isHttps ? "https" : "http");
             ss.requestHeaders = requestData.headers;
-            ss.requestBody = requestData.body;
+            ss.requestBody = requestData.body.asQByteArray();
             ss.responseCode = rs.responseCode;
             ss.inSeq = rs.inSeq;
             ss.outSeq = rs.outSeq;
@@ -2323,7 +2325,8 @@ private:
             }
 
             if (item.type == WsControlPacket::Item::Here) {
-                std::shared_ptr<WsSession> s = cs.wsSessions.value(item.cid);
+                std::shared_ptr<WsSession> s =
+                    cs.wsSessions.value(QString::fromUtf8(item.cid.asQByteArray()));
                 if (!s) {
                     s = std::make_shared<WsSession>();
                     wsSessionConnectionMap[s.get()] = {
@@ -2331,8 +2334,8 @@ private:
                                                     boost::placeholders::_1, s.get())),
                         s->expired.connect(boost::bind(&Private::wssession_expired, this, s.get())),
                         s->error.connect(boost::bind(&Private::wssession_error, this, s.get()))};
-                    s->peer = packet.from;
-                    s->cid = QString::fromUtf8(item.cid);
+                    s->peer = packet.from.asQByteArray();
+                    s->cid = QString::fromUtf8(item.cid.asQByteArray());
                     s->ttl = item.ttl;
                     s->requestData.uri = item.uri;
                     s->zhttpOut = zhttpOut.get();
@@ -2343,10 +2346,11 @@ private:
                 }
 
                 s->debug = item.debug;
-                s->route = item.route;
-                s->statsRoute = item.separateStats ? item.route : QString();
+                s->route = QString::fromUtf8(item.route.asQByteArray());
+                s->statsRoute =
+                    item.separateStats ? QString::fromUtf8(item.route.asQByteArray()) : QString();
                 s->targetTrusted = item.trusted;
-                s->channelPrefix = QString::fromUtf8(item.channelPrefix);
+                s->channelPrefix = QString::fromUtf8(item.channelPrefix.asQByteArray());
                 if (item.logLevel >= 0)
                     s->logLevel = item.logLevel;
 
@@ -2357,7 +2361,7 @@ private:
             }
 
             // Any other type must be for a known cid
-            WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid)).get();
+            WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid.asQByteArray())).get();
             if (!s) {
                 // Send cancel, causing the proxy to close the connection. Client will need to retry
                 // to repair
@@ -2375,7 +2379,7 @@ private:
                        item.type == WsControlPacket::Item::Cancel) {
                 removeWsSession(s);
             } else if (item.type == WsControlPacket::Item::Grip) {
-                Variant data = Json::fromString(item.message);
+                Variant data = Json::fromString(item.message.asQByteArray());
                 if (!data.isValid() ||
                     (typeId(data) != VariantType::Map && typeId(data) != VariantType::List)) {
                     log_debug("grip control message is not valid json");
@@ -2527,7 +2531,7 @@ private:
                     stats->addActivity(s->statsRoute.toUtf8(), 1);
                 }
             } else if (item.type == WsControlPacket::Item::Subscribe) {
-                QString channel = QString::fromUtf8(item.channel);
+                QString channel = QString::fromUtf8(item.channel.asQByteArray());
 
                 s->implicitChannels += channel;
 
@@ -2551,13 +2555,13 @@ private:
                          qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
                          qPrintable(channel));
             } else if (item.type == WsControlPacket::Item::Ack) {
-                int reqId = item.requestId.toInt();
+                int reqId = item.requestId.asQByteArray().toInt();
                 s->ack(reqId);
             }
         }
 
         if (!outItems.isEmpty())
-            writeWsControlItems(packet.from, outItems);
+            writeWsControlItems(packet.from.asQByteArray(), outItems);
 
         if (stateClient) {
             foreach (const QString &sid, createOrUpdateSids) {
@@ -2624,7 +2628,7 @@ private:
         if (p.type == StatsPacket::Activity) {
             if (p.count > 0) {
                 // Merge with our own stats
-                stats->addActivity(p.route, p.count);
+                stats->addActivity(p.route.asQByteArray(), p.count);
             }
         } else if (p.type == StatsPacket::Counts) {
             if (p.requestsReceived > 0) {

@@ -355,7 +355,7 @@ public:
         if (sharable) {
             log_debug("need to proxy with sharing key: %s", idata->sharingKey.data());
 
-            ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
+            ProxyItem *i = proxyItemsByKey.value(idata->sharingKey.asQByteArray());
             if (i)
                 ps = i->ps;
         }
@@ -391,7 +391,7 @@ public:
 
             if (sharable) {
                 i->shared = true;
-                i->key = idata->sharingKey;
+                i->key = idata->sharingKey.asQByteArray();
                 proxyItemsByKey.insert(i->key, i);
             }
         } else
@@ -806,7 +806,7 @@ private:
             return;
         }
 
-        log_debug("IN (retry) %s %s", qPrintable(p.requestData.method),
+        log_debug("IN (retry) %s %s", qPrintable(p.requestData.method.asQString()),
                   p.requestData.uri.toEncoded().data());
 
         InspectData idata;
@@ -820,14 +820,14 @@ private:
 
         foreach (const RetryRequestPacket::Request &req, p.requests) {
             ZhttpRequest::ServerState ss;
-            ss.rid = ZhttpRequest::Rid(req.rid.first, req.rid.second);
+            ss.rid = ZhttpRequest::Rid(req.rid.first.asQByteArray(), req.rid.second.asQByteArray());
             ss.peerAddress = req.peerAddress;
-            ss.requestMethod = p.requestData.method;
+            ss.requestMethod = p.requestData.method.asQString();
             ss.requestUri = p.requestData.uri;
             if (req.https)
                 ss.requestUri.setScheme("https");
             ss.requestHeaders = p.requestData.headers;
-            ss.requestBody = p.requestData.body;
+            ss.requestBody = p.requestData.body.asQByteArray();
             ss.inSeq = req.inSeq;
             ss.outSeq = req.outSeq;
             ss.outCredits = req.outCredits;
@@ -849,7 +849,7 @@ private:
             QString host = p.requestData.uri.host();
             QByteArray encPath = p.requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
 
-            QString routeId = QString::fromUtf8(p.route);
+            QString routeId = QString::fromUtf8(p.route.asQByteArray());
 
             // Look up the route
             DomainMap::Entry route;
@@ -863,8 +863,9 @@ private:
             // Note: if the routing table was changed, there's a chance the request might get a
             // different route id this time around. This could confuse stats processors tracking
             // route+connection mappings.
-            rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback,
-                           req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
+            rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin,
+                           req.jsonpCallback.asQByteArray(), req.jsonpExtendedResponse,
+                           req.unreportedTime, p.retrySeq);
 
             doProxy(rs, p.haveInspectInfo ? &idata : 0);
         }

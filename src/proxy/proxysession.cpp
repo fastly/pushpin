@@ -238,8 +238,9 @@ public:
 
         if (si->countClientReceivedBytes) {
             incCounter(Stats::ClientHeaderBytesReceived,
-                       ZhttpManager::estimateRequestHeaderBytes(
-                           rsRequestData.method, rsRequestData.uri, rsRequestData.headers));
+                       ZhttpManager::estimateRequestHeaderBytes(rsRequestData.method.asQString(),
+                                                                rsRequestData.uri,
+                                                                rsRequestData.headers));
             incCounter(Stats::ClientContentBytesReceived, rsRequestData.body.size());
         }
 
@@ -247,7 +248,7 @@ public:
             isHttps = rs->isHttps();
 
             requestData = rsRequestData;
-            requestBody += requestData.body;
+            requestBody += requestData.body.asQByteArray();
             requestData.body.clear();
 
             origRequestData = requestData;
@@ -327,7 +328,8 @@ public:
 
             si->state = SessionItem::Responding;
             si->startedResponse = true;
-            rs->startResponse(responseData.code, responseData.reason, responseData.headers);
+            rs->startResponse(responseData.code, responseData.reason.asQByteArray(),
+                              responseData.headers);
 
             if (!responseBody.isEmpty()) {
                 si->bytesToWrite += responseBody.size();
@@ -444,10 +446,11 @@ public:
 
         ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
-        incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(
-                                                     requestData.method, uri, requestData.headers));
+        incCounter(Stats::ServerHeaderBytesSent,
+                   ZhttpManager::estimateRequestHeaderBytes(requestData.method.asQString(), uri,
+                                                            requestData.headers));
 
-        zhttpRequest->start(requestData.method, uri, requestData.headers);
+        zhttpRequest->start(requestData.method.asQString(), uri, requestData.headers);
 
         requestBodySent = false;
 
@@ -888,7 +891,8 @@ public:
         foreach (SessionItem *si, sessionItems) {
             si->state = SessionItem::Responding;
             si->startedResponse = true;
-            si->rs->startResponse(responseData.code, responseData.reason, responseData.headers);
+            si->rs->startResponse(responseData.code, responseData.reason.asQByteArray(),
+                                  responseData.headers);
 
             if (!responseBody.isEmpty()) {
                 si->bytesToWrite += responseBody.size();
@@ -959,8 +963,9 @@ public:
             QByteArray buf = zhttpRequest->readBody(MAX_INITIAL_BUFFER);
 
             incCounter(Stats::ServerHeaderBytesReceived,
-                       ZhttpManager::estimateResponseHeaderBytes(
-                           responseData.code, responseData.reason, responseData.headers));
+                       ZhttpManager::estimateResponseHeaderBytes(responseData.code,
+                                                                 responseData.reason.asQByteArray(),
+                                                                 responseData.headers));
             incCounter(Stats::ServerContentBytesReceived, buf.size());
 
             responseBody += buf;
@@ -1281,7 +1286,7 @@ public:
                         si->rs->resume();
 
                         if (rdata.response.code != -1)
-                            si->rs->writeResponseBody(rdata.response.body);
+                            si->rs->writeResponseBody(rdata.response.body.asQByteArray());
 
                         si->bytesToWrite = -1;
                         si->rs->endResponseBody();
@@ -1294,8 +1299,8 @@ public:
                             si->rs->resume();
                         }
 
-                        respondAll(rdata.response.code, rdata.response.reason,
-                                   rdata.response.headers, rdata.response.body);
+                        respondAll(rdata.response.code, rdata.response.reason.asQByteArray(),
+                                   rdata.response.headers, rdata.response.body.asQByteArray());
                     } else {
                         cannotAcceptAll();
                     }

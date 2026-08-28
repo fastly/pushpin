@@ -121,10 +121,16 @@ public:
     friend CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs);
     friend CowByteArray operator+(const CowByteArray &lhs, const char *rhs);
     friend CowByteArray operator+(const char *lhs, const CowByteArray &rhs);
+    friend CowByteArray operator+(const CowByteArray &lhs, char rhs);
+    friend CowByteArray operator+(char lhs, const CowByteArray &rhs);
+    friend CowByteArray operator+(const CowByteArray &lhs, const QByteArray &rhs);
+    friend CowByteArray operator+(const QByteArray &lhs, const CowByteArray &rhs);
 
     friend bool operator==(const CowByteArray &lhs, const CowByteArray &rhs);
     friend bool operator==(const CowByteArray &lhs, const char *const &rhs);
     friend bool operator==(const char *const &lhs, const CowByteArray &rhs);
+    friend bool operator==(const CowByteArray &lhs, const QByteArray &rhs);
+    friend bool operator==(const QByteArray &lhs, const CowByteArray &rhs);
 
 private:
     friend class CowByteArrayRef;
@@ -137,6 +143,14 @@ inline CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs) 
 }
 inline CowByteArray operator+(const CowByteArray &lhs, const char *rhs) { return lhs.inner_ + rhs; }
 inline CowByteArray operator+(const char *lhs, const CowByteArray &rhs) { return lhs + rhs.inner_; }
+inline CowByteArray operator+(const CowByteArray &lhs, char rhs) { return lhs.inner_ + rhs; }
+inline CowByteArray operator+(char lhs, const CowByteArray &rhs) { return lhs + rhs.inner_; }
+inline CowByteArray operator+(const CowByteArray &lhs, const QByteArray &rhs) {
+    return lhs.inner_ + rhs;
+}
+inline CowByteArray operator+(const QByteArray &lhs, const CowByteArray &rhs) {
+    return lhs + rhs.inner_;
+}
 
 inline bool operator==(const CowByteArray &lhs, const CowByteArray &rhs) {
     return lhs.inner_ == rhs.inner_;
@@ -147,9 +161,17 @@ inline bool operator==(const CowByteArray &lhs, const char *const &rhs) {
 inline bool operator==(const char *const &lhs, const CowByteArray &rhs) {
     return lhs == rhs.inner_;
 }
+inline bool operator==(const CowByteArray &lhs, const QByteArray &rhs) { return lhs.inner_ == rhs; }
+inline bool operator==(const QByteArray &lhs, const CowByteArray &rhs) { return lhs == rhs.inner_; }
 inline bool operator!=(const CowByteArray &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
 inline bool operator!=(const CowByteArray &lhs, const char *const &rhs) { return !(lhs == rhs); }
 inline bool operator!=(const char *const &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const CowByteArray &lhs, const QByteArray &rhs) { return !(lhs == rhs); }
+inline bool operator!=(const QByteArray &lhs, const CowByteArray &rhs) { return !(lhs == rhs); }
+
+inline size_t qHash(const CowByteArray &key, size_t seed = 0) noexcept {
+    return qHash(key.asQByteArray(), seed);
+}
 
 inline CowByteArray CowByteArrayConstRef::mid(ssize_t pos, ssize_t len) const {
     return inner_.mid(pos, len);

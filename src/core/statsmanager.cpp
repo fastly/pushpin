@@ -1121,27 +1121,27 @@ public:
 
     void mergeExternalConnectionsMax(const StatsPacket &packet, int64_t now) {
         if (packet.retrySeq >= 0)
-            removeLingeringConnections(packet.from, (uint64_t)packet.retrySeq);
+            removeLingeringConnections(packet.from.asQByteArray(), (uint64_t)packet.retrySeq);
 
         QHash<QByteArray, ExternalConnectionsMax> &maxes =
-            externalConnectionsMaxes[packet.route].maxes;
+            externalConnectionsMaxes[packet.route.asQByteArray()].maxes;
 
-        if (!maxes.contains(packet.from))
-            maxes.insert(packet.from, ExternalConnectionsMax());
+        if (!maxes.contains(packet.from.asQByteArray()))
+            maxes.insert(packet.from.asQByteArray(), ExternalConnectionsMax());
 
-        ExternalConnectionsMax &cm = maxes[packet.from];
+        ExternalConnectionsMax &cm = maxes[packet.from.asQByteArray()];
 
         cm.value = (uint32_t)qMax(packet.connectionsMax, 0);
         cm.expires = now + (qMax(packet.ttl, 0) * 1000);
 
-        updateConnectionsMax(packet.route, now);
+        updateConnectionsMax(packet.route.asQByteArray(), now);
     }
 
     void mergeExternalReport(const StatsPacket &packet, bool includeConnections) {
         if (reportInterval <= 0)
             return;
 
-        Report *report = getOrCreateReport(packet.route);
+        Report *report = getOrCreateReport(packet.route.asQByteArray());
 
         Stats::Counters counters;
 
@@ -1164,10 +1164,10 @@ public:
         combinedReport.addCounters(counters, now);
 
         if (includeConnections) {
-            if (!report->externalReports.contains(packet.from))
-                report->externalReports[packet.from] = Report();
+            if (!report->externalReports.contains(packet.from.asQByteArray()))
+                report->externalReports[packet.from.asQByteArray()] = Report();
 
-            Report &r = report->externalReports[packet.from];
+            Report &r = report->externalReports[packet.from.asQByteArray()];
 
             int mins = qMax(packet.connectionsMinutes, 0);
 
@@ -1721,7 +1721,8 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
         if (packet.type == StatsPacket::Connected) {
             // Is there a local connection with the same ID?
-            Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
+            Private::ConnectionInfo *c =
+                d->connectionInfoById.value(packet.connectionId.asQByteArray());
             if (c) {
                 // If there is a non-lingering local connection, ignore the packet
                 if (!c->linger) {
@@ -1748,12 +1749,13 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             it.next();
             const QByteArray &from = it.key();
 
-            if (from == packet.from)
+            if (from == packet.from.asQByteArray())
                 continue;
 
             const QHash<QByteArray, Private::ConnectionInfo *> &extConnectionInfoById = it.value();
 
-            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+            Private::ConnectionInfo *c =
+                extConnectionInfoById.value(packet.connectionId.asQByteArray());
             if (c)
                 toDelete += c;
         }
@@ -1763,21 +1765,22 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
         }
 
         QHash<QByteArray, Private::ConnectionInfo *> &extConnectionInfoById =
-            d->externalConnectionInfoByFrom[packet.from];
+            d->externalConnectionInfoByFrom[packet.from.asQByteArray()];
 
         if (packet.type == StatsPacket::Connected) {
             // Add/update
-            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+            Private::ConnectionInfo *c =
+                extConnectionInfoById.value(packet.connectionId.asQByteArray());
             if (!c) {
                 c = new Private::ConnectionInfo;
                 c->timerType = Private::TimerBase::Type::ExternalConnection;
-                c->id = packet.connectionId;
-                c->routeId = packet.route;
+                c->id = packet.connectionId.asQByteArray();
+                c->routeId = packet.route.asQByteArray();
                 c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
                 c->peerAddress = packet.peerAddress;
                 c->ssl = packet.ssl;
                 c->lastReport = lastReport;
-                c->from = packet.from;
+                c->from = packet.from.asQByteArray();
                 c->lastActive = now;
                 d->insertExternalConnection(c);
 
@@ -1801,7 +1804,8 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             d->updateConnectionsMinutes(c, now);
         } else // Disconnected
         {
-            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+            Private::ConnectionInfo *c =
+                extConnectionInfoById.value(packet.connectionId.asQByteArray());
             if (c) {
                 QByteArray routeId = c->routeId;
 

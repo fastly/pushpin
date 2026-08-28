@@ -23,15 +23,15 @@
 #ifndef ZRPCRESPONSEPACKET_H
 #define ZRPCRESPONSEPACKET_H
 
+#include "cowbytearray.h"
 #include "variant.h"
-#include <QByteArray>
 
 class ZrpcResponsePacket {
 public:
-    QByteArray id;
+    CowByteArray id;
     bool success;
     Variant value;
-    QByteArray condition;
+    CowByteArray condition;
 
     ZrpcResponsePacket() : success(false) {}
 

@@ -24,8 +24,8 @@
 #ifndef STATSPACKET_H
 #define STATSPACKET_H
 
+#include "cowbytearray.h"
 #include "variant.h"
-#include <QByteArray>
 #include <QHostAddress>
 
 class StatsPacket {
@@ -45,19 +45,19 @@ public:
     enum ConnectionType { Http, WebSocket };
 
     Type type;
-    QByteArray from;
-    QByteArray route;
+    CowByteArray from;
+    CowByteArray route;
     int64_t retrySeq;               // Connections max
     int count;                      // Activity, message
-    QByteArray connectionId;        // Connected, disconnected
+    CowByteArray connectionId;      // Connected, disconnected
     ConnectionType connectionType;  // Connected
     QHostAddress peerAddress;       // Connected
     bool ssl;                       // Connected
     int ttl;                        // Connected, subscribed, connections max
-    QByteArray mode;                // Subscribed, unsubscribed
-    QByteArray channel;             // Message, subscribed, unsubscribed
-    QByteArray itemId;              // Message
-    QByteArray transport;           // Message
+    CowByteArray mode;              // Subscribed, unsubscribed
+    CowByteArray channel;           // Message, subscribed, unsubscribed
+    CowByteArray itemId;            // Message
+    CowByteArray transport;         // Message
     int blocks;                     // Message
     int subscribers;                // Subscribed
     int connectionsMax;             // Report, connections max
@@ -114,7 +114,7 @@ public:
           serverMessagesSent(-1) {}
 
     Variant toVariant() const;
-    bool fromVariant(const QByteArray &type, const Variant &in);
+    bool fromVariant(const CowByteArray &type, const Variant &in);
 };
 
 #endif

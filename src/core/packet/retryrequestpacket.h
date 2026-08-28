@@ -30,7 +30,7 @@
 
 class RetryRequestPacket {
 public:
-    typedef QPair<QByteArray, QByteArray> Rid;
+    typedef QPair<CowByteArray, CowByteArray> Rid;
 
     class Request {
     public:
@@ -39,7 +39,7 @@ public:
         QHostAddress peerAddress;
         bool debug;
         bool autoCrossOrigin;
-        QByteArray jsonpCallback;
+        CowByteArray jsonpCallback;
         bool jsonpExtendedResponse;
         int unreportedTime;
 
@@ -65,9 +65,9 @@ public:
     class InspectInfo {
     public:
         bool doProxy;
-        QByteArray sharingKey;
-        QByteArray sid;
-        QHash<QByteArray, QByteArray> lastIds;
+        CowByteArray sharingKey;
+        CowByteArray sid;
+        QHash<CowByteArray, CowByteArray> lastIds;
         Variant userData;
 
         InspectInfo() : doProxy(false) {}
@@ -79,7 +79,7 @@ public:
     bool haveInspectInfo;
     InspectInfo inspectInfo;
 
-    QByteArray route;
+    CowByteArray route;
     int retrySeq;
 
     RetryRequestPacket();

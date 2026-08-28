@@ -36,8 +36,8 @@ Variant RetryRequestPacket::toVariant() const {
         VariantHash vrequest;
 
         VariantHash vrid;
-        vrid["sender"] = r.rid.first;
-        vrid["id"] = r.rid.second;
+        vrid["sender"] = r.rid.first.asQByteArray();
+        vrid["id"] = r.rid.second.asQByteArray();
 
         vrequest["rid"] = vrid;
 
@@ -54,7 +54,7 @@ Variant RetryRequestPacket::toVariant() const {
             vrequest["auto-cross-origin"] = true;
 
         if (!r.jsonpCallback.isEmpty())
-            vrequest["jsonp-callback"] = r.jsonpCallback;
+            vrequest["jsonp-callback"] = r.jsonpCallback.asQByteArray();
 
         if (r.jsonpExtendedResponse)
             vrequest["jsonp-extended-response"] = true;
@@ -79,7 +79,7 @@ Variant RetryRequestPacket::toVariant() const {
 
     VariantHash vrequestData;
 
-    vrequestData["method"] = requestData.method.toLatin1();
+    vrequestData["method"] = requestData.method.toUtf8().asQByteArray();
     vrequestData["uri"] = requestData.uri.toEncoded();
 
     VariantList vheaders;
@@ -91,7 +91,7 @@ Variant RetryRequestPacket::toVariant() const {
     }
     vrequestData["headers"] = vheaders;
 
-    vrequestData["body"] = requestData.body;
+    vrequestData["body"] = requestData.body.asQByteArray();
 
     obj["request-data"] = vrequestData;
 
@@ -101,19 +101,19 @@ Variant RetryRequestPacket::toVariant() const {
         vinspect["no-proxy"] = !inspectInfo.doProxy;
 
         if (!inspectInfo.sharingKey.isEmpty())
-            vinspect["sharing-key"] = inspectInfo.sharingKey;
+            vinspect["sharing-key"] = inspectInfo.sharingKey.asQByteArray();
 
         if (!inspectInfo.sid.isEmpty())
-            vinspect["sid"] = inspectInfo.sid;
+            vinspect["sid"] = inspectInfo.sid.asQByteArray();
 
         if (!inspectInfo.lastIds.isEmpty()) {
             VariantHash vlastIds;
 
-            QHashIterator<QByteArray, QByteArray> it(inspectInfo.lastIds);
+            QHashIterator<CowByteArray, CowByteArray> it(inspectInfo.lastIds);
             while (it.hasNext()) {
                 it.next();
 
-                vlastIds[QString::fromUtf8(it.key())] = it.value();
+                vlastIds[QString::fromUtf8(it.key().asQByteArray())] = it.value().asQByteArray();
             }
 
             vinspect["last-ids"] = vlastIds;
@@ -126,7 +126,7 @@ Variant RetryRequestPacket::toVariant() const {
     }
 
     if (!route.isEmpty())
-        obj["route"] = route;
+        obj["route"] = route.asQByteArray();
 
     if (retrySeq >= 0)
         obj["retry-seq"] = retrySeq;

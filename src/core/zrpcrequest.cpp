@@ -88,9 +88,9 @@ public:
 
     void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
         reqHeaders = headers;
-        from = packet.from;
-        id = packet.id;
-        method = packet.method;
+        from = packet.from.asQByteArray();
+        id = packet.id.asQByteArray();
+        method = packet.method.asQString();
         args = packet.args;
     }
 
@@ -107,7 +107,7 @@ public:
             else
                 condition = ErrorGeneric;
 
-            conditionString = packet.condition;
+            conditionString = packet.condition.asQByteArray();
 
             result = packet.value;
             q->onError();

@@ -24,14 +24,15 @@
 #ifndef ZRPCREQUESTPACKET_H
 #define ZRPCREQUESTPACKET_H
 
+#include "cowbytearray.h"
+#include "cowstring.h"
 #include "variant.h"
-#include <QByteArray>
 
 class ZrpcRequestPacket {
 public:
-    QByteArray from;
-    QByteArray id;
-    QString method;
+    CowByteArray from;
+    CowByteArray id;
+    CowString method;
     VariantHash args;
 
     Variant toVariant() const;

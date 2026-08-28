@@ -156,13 +156,13 @@ contains 'message' with wrong type").arg(pn)); return WsControlPacket();
 Variant WsControlPacket::toVariant() const {
     VariantHash obj;
 
-    obj["from"] = from;
+    obj["from"] = from.asQByteArray();
 
     VariantList vitems;
     foreach (const Item &item, items) {
         VariantHash vitem;
 
-        vitem["cid"] = item.cid;
+        vitem["cid"] = item.cid.asQByteArray();
 
         QByteArray typeStr;
         switch (item.type) {
@@ -211,16 +211,16 @@ Variant WsControlPacket::toVariant() const {
         vitem["type"] = typeStr;
 
         if (!item.requestId.isEmpty())
-            vitem["req-id"] = item.requestId;
+            vitem["req-id"] = item.requestId.asQByteArray();
 
         if (!item.uri.isEmpty())
             vitem["uri"] = item.uri.toEncoded();
 
         if (!item.contentType.isEmpty())
-            vitem["content-type"] = item.contentType;
+            vitem["content-type"] = item.contentType.asQByteArray();
 
         if (!item.message.isNull())
-            vitem["message"] = item.message;
+            vitem["message"] = item.message.asQByteArray();
 
         if (item.queue)
             vitem["queue"] = true;
@@ -229,19 +229,19 @@ Variant WsControlPacket::toVariant() const {
             vitem["code"] = item.code;
 
         if (!item.reason.isEmpty())
-            vitem["reason"] = item.reason;
+            vitem["reason"] = item.reason.asQByteArray();
 
         if (item.debug)
             vitem["debug"] = true;
 
         if (!item.route.isEmpty())
-            vitem["route"] = item.route;
+            vitem["route"] = item.route.asQByteArray();
 
         if (item.separateStats)
             vitem["separate-stats"] = true;
 
         if (!item.channelPrefix.isEmpty())
-            vitem["channel-prefix"] = item.channelPrefix;
+            vitem["channel-prefix"] = item.channelPrefix.asQByteArray();
 
         if (item.logLevel >= 0)
             vitem["log-level"] = item.logLevel;
@@ -250,7 +250,7 @@ Variant WsControlPacket::toVariant() const {
             vitem["trusted"] = true;
 
         if (!item.channel.isEmpty())
-            vitem["channel"] = item.channel;
+            vitem["channel"] = item.channel.asQByteArray();
 
         if (item.ttl >= 0)
             vitem["ttl"] = item.ttl;
@@ -259,7 +259,7 @@ Variant WsControlPacket::toVariant() const {
             vitem["timeout"] = item.timeout;
 
         if (!item.keepAliveMode.isEmpty())
-            vitem["keep-alive-mode"] = item.keepAliveMode;
+            vitem["keep-alive-mode"] = item.keepAliveMode.asQByteArray();
 
         vitems += vitem;
     }

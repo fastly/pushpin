@@ -92,7 +92,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
         const HttpRequestData &requestData = adata.requestData;
         VariantHash vrequestData;
 
-        vrequestData["method"] = requestData.method.toLatin1();
+        vrequestData["method"] = requestData.method.toUtf8().asQByteArray();
         vrequestData["uri"] = requestData.uri.toEncoded();
 
         VariantList vheaders;
@@ -105,7 +105,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
 
         vrequestData["headers"] = vheaders;
 
-        vrequestData["body"] = requestData.body;
+        vrequestData["body"] = requestData.body.asQByteArray();
 
         obj["request-data"] = vrequestData;
     }
@@ -114,7 +114,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
         const HttpRequestData &requestData = adata.origRequestData;
         VariantHash vrequestData;
 
-        vrequestData["method"] = requestData.method.toLatin1();
+        vrequestData["method"] = requestData.method.toUtf8().asQByteArray();
         vrequestData["uri"] = requestData.uri.toEncoded();
 
         VariantList vheaders;
@@ -127,7 +127,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
 
         vrequestData["headers"] = vheaders;
 
-        vrequestData["body"] = requestData.body;
+        vrequestData["body"] = requestData.body.asQByteArray();
 
         obj["orig-request-data"] = vrequestData;
     }
@@ -138,17 +138,17 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
         vinspect["no-proxy"] = !adata.inspectData.doProxy;
 
         if (!adata.inspectData.sharingKey.isEmpty())
-            vinspect["sharing-key"] = adata.inspectData.sharingKey;
+            vinspect["sharing-key"] = adata.inspectData.sharingKey.asQByteArray();
 
         if (!adata.inspectData.sid.isEmpty())
-            vinspect["sid"] = adata.inspectData.sid;
+            vinspect["sid"] = adata.inspectData.sid.asQByteArray();
 
         if (!adata.inspectData.lastIds.isEmpty()) {
             VariantHash vlastIds;
-            QHashIterator<QByteArray, QByteArray> it(adata.inspectData.lastIds);
+            QHashIterator<CowByteArray, CowByteArray> it(adata.inspectData.lastIds);
             while (it.hasNext()) {
                 it.next();
-                vlastIds[QString::fromUtf8(it.key())] = it.value();
+                vlastIds[QString::fromUtf8(it.key().asQByteArray())] = it.value().asQByteArray();
             }
 
             vinspect["last-ids"] = vlastIds;
@@ -164,7 +164,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
         VariantHash vresponse;
 
         vresponse["code"] = adata.response.code;
-        vresponse["reason"] = adata.response.reason;
+        vresponse["reason"] = adata.response.reason.asQByteArray();
 
         VariantList vheaders;
         foreach (const HttpHeader &h, adata.response.headers) {
@@ -175,7 +175,7 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
         }
         vresponse["headers"] = vheaders;
 
-        vresponse["body"] = adata.response.body;
+        vresponse["body"] = adata.response.body.asQByteArray();
 
         obj["response"] = vresponse;
     }

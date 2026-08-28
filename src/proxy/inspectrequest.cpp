@@ -110,7 +110,7 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool ge
                            bool autoShare) {
     VariantHash args;
 
-    args["method"] = hdata.method.toLatin1();
+    args["method"] = hdata.method.toUtf8().asQByteArray();
     args["uri"] = hdata.uri.toEncoded();
 
     VariantList vheaders;
@@ -122,7 +122,7 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool ge
     }
 
     args["headers"] = vheaders;
-    args["body"] = hdata.body;
+    args["body"] = hdata.body.asQByteArray();
 
     if (truncated)
         args["truncated"] = true;
