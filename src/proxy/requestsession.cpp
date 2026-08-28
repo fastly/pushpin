@@ -457,7 +457,7 @@ public:
                 q->inspected(idata);
             }
         } else if (state == ReceivingForAccept) {
-            QByteArray buf = zhttpRequest->readBody();
+            QByteArray buf = zhttpRequest->readBody().asQByteArray();
             if (in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY) {
                 respondError(413, "Request Entity Too Large",
                              QString("Body must not exceed %1 bytes").arg(MAX_ACCEPT_REQUEST_BODY));

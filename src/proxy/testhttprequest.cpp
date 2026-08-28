@@ -126,7 +126,7 @@ QHostAddress TestHttpRequest::peerAddress() const {
     return QHostAddress();
 }
 
-void TestHttpRequest::setConnectHost([[maybe_unused]] const QString &host) {}
+void TestHttpRequest::setConnectHost([[maybe_unused]] const CowString &host) {}
 
 void TestHttpRequest::setConnectPort([[maybe_unused]] int port) {}
 
@@ -138,10 +138,11 @@ void TestHttpRequest::setIgnoreTlsErrors([[maybe_unused]] bool on) {}
 
 void TestHttpRequest::setTimeout([[maybe_unused]] int msecs) {}
 
-void TestHttpRequest::setClientCert([[maybe_unused]] const QString &cert,
-                                    [[maybe_unused]] const QString &key) {}
+void TestHttpRequest::setClientCert([[maybe_unused]] const CowString &cert,
+                                    [[maybe_unused]] const CowString &key) {}
 
-void TestHttpRequest::start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
+void TestHttpRequest::start(const CowString &method, const CowUrl &uri,
+                            const HttpHeaders &headers) {
     assert(d->state == Private::Idle);
 
     d->state = Private::ReceivingRequest;
@@ -152,13 +153,13 @@ void TestHttpRequest::start(const QString &method, const CowUrl &uri, const Http
 }
 
 void TestHttpRequest::beginResponse([[maybe_unused]] int code,
-                                    [[maybe_unused]] const QByteArray &reason,
+                                    [[maybe_unused]] const CowByteArray &reason,
                                     [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }
 
-void TestHttpRequest::writeBody(const QByteArray &body) {
+void TestHttpRequest::writeBody(const CowByteArray &body) {
     if (d->state == Private::ReceivingRequest) {
         if (d->requestBody.size() + body.size() > MAX_REQUEST_SIZE) {
             d->state = Private::Responding;
@@ -166,7 +167,7 @@ void TestHttpRequest::writeBody(const QByteArray &body) {
             return;
         }
 
-        QByteArray buf = body.mid(0, MAX_REQUEST_SIZE - d->requestBody.size());
+        CowByteArray buf = body.mid(0, MAX_REQUEST_SIZE - d->requestBody.size());
 
         if (!buf.isEmpty()) {
             d->requestBody += buf;
@@ -205,7 +206,7 @@ bool TestHttpRequest::isErrored() const {
 
 HttpRequest::ErrorCondition TestHttpRequest::errorCondition() const { return d->errorCondition; }
 
-QString TestHttpRequest::requestMethod() const { return d->request.method.asQString(); }
+CowString TestHttpRequest::requestMethod() const { return d->request.method; }
 
 CowUrl TestHttpRequest::requestUri() const { return d->request.uri; }
 
@@ -213,8 +214,8 @@ HttpHeaders TestHttpRequest::requestHeaders() const { return d->request.headers;
 
 int TestHttpRequest::responseCode() const { return d->response.code; }
 
-QByteArray TestHttpRequest::responseReason() const { return d->response.reason.asQByteArray(); }
+CowByteArray TestHttpRequest::responseReason() const { return d->response.reason; }
 
 HttpHeaders TestHttpRequest::responseHeaders() const { return d->response.headers; }
 
-QByteArray TestHttpRequest::readBody(int size) { return d->responseBody.take(size).asQByteArray(); }
+CowByteArray TestHttpRequest::readBody(int size) { return d->responseBody.take(size); }

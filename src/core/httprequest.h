@@ -24,6 +24,8 @@
 #ifndef HTTPREQUEST_H
 #define HTTPREQUEST_H
 
+#include "cowbytearray.h"
+#include "cowstring.h"
 #include "cowurl.h"
 #include "httpheaders.h"
 #include <QHostAddress>
@@ -51,19 +53,20 @@ public:
 
     virtual QHostAddress peerAddress() const = 0;
 
-    virtual void setConnectHost(const QString &host) = 0;
+    virtual void setConnectHost(const CowString &host) = 0;
     virtual void setConnectPort(int port) = 0;
     virtual void setIgnorePolicies(bool on) = 0;
     virtual void setTrustConnectHost(bool on) = 0;
     virtual void setIgnoreTlsErrors(bool on) = 0;
     virtual void setTimeout(int msecs) = 0;
-    virtual void setClientCert(const QString &cert, const QString &key) = 0;
+    virtual void setClientCert(const CowString &cert, const CowString &key) = 0;
 
-    virtual void start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) = 0;
-    virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) = 0;
+    virtual void start(const CowString &method, const CowUrl &uri, const HttpHeaders &headers) = 0;
+    virtual void beginResponse(int code, const CowByteArray &reason,
+                               const HttpHeaders &headers) = 0;
 
     // May call this multiple times
-    virtual void writeBody(const QByteArray &body) = 0;
+    virtual void writeBody(const CowByteArray &body) = 0;
 
     virtual void endBody() = 0;
 
@@ -75,15 +78,15 @@ public:
     virtual bool isErrored() const = 0;
     virtual ErrorCondition errorCondition() const = 0;
 
-    virtual QString requestMethod() const = 0;
+    virtual CowString requestMethod() const = 0;
     virtual CowUrl requestUri() const = 0;
     virtual HttpHeaders requestHeaders() const = 0;
 
     virtual int responseCode() const = 0;
-    virtual QByteArray responseReason() const = 0;
+    virtual CowByteArray responseReason() const = 0;
     virtual HttpHeaders responseHeaders() const = 0;
 
-    virtual QByteArray readBody(int size = -1) = 0; // Takes from the buffer
+    virtual CowByteArray readBody(int size = -1) = 0; // Takes from the buffer
 
     // Indicates input data and/or input finished
     Signal readyRead;

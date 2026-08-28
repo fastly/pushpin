@@ -549,7 +549,7 @@ private:
         retries = 0;
 
         int responseCode = req->responseCode();
-        QByteArray responseReason = req->responseReason();
+        CowByteArray responseReason = req->responseReason();
         HttpHeaders responseHeaders = req->responseHeaders();
         QByteArray responseBody = inBuf.take().asQByteArray();
 

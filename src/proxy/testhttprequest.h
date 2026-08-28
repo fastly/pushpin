@@ -23,6 +23,8 @@
 #ifndef TESTHTTPREQUEST_H
 #define TESTHTTPREQUEST_H
 
+#include "cowbytearray.h"
+#include "cowstring.h"
 #include "cowurl.h"
 #include "httprequest.h"
 
@@ -39,18 +41,18 @@ public:
 
     virtual QHostAddress peerAddress() const;
 
-    virtual void setConnectHost(const QString &host);
+    virtual void setConnectHost(const CowString &host);
     virtual void setConnectPort(int port);
     virtual void setIgnorePolicies(bool on);
     virtual void setTrustConnectHost(bool on);
     virtual void setIgnoreTlsErrors(bool on);
     virtual void setTimeout(int msecs);
-    virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setClientCert(const CowString &cert, const CowString &key);
 
-    virtual void start(const QString &method, const CowUrl &uri, const HttpHeaders &headers);
-    virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
+    virtual void start(const CowString &method, const CowUrl &uri, const HttpHeaders &headers);
+    virtual void beginResponse(int code, const CowByteArray &reason, const HttpHeaders &headers);
 
-    virtual void writeBody(const QByteArray &body);
+    virtual void writeBody(const CowByteArray &body);
 
     virtual void endBody();
 
@@ -62,15 +64,15 @@ public:
     virtual bool isErrored() const;
     virtual ErrorCondition errorCondition() const;
 
-    virtual QString requestMethod() const;
+    virtual CowString requestMethod() const;
     virtual CowUrl requestUri() const;
     virtual HttpHeaders requestHeaders() const;
 
     virtual int responseCode() const;
-    virtual QByteArray responseReason() const;
+    virtual CowByteArray responseReason() const;
     virtual HttpHeaders responseHeaders() const;
 
-    virtual QByteArray readBody(int size = -1);
+    virtual CowByteArray readBody(int size = -1);
 
 private:
     class Private;

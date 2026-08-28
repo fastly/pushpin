@@ -1086,7 +1086,7 @@ private:
                     if (avail <= 0)
                         return;
 
-                    QByteArray buf = outReq->readBody(avail);
+                    QByteArray buf = outReq->readBody(avail).asQByteArray();
 
                     if (responseFilters) {
                         buf = responseFilters->update(buf);
@@ -1197,8 +1197,8 @@ private:
         }
     }
 
-    void logRequest(const QString &method, const CowUrl &uri, const HttpHeaders &headers, int code,
-                    int bodySize) {
+    void logRequest(const CowString &method, const CowUrl &uri, const HttpHeaders &headers,
+                    int code, int bodySize) {
         LogUtil::RequestData rd;
 
         // Only log route id if explicitly set
@@ -1218,7 +1218,7 @@ private:
         LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
     }
 
-    void logRequestError(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
+    void logRequestError(const CowString &method, const CowUrl &uri, const HttpHeaders &headers) {
         LogUtil::RequestData rd;
 
         // Only log route id if explicitly set

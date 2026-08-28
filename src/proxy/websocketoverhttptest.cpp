@@ -105,7 +105,7 @@ public:
 
         CowUrl uri = req->requestUri();
         HttpHeaders headers = req->requestHeaders();
-        QByteArray body = req->readBody();
+        QByteArray body = req->readBody().asQByteArray();
 
         if (headers.get("Content-Type") != "application/websocket-events") {
             respondError(req, 400, "Bad Request",

@@ -66,17 +66,17 @@ public:
     bool doReq;
     QByteArray toAddress;
     QHostAddress peerAddress;
-    QString connectHost;
+    CowString connectHost;
     int connectPort;
     bool ignorePolicies;
     bool trustConnectHost;
     bool ignoreTlsErrors;
     int timeout;
-    QString clientCert;
-    QString clientKey;
+    CowString clientCert;
+    CowString clientKey;
     bool sendBodyAfterAck;
     Variant passthrough;
-    QString requestMethod;
+    CowString requestMethod;
     CowUrl requestUri;
     HttpHeaders requestHeaders;
     BufferList requestBodyBuf;
@@ -88,7 +88,7 @@ public:
     bool haveRequestBody;
     bool haveResponseValues;
     int responseCode;
-    QByteArray responseReason;
+    CowByteArray responseReason;
     HttpHeaders responseHeaders;
     BufferList responseBodyBuf;
     Variant userData;
@@ -202,10 +202,10 @@ public:
         if (packet.credits != -1)
             outCredits = packet.credits;
 
-        requestMethod = packet.method.asQString();
+        requestMethod = packet.method;
         requestUri = packet.uri;
         requestHeaders = packet.headers;
-        requestBodyBuf += packet.body.asQByteArray();
+        requestBodyBuf += packet.body;
 
         passthrough = packet.passthrough;
 
@@ -342,7 +342,7 @@ public:
         }
     }
 
-    QByteArray readBody(int size) {
+    CowByteArray readBody(int size) {
         if (server) {
             QByteArray out = requestBodyBuf.take(size).asQByteArray();
             if (out.isEmpty())
@@ -526,7 +526,7 @@ public:
         refreshTimeout();
 
         if (packet.type == ZhttpRequestPacket::Data) {
-            requestBodyBuf += packet.body.asQByteArray();
+            requestBodyBuf += packet.body;
 
             bool done = haveRequestBody;
 
@@ -664,7 +664,7 @@ public:
                 haveResponseValues = true;
 
                 responseCode = packet.code;
-                responseReason = packet.reason.asQByteArray();
+                responseReason = packet.reason;
                 responseHeaders = packet.headers;
 
                 needToSendHeaders = true;
@@ -678,7 +678,7 @@ public:
                     log_warning("zhttp client: id=%s server is sending too fast", id.data());
             }
 
-            responseBodyBuf += packet.body.asQByteArray();
+            responseBodyBuf += packet.body;
 
             if (packet.more) {
                 if (!doReq && packet.credits > 0) {
@@ -711,7 +711,7 @@ public:
         }
     }
 
-    void writeBody(const QByteArray &body) {
+    void writeBody(const CowByteArray &body) {
         assert(!bodyFinished);
         assert(!pausing && !paused);
 
@@ -1051,7 +1051,7 @@ Variant ZhttpRequest::passthroughData() const { return d->passthrough; }
 
 QHostAddress ZhttpRequest::peerAddress() const { return d->peerAddress; }
 
-void ZhttpRequest::setConnectHost(const QString &host) { d->connectHost = host; }
+void ZhttpRequest::setConnectHost(const CowString &host) { d->connectHost = host; }
 
 void ZhttpRequest::setConnectPort(int port) { d->connectPort = port; }
 
@@ -1063,7 +1063,7 @@ void ZhttpRequest::setIgnoreTlsErrors(bool on) { d->ignoreTlsErrors = on; }
 
 void ZhttpRequest::setTimeout(int msecs) { d->timeout = msecs; }
 
-void ZhttpRequest::setClientCert(const QString &cert, const QString &key) {
+void ZhttpRequest::setClientCert(const CowString &cert, const CowString &key) {
     d->clientCert = cert;
     d->clientKey = key;
 }
@@ -1076,7 +1076,7 @@ void ZhttpRequest::setPassthroughData(const Variant &data) { d->passthrough = da
 
 void ZhttpRequest::setQuiet(bool on) { d->quiet = on; }
 
-void ZhttpRequest::start(const QString &method, const CowUrl &uri, const HttpHeaders &headers) {
+void ZhttpRequest::start(const CowString &method, const CowUrl &uri, const HttpHeaders &headers) {
     assert(!d->server);
 
     d->requestMethod = method;
@@ -1085,7 +1085,7 @@ void ZhttpRequest::start(const QString &method, const CowUrl &uri, const HttpHea
     d->startClient();
 }
 
-void ZhttpRequest::beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) {
+void ZhttpRequest::beginResponse(int code, const CowByteArray &reason, const HttpHeaders &headers) {
     assert(d->server);
     assert(d->state == Private::ServerReceiving || d->state == Private::ServerResponseWait);
 
@@ -1095,7 +1095,7 @@ void ZhttpRequest::beginResponse(int code, const QByteArray &reason, const HttpH
     d->beginResponse();
 }
 
-void ZhttpRequest::writeBody(const QByteArray &body) { d->writeBody(body); }
+void ZhttpRequest::writeBody(const CowByteArray &body) { d->writeBody(body); }
 
 void ZhttpRequest::endBody() { d->endBody(); }
 
@@ -1164,7 +1164,7 @@ bool ZhttpRequest::isErrored() const { return d->errored; }
 
 HttpRequest::ErrorCondition ZhttpRequest::errorCondition() const { return d->errorCondition; }
 
-QString ZhttpRequest::requestMethod() const { return d->requestMethod; }
+CowString ZhttpRequest::requestMethod() const { return d->requestMethod; }
 
 CowUrl ZhttpRequest::requestUri() const { return d->requestUri; }
 
@@ -1172,11 +1172,11 @@ HttpHeaders ZhttpRequest::requestHeaders() const { return d->requestHeaders; }
 
 int ZhttpRequest::responseCode() const { return d->responseCode; }
 
-QByteArray ZhttpRequest::responseReason() const { return d->responseReason; }
+CowByteArray ZhttpRequest::responseReason() const { return d->responseReason; }
 
 HttpHeaders ZhttpRequest::responseHeaders() const { return d->responseHeaders; }
 
-QByteArray ZhttpRequest::readBody(int size) { return d->readBody(size); }
+CowByteArray ZhttpRequest::readBody(int size) { return d->readBody(size); }
 
 void ZhttpRequest::setupClient(ZhttpManager *manager, bool req) {
     d->manager = manager;

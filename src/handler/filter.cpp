@@ -341,7 +341,7 @@ public:
             }
         }
 
-        QByteArray body = req->readBody();
+        QByteArray body = req->readBody().asQByteArray();
 
         if (mode == HttpFilter::Modify) {
             if (responseSizeMax >= 0 && responseBody.size() + body.size() > responseSizeMax) {

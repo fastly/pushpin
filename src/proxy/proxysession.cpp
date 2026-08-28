@@ -485,7 +485,7 @@ public:
         if (maxBytes == 0)
             return;
 
-        QByteArray buf = inRequest->request()->readBody(maxBytes);
+        QByteArray buf = inRequest->request()->readBody(maxBytes).asQByteArray();
         if (!buf.isEmpty()) {
             log_debug("proxysession: %p input chunk: %d", q, buf.size());
 
@@ -792,7 +792,7 @@ public:
         QByteArray buf;
         int maxBytes = (buffering ? MAX_INITIAL_BUFFER - responseBody.size() : MAX_STREAM_BUFFER);
         if (maxBytes > 0)
-            buf = zhttpRequest->readBody(maxBytes);
+            buf = zhttpRequest->readBody(maxBytes).asQByteArray();
 
         if (!buf.isEmpty()) {
             incCounter(Stats::ServerContentBytesReceived, buf.size());
@@ -960,7 +960,7 @@ public:
             responseData.reason = zhttpRequest->responseReason();
             responseData.headers = zhttpRequest->responseHeaders();
 
-            QByteArray buf = zhttpRequest->readBody(MAX_INITIAL_BUFFER);
+            QByteArray buf = zhttpRequest->readBody(MAX_INITIAL_BUFFER).asQByteArray();
 
             incCounter(Stats::ServerHeaderBytesReceived,
                        ZhttpManager::estimateResponseHeaderBytes(responseData.code,
