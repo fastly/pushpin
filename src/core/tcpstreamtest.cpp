@@ -127,7 +127,7 @@ static void runIo(std::function<void()> loop_wait) {
     TEST_ASSERT_EQ(client.write("hello\n"), 6);
 
     CowByteArray received;
-    while (received.indexOf('\n') == -1) {
+    while (!received.contains('\n')) {
         CowByteArray buf = s->read();
 
         if (buf.isNull()) {
