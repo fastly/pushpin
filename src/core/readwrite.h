@@ -17,7 +17,7 @@
 #ifndef READWRITE_H
 #define READWRITE_H
 
-#include <QByteArray>
+#include "cowbytearray.h"
 #include <boost/signals2.hpp>
 
 class ReadWrite {
@@ -26,10 +26,10 @@ public:
 
     // Size < 0 means default read size returns buffer of bytes read. Null buffer means error. Empty
     // means end
-    virtual QByteArray read(int size = -1) = 0;
+    virtual CowByteArray read(int size = -1) = 0;
 
     // Returns amount accepted, or -1 for error
-    virtual int write(const QByteArray &buf) = 0;
+    virtual int write(const CowByteArray &buf) = 0;
 
     // Returns errno of latest operation
     virtual int errorCondition() const = 0;

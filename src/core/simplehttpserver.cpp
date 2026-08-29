@@ -48,13 +48,13 @@ public:
     SimpleHttpRequest *q;
     std::unique_ptr<ReadWrite> stream;
     State state;
-    QByteArray inBuf;
+    CowByteArray inBuf;
     QByteArray outBuf;
     bool version1dot0;
     QString method;
-    QByteArray uri;
+    CowByteArray uri;
     HttpHeaders reqHeaders;
-    QByteArray reqBody;
+    CowByteArray reqBody;
     int contentLength;
     int headersSizeMax;
     int bodySizeMax;
@@ -131,11 +131,11 @@ private:
 
     void respondLengthRequired(const QString &body) { respondError(411, "Length Required", body); }
 
-    bool processHeaderData(const QByteArray &headerData) {
-        QList<QByteArray> lines;
+    bool processHeaderData(const CowByteArray &headerData) {
+        QList<CowByteArray> lines;
         int at = 0;
         while (at < headerData.size()) {
-            int end = headerData.indexOf("\n", at);
+            int end = headerData.indexOf('\n', at);
             assert(end != -1);
 
             if (end > at && headerData[end - 1] == '\r')
@@ -148,13 +148,13 @@ private:
         if (lines.isEmpty())
             return false;
 
-        QByteArray requestLine = lines[0];
+        CowByteArray requestLine = lines[0];
 
         at = requestLine.indexOf(' ');
         if (at == -1)
             return false;
 
-        method = QString::fromLatin1(requestLine.mid(0, at));
+        method = QString::fromLatin1(requestLine.mid(0, at).asQByteArray());
         if (method.isEmpty())
             return false;
 
@@ -165,12 +165,12 @@ private:
 
         uri = requestLine.mid(at, end - at);
 
-        QByteArray versionStr = requestLine.mid(end + 1);
+        CowByteArray versionStr = requestLine.mid(end + 1);
         if (versionStr == "HTTP/1.0")
             version1dot0 = true;
 
         for (int n = 1; n < lines.count(); ++n) {
-            const QByteArray &line = lines[n];
+            const CowByteArray &line = lines[n];
             end = line.indexOf(':');
             if (end == -1)
                 continue;
@@ -180,8 +180,8 @@ private:
             if (at < line.length() && line[at] == ' ')
                 ++at;
 
-            QByteArray name = line.mid(0, end);
-            QByteArray val = line.mid(at);
+            CowByteArray name = line.mid(0, end);
+            CowByteArray val = line.mid(at);
 
             reqHeaders += HttpHeader(name, val);
         }
@@ -205,7 +205,7 @@ private:
     // Return false if more I/O needed to make progress
     bool step() {
         if (state == ReadHeader) {
-            QByteArray buf = stream->read(headersSizeMax - inBuf.size());
+            CowByteArray buf = stream->read(headersSizeMax - inBuf.size());
 
             if (buf.isNull()) {
                 int e = stream->errorCondition();
@@ -239,7 +239,7 @@ private:
             }
 
             if (at != -1) {
-                QByteArray headerData = inBuf.mid(0, at);
+                CowByteArray headerData = inBuf.mid(0, at);
                 reqBody = inBuf.mid(next);
                 inBuf.clear();
 
@@ -310,7 +310,7 @@ private:
             }
 
             if (reqBody.size() < contentLength) {
-                QByteArray buf = stream->read(bodySizeMax - reqBody.size() + 1);
+                CowByteArray buf = stream->read(bodySizeMax - reqBody.size() + 1);
 
                 if (buf.isNull()) {
                     int e = stream->errorCondition();
@@ -384,11 +384,11 @@ SimpleHttpRequest::~SimpleHttpRequest() { delete d; }
 
 QString SimpleHttpRequest::requestMethod() const { return d->method; }
 
-QByteArray SimpleHttpRequest::requestUri() const { return d->uri; }
+QByteArray SimpleHttpRequest::requestUri() const { return d->uri.asQByteArray(); }
 
 HttpHeaders SimpleHttpRequest::requestHeaders() const { return d->reqHeaders; }
 
-QByteArray SimpleHttpRequest::requestBody() const { return d->reqBody; }
+QByteArray SimpleHttpRequest::requestBody() const { return d->reqBody.asQByteArray(); }
 
 void SimpleHttpRequest::respond(int code, const QByteArray &reason, const HttpHeaders &headers,
                                 const QByteArray &body) {
