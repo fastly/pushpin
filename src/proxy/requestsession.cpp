@@ -407,7 +407,7 @@ public:
     void processIncomingRequest() {
         if (state == Prefetching) {
             if (prefetchSize > 0)
-                in += zhttpRequest->readBody(prefetchSize - in.size());
+                in += zhttpRequest->readBody(prefetchSize - in.size()).asQByteArray();
 
             if (in.size() >= prefetchSize || zhttpRequest->isInputFinished()) {
                 // We've read enough body to start inspection
@@ -443,7 +443,7 @@ public:
                 }
             }
         } else if (state == Receiving) {
-            in += zhttpRequest->readBody(MAX_SHARED_REQUEST_BODY - in.size());
+            in += zhttpRequest->readBody(MAX_SHARED_REQUEST_BODY - in.size()).asQByteArray();
 
             if (in.size() >= MAX_SHARED_REQUEST_BODY || zhttpRequest->isInputFinished()) {
                 // We've read as much as we can for now. If there is still more to read, then the

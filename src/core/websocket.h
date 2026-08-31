@@ -24,6 +24,8 @@
 #ifndef WEBSOCKET_H
 #define WEBSOCKET_H
 
+#include "cowbytearray.h"
+#include "cowstring.h"
 #include "cowurl.h"
 #include "httpheaders.h"
 #include <QHostAddress>
@@ -51,10 +53,10 @@ public:
         enum Type { Continuation, Text, Binary, Ping, Pong };
 
         Type type;
-        QByteArray data;
+        CowByteArray data;
         bool more;
 
-        Frame(Type _type, const QByteArray &_data, bool _more)
+        Frame(Type _type, const CowByteArray &_data, bool _more)
             : type(_type), data(_data), more(_more) {}
     };
 
@@ -62,35 +64,35 @@ public:
 
     virtual QHostAddress peerAddress() const = 0;
 
-    virtual void setConnectHost(const QString &host) = 0;
+    virtual void setConnectHost(const CowString &host) = 0;
     virtual void setConnectPort(int port) = 0;
     virtual void setIgnorePolicies(bool on) = 0;
     virtual void setTrustConnectHost(bool on) = 0;
     virtual void setIgnoreTlsErrors(bool on) = 0;
-    virtual void setClientCert(const QString &cert, const QString &key) = 0;
+    virtual void setClientCert(const CowString &cert, const CowString &key) = 0;
 
     virtual void start(const CowUrl &uri, const HttpHeaders &headers) = 0;
 
-    virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers) = 0;
-    virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                              const QByteArray &body) = 0;
+    virtual void respondSuccess(const CowByteArray &reason, const HttpHeaders &headers) = 0;
+    virtual void respondError(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                              const CowByteArray &body) = 0;
 
     virtual State state() const = 0;
     virtual CowUrl requestUri() const = 0;
     virtual HttpHeaders requestHeaders() const = 0;
     virtual int responseCode() const = 0;
-    virtual QByteArray responseReason() const = 0;
+    virtual CowByteArray responseReason() const = 0;
     virtual HttpHeaders responseHeaders() const = 0;
-    virtual QByteArray responseBody() const = 0;
+    virtual CowByteArray responseBody() const = 0;
     virtual int framesAvailable() const = 0;
     virtual int writeBytesAvailable() const = 0;
     virtual int peerCloseCode() const = 0;
-    virtual QString peerCloseReason() const = 0;
+    virtual CowString peerCloseReason() const = 0;
     virtual ErrorCondition errorCondition() const = 0;
 
     virtual void writeFrame(const Frame &frame) = 0;
     virtual Frame readFrame() = 0;
-    virtual void close(int code = -1, const QString &reason = QString()) = 0;
+    virtual void close(int code = -1, const CowString &reason = CowString()) = 0;
 
     Signal connected;
     Signal readyRead;

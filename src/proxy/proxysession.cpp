@@ -293,7 +293,7 @@ public:
                 inReqErrorConnection =
                     req->error.connect(boost::bind(&Private::inRequest_error, this));
 
-                requestBody += req->readBody();
+                requestBody += req->readBody().asQByteArray();
 
                 intReq = req->passthroughData().isValid();
             }

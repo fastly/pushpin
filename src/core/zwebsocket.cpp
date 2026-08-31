@@ -55,13 +55,13 @@ public:
     ZWebSocket::Rid rid;
     QByteArray toAddress;
     QHostAddress peerAddress;
-    QString connectHost;
+    CowString connectHost;
     int connectPort;
     bool ignorePolicies;
     bool trustConnectHost;
     bool ignoreTlsErrors;
-    QString clientCert;
-    QString clientKey;
+    CowString clientCert;
+    CowString clientKey;
     CowUrl requestUri;
     HttpHeaders requestHeaders;
     int inSeq;
@@ -69,15 +69,15 @@ public:
     int outCredits;
     int pendingInCredits;
     int responseCode;
-    QByteArray responseReason;
+    CowByteArray responseReason;
     HttpHeaders responseHeaders;
-    QByteArray responseBody; // For rejections only
+    CowByteArray responseBody; // For rejections only
     bool inClosed;
     bool outClosed;
     int closeCode;
-    QString closeReason;
+    CowString closeReason;
     int peerCloseCode;
-    QString peerCloseReason;
+    CowString peerCloseReason;
     Variant userData;
     bool pendingUpdate;
     bool readableChanged;
@@ -282,7 +282,7 @@ public:
         update();
     }
 
-    void close(int code, const QString &reason) {
+    void close(int code, const CowString &reason) {
         if ((state != Connected && state != ConnectedPeerClosed) || outClosed)
             return;
 
@@ -465,10 +465,10 @@ public:
                 handleIncomingDataPacket(packet.contentType.asQByteArray(),
                                          packet.body.asQByteArray(), packet.more);
             } else if (packet.type == ZhttpRequestPacket::Ping) {
-                inFrames += Frame(Frame::Ping, packet.body.asQByteArray(), false);
+                inFrames += Frame(Frame::Ping, packet.body, false);
                 inSize += packet.body.size();
             } else if (packet.type == ZhttpRequestPacket::Pong) {
-                inFrames += Frame(Frame::Pong, packet.body.asQByteArray(), false);
+                inFrames += Frame(Frame::Pong, packet.body, false);
                 inSize += packet.body.size();
             }
 
@@ -502,9 +502,9 @@ public:
             log_debug("zws client: error id=%s cond=%s", id.data(), packet.condition.data());
 
             responseCode = packet.code;
-            responseReason = packet.reason.asQByteArray();
+            responseReason = packet.reason;
             responseHeaders = packet.headers;
-            responseBody = packet.body.asQByteArray();
+            responseBody = packet.body;
 
             state = Idle;
             cleanup();
@@ -579,7 +579,7 @@ public:
                 assert(packet.type == ZhttpResponsePacket::Data);
 
                 responseCode = packet.code;
-                responseReason = packet.reason.asQByteArray();
+                responseReason = packet.reason;
                 responseHeaders = packet.headers;
 
                 if (packet.credits > 0)
@@ -596,10 +596,10 @@ public:
                     handleIncomingDataPacket(packet.contentType.asQByteArray(),
                                              packet.body.asQByteArray(), packet.more);
                 } else if (packet.type == ZhttpResponsePacket::Ping) {
-                    inFrames += Frame(Frame::Ping, packet.body.asQByteArray(), false);
+                    inFrames += Frame(Frame::Ping, packet.body, false);
                     inSize += packet.body.size();
                 } else if (packet.type == ZhttpResponsePacket::Pong) {
-                    inFrames += Frame(Frame::Pong, packet.body.asQByteArray(), false);
+                    inFrames += Frame(Frame::Pong, packet.body, false);
                     inSize += packet.body.size();
                 }
 
@@ -627,7 +627,7 @@ public:
         }
     }
 
-    void handlePeerClose(int code, const QString &reason) {
+    void handlePeerClose(int code, const CowString &reason) {
         if ((state == Connected || state == ClosedPeerConnected) && !inClosed) {
             inClosed = true;
             peerCloseCode = code;
@@ -744,7 +744,7 @@ public:
         }
     }
 
-    void writeClose(int code = -1, const QString &reason = QString()) {
+    void writeClose(int code = -1, const CowString &reason = CowString()) {
         if (server) {
             ZhttpResponsePacket out;
             out.type = ZhttpResponsePacket::Close;
@@ -933,7 +933,7 @@ ZWebSocket::Rid ZWebSocket::rid() const { return d->rid; }
 
 QHostAddress ZWebSocket::peerAddress() const { return d->peerAddress; }
 
-void ZWebSocket::setConnectHost(const QString &host) { d->connectHost = host; }
+void ZWebSocket::setConnectHost(const CowString &host) { d->connectHost = host; }
 
 void ZWebSocket::setConnectPort(int port) { d->connectPort = port; }
 
@@ -945,7 +945,7 @@ void ZWebSocket::setIgnoreTlsErrors(bool on) { d->ignoreTlsErrors = on; }
 
 void ZWebSocket::setIsTls(bool on) { d->requestUri.setScheme(on ? "wss" : "ws"); }
 
-void ZWebSocket::setClientCert(const QString &cert, const QString &key) {
+void ZWebSocket::setClientCert(const CowString &cert, const CowString &key) {
     d->clientCert = cert;
     d->clientKey = key;
 }
@@ -958,7 +958,7 @@ void ZWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->startClient();
 }
 
-void ZWebSocket::respondSuccess(const QByteArray &reason, const HttpHeaders &headers) {
+void ZWebSocket::respondSuccess(const CowByteArray &reason, const HttpHeaders &headers) {
     assert(d->server);
     assert(d->state == Private::Connecting);
 
@@ -968,8 +968,8 @@ void ZWebSocket::respondSuccess(const QByteArray &reason, const HttpHeaders &hea
     d->respond();
 }
 
-void ZWebSocket::respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                              const QByteArray &body) {
+void ZWebSocket::respondError(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                              const CowByteArray &body) {
     assert(d->server);
     assert(d->state == Private::Connecting);
 
@@ -1007,11 +1007,11 @@ HttpHeaders ZWebSocket::requestHeaders() const { return d->requestHeaders; }
 
 int ZWebSocket::responseCode() const { return d->responseCode; }
 
-QByteArray ZWebSocket::responseReason() const { return d->responseReason; }
+CowByteArray ZWebSocket::responseReason() const { return d->responseReason; }
 
 HttpHeaders ZWebSocket::responseHeaders() const { return d->responseHeaders; }
 
-QByteArray ZWebSocket::responseBody() const { return d->responseBody; }
+CowByteArray ZWebSocket::responseBody() const { return d->responseBody; }
 
 int ZWebSocket::framesAvailable() const { return d->inFrames.count(); }
 
@@ -1024,7 +1024,7 @@ int ZWebSocket::writeBytesAvailable() const {
 
 int ZWebSocket::peerCloseCode() const { return d->peerCloseCode; }
 
-QString ZWebSocket::peerCloseReason() const { return d->peerCloseReason; }
+CowString ZWebSocket::peerCloseReason() const { return d->peerCloseReason; }
 
 WebSocket::ErrorCondition ZWebSocket::errorCondition() const { return d->errorCondition; }
 
@@ -1032,7 +1032,7 @@ void ZWebSocket::writeFrame(const Frame &frame) { d->writeFrame(frame); }
 
 WebSocket::Frame ZWebSocket::readFrame() { return d->readFrame(); }
 
-void ZWebSocket::close(int code, const QString &reason) { d->close(code, reason); }
+void ZWebSocket::close(int code, const CowString &reason) { d->close(code, reason); }
 
 void ZWebSocket::setupClient(ZhttpManager *manager) {
     d->manager = manager;

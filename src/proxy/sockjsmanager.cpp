@@ -360,7 +360,7 @@ public:
     }
 
     void processRequestInput(Session *s) {
-        s->reqBody += s->req->readBody(MAX_REQUEST_BODY - s->reqBody.size() + 1);
+        s->reqBody += s->req->readBody(MAX_REQUEST_BODY - s->reqBody.size() + 1).asQByteArray();
         if (s->reqBody.size() > MAX_REQUEST_BODY) {
             respondError(s->req, 400, "Bad Request", "Request too large.");
             return;
