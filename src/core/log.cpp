@@ -33,7 +33,7 @@ static void logWithOutputLevel(int outputLevel, int level, const char *fmt, va_l
     ffi::log_log_with_max_level(outputLevel, level, str.toUtf8().data());
 }
 
-bool log_init(const QString &outputFile) {
+bool log_init(const CowString &outputFile) {
     int ret;
 
     if (!outputFile.isEmpty())
@@ -48,7 +48,7 @@ int log_outputLevel() { return ffi::log_get_level(); }
 
 void log_setOutputLevel(int level) { ffi::log_set_level(level); }
 
-bool log_rotate(const QString &outputFile) {
+bool log_rotate(const CowString &outputFile) {
     return (ffi::log_rotate(outputFile.toUtf8().data()) == 0);
 }
 

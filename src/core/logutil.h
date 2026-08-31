@@ -24,6 +24,8 @@
 #ifndef LOGUTIL_H
 #define LOGUTIL_H
 
+#include "cowbytearray.h"
+#include "cowstring.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -36,13 +38,13 @@ enum RequestStatus { Response, Accept, Error };
 
 class RequestData {
 public:
-    QString routeId;
+    CowString routeId;
     int logLevel;
     RequestStatus status;
     HttpRequestData requestData;
     HttpResponseData responseData;
     int responseBodySize;
-    QString targetStr;
+    CowString targetStr;
     bool targetOverHttp;
     bool retry;
     void *sharedBy;
@@ -67,16 +69,16 @@ public:
 
 class RouteInfo {
 public:
-    QString id;
+    CowString id;
     int logLevel;
 
-    RouteInfo(const QString &initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG)
+    RouteInfo(const CowString &initId = CowString(), int initLogLevel = LOG_LEVEL_DEBUG)
         : id(initId), logLevel(initLogLevel) {}
 };
 
 void logVariant(int level, const Variant &data, const char *fmt, ...);
-void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
-void logVariantWithContent(int level, const Variant &data, const QString &contentField,
+void logByteArray(int level, const CowByteArray &content, const char *fmt, ...);
+void logVariantWithContent(int level, const Variant &data, const CowString &contentField,
                            const char *fmt, ...);
 void logRequest(int level, const RequestData &data, const Config &config = Config());
 void logForRoute(int level, const RouteInfo &routeInfo, const char *fmt, ...);
