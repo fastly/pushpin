@@ -125,18 +125,18 @@ void logVariant(int level, const Variant &data, const char *fmt, ...) {
     va_end(ap);
 }
 
-void logByteArray(int level, const QByteArray &content, const char *fmt, ...) {
+void logByteArray(int level, const CowByteArray &content, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    logPacket(level, content, fmt, ap);
+    logPacket(level, content.asQByteArray(), fmt, ap);
     va_end(ap);
 }
 
-void logVariantWithContent(int level, const Variant &data, const QString &contentField,
+void logVariantWithContent(int level, const Variant &data, const CowString &contentField,
                            const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    logPacket(level, data, contentField, fmt, ap);
+    logPacket(level, data, contentField.asQString(), fmt, ap);
     va_end(ap);
 }
 
@@ -145,7 +145,7 @@ void logRequest(int level, const RequestData &data, const Config &config) {
                                        data.requestData.uri.toString(CowUrl::FullyEncoded));
 
     if (!data.targetStr.isEmpty())
-        msg += QString(" -> %1").arg(data.targetStr);
+        msg += QString(" -> %1").arg(data.targetStr.asQString());
 
     if (data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" &&
         data.targetOverHttp)
@@ -159,7 +159,7 @@ void logRequest(int level, const RequestData &data, const Config &config) {
         msg += QString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded));
 
     if (!data.routeId.isEmpty())
-        msg += QString(" route=%1").arg(data.routeId);
+        msg += QString(" route=%1").arg(data.routeId.asQString());
 
     if (data.status == LogUtil::Response) {
         msg += QString(" code=%1 %2")
@@ -195,7 +195,7 @@ void logForRoute(int level, const RouteInfo &routeInfo, const char *fmt, ...) {
     va_start(ap, fmt);
     QString msg = QString::vasprintf(fmt, ap);
     if (!routeInfo.id.isEmpty())
-        msg += QString(" route=%1").arg(routeInfo.id);
+        msg += QString(" route=%1").arg(routeInfo.id.asQString());
     logPacketWithOutputLevel(routeInfo.logLevel, level, msg);
     va_end(ap);
 }

@@ -695,7 +695,7 @@ public:
 
         // Only log route id if explicitly set
         if (route.separateStats)
-            rd.routeId = route.id;
+            rd.routeId = QString::fromUtf8(route.id);
 
         rd.logLevel = route.logLevel;
 

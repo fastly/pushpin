@@ -22,8 +22,8 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include "cowstring.h"
 #include "rust/bindings.h"
-#include <QString>
 
 enum LogLevel {
     LOG_LEVEL_ERROR = ffi::LOG_LEVEL_ERROR,
@@ -33,11 +33,11 @@ enum LogLevel {
     LOG_LEVEL_TRACE = ffi::LOG_LEVEL_TRACE,
 };
 
-bool log_init(const QString &outputFile = QString());
+bool log_init(const CowString &outputFile = CowString());
 
 int log_outputLevel();
 void log_setOutputLevel(int level);
-bool log_rotate(const QString &outputFile);
+bool log_rotate(const CowString &outputFile);
 
 void log(int level, const char *fmt, ...);
 void log_error(const char *fmt, ...);
