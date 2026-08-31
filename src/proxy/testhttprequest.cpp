@@ -217,4 +217,4 @@ QByteArray TestHttpRequest::responseReason() const { return d->response.reason.a
 
 HttpHeaders TestHttpRequest::responseHeaders() const { return d->response.headers; }
 
-QByteArray TestHttpRequest::readBody(int size) { return d->responseBody.take(size); }
+QByteArray TestHttpRequest::readBody(int size) { return d->responseBody.take(size).asQByteArray(); }

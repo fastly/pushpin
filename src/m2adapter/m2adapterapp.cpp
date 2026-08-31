@@ -976,7 +976,7 @@ public:
                 M2ResponsePacket packet;
                 packet.sender = m2_send_idents[conn->identIndex];
                 packet.id = conn->id;
-                packet.data = item->data.take();
+                packet.data = item->data.take().asQByteArray();
 
                 conn->pendingOutItems.removeFirst();
 
@@ -1001,7 +1001,7 @@ public:
                     break;
                 }
 
-                QByteArray data = item->data.take(maxSize);
+                QByteArray data = item->data.take(maxSize).asQByteArray();
                 int contentSize = data.size();
 
                 M2ResponsePacket packet;
@@ -1024,7 +1024,7 @@ public:
                 M2ResponsePacket packet;
                 packet.sender = m2_send_idents[conn->identIndex];
                 packet.id = conn->id;
-                packet.data = item->data.take();
+                packet.data = item->data.take().asQByteArray();
 
                 int contentSize = item->contentSize;
 

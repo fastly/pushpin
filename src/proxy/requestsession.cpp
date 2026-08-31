@@ -881,7 +881,7 @@ public:
                 HttpHeaders headers;
 
                 if (responseBodyFinished) {
-                    QByteArray bodyRawBuf = out.take();
+                    QByteArray bodyRawBuf = out.take().asQByteArray();
 
                     if (!jsonpExtendedResponse) {
                         // Trim any trailing newline before we wrap in a function call
@@ -987,7 +987,7 @@ public:
 
         if (!out.isEmpty()) {
             if (!jsonpCallback.isEmpty()) {
-                QByteArray bodyRawBuf = out.take();
+                QByteArray bodyRawBuf = out.take().asQByteArray();
 
                 if (!jsonpExtendedResponse) {
                     if (responseBodyFinished) {
@@ -1028,7 +1028,7 @@ public:
                 zhttpRequest->writeBody(buf);
                 responseBodySize += buf.size();
             } else {
-                QByteArray buf = out.take();
+                QByteArray buf = out.take().asQByteArray();
                 zhttpRequest->writeBody(buf);
                 responseBodySize += buf.size();
             }

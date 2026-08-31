@@ -21,7 +21,7 @@
 #ifndef BUFFERLIST_H
 #define BUFFERLIST_H
 
-#include <QByteArray>
+#include "cowbytearray.h"
 #include <QList>
 
 class BufferList {
@@ -31,21 +31,21 @@ public:
     int size() const { return size_; }
     bool isEmpty() const { return size_ == 0; }
 
-    QByteArray mid(int pos, int size = -1) const;
+    CowByteArray mid(int pos, int size = -1) const;
 
     void clear();
-    void append(const QByteArray &buf);
-    QByteArray take(int size = -1);
+    void append(const CowByteArray &buf);
+    CowByteArray take(int size = -1);
 
-    QByteArray toByteArray(); // Non-const because we rewrite the list
+    CowByteArray toByteArray(); // Non-const because we rewrite the list
 
-    BufferList &operator+=(const QByteArray &buf) {
+    BufferList &operator+=(const CowByteArray &buf) {
         append(buf);
         return *this;
     }
 
 private:
-    QList<QByteArray> bufs_;
+    QList<CowByteArray> bufs_;
     int size_;
     int offset_;
 

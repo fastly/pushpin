@@ -561,7 +561,7 @@ public:
 
             assert(first.type == Frame::Text || first.type == Frame::Binary);
 
-            QByteArray data = bufs.toByteArray();
+            QByteArray data = bufs.toByteArray().asQByteArray();
 
             pendingWrites += WriteItem(WriteItem::User, data.size());
             messages += QString::fromUtf8(data);
@@ -681,7 +681,7 @@ public:
                 if (first.type != Frame::Text && first.type != Frame::Binary)
                     continue;
 
-                QByteArray data = bufs.toByteArray();
+                QByteArray data = bufs.toByteArray().asQByteArray();
 
                 Variant doc = Json::fromString(data);
                 if (!doc.isValid() || typeId(doc) != VariantType::List) {

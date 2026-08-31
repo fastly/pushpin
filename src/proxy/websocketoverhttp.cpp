@@ -551,7 +551,7 @@ private:
         int responseCode = req->responseCode();
         QByteArray responseReason = req->responseReason();
         HttpHeaders responseHeaders = req->responseHeaders();
-        QByteArray responseBody = inBuf.take();
+        QByteArray responseBody = inBuf.take().asQByteArray();
 
         reqConnections = ReqConnections();
         req.reset();
@@ -1060,7 +1060,7 @@ QList<WebSocketOverHttp::Event> WebSocketOverHttp::framesToEvents(const QList<Fr
             assert(n + 1 < takeCount || !f.more);
         }
 
-        QByteArray data = content.toByteArray();
+        QByteArray data = content.toByteArray().asQByteArray();
 
         // For compactness, we only include content on ping/pong if non-empty
         if (ftype == Frame::Text)

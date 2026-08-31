@@ -313,7 +313,7 @@ public:
             if (trustedClient || !route.grip || intReq)
                 passthrough = true;
 
-            initialRequestBody = requestBody.toByteArray();
+            initialRequestBody = requestBody.toByteArray().asQByteArray();
 
             if (requestBody.size() > MAX_ACCEPT_REQUEST_BODY) {
                 requestBody.clear();
@@ -333,7 +333,7 @@ public:
 
             if (!responseBody.isEmpty()) {
                 si->bytesToWrite += responseBody.size();
-                rs->writeResponseBody(responseBody.toByteArray());
+                rs->writeResponseBody(responseBody.toByteArray().asQByteArray());
             }
         }
     }
@@ -896,7 +896,7 @@ public:
 
             if (!responseBody.isEmpty()) {
                 si->bytesToWrite += responseBody.size();
-                si->rs->writeResponseBody(responseBody.toByteArray());
+                si->rs->writeResponseBody(responseBody.toByteArray().asQByteArray());
             }
         }
     }

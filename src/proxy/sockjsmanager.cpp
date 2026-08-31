@@ -409,7 +409,7 @@ public:
                     if (existing->ext) {
                         // Give to external session
                         ZhttpRequest *req = s->req;
-                        QByteArray body = s->reqBody.toByteArray();
+                        QByteArray body = s->reqBody.toByteArray().asQByteArray();
                         QByteArray jsonpCallback = s->jsonpCallback;
                         reqConnectionMap.erase(req);
                         s->req = 0;
@@ -498,7 +498,7 @@ public:
             assert(!s->lastPart.isEmpty());
 
             s->ext->setupServer(q, s->req, s->jsonpCallback, s->asUri, s->sid, s->lastPart,
-                                s->reqBody.toByteArray(), s->route);
+                                s->reqBody.toByteArray().asQByteArray(), s->route);
 
             reqConnectionMap.erase(s->req);
             sessionsByRequest.remove(s->req);
