@@ -1,18 +1,29 @@
 name: CI
 on:
   pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'docker/**'
-      - '**/*.md'
-      - '.github/workflows/docker-publish.yml'
-      - 'packaging/**'
 defaults:
   run:
      shell: bash -leo pipefail {0}
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          predicate-quantifier: 'some-with-excludes'
+          filters: |
+            src:
+              - '**'
+              - '!docker/**'
+              - '!**/*.md'
+              - '!.github/workflows/**'
+              - '!packaging/**'
   check:
+    needs: [changes]
     strategy:
       fail-fast: true
       matrix:
@@ -21,14 +32,17 @@ jobs:
     container: fanout/build-base:latest
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: check
+      if: needs.changes.outputs.src == 'true'
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} c
   clippy:
     strategy:
@@ -37,17 +51,20 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: check
+    needs: [changes, check]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: clippy
+      if: needs.changes.outputs.src == 'true'
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} clippy -- -D warnings
   lint:
     strategy:
@@ -56,21 +73,26 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: check
+    needs: [changes, check]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: format rust
+      if: needs.changes.outputs.src == 'true'
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
     - name: format c++
+      if: needs.changes.outputs.src == 'true'
       run:  find src -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror -style=file
     - name: format python
+      if: needs.changes.outputs.src == 'true'
       run:  black --check .
   build:
     strategy:
@@ -79,17 +101,20 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: check
+    needs: [changes, check]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: build
+      if: needs.changes.outputs.src == 'true'
       run: RUSTFLAGS="-D warnings" TOOLCHAIN=${{ matrix.rust-version }} make build
   audit:
     strategy:
@@ -98,17 +123,20 @@ jobs:
         rust-version: [stable]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: build
+    needs: [changes, build]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: audit
+      if: needs.changes.outputs.src == 'true'
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} audit
   test:
     strategy:
@@ -117,17 +145,20 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: build
+    needs: [changes, build]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: test
+      if: needs.changes.outputs.src == 'true'
       run: TOOLCHAIN=${{ matrix.rust-version }} make cargo-test
   benchmark:
     strategy:
@@ -136,17 +167,20 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: build
+    needs: [changes, build]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: bench
+      if: needs.changes.outputs.src == 'true'
       run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
   build-full:
     strategy:
@@ -155,17 +189,21 @@ jobs:
         rust-version: [stable, 1.75.0]
     runs-on: ubuntu-latest
     container: fanout/build-base:latest
-    needs: [audit, test]
+    needs: [changes, audit, test]
     steps:
     - name: Checkout code
+      if: needs.changes.outputs.src == 'true'
       uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Cache
+      if: needs.changes.outputs.src == 'true'
       uses: Swatinem/rust-cache@v2
       with:
         shared-key: "CI-Suite"
     - name: cargo fetch
+      if: needs.changes.outputs.src == 'true'
       run: cargo +${{ matrix.rust-version }} fetch
     - name: build release
+      if: needs.changes.outputs.src == 'true'
       run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
