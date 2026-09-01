@@ -371,7 +371,7 @@ public:
     }
 
     void handleRequest(Session *s) {
-        QString method = s->req->requestMethod();
+        CowString method = s->req->requestMethod();
         log_debug("sockjs request: path=[%s], asUri=[%s]", s->path.data(),
                   s->asUri.toEncoded().data());
 

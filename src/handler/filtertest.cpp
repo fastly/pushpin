@@ -105,7 +105,7 @@ public:
         }
 
         CowUrl uri = req->requestUri();
-        QByteArray body = req->readBody();
+        QByteArray body = req->readBody().asQByteArray();
         bool preferInternal = req->passthroughData().toMap().value("prefer-internal").toBool();
 
         if (uri.path() == "/filter/accept") {
