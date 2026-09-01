@@ -344,7 +344,7 @@ public:
 
     QByteArray readBody(int size) {
         if (server) {
-            QByteArray out = requestBodyBuf.take(size);
+            QByteArray out = requestBodyBuf.take(size).asQByteArray();
             if (out.isEmpty())
                 return out;
 
@@ -360,7 +360,7 @@ public:
 
             return out;
         } else {
-            QByteArray out = responseBodyBuf.take(size);
+            QByteArray out = responseBodyBuf.take(size).asQByteArray();
             if (out.isEmpty())
                 return out;
 
@@ -390,7 +390,7 @@ public:
                 // If we have data to send, and the credits to do so, then send data. also send
                 // credits if we need to.
 
-                QByteArray buf = requestBodyBuf.take(outCredits);
+                QByteArray buf = requestBodyBuf.take(outCredits).asQByteArray();
 
                 outCredits -= buf.size();
                 writableChanged = true;

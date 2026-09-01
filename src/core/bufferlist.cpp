@@ -31,7 +31,7 @@ void BufferList::findPos(int pos, int *bufferIndex, int *offset) const {
     int curOffset = offset_;
 
     while (true) {
-        const QByteArray &buf = bufs_[at];
+        const CowByteArray &buf = bufs_[at];
         if (curOffset + pos < buf.size())
             break;
 
@@ -44,11 +44,11 @@ void BufferList::findPos(int pos, int *bufferIndex, int *offset) const {
     *offset = curOffset + pos;
 }
 
-QByteArray BufferList::mid(int pos, int size) const {
+CowByteArray BufferList::mid(int pos, int size) const {
     assert(pos >= 0);
 
     if (size_ == 0 || size == 0 || pos >= size_)
-        return QByteArray();
+        return CowByteArray();
 
     int toRead;
     if (size > 0)
@@ -66,14 +66,14 @@ QByteArray BufferList::mid(int pos, int size) const {
     if (offset == 0 && bufs_[at].size() == toRead)
         return bufs_[at];
 
-    QByteArray out;
+    CowByteArray out;
     out.resize(toRead);
     char *outp = out.data();
 
     while (toRead > 0) {
-        const QByteArray &buf = bufs_[at];
+        const CowByteArray &buf = bufs_[at];
         int bsize = qMin(buf.size() - offset, toRead);
-        memcpy(outp, buf.data() + offset, bsize);
+        memcpy(outp, buf.constData() + offset, bsize);
 
         if (offset + bsize >= buf.size()) {
             ++at;
@@ -93,7 +93,7 @@ void BufferList::clear() {
     offset_ = 0;
 }
 
-void BufferList::append(const QByteArray &buf) {
+void BufferList::append(const CowByteArray &buf) {
     if (buf.size() < 1)
         return;
 
@@ -101,9 +101,9 @@ void BufferList::append(const QByteArray &buf) {
     size_ += buf.size();
 }
 
-QByteArray BufferList::take(int size) {
+CowByteArray BufferList::take(int size) {
     if (size_ == 0 || size == 0)
-        return QByteArray();
+        return CowByteArray();
 
     int toRead;
     if (size > 0)
@@ -119,14 +119,14 @@ QByteArray BufferList::take(int size) {
         return bufs_.takeFirst();
     }
 
-    QByteArray out;
+    CowByteArray out;
     out.resize(toRead);
     char *outp = out.data();
 
     while (toRead > 0) {
-        const QByteArray &buf = bufs_.first();
+        const CowByteArray &buf = bufs_.first();
         int bsize = qMin(buf.size() - offset_, toRead);
-        memcpy(outp, buf.data() + offset_, bsize);
+        memcpy(outp, buf.constData() + offset_, bsize);
 
         if (offset_ + bsize >= buf.size()) {
             bufs_.removeFirst();
@@ -142,11 +142,11 @@ QByteArray BufferList::take(int size) {
     return out;
 }
 
-QByteArray BufferList::toByteArray() {
+CowByteArray BufferList::toByteArray() {
     if (size_ == 0)
-        return QByteArray();
+        return CowByteArray();
 
-    QByteArray out;
+    CowByteArray out;
     while (!bufs_.isEmpty()) {
         if (offset_ > 0) {
             out += bufs_.first().mid(offset_);

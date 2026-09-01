@@ -468,7 +468,7 @@ private:
     void tryWriteFirstInstructResponse() {
         int avail = req->writeBytesAvailable();
         if (avail > 0) {
-            writeBody(firstInstructResponse.take(avail));
+            writeBody(firstInstructResponse.take(avail).asQByteArray());
 
             if (firstInstructResponse.isEmpty())
                 firstInstructResponseDone();
