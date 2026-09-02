@@ -64,9 +64,9 @@ use crate::core::select::{select_2, select_3, select_4, select_option, Select2, 
 use crate::core::shuffle::random;
 use crate::core::task::{poll_async, CancellationToken};
 use crate::core::time::Timeout;
+use crate::core::tracing::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
-use crate::core::tracing::{trace_status_code, trace_ws_close_code, WsCloseSource};
 use crate::proxy::domainmap::DomainMap;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
@@ -3638,8 +3638,7 @@ where
 
     refresh_stream_timeout();
 
-    // Send request message
-
+    // Send request to pushpin-proxy over zhttp
     // ABR: discard_while
     discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
 
