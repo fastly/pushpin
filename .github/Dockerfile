@@ -27,8 +27,9 @@ ENV RUSTUP_HOME="/root/.rustup" \
 # Keep in sync with minimum support Rust Version for Pushpin 
 RUN rustup install 1.75.0-x86_64-unknown-linux-gnu
 
-RUN cargo install cargo-audit
-
 RUN rustup component add rustfmt
 
 RUN rustup component add clippy
+
+# Use --locked to ensure dependency changes can't break the build
+RUN cargo install --locked cargo-audit
