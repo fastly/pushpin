@@ -114,8 +114,8 @@ static QByteArray serializeJsonString(const QString &s) {
     return tmp.mid(1, tmp.length() - 2);
 }
 
-static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid) {
-    return rid.first + ':' + rid.second;
+static QByteArray ridToString(const ZhttpRequest::Rid &rid) {
+    return rid.first.asQByteArray() + ':' + rid.second.asQByteArray();
 }
 
 class RequestSession::Private {

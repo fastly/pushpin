@@ -40,19 +40,19 @@ class WebSocketOverHttp : public WebSocket {
 public:
     class Event {
     public:
-        QByteArray type;
-        QByteArray content;
+        CowByteArray type;
+        CowByteArray content;
 
         Event() = default;
 
-        Event(const QByteArray &_type, const QByteArray &_content = QByteArray())
+        Event(const CowByteArray &_type, const CowByteArray &_content = CowByteArray())
             : type(_type), content(_content) {}
     };
 
     WebSocketOverHttp(ZhttpManager *zhttpManager);
     ~WebSocketOverHttp();
 
-    void setConnectionId(const QByteArray &id);
+    void setConnectionId(const CowByteArray &id);
     void setMaxEventsPerRequest(int max);
     void refresh();
 

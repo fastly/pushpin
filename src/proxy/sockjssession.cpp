@@ -957,7 +957,7 @@ SockJsSession::SockJsSession() { d = std::make_shared<Private>(this); }
 
 SockJsSession::~SockJsSession() = default;
 
-QByteArray SockJsSession::sid() const { return d->sid; }
+CowByteArray SockJsSession::sid() const { return d->sid; }
 
 DomainMap::Entry SockJsSession::route() const { return d->route; }
 
@@ -1075,12 +1075,12 @@ WebSocket::Frame SockJsSession::readFrame() { return d->readFrame(); }
 void SockJsSession::close(int code, const CowString &reason) { d->close(code, reason); }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req,
-                                const QByteArray &jsonpCallback, const CowUrl &asUri,
-                                const QByteArray &sid, const QByteArray &lastPart,
-                                const QByteArray &body, const DomainMap::Entry &route) {
+                                const CowByteArray &jsonpCallback, const CowUrl &asUri,
+                                const CowByteArray &sid, const CowByteArray &lastPart,
+                                const CowByteArray &body, const DomainMap::Entry &route) {
     d->manager = manager;
     d->mode = Private::Http;
-    d->sid = sid;
+    d->sid = sid.asQByteArray();
     d->requestData.uri = asUri;
     d->requestData.headers = req->requestHeaders();
 
@@ -1090,9 +1090,9 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req,
     d->peerAddress = req->peerAddress();
     d->route = route;
     d->initialReq = req;
-    d->initialJsonpCallback = jsonpCallback;
-    d->initialLastPart = lastPart;
-    d->initialBody = body;
+    d->initialJsonpCallback = jsonpCallback.asQByteArray();
+    d->initialLastPart = lastPart.asQByteArray();
+    d->initialBody = body.asQByteArray();
 
     d->setup();
 }
@@ -1111,11 +1111,12 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const CowUrl &asUri,
-                                const QByteArray &sid, [[maybe_unused]] const QByteArray &lastPart,
+                                const CowByteArray &sid,
+                                [[maybe_unused]] const CowByteArray &lastPart,
                                 const DomainMap::Entry &route) {
     d->manager = manager;
     d->mode = Private::WebSocketFramed;
-    d->sid = sid;
+    d->sid = sid.asQByteArray();
     d->requestData.uri = asUri;
     d->requestData.headers = sock->requestHeaders();
     d->peerAddress = sock->peerAddress();
@@ -1127,7 +1128,8 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 
 void SockJsSession::startServer() { d->startServer(); }
 
-void SockJsSession::handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback,
-                                  const QByteArray &lastPart, const QByteArray &body) {
-    d->handleRequest(req, jsonpCallback, lastPart, body);
+void SockJsSession::handleRequest(ZhttpRequest *req, const CowByteArray &jsonpCallback,
+                                  const CowByteArray &lastPart, const CowByteArray &body) {
+    d->handleRequest(req, jsonpCallback.asQByteArray(), lastPart.asQByteArray(),
+                     body.asQByteArray());
 }

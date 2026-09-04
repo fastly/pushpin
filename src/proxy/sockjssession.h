@@ -44,7 +44,7 @@ class SockJsSession : public WebSocket {
 public:
     ~SockJsSession();
 
-    QByteArray sid() const;
+    CowByteArray sid() const;
     DomainMap::Entry route() const;
 
     // Reimplemented
@@ -88,18 +88,18 @@ private:
 
     friend class SockJsManager;
     SockJsSession();
-    void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback,
-                     const CowUrl &asUri, const QByteArray &sid, const QByteArray &lastPart,
-                     const QByteArray &body, const DomainMap::Entry &route);
+    void setupServer(SockJsManager *manager, ZhttpRequest *req, const CowByteArray &jsonpCallback,
+                     const CowUrl &asUri, const CowByteArray &sid, const CowByteArray &lastPart,
+                     const CowByteArray &body, const DomainMap::Entry &route);
     void setupServer(SockJsManager *manager, ZWebSocket *sock, const CowUrl &asUri,
                      const DomainMap::Entry &route);
     void setupServer(SockJsManager *manager, ZWebSocket *sock, const CowUrl &asUri,
-                     const QByteArray &sid, const QByteArray &lastPart,
+                     const CowByteArray &sid, const CowByteArray &lastPart,
                      const DomainMap::Entry &route);
 
     void startServer();
-    void handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback,
-                       const QByteArray &lastPart, const QByteArray &body);
+    void handleRequest(ZhttpRequest *req, const CowByteArray &jsonpCallback,
+                       const CowByteArray &lastPart, const CowByteArray &body);
 };
 
 #endif

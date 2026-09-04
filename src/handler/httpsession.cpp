@@ -409,7 +409,7 @@ private:
             connectionStatsActive = false;
 
             ZhttpRequest::Rid rid = req->rid();
-            QByteArray cid = rid.first + ':' + rid.second;
+            QByteArray cid = rid.first.asQByteArray() + ':' + rid.second.asQByteArray();
 
             stats->removeConnection(cid, false);
         }
@@ -900,7 +900,7 @@ private:
         cancelActivities();
 
         ZhttpRequest::Rid rid = req->rid();
-        QByteArray cid = rid.first + ':' + rid.second;
+        QByteArray cid = rid.first.asQByteArray() + ':' + rid.second.asQByteArray();
 
         std::weak_ptr<Private> self = q->d;
 
@@ -997,7 +997,7 @@ private:
 
     void finished() {
         ZhttpRequest::Rid rid = req->rid();
-        QByteArray cid = rid.first + ':' + rid.second;
+        QByteArray cid = rid.first.asQByteArray() + ':' + rid.second.asQByteArray();
 
         log_debug("httpsession: cleaning up %s", cid.data());
         cleanup();
