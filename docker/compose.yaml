@@ -3,5 +3,5 @@ services:
     build:
       context: .
       args:
-        VERSION: 1.41.0
-    image: fanout/pushpin:1.41.0-1
+        VERSION: 1.42.0
+    image: fanout/pushpin:1.42.0-1
