@@ -355,20 +355,20 @@ public:
         const char *logprefix = logPrefixForType(type);
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
+        CowByteArray buf = CowByteArray("T") + TnetString::fromVariant(vpacket);
 
         if (client_out_sock) {
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT",
                                                logprefix);
 
-            client_out_sock->write(QList<QByteArray>() << buf);
+            client_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
         } else {
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body",
                                                "%s client req: OUT", logprefix);
 
-            client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
+            client_req_sock->write(QList<QByteArray>() << QByteArray() << buf.asQByteArray());
         }
     }
 
@@ -378,7 +378,7 @@ public:
         const char *logprefix = logPrefixForType(type);
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
+        CowByteArray buf = CowByteArray("T") + TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s",
@@ -387,7 +387,7 @@ public:
         QList<QByteArray> msg;
         msg += instanceAddress;
         msg += QByteArray();
-        msg += buf;
+        msg += buf.asQByteArray();
         client_out_stream_sock->write(msg);
     }
 
@@ -399,7 +399,7 @@ public:
         Variant vpacket = packet.toVariant();
 
         if (routerResp) {
-            QByteArray buf = "T" + TnetString::fromVariant(vpacket);
+            CowByteArray buf = "T" + TnetString::fromVariant(vpacket);
 
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body",
@@ -409,17 +409,17 @@ public:
             QList<QByteArray> msg;
             msg += instanceAddress;
             msg += QByteArray();
-            msg += buf;
+            msg += buf.asQByteArray();
             server_in_stream_sock->write(msg);
         } else {
-            QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
+            CowByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body",
                                                "%s server: OUT %s", logprefix,
                                                instanceAddress.data());
 
-            server_out_sock->write(QList<QByteArray>() << buf);
+            server_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
         }
     }
 

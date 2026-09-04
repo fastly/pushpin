@@ -105,6 +105,16 @@ public:
     void clear() { inner_.clear(); }
     void resize(ssize_t size) { inner_.resize(size); }
 
+    const QByteArray &asQByteArray() const { return inner_; }
+
+    int toInt(bool *ok = nullptr, int base = 10) const { return inner_.toInt(ok, base); }
+
+    int64_t toLongLong(bool *ok = nullptr, int base = 10) const {
+        return inner_.toLongLong(ok, base);
+    }
+
+    double toDouble(bool *ok = nullptr) const { return inner_.toDouble(ok); }
+
     char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }
     char &operator[](ssize_t i) { return inner_[(qsizetype)i]; }
 
@@ -127,8 +137,6 @@ public:
         inner_ += other;
         return *this;
     }
-
-    const QByteArray &asQByteArray() const { return inner_; }
 
     friend CowByteArray operator+(const CowByteArray &lhs, const CowByteArray &rhs);
     friend CowByteArray operator+(const CowByteArray &lhs, const char *rhs);

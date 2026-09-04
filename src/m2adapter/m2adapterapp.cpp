@@ -830,7 +830,7 @@ public:
         vlist += cmd;
         vlist += args;
 
-        QByteArray buf = TnetString::fromVariant(vlist);
+        CowByteArray buf = TnetString::fromVariant(vlist);
 
 #ifdef CONTROL_PORT_DEBUG
         log_debug("m2: OUT control %s %s", m2_send_idents[index].data(), buf.data());
@@ -838,7 +838,7 @@ public:
 
         QList<QByteArray> message;
         message += QByteArray();
-        message += buf;
+        message += buf.asQByteArray();
         controlPorts[index].sock->write(message);
     }
 
@@ -849,7 +849,7 @@ public:
         VariantList parts;
         parts += QByteArray("ctl");
         parts += args;
-        mresp.data = TnetString::fromVariant(parts);
+        mresp.data = TnetString::fromVariant(parts).asQByteArray();
         m2_out_write(mresp);
     }
 
@@ -865,7 +865,7 @@ public:
         VariantList parts;
         parts += QByteArray("ctl");
         parts += args;
-        mresp.data = TnetString::fromVariant(parts);
+        mresp.data = TnetString::fromVariant(parts).asQByteArray();
         m2_out_write(mresp);
     }
 
@@ -878,7 +878,7 @@ public:
         VariantList parts;
         parts += QByteArray("ctl");
         parts += args;
-        mresp.data = TnetString::fromVariant(parts);
+        mresp.data = TnetString::fromVariant(parts).asQByteArray();
         m2_out_write(mresp);
     }
 
@@ -1073,15 +1073,15 @@ public:
         const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
+        CowByteArray buf = CowByteArray("T") + TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT", logprefix);
 
         if (mode == Http)
-            zhttp_out_sock->write(QList<QByteArray>() << buf);
+            zhttp_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
         else // WebSocket
-            zws_out_sock->write(QList<QByteArray>() << buf);
+            zws_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
     }
 
     void zhttp_out_write(Mode mode, const ZhttpRequestPacket &packet,
@@ -1089,7 +1089,7 @@ public:
         const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
+        CowByteArray buf = CowByteArray("T") + TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT instance=%s",
@@ -1098,7 +1098,7 @@ public:
         QList<QByteArray> message;
         message += instanceAddress;
         message += QByteArray();
-        message += buf;
+        message += buf.asQByteArray();
 
         if (mode == Http)
             zhttp_out_stream_sock->write(message);

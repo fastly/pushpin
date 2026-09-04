@@ -132,19 +132,19 @@ public:
         p.from = instanceId;
 
         Variant vpacket = p.toVariant();
-        QByteArray buf = TnetString::fromVariant(vpacket);
+        CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-        clientSock->write(QList<QByteArray>() << QByteArray() << buf);
+        clientSock->write(QList<QByteArray>() << QByteArray() << buf.asQByteArray());
     }
 
     void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet) {
         assert(serverSock);
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = TnetString::fromVariant(vpacket);
+        CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
@@ -152,7 +152,7 @@ public:
         QList<QByteArray> message;
         message += headers;
         message += QByteArray();
-        message += buf;
+        message += buf.asQByteArray();
         serverSock->write(message);
     }
 
