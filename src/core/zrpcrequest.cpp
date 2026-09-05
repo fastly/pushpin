@@ -41,14 +41,14 @@ public:
     ZrpcRequest *q;
     ZrpcManager *manager;
     QList<QByteArray> reqHeaders;
-    QByteArray from;
-    QByteArray id;
+    CowByteArray from;
+    CowByteArray id;
     QString method;
     VariantHash args;
     bool success;
     Variant result;
     ErrorCondition condition;
-    QByteArray conditionString;
+    CowByteArray conditionString;
     std::unique_ptr<Timer> timer;
     Connection timerConnection;
     DeferCall deferCall;
@@ -77,7 +77,7 @@ public:
         manager->write(reqHeaders, p);
     }
 
-    void respondError(const QByteArray &condition, const Variant &value) {
+    void respondError(const CowByteArray &condition, const Variant &value) {
         ZrpcResponsePacket p;
         p.id = id;
         p.success = false;
@@ -88,8 +88,8 @@ public:
 
     void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
         reqHeaders = headers;
-        from = packet.from.asQByteArray();
-        id = packet.id.asQByteArray();
+        from = packet.from;
+        id = packet.id;
         method = packet.method.asQString();
         args = packet.args;
     }
@@ -107,7 +107,7 @@ public:
             else
                 condition = ErrorGeneric;
 
-            conditionString = packet.condition.asQByteArray();
+            conditionString = packet.condition;
 
             result = packet.value;
             q->onError();
@@ -162,9 +162,9 @@ ZrpcRequest::~ZrpcRequest() {
     delete d;
 }
 
-QByteArray ZrpcRequest::from() const { return d->from; }
+CowByteArray ZrpcRequest::from() const { return d->from; }
 
-QByteArray ZrpcRequest::id() const { return d->id; }
+CowByteArray ZrpcRequest::id() const { return d->id; }
 
 QString ZrpcRequest::method() const { return d->method; }
 
@@ -176,7 +176,7 @@ Variant ZrpcRequest::result() const { return d->result; }
 
 ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const { return d->condition; }
 
-QByteArray ZrpcRequest::errorConditionString() const { return d->conditionString; }
+CowByteArray ZrpcRequest::errorConditionString() const { return d->conditionString; }
 
 void ZrpcRequest::start(const QString &method, const VariantHash &args) {
     d->method = method;
@@ -186,7 +186,7 @@ void ZrpcRequest::start(const QString &method, const VariantHash &args) {
 
 void ZrpcRequest::respond(const Variant &result) { d->respond(result); }
 
-void ZrpcRequest::respondError(const QByteArray &condition, const Variant &result) {
+void ZrpcRequest::respondError(const CowByteArray &condition, const Variant &result) {
     d->respondError(condition, result);
 }
 
@@ -205,7 +205,7 @@ void ZrpcRequest::onError() {
 }
 
 void ZrpcRequest::setupClient(ZrpcManager *manager) {
-    d->id = UuidUtil::createUuid().asQByteArray();
+    d->id = UuidUtil::createUuid();
     d->manager = manager;
     d->manager->link(this);
 }

@@ -150,10 +150,10 @@ static void es256EncodeDecode() {
     CowByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
-    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson.asQByteArray(), privateKey);
+    CowByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
     TEST_ASSERT(!token.isNull());
 
-    QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
+    CowByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
     TEST_ASSERT(!resultJson.isNull());
 
     Variant result_variant = Json::fromString(resultJson);
@@ -179,10 +179,10 @@ static void rs256EncodeDecode() {
     CowByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
-    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson.asQByteArray(), privateKey);
+    CowByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson, privateKey);
     TEST_ASSERT(!token.isNull());
 
-    QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);
+    CowByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);
     TEST_ASSERT(!resultJson.isNull());
 
     Variant result_variant = Json::fromString(resultJson);

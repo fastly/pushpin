@@ -37,13 +37,13 @@ EncodingKey::Private::Private(ffi::JwtEncodingKey key) : type((KeyType)key.type)
 
 EncodingKey::Private::~Private() { ffi::jwt_encoding_key_destroy(raw); }
 
-EncodingKey EncodingKey::fromSecret(const QByteArray &key) {
+EncodingKey EncodingKey::fromSecret(const CowByteArray &key) {
     EncodingKey k;
     k.d = new Private(ffi::jwt_encoding_key_from_secret((const uint8_t *)key.data(), key.size()));
     return k;
 }
 
-EncodingKey EncodingKey::fromPem(const QByteArray &key) {
+EncodingKey EncodingKey::fromPem(const CowByteArray &key) {
     EncodingKey k;
     k.d = new Private(ffi::jwt_encoding_key_from_pem((const uint8_t *)key.data(), key.size()));
     return k;
@@ -91,13 +91,13 @@ DecodingKey::Private::Private(ffi::JwtDecodingKey key) : type((KeyType)key.type)
 
 DecodingKey::Private::~Private() { ffi::jwt_decoding_key_destroy(raw); }
 
-DecodingKey DecodingKey::fromSecret(const QByteArray &key) {
+DecodingKey DecodingKey::fromSecret(const CowByteArray &key) {
     DecodingKey k;
     k.d = new Private(ffi::jwt_decoding_key_from_secret((const uint8_t *)key.data(), key.size()));
     return k;
 }
 
-DecodingKey DecodingKey::fromPem(const QByteArray &key) {
+DecodingKey DecodingKey::fromPem(const CowByteArray &key) {
     DecodingKey k;
     k.d = new Private(ffi::jwt_decoding_key_from_pem((const uint8_t *)key.data(), key.size()));
     return k;
@@ -139,35 +139,35 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
     }
 }
 
-QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key) {
+CowByteArray encodeWithAlgorithm(Algorithm alg, const CowByteArray &claim, const EncodingKey &key) {
     char *token;
 
     if (ffi::jwt_encode((int)alg, (const char *)claim.data(), key.raw(), &token) != 0) {
         // Error
-        return QByteArray();
+        return CowByteArray();
     }
 
-    QByteArray out = QByteArray(token);
+    CowByteArray out = QByteArray(token);
     ffi::jwt_str_destroy(token);
 
     return out;
 }
 
-QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key) {
+CowByteArray decodeWithAlgorithm(Algorithm alg, const CowByteArray &token, const DecodingKey &key) {
     char *claim;
 
     if (ffi::jwt_decode((int)alg, (const char *)token.data(), key.raw(), &claim) != 0) {
         // Error
-        return QByteArray();
+        return CowByteArray();
     }
 
-    QByteArray out = QByteArray(claim);
+    CowByteArray out = QByteArray(claim);
     ffi::jwt_str_destroy(claim);
 
     return out;
 }
 
-QByteArray encode(const Variant &claim, const EncodingKey &key) {
+CowByteArray encode(const Variant &claim, const EncodingKey &key) {
     Algorithm alg;
     switch (key.type()) {
     case Jwt::KeyType::Secret:
@@ -180,17 +180,17 @@ QByteArray encode(const Variant &claim, const EncodingKey &key) {
         alg = Jwt::RS256;
         break;
     default:
-        return QByteArray();
+        return CowByteArray();
     }
 
     CowByteArray claimJson = Json::toString(claim.toMap());
     if (claimJson.isNull())
-        return QByteArray();
+        return CowByteArray();
 
-    return encodeWithAlgorithm(alg, claimJson.asQByteArray(), key);
+    return encodeWithAlgorithm(alg, claimJson, key);
 }
 
-Variant decode(const QByteArray &token, const DecodingKey &key) {
+Variant decode(const CowByteArray &token, const DecodingKey &key) {
     Algorithm alg;
     switch (key.type()) {
     case Jwt::KeyType::Secret:
@@ -206,7 +206,7 @@ Variant decode(const QByteArray &token, const DecodingKey &key) {
         return Variant();
     }
 
-    QByteArray claimJson = decodeWithAlgorithm(alg, token, key);
+    CowByteArray claimJson = decodeWithAlgorithm(alg, token, key);
     if (claimJson.isEmpty())
         return Variant();
 

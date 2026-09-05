@@ -323,7 +323,7 @@ VariantList toList(const CowByteArray &in, [[maybe_unused]] int offset, int data
     return out;
 }
 
-QString byteArrayToEscapedString(const QByteArray &in) {
+QString byteArrayToEscapedString(const CowByteArray &in) {
     QString out;
     for (int n = 0; n < in.size(); ++n) {
         char c = in[n];

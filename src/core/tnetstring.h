@@ -50,7 +50,7 @@ Variant toVariant(const CowByteArray &in, int offset, Type type, int dataOffset,
                   bool *ok = 0);
 Variant toVariant(const CowByteArray &in, int offset = 0, bool *ok = 0);
 
-QString byteArrayToEscapedString(const QByteArray &in);
+QString byteArrayToEscapedString(const CowByteArray &in);
 
 // Pass >= 0 for pretty print, -1 for compact
 QString variantToString(const Variant &in, int indent = 0);

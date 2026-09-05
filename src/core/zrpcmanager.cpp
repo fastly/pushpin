@@ -64,7 +64,7 @@ public:
     std::unique_ptr<ZmqSocket> serverSock;
     std::unique_ptr<ZmqValve> clientValve;
     std::unique_ptr<ZmqValve> serverValve;
-    QHash<QByteArray, ZrpcRequest *> clientReqsById;
+    QHash<CowByteArray, ZrpcRequest *> clientReqsById;
     QList<PendingItem> pending;
     Connection clientValveConnection;
     Connection serverValveConnection;
@@ -184,7 +184,7 @@ public:
             return;
         }
 
-        ZrpcRequest *req = clientReqsById.value(p.id.asQByteArray());
+        ZrpcRequest *req = clientReqsById.value(p.id);
         if (!req) {
             log_debug("zrpc client: received message for unknown request id, skipping");
             return;
