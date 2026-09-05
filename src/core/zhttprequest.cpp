@@ -750,7 +750,7 @@ public:
                 manager->writeHttp(out);
             } else {
                 assert(!toAddress.isEmpty());
-                manager->writeHttp(out, toAddress.asQByteArray());
+                manager->writeHttp(out, toAddress);
             }
         }
     }
@@ -763,7 +763,7 @@ public:
         out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
         out.userData = userData;
 
-        manager->writeHttp(out, rid.first.asQByteArray(), routerResp);
+        manager->writeHttp(out, rid.first, routerResp);
     }
 
     void writeCancel() {

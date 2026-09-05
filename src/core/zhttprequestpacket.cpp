@@ -114,7 +114,7 @@ Variant ZhttpRequestPacket::toVariant() const {
         obj["method"] = method.toUtf8().asQByteArray();
 
     if (!uri.isEmpty())
-        obj["uri"] = uri.toEncoded();
+        obj["uri"] = uri.toEncoded().asQByteArray();
 
     if (!headers.isEmpty()) {
         VariantList vheaders;

@@ -526,7 +526,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
     inner->setup(context.zhttpOut, destUri, headers, passthroughData, content,
                  context.responseSizeMax);
 
-    QString key = QString::fromUtf8(destUri.toEncoded());
+    QString key = QString::fromUtf8(destUri.toEncoded().asQByteArray());
 
     assert(context.limiter);
 
