@@ -89,7 +89,7 @@ public:
     std::unique_ptr<ZmqValve> client_out_stream_valve;
     std::unique_ptr<ZmqValve> server_in_valve;
     std::unique_ptr<ZmqValve> server_in_stream_valve;
-    QByteArray instanceId;
+    CowByteArray instanceId;
     int ipcFileMode;
     bool doBind;
     bool doProbe;
@@ -988,9 +988,9 @@ ZhttpRequest *ZhttpManager::serverRequestByRid(const ZhttpRequest::Rid &rid) con
     return d->serverReqsByRid.value(rid);
 }
 
-QByteArray ZhttpManager::instanceId() const { return d->instanceId; }
+CowByteArray ZhttpManager::instanceId() const { return d->instanceId; }
 
-void ZhttpManager::setInstanceId(const QByteArray &id) { d->instanceId = id; }
+void ZhttpManager::setInstanceId(const CowByteArray &id) { d->instanceId = id; }
 
 void ZhttpManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
 
@@ -1190,7 +1190,7 @@ int ZhttpManager::estimateRequestHeaderBytes(const QString &method, const CowUrl
     return total;
 }
 
-int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason,
+int ZhttpManager::estimateResponseHeaderBytes(int code, const CowByteArray &reason,
                                               const HttpHeaders &headers) {
     int total = QString::number(code).length();
     total += reason.length();

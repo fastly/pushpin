@@ -147,10 +147,10 @@ static void es256EncodeDecode() {
     VariantMap claim;
     claim["iss"] = "nobody";
 
-    QByteArray claimJson = Json::toString(claim);
+    CowByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
-    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
+    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson.asQByteArray(), privateKey);
     TEST_ASSERT(!token.isNull());
 
     QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
@@ -176,10 +176,10 @@ static void rs256EncodeDecode() {
     VariantMap claim;
     claim["iss"] = "nobody";
 
-    QByteArray claimJson = Json::toString(claim);
+    CowByteArray claimJson = Json::toString(claim);
     TEST_ASSERT(!claimJson.isNull());
 
-    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson, privateKey);
+    QByteArray token = Jwt::encodeWithAlgorithm(Jwt::RS256, claimJson.asQByteArray(), privateKey);
     TEST_ASSERT(!token.isNull());
 
     QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::RS256, token, publicKey);

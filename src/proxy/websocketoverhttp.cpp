@@ -286,7 +286,7 @@ public:
         state = Connecting;
 
         if (cid.isEmpty())
-            cid = UuidUtil::createUuid();
+            cid = UuidUtil::createUuid().asQByteArray();
 
         if (requestData.uri.scheme() == "wss")
             requestData.uri.setScheme("https");

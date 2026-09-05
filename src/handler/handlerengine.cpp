@@ -2741,7 +2741,7 @@ private:
                 if (responseContentType == "application/json") {
                     VariantMap obj;
                     obj["message"] = message;
-                    QString body = QString::fromUtf8(Json::toString(obj));
+                    QString body = QString::fromUtf8(Json::toString(obj).asQByteArray());
                     httpControlRespond(req, 200, "OK", body + "\n", responseContentType,
                                        HttpHeaders(), items.count());
                 } else // Text/plain
@@ -2765,7 +2765,7 @@ private:
                 if (responseContentType == "application/json") {
                     VariantMap obj;
                     obj["message"] = message;
-                    QString body = QString::fromUtf8(Json::toString(obj));
+                    QString body = QString::fromUtf8(Json::toString(obj).asQByteArray());
                     httpControlRespond(req, 200, "OK", body + "\n", responseContentType,
                                        HttpHeaders());
                 } else // Text/plain

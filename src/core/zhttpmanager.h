@@ -43,8 +43,8 @@ public:
     bool clientUsesReq() const;
     ZhttpRequest *serverRequestByRid(const ZhttpRequest::Rid &rid) const;
 
-    QByteArray instanceId() const;
-    void setInstanceId(const QByteArray &id);
+    CowByteArray instanceId() const;
+    void setInstanceId(const CowByteArray &id);
 
     void setIpcFileMode(int mode);
     void setBind(bool enable);
@@ -71,7 +71,7 @@ public:
 
     static int estimateRequestHeaderBytes(const QString &method, const CowUrl &uri,
                                           const HttpHeaders &headers);
-    static int estimateResponseHeaderBytes(int code, const QByteArray &reason,
+    static int estimateResponseHeaderBytes(int code, const CowByteArray &reason,
                                            const HttpHeaders &headers);
 
     Signal requestReady;

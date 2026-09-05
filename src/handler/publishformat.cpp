@@ -100,7 +100,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const Variant &in, bool *ok,
             if (!reasonStr.isEmpty())
                 out.reason = reasonStr.toUtf8();
             else
-                out.reason = StatusReasons::getReason(out.code);
+                out.reason = StatusReasons::getReason(out.code).asQByteArray();
 
             if (keyedObjectContains(in, "headers")) {
                 Variant vheaders = keyedObjectGetValue(in, "headers");

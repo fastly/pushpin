@@ -17,14 +17,14 @@
 #ifndef JSON_H
 #define JSON_H
 
+#include "cowbytearray.h"
 #include "variant.h"
-#include <QByteArray>
 
 namespace Json {
 
-QByteArray toString(const Variant &variant);
+CowByteArray toString(const Variant &variant);
 
-Variant fromString(const QByteArray &json);
+Variant fromString(const CowByteArray &json);
 
 } // namespace Json
 
