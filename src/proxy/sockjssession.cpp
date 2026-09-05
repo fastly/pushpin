@@ -133,11 +133,11 @@ public:
     QHash<ZhttpRequest *, RequestItem *> requests;
     std::unique_ptr<Timer> keepAliveTimer;
     int closeCode;
-    QString closeReason;
+    CowString closeReason;
     bool closeSent;
     bool peerClosed;
     int peerCloseCode;
-    QString peerCloseReason;
+    CowString peerCloseReason;
     bool updating;
     map<ZhttpRequest *, ReqConnections> reqConnectionMap;
     WSConnections wsConnection;
@@ -399,7 +399,7 @@ public:
         }
     }
 
-    void accept(const QByteArray &reason, const HttpHeaders &headers) {
+    void accept(const CowByteArray &reason, const HttpHeaders &headers) {
         if (errored)
             return;
 
@@ -430,8 +430,8 @@ public:
         }
     }
 
-    void reject(int code, const QByteArray &reason, const HttpHeaders &headers,
-                const QByteArray &body) {
+    void reject(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                const CowByteArray &body) {
         if (errored)
             return;
 
@@ -442,7 +442,7 @@ public:
 
             ri->type = RequestItem::Reject;
             ri->responded = true;
-            respond(req, code, reason, headers, body);
+            respond(req, code, reason.asQByteArray(), headers, body.asQByteArray());
         } else {
             assert(sock);
 
@@ -481,7 +481,7 @@ public:
             } else // WebSocketFramed
             {
                 VariantList messages;
-                messages += QString::fromUtf8(frame.data);
+                messages += QString::fromUtf8(frame.data.asQByteArray());
 
                 QByteArray arrayJson = Json::toString(messages);
                 Frame f(Frame::Text, "a" + arrayJson, false);
@@ -503,7 +503,7 @@ public:
         }
     }
 
-    void close(int code, const QString &reason) {
+    void close(int code, const CowString &reason) {
         assert(state != Closing);
 
         state = Closing;
@@ -779,7 +779,7 @@ public:
             closeValue += 0;
 
         if (closeCode != -1 && !closeReason.isEmpty())
-            closeValue += closeReason;
+            closeValue += closeReason.asQString();
         else
             closeValue += QString("Connection closed");
 
@@ -963,7 +963,7 @@ DomainMap::Entry SockJsSession::route() const { return d->route; }
 
 QHostAddress SockJsSession::peerAddress() const { return d->peerAddress; }
 
-void SockJsSession::setConnectHost([[maybe_unused]] const QString &host) {
+void SockJsSession::setConnectHost([[maybe_unused]] const CowString &host) {
     // This class is server only
     assert(0);
 }
@@ -988,8 +988,8 @@ void SockJsSession::setIgnoreTlsErrors([[maybe_unused]] bool on) {
     assert(0);
 }
 
-void SockJsSession::setClientCert([[maybe_unused]] const QString &cert,
-                                  [[maybe_unused]] const QString &key) {
+void SockJsSession::setClientCert([[maybe_unused]] const CowString &cert,
+                                  [[maybe_unused]] const CowString &key) {
     // This class is server only
     assert(0);
 }
@@ -1000,12 +1000,12 @@ void SockJsSession::start([[maybe_unused]] const CowUrl &uri,
     assert(0);
 }
 
-void SockJsSession::respondSuccess(const QByteArray &reason, const HttpHeaders &headers) {
+void SockJsSession::respondSuccess(const CowByteArray &reason, const HttpHeaders &headers) {
     d->accept(reason, headers);
 }
 
-void SockJsSession::respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                                 const QByteArray &body) {
+void SockJsSession::respondError(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                                 const CowByteArray &body) {
     d->reject(code, reason, headers, body);
 }
 
@@ -1021,10 +1021,10 @@ int SockJsSession::responseCode() const {
     return -1;
 }
 
-QByteArray SockJsSession::responseReason() const {
+CowByteArray SockJsSession::responseReason() const {
     // This class is server only
     assert(0);
-    return QByteArray();
+    return CowByteArray();
 }
 
 HttpHeaders SockJsSession::responseHeaders() const {
@@ -1033,10 +1033,10 @@ HttpHeaders SockJsSession::responseHeaders() const {
     return HttpHeaders();
 }
 
-QByteArray SockJsSession::responseBody() const {
+CowByteArray SockJsSession::responseBody() const {
     // This class is server only
     assert(0);
-    return QByteArray();
+    return CowByteArray();
 }
 
 int SockJsSession::framesAvailable() const {
@@ -1064,7 +1064,7 @@ int SockJsSession::writeBytesAvailable() const {
 
 int SockJsSession::peerCloseCode() const { return d->peerCloseCode; }
 
-QString SockJsSession::peerCloseReason() const { return d->peerCloseReason; }
+CowString SockJsSession::peerCloseReason() const { return d->peerCloseReason; }
 
 WebSocket::ErrorCondition SockJsSession::errorCondition() const { return d->errorCondition; }
 
@@ -1072,7 +1072,7 @@ void SockJsSession::writeFrame(const Frame &frame) { d->writeFrame(frame); }
 
 WebSocket::Frame SockJsSession::readFrame() { return d->readFrame(); }
 
-void SockJsSession::close(int code, const QString &reason) { d->close(code, reason); }
+void SockJsSession::close(int code, const CowString &reason) { d->close(code, reason); }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req,
                                 const QByteArray &jsonpCallback, const CowUrl &asUri,

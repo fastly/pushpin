@@ -160,13 +160,13 @@ public:
 
     WebSocketOverHttp *q;
     ZhttpManager *zhttpManager;
-    QString connectHost;
+    CowString connectHost;
     int connectPort;
     bool ignorePolicies;
     bool trustConnectHost;
     bool ignoreTlsErrors;
-    QString clientCert;
-    QString clientKey;
+    CowString clientCert;
+    CowString clientKey;
     State state;
     QByteArray cid;
     HttpRequestData requestData;
@@ -191,11 +191,11 @@ public:
     int outFramesReplay;
     int outContentReplay;
     int closeCode;
-    QString closeReason;
+    CowString closeReason;
     bool closeSent;
     bool peerClosing;
     int peerCloseCode;
-    QString peerCloseReason;
+    CowString peerCloseReason;
     bool disconnecting;
     bool disconnectSent;
     bool updateQueued;
@@ -308,7 +308,7 @@ public:
 
     Frame readFrame() { return inFrames.takeFirst(); }
 
-    void close(int code, const QString &reason) {
+    void close(int code, const CowString &reason) {
         assert(state != Closing);
 
         state = Closing;
@@ -468,7 +468,7 @@ private:
                     log_debug("woh: skipping partial message at close");
 
                 if (closeCode != -1) {
-                    QByteArray rawReason = closeReason.toUtf8();
+                    CowByteArray rawReason = closeReason.toUtf8();
 
                     QByteArray buf(2 + rawReason.size(), 0);
                     buf[0] = (closeCode >> 8) & 0xff;
@@ -939,7 +939,7 @@ QHostAddress WebSocketOverHttp::peerAddress() const {
     return QHostAddress();
 }
 
-void WebSocketOverHttp::setConnectHost(const QString &host) { d->connectHost = host; }
+void WebSocketOverHttp::setConnectHost(const CowString &host) { d->connectHost = host; }
 
 void WebSocketOverHttp::setConnectPort(int port) { d->connectPort = port; }
 
@@ -949,7 +949,7 @@ void WebSocketOverHttp::setTrustConnectHost(bool on) { d->trustConnectHost = on;
 
 void WebSocketOverHttp::setIgnoreTlsErrors(bool on) { d->ignoreTlsErrors = on; }
 
-void WebSocketOverHttp::setClientCert(const QString &cert, const QString &key) {
+void WebSocketOverHttp::setClientCert(const CowString &cert, const CowString &key) {
     d->clientCert = cert;
     d->clientKey = key;
 }
@@ -965,16 +965,16 @@ void WebSocketOverHttp::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->start();
 }
 
-void WebSocketOverHttp::respondSuccess([[maybe_unused]] const QByteArray &reason,
+void WebSocketOverHttp::respondSuccess([[maybe_unused]] const CowByteArray &reason,
                                        [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }
 
 void WebSocketOverHttp::respondError([[maybe_unused]] int code,
-                                     [[maybe_unused]] const QByteArray &reason,
+                                     [[maybe_unused]] const CowByteArray &reason,
                                      [[maybe_unused]] const HttpHeaders &headers,
-                                     [[maybe_unused]] const QByteArray &body) {
+                                     [[maybe_unused]] const CowByteArray &body) {
     // This class is client only
     assert(0);
 }
@@ -987,13 +987,11 @@ HttpHeaders WebSocketOverHttp::requestHeaders() const { return d->requestData.he
 
 int WebSocketOverHttp::responseCode() const { return d->responseData.code; }
 
-QByteArray WebSocketOverHttp::responseReason() const {
-    return d->responseData.reason.asQByteArray();
-}
+CowByteArray WebSocketOverHttp::responseReason() const { return d->responseData.reason; }
 
 HttpHeaders WebSocketOverHttp::responseHeaders() const { return d->responseData.headers; }
 
-QByteArray WebSocketOverHttp::responseBody() const { return d->responseData.body.asQByteArray(); }
+CowByteArray WebSocketOverHttp::responseBody() const { return d->responseData.body; }
 
 int WebSocketOverHttp::framesAvailable() const { return d->inFrames.count(); }
 
@@ -1001,7 +999,7 @@ int WebSocketOverHttp::writeBytesAvailable() const { return d->writeBytesAvailab
 
 int WebSocketOverHttp::peerCloseCode() const { return d->peerCloseCode; }
 
-QString WebSocketOverHttp::peerCloseReason() const { return d->peerCloseReason; }
+CowString WebSocketOverHttp::peerCloseReason() const { return d->peerCloseReason; }
 
 WebSocket::ErrorCondition WebSocketOverHttp::errorCondition() const { return d->errorCondition; }
 
@@ -1009,7 +1007,7 @@ void WebSocketOverHttp::writeFrame(const Frame &frame) { d->writeFrame(frame); }
 
 WebSocket::Frame WebSocketOverHttp::readFrame() { return d->readFrame(); }
 
-void WebSocketOverHttp::close(int code, const QString &reason) { d->close(code, reason); }
+void WebSocketOverHttp::close(int code, const CowString &reason) { d->close(code, reason); }
 
 void WebSocketOverHttp::setHeaders(const HttpHeaders &headers) {
     d->requestData.headers = headers;

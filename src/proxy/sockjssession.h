@@ -51,35 +51,35 @@ public:
 
     virtual QHostAddress peerAddress() const;
 
-    virtual void setConnectHost(const QString &host);
+    virtual void setConnectHost(const CowString &host);
     virtual void setConnectPort(int port);
     virtual void setIgnorePolicies(bool on);
     virtual void setTrustConnectHost(bool on);
     virtual void setIgnoreTlsErrors(bool on);
-    virtual void setClientCert(const QString &cert, const QString &key);
+    virtual void setClientCert(const CowString &cert, const CowString &key);
 
     virtual void start(const CowUrl &uri, const HttpHeaders &headers);
 
-    virtual void respondSuccess(const QByteArray &reason, const HttpHeaders &headers);
-    virtual void respondError(int code, const QByteArray &reason, const HttpHeaders &headers,
-                              const QByteArray &body);
+    virtual void respondSuccess(const CowByteArray &reason, const HttpHeaders &headers);
+    virtual void respondError(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                              const CowByteArray &body);
 
     virtual State state() const;
     virtual CowUrl requestUri() const;
     virtual HttpHeaders requestHeaders() const;
     virtual int responseCode() const;
-    virtual QByteArray responseReason() const;
+    virtual CowByteArray responseReason() const;
     virtual HttpHeaders responseHeaders() const;
-    virtual QByteArray responseBody() const;
+    virtual CowByteArray responseBody() const;
     virtual int framesAvailable() const;
     virtual int writeBytesAvailable() const;
     virtual int peerCloseCode() const;
-    virtual QString peerCloseReason() const;
+    virtual CowString peerCloseReason() const;
     virtual ErrorCondition errorCondition() const;
 
     virtual void writeFrame(const Frame &frame);
     virtual Frame readFrame();
-    virtual void close(int code = -1, const QString &reason = QString());
+    virtual void close(int code = -1, const CowString &reason = CowString());
 
 private:
     class Private;
