@@ -229,7 +229,7 @@ public:
         requestMethod = ss.requestMethod;
         requestUri = ss.requestUri;
         requestHeaders = ss.requestHeaders;
-        requestBodyBuf += ss.requestBody;
+        requestBodyBuf += ss.requestBody.asQByteArray();
         if (ss.inSeq >= 0)
             inSeq = ss.inSeq;
         if (ss.outSeq >= 0)
@@ -716,9 +716,9 @@ public:
         assert(!pausing && !paused);
 
         if (server)
-            responseBodyBuf += body;
+            responseBodyBuf += body.asQByteArray();
         else
-            requestBodyBuf += body;
+            requestBodyBuf += body.asQByteArray();
 
         update();
     }

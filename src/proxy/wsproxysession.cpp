@@ -630,7 +630,7 @@ public:
                     if (f.type == WebSocket::Frame::Text && f.data.startsWith("c:")) {
                         // Grip messages must only be one frame
                         if (!f.more)
-                            wsControl->sendGripMessage(f.data.mid(2)); // Process
+                            wsControl->sendGripMessage(f.data.mid(2).asQByteArray()); // Process
                         else
                             outReadInProgress = -1; // Ignore rest of message
                     } else if (f.type != WebSocket::Frame::Continuation) {
@@ -786,7 +786,7 @@ public:
 
     void in_closed() {
         int code = inSock->peerCloseCode();
-        QString reason = inSock->peerCloseReason();
+        CowString reason = inSock->peerCloseReason();
         cleanupInSock();
 
         if (!detached && outSock && outSock->state() != WebSocket::Closing)
@@ -811,8 +811,9 @@ public:
 
         HttpHeaders headers = outSock->responseHeaders();
 
-        incCounter(Stats::ServerHeaderBytesReceived, ZhttpManager::estimateResponseHeaderBytes(
-                                                         101, outSock->responseReason(), headers));
+        incCounter(Stats::ServerHeaderBytesReceived,
+                   ZhttpManager::estimateResponseHeaderBytes(
+                       101, outSock->responseReason().asQByteArray(), headers));
 
         // Don't proxy extensions, as we may not know how to handle them
         QList<QByteArray> wsExtensions =
@@ -870,8 +871,9 @@ public:
 
         inSock->respondSuccess(outSock->responseReason(), headers);
 
-        incCounter(Stats::ClientHeaderBytesSent, ZhttpManager::estimateResponseHeaderBytes(
-                                                     101, outSock->responseReason(), headers));
+        incCounter(Stats::ClientHeaderBytesSent,
+                   ZhttpManager::estimateResponseHeaderBytes(
+                       101, outSock->responseReason().asQByteArray(), headers));
 
         logConnection(true, 101, 0);
 
@@ -893,7 +895,7 @@ public:
 
     void out_closed() {
         int code = outSock->peerCloseCode();
-        QString reason = outSock->peerCloseReason();
+        CowString reason = outSock->peerCloseReason();
         cleanupOutSock();
 
         if (!detached && inSock && inSock->state() != WebSocket::Closing)
@@ -922,8 +924,8 @@ public:
                 tryAgain = true;
                 break;
             case WebSocket::ErrorRejected:
-                reject(true, outSock->responseCode(), outSock->responseReason(),
-                       outSock->responseHeaders(), outSock->responseBody());
+                reject(true, outSock->responseCode(), outSock->responseReason().asQByteArray(),
+                       outSock->responseHeaders(), outSock->responseBody().asQByteArray());
                 break;
             default:
                 reject(true, 502, "Bad Gateway", "Error while proxying to origin.");
@@ -1008,7 +1010,7 @@ public:
             outSock->close();
 
         if (inSock && inSock->state() != WebSocket::Closing)
-            inSock->close(code, reason);
+            inSock->close(code, QString::fromUtf8(reason));
     }
 
     void wsControl_detachEventReceived() {

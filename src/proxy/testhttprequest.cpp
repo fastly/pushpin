@@ -170,7 +170,7 @@ void TestHttpRequest::writeBody(const CowByteArray &body) {
         CowByteArray buf = body.mid(0, MAX_REQUEST_SIZE - d->requestBody.size());
 
         if (!buf.isEmpty()) {
-            d->requestBody += buf;
+            d->requestBody += buf.asQByteArray();
 
             int written = buf.size();
             d->deferCall.defer([=] { d->doBytesWritten(written); });

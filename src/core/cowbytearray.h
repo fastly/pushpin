@@ -98,6 +98,7 @@ public:
 
     bool contains(char ch) const { return inner_.contains(ch); }
     ssize_t indexOf(char ch, ssize_t from = 0) const { return inner_.indexOf(ch, from); }
+    bool startsWith(const QByteArray &ba) const { return inner_.startsWith(ba); }
     CowByteArray mid(ssize_t pos, ssize_t len = -1) const { return inner_.mid(pos, len); }
     CowByteArray trimmed() const { return inner_.trimmed(); }
 

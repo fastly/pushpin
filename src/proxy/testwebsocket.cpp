@@ -44,7 +44,7 @@ public:
     bool gripEnabled;
     QList<Frame> inFrames;
     int peerCloseCode;
-    QString peerCloseReason;
+    CowString peerCloseReason;
     ErrorCondition errorCondition;
     DeferCall deferCall;
 
@@ -129,7 +129,7 @@ QHostAddress TestWebSocket::peerAddress() const {
     return QHostAddress();
 }
 
-void TestWebSocket::setConnectHost([[maybe_unused]] const QString &host) {}
+void TestWebSocket::setConnectHost([[maybe_unused]] const CowString &host) {}
 
 void TestWebSocket::setConnectPort([[maybe_unused]] int port) {}
 
@@ -139,8 +139,8 @@ void TestWebSocket::setTrustConnectHost([[maybe_unused]] bool on) {}
 
 void TestWebSocket::setIgnoreTlsErrors([[maybe_unused]] bool on) {}
 
-void TestWebSocket::setClientCert([[maybe_unused]] const QString &cert,
-                                  [[maybe_unused]] const QString &key) {}
+void TestWebSocket::setClientCert([[maybe_unused]] const CowString &cert,
+                                  [[maybe_unused]] const CowString &key) {}
 
 void TestWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->request.uri = uri;
@@ -151,16 +151,16 @@ void TestWebSocket::start(const CowUrl &uri, const HttpHeaders &headers) {
     d->deferCall.defer([=] { d->handleConnect(); });
 }
 
-void TestWebSocket::respondSuccess([[maybe_unused]] const QByteArray &reason,
+void TestWebSocket::respondSuccess([[maybe_unused]] const CowByteArray &reason,
                                    [[maybe_unused]] const HttpHeaders &headers) {
     // This class is client only
     assert(0);
 }
 
 void TestWebSocket::respondError([[maybe_unused]] int code,
-                                 [[maybe_unused]] const QByteArray &reason,
+                                 [[maybe_unused]] const CowByteArray &reason,
                                  [[maybe_unused]] const HttpHeaders &headers,
-                                 [[maybe_unused]] const QByteArray &body) {
+                                 [[maybe_unused]] const CowByteArray &body) {
     // This class is client only
     assert(0);
 }
@@ -182,11 +182,11 @@ HttpHeaders TestWebSocket::requestHeaders() const { return d->request.headers; }
 
 int TestWebSocket::responseCode() const { return d->response.code; }
 
-QByteArray TestWebSocket::responseReason() const { return d->response.reason.asQByteArray(); }
+CowByteArray TestWebSocket::responseReason() const { return d->response.reason; }
 
 HttpHeaders TestWebSocket::responseHeaders() const { return d->response.headers; }
 
-QByteArray TestWebSocket::responseBody() const { return d->response.body.asQByteArray(); }
+CowByteArray TestWebSocket::responseBody() const { return d->response.body; }
 
 int TestWebSocket::framesAvailable() const { return d->inFrames.count(); }
 
@@ -203,7 +203,7 @@ int TestWebSocket::writeBytesAvailable() const {
 
 int TestWebSocket::peerCloseCode() const { return d->peerCloseCode; }
 
-QString TestWebSocket::peerCloseReason() const { return d->peerCloseReason; }
+CowString TestWebSocket::peerCloseReason() const { return d->peerCloseReason; }
 
 WebSocket::ErrorCondition TestWebSocket::errorCondition() const { return d->errorCondition; }
 
@@ -227,7 +227,7 @@ WebSocket::Frame TestWebSocket::readFrame() {
     return d->inFrames.takeFirst();
 }
 
-void TestWebSocket::close(int code, const QString &reason) {
+void TestWebSocket::close(int code, const CowString &reason) {
     d->state = Private::Closing;
     d->peerCloseCode = code;
     d->peerCloseReason = reason;
