@@ -7,7 +7,7 @@ repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
 license = "Apache-2.0"
 edition = "2018"
-rust-version = "1.75"
+rust-version = "1.81"
 default-run = "pushpin"
 
 [package.metadata.deb]
