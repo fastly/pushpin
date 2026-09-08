@@ -58,7 +58,6 @@ default = ["do-qmake", "do-cpp-build"]
 do-qmake = []
 do-cpp-build = []
 breaking-changes = []
-legacy-runner = []
 
 [profile.dev]
 panic = "abort"
@@ -144,12 +143,6 @@ bench = false
 name = "pushpin-handler"
 test = false
 bench = false
-
-[[bin]]
-name = "pushpin-legacy"
-test = false
-bench = false
-required-features = ["legacy-runner"]
 
 [[bin]]
 name = "pushpin"

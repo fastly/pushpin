@@ -186,7 +186,6 @@ fn write_postbuild_conf_pri(
     config_dir: &str,
     run_dir: &str,
     log_dir: &str,
-    include_legacy_runner: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut out = Vec::new();
 
@@ -195,11 +194,6 @@ fn write_postbuild_conf_pri(
     writeln!(&mut out, "CONFIGDIR = {}/pushpin", config_dir)?;
     writeln!(&mut out, "RUNDIR = {}/pushpin", run_dir)?;
     writeln!(&mut out, "LOGDIR = {}/pushpin", log_dir)?;
-
-    if include_legacy_runner {
-        writeln!(&mut out)?;
-        writeln!(&mut out, "CONFIG += include_legacy_runner")?;
-    }
 
     write_if_different(dest, &out)
 }
@@ -554,8 +548,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         version_ge_2,
     )?;
 
-    let include_legacy_runner = cfg!(feature = "legacy-runner");
-
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
         &bin_dir,
@@ -563,7 +555,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         &config_dir,
         &run_dir,
         &log_dir,
-        include_legacy_runner,
     )?;
 
     if cfg!(feature = "do-qmake") {
