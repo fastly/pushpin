@@ -38,16 +38,32 @@ const CONNS_MAX: usize = 10;
 const REACTOR_BUDGET: u32 = 100;
 const BUFFER_SIZE: usize = 4096;
 
+#[cfg(target_os = "linux")]
+fn try_register_process_collector_inner(
+    registry: &prometheus::Registry,
+) -> Result<(), prometheus::Error> {
+    let pc = prometheus::process_collector::ProcessCollector::for_self();
+
+    registry.register(Box::new(pc))
+}
+
+pub fn try_register_process_collector(
+    _registry: &prometheus::Registry,
+) -> Result<(), prometheus::Error> {
+    #[cfg(target_os = "linux")]
+    try_register_process_collector_inner(_registry)?;
+
+    Ok(())
+}
+
 pub struct PrometheusServer {
     thread: Option<thread::JoinHandle<()>>,
     stop: Option<channel::Sender<()>>,
 }
 
 impl PrometheusServer {
-    pub fn new(listener: NetListener, prefix: &str, registry: prometheus::Registry) -> Self {
+    pub fn new(listener: NetListener, registry: prometheus::Registry) -> Self {
         let (stop_s, stop_r) = channel::channel(1);
-
-        let prefix = prefix.to_string();
 
         let thread = thread::Builder::new()
             .name("prometheus".to_string())
@@ -75,7 +91,7 @@ impl PrometheusServer {
                     .expect("failed to spawn prometheus stop watcher");
 
                 executor
-                    .spawn(run_server(listener, cancel_t, prefix, registry))
+                    .spawn(run_server(listener, cancel_t, registry))
                     .expect("failed to spawn prometheus server task");
 
                 executor
@@ -111,7 +127,6 @@ struct Client {
 async fn run_server(
     listener: NetListener,
     stop: CancellationToken,
-    prefix: String,
     registry: prometheus::Registry,
 ) {
     let listener = AsyncNetListener::new(listener);
@@ -154,7 +169,6 @@ async fn run_server(
                     AsyncTcpStream::new(s),
                     token,
                     s_done,
-                    prefix.clone(),
                     registry.clone(),
                 ))
                 .expect("failed to spawn prometheus connection task"),
@@ -163,7 +177,6 @@ async fn run_server(
                     AsyncUnixStream::new(s),
                     token,
                     s_done,
-                    prefix.clone(),
                     registry.clone(),
                 ))
                 .expect("failed to spawn prometheus connection task"),
@@ -180,11 +193,10 @@ async fn run_connection<S: AsyncRead + AsyncWrite + 'static>(
     stream: S,
     token: CancellationToken,
     _done: channel::LocalSender<()>, // dropped when function returns, indicating done
-    prefix: String,
     registry: prometheus::Registry,
 ) {
     let result = match select_2(
-        pin!(handle_connection(stream, &prefix, &registry)),
+        pin!(handle_connection(stream, &registry)),
         pin!(token.cancelled()),
     )
     .await
@@ -200,7 +212,6 @@ async fn run_connection<S: AsyncRead + AsyncWrite + 'static>(
 
 async fn handle_connection<S: AsyncRead + AsyncWrite>(
     stream: S,
-    prefix: &str,
     registry: &prometheus::Registry,
 ) -> Result<(), Box<dyn Error>> {
     let stream = RefCell::new(stream);
@@ -209,12 +220,7 @@ async fn handle_connection<S: AsyncRead + AsyncWrite>(
     let mut buf1 = VecRingBuffer::new(BUFFER_SIZE, &rb_tmp);
     let mut buf2 = VecRingBuffer::new(BUFFER_SIZE, &rb_tmp);
 
-    let mut metric_families = registry.gather();
-    if !prefix.is_empty() {
-        for mf in &mut metric_families {
-            mf.set_name(format!("{}{}", prefix, mf.get_name()));
-        }
-    }
+    let metric_families = registry.gather();
 
     let encoder = TextEncoder::new();
 
@@ -281,7 +287,8 @@ mod tests {
 
     #[test]
     fn request_metrics() {
-        let registry = prometheus::Registry::new();
+        let registry =
+            prometheus::Registry::new_custom(Some("myprefix".to_string()), None).unwrap();
         let counter = prometheus::Counter::new("test_counter", "a test counter").unwrap();
         registry.register(Box::new(counter.clone())).unwrap();
         counter.inc();
@@ -289,7 +296,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
         let addr = listener.local_addr().unwrap();
 
-        let server = PrometheusServer::new(NetListener::Tcp(listener), "myprefix_", registry);
+        let server = PrometheusServer::new(NetListener::Tcp(listener), registry);
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
         stream
