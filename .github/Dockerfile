@@ -25,7 +25,7 @@ ENV RUSTUP_HOME="/root/.rustup" \
     PATH=/root/.cargo/bin:$PATH
 
 # Keep in sync with minimum support Rust Version for Pushpin 
-RUN rustup install 1.75.0-x86_64-unknown-linux-gnu
+RUN rustup install 1.81.0-x86_64-unknown-linux-gnu
 
 RUN rustup component add rustfmt
 
