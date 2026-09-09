@@ -3,7 +3,7 @@
 #
 
 # Pull the base image
-FROM ubuntu:24.10 as build
+FROM ubuntu:26.04 AS build
 
 # Install deps
 RUN \
@@ -21,10 +21,14 @@ RUN tar xf pushpin-${VERSION}.tar.bz2 && mv pushpin-${VERSION} pushpin
 WORKDIR /build/pushpin
 
 RUN make RELEASE=1 PREFIX=/usr CONFIGDIR=/etc
-RUN make RELEASE=1 PREFIX=/usr CONFIGDIR=/etc check
 RUN make RELEASE=1 PREFIX=/usr CONFIGDIR=/etc INSTALL_ROOT=/build/out install
+# "check" runs "cargo test --all-features", which enables the non-default
+# "legacy-runner" feature. That makes build.rs regenerate postbuild/Makefile with
+# a dependency on target/release/pushpin-legacy, a binary cargo test does not
+# build, which breaks a subsequent "install". So run the tests last.
+RUN make RELEASE=1 PREFIX=/usr CONFIGDIR=/etc check
 
-FROM ubuntu:24.10
+FROM ubuntu:26.04
 LABEL org.opencontainers.image.maintainer="Fastly OSS <oss@fastly.com>"
 
 RUN \
@@ -49,7 +53,7 @@ RUN mkdir -p /var/run/pushpin && \
 # Using the user_id specifically here allows for less configuration in k8s
 USER 1001
 
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 
 # Define default entrypoint and command
 ENTRYPOINT ["docker-entrypoint.sh"]
