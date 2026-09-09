@@ -35,7 +35,7 @@ use self::server::Server;
 use crate::core::config::{NetListenConfig, UnixListenConfig};
 use crate::core::log::DebugLogger;
 use crate::core::net::{bind_unix_config, NetListener};
-use crate::core::prometheus::PrometheusServer;
+use crate::core::prometheus::{try_register_process_collector, PrometheusServer};
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
 use log::{debug, info};
@@ -165,16 +165,20 @@ impl App {
         let mut prometheus = None;
 
         if let Some(config) = &config.prometheus {
-            metrics::init();
+            let combined_prefix = format!("{}connmgr", config.prefix);
+
+            let registry = prometheus::Registry::new_custom(Some(combined_prefix), None)
+                .expect("failed to create prometheus registry");
+
+            try_register_process_collector(&registry)
+                .expect("failed to register process collector");
+
+            metrics::init(&registry);
 
             let l = NetListener::bind_config(&config.listen_config)
                 .map_err(|e| format!("prometheus listener: {e}"))?;
 
-            prometheus = Some(PrometheusServer::new(
-                l,
-                &config.prefix,
-                prometheus::default_registry().clone(),
-            ));
+            prometheus = Some(PrometheusServer::new(l, registry));
         }
 
         let zmq_context = Arc::new(zmq::Context::new());

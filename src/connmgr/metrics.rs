@@ -21,15 +21,19 @@ static TOTAL_REQUESTS: OnceLock<Counter> = OnceLock::new();
 
 pub fn total_requests() -> &'static Counter {
     TOTAL_REQUESTS.get_or_init(|| {
-        prometheus::register_counter!(
-            "connmgr_requests_total",
-            "Total number of requests processed by connmgr"
+        prometheus::Counter::new(
+            "requests_total",
+            "Total number of requests processed by connmgr",
         )
-        .expect("failed to register total_requests counter")
+        .expect("failed to create total_requests counter")
     })
 }
 
-pub fn init() {
-    // Pre-initialize metrics so they appear even before any requests arrive.
-    let _ = total_requests();
+pub fn init(registry: &prometheus::Registry) {
+    // Pre-initialize metrics so they appear even before any requests arrive,
+    // and register them with the provided registry.
+    let counter = total_requests();
+    registry
+        .register(Box::new(counter.clone()))
+        .expect("failed to register total_requests counter");
 }
