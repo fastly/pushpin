@@ -36,6 +36,7 @@ pub mod prometheus;
 pub mod reactor;
 pub mod select;
 pub mod shuffle;
+pub mod statsmanager;
 pub mod task;
 pub mod test;
 pub mod thread;
