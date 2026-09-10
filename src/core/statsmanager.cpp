@@ -753,7 +753,7 @@ public:
 
         Variant vpacket = packet.toVariant();
 
-        QByteArray buf;
+        CowByteArray buf;
         if (outputFormat == TnetStringFormat) {
             buf = prefix + " T" + TnetString::fromVariant(vpacket);
         } else if (outputFormat == JsonFormat) {
@@ -765,7 +765,7 @@ public:
                 log_debug("stats: OUT %s %s", prefix.data(),
                           qPrintable(TnetString::variantToString(vpacket, -1)));
 
-            sock->write(QList<QByteArray>() << buf);
+            sock->write(QList<QByteArray>() << buf.asQByteArray());
         }
     }
 

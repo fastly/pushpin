@@ -1491,7 +1491,7 @@ private:
         QList<QByteArray> msg;
         msg += instanceAddress;
         msg += QByteArray();
-        msg += TnetString::fromVariant(vout);
+        msg += TnetString::fromVariant(vout).asQByteArray();
         retrySock->write(msg);
     }
 
@@ -1515,7 +1515,7 @@ private:
         QList<QByteArray> msg;
         msg += instanceAddress;
         msg += QByteArray();
-        msg += TnetString::fromVariant(vout);
+        msg += TnetString::fromVariant(vout).asQByteArray();
         wsControlStreamSock->write(msg);
     }
 

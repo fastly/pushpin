@@ -151,19 +151,19 @@ public:
         assert(streamSock);
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = TnetString::fromVariant(vpacket);
+        CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
-        initSock->write(QList<QByteArray>() << buf);
+        initSock->write(QList<QByteArray>() << buf.asQByteArray());
     }
 
     void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress) {
         assert(streamSock);
 
         Variant vpacket = packet.toVariant();
-        QByteArray buf = TnetString::fromVariant(vpacket);
+        CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s",
@@ -172,7 +172,7 @@ public:
         QList<QByteArray> msg;
         msg += instanceAddress;
         msg += QByteArray();
-        msg += buf;
+        msg += buf.asQByteArray();
         streamSock->write(msg);
     }
 

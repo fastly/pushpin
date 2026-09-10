@@ -21,35 +21,33 @@
 #ifndef TNETSTRING_H
 #define TNETSTRING_H
 
+#include "cowbytearray.h"
 #include "variant.h"
-
-class CowByteArray;
 
 namespace TnetString {
 
 enum Type { ByteArray, Int, Double, Bool, Null, Hash, List };
 
-QByteArray fromByteArray(const QByteArray &in);
-QByteArray fromInt(int64_t in);
-QByteArray fromDouble(double in);
-QByteArray fromBool(bool in);
-QByteArray fromNull();
-QByteArray fromHash(const VariantHash &in);
-QByteArray fromList(const VariantList &in);
-QByteArray fromVariant(const Variant &in);
+CowByteArray fromByteArray(const CowByteArray &in);
+CowByteArray fromInt(int64_t in);
+CowByteArray fromDouble(double in);
+CowByteArray fromBool(bool in);
+CowByteArray fromNull();
+CowByteArray fromHash(const VariantHash &in);
+CowByteArray fromList(const VariantList &in);
+CowByteArray fromVariant(const Variant &in);
 
-bool check(const QByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize);
-QByteArray toByteArray(const QByteArray &in, int offset, int dataOffset, int dataSize,
-                       bool *ok = 0);
-int64_t toInt(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-double toDouble(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-bool toBool(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-void toNull(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-VariantHash toHash(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-VariantList toList(const QByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
-Variant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize,
+bool check(const CowByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize);
+CowByteArray toByteArray(const CowByteArray &in, int offset, int dataOffset, int dataSize,
+                         bool *ok = 0);
+int64_t toInt(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+double toDouble(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+bool toBool(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+void toNull(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+VariantHash toHash(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+VariantList toList(const CowByteArray &in, int offset, int dataOffset, int dataSize, bool *ok = 0);
+Variant toVariant(const CowByteArray &in, int offset, Type type, int dataOffset, int dataSize,
                   bool *ok = 0);
-Variant toVariant(const QByteArray &in, int offset = 0, bool *ok = 0);
 Variant toVariant(const CowByteArray &in, int offset = 0, bool *ok = 0);
 
 QString byteArrayToEscapedString(const QByteArray &in);

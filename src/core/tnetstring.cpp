@@ -21,35 +21,34 @@
 
 #include "tnetstring.h"
 
-#include "cowbytearray.h"
 #include "qtcompat.h"
 #include "variant.h"
 #include <assert.h>
 
 namespace TnetString {
 
-QByteArray fromByteArray(const QByteArray &in) {
+CowByteArray fromByteArray(const CowByteArray &in) {
     return QByteArray::number(in.size()) + ':' + in + ',';
 }
 
-QByteArray fromInt(int64_t in) {
+CowByteArray fromInt(int64_t in) {
     QByteArray val = QByteArray::number(in);
     return QByteArray::number(val.size()) + ':' + val + '#';
 }
 
-QByteArray fromDouble(double in) {
+CowByteArray fromDouble(double in) {
     QByteArray val = QByteArray::number(in);
     return QByteArray::number(val.size()) + ':' + val + '^';
 }
 
-QByteArray fromBool(bool in) {
+CowByteArray fromBool(bool in) {
     QByteArray val = in ? "true" : "false";
     return QByteArray::number(val.size()) + ':' + val + '!';
 }
 
-QByteArray fromNull() { return QByteArray("0:~"); }
+CowByteArray fromNull() { return QByteArray("0:~"); }
 
-QByteArray fromVariant(const Variant &in) {
+CowByteArray fromVariant(const Variant &in) {
     switch (typeId(in)) {
     case VariantType::ByteArray:
         return fromByteArray(in.toByteArray());
@@ -69,12 +68,12 @@ QByteArray fromVariant(const Variant &in) {
 
         // Unsupported type
         assert(0);
-        return QByteArray();
+        return CowByteArray();
     }
 }
 
-QByteArray fromHash(const VariantHash &in) {
-    QByteArray val;
+CowByteArray fromHash(const VariantHash &in) {
+    CowByteArray val;
     for (auto it = in.constBegin(); it != in.constEnd(); ++it) {
         val += fromByteArray(it.key().toUtf8());
         val += fromVariant(it.value());
@@ -82,14 +81,14 @@ QByteArray fromHash(const VariantHash &in) {
     return QByteArray::number(val.size()) + ':' + val + '}';
 }
 
-QByteArray fromList(const VariantList &in) {
-    QByteArray val;
+CowByteArray fromList(const VariantList &in) {
+    CowByteArray val;
     for (const Variant &v : in)
         val += fromVariant(v);
     return QByteArray::number(val.size()) + ':' + val + ']';
 }
 
-bool check(const QByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize) {
+bool check(const CowByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize) {
     int at = in.indexOf(':', offset);
     if (at == -1)
         return false;
@@ -133,16 +132,16 @@ bool check(const QByteArray &in, int offset, Type *type, int *dataOffset, int *d
     return true;
 }
 
-QByteArray toByteArray(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset,
-                       int dataSize, bool *ok) {
+CowByteArray toByteArray(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset,
+                         int dataSize, bool *ok) {
     if (ok)
         *ok = true;
     return in.mid(dataOffset, dataSize);
 }
 
-int64_t toInt(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+int64_t toInt(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
               bool *ok) {
-    QByteArray val = in.mid(dataOffset, dataSize);
+    CowByteArray val = in.mid(dataOffset, dataSize);
     bool ok_;
     int64_t x = val.toLongLong(&ok_);
     if (!ok_)
@@ -152,9 +151,9 @@ int64_t toInt(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset,
     return x;
 }
 
-double toDouble(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+double toDouble(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
                 bool *ok) {
-    QByteArray val = in.mid(dataOffset, dataSize);
+    CowByteArray val = in.mid(dataOffset, dataSize);
     bool ok_;
     double x = val.toDouble(&ok_);
     if (!ok_)
@@ -164,9 +163,9 @@ double toDouble(const QByteArray &in, [[maybe_unused]] int offset, int dataOffse
     return x;
 }
 
-bool toBool(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
+bool toBool(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
             bool *ok) {
-    QByteArray val = in.mid(dataOffset, dataSize);
+    CowByteArray val = in.mid(dataOffset, dataSize);
     if (val == "true") {
         if (ok)
             *ok = true;
@@ -182,18 +181,18 @@ bool toBool(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, i
     return false;
 }
 
-void toNull([[maybe_unused]] const QByteArray &in, [[maybe_unused]] int offset,
+void toNull([[maybe_unused]] const CowByteArray &in, [[maybe_unused]] int offset,
             [[maybe_unused]] int dataOffset, [[maybe_unused]] int dataSize, bool *ok) {
     *ok = true;
 }
 
-Variant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, int dataSize,
+Variant toVariant(const CowByteArray &in, int offset, Type type, int dataOffset, int dataSize,
                   bool *ok) {
     Variant val;
     bool ok_ = false;
     switch (type) {
     case ByteArray:
-        val = toByteArray(in, offset, dataOffset, dataSize, &ok_);
+        val = toByteArray(in, offset, dataOffset, dataSize, &ok_).asQByteArray();
         break;
     case Int:
         val = (qint64)toInt(in, offset, dataOffset, dataSize, &ok_);
@@ -226,7 +225,7 @@ Variant toVariant(const QByteArray &in, int offset, Type type, int dataOffset, i
     return val;
 }
 
-Variant toVariant(const QByteArray &in, int offset, bool *ok) {
+Variant toVariant(const CowByteArray &in, int offset, bool *ok) {
     Type type;
     int dataOffset;
     int dataSize;
@@ -239,12 +238,8 @@ Variant toVariant(const QByteArray &in, int offset, bool *ok) {
     return toVariant(in, offset, type, dataOffset, dataSize, ok);
 }
 
-Variant toVariant(const CowByteArray &in, int offset, bool *ok) {
-    return toVariant(in.asQByteArray(), offset, ok);
-}
-
-VariantHash toHash(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
-                   bool *ok) {
+VariantHash toHash(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset,
+                   int dataSize, bool *ok) {
     VariantHash out;
 
     int at = dataOffset;
@@ -265,7 +260,7 @@ VariantHash toHash(const QByteArray &in, [[maybe_unused]] int offset, int dataOf
         }
 
         bool ok_;
-        QByteArray key = toByteArray(in, at, ioffset, isize, &ok_);
+        CowByteArray key = toByteArray(in, at, ioffset, isize, &ok_);
         if (!ok_) {
             if (ok)
                 *ok = false;
@@ -287,7 +282,7 @@ VariantHash toHash(const QByteArray &in, [[maybe_unused]] int offset, int dataOf
             return VariantHash();
         }
 
-        out[QString::fromUtf8(key)] = val;
+        out[QString::fromUtf8(key.asQByteArray())] = val;
         at = ioffset + isize + 1; // Position to next item
     }
 
@@ -296,8 +291,8 @@ VariantHash toHash(const QByteArray &in, [[maybe_unused]] int offset, int dataOf
     return out;
 }
 
-VariantList toList(const QByteArray &in, [[maybe_unused]] int offset, int dataOffset, int dataSize,
-                   bool *ok) {
+VariantList toList(const CowByteArray &in, [[maybe_unused]] int offset, int dataOffset,
+                   int dataSize, bool *ok) {
     VariantList out;
 
     int at = dataOffset;

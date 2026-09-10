@@ -189,7 +189,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in) {
     if (btype != TnetString::ByteArray)
         return false;
 
-    body = TnetString::toByteArray(in, start, offset, size, &ok);
+    body = TnetString::toByteArray(in, start, offset, size, &ok).asQByteArray();
     if (!ok)
         return false;
 
