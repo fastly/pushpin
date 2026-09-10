@@ -279,6 +279,89 @@ async fn handle_connection<S: AsyncRead + AsyncWrite>(
     Ok(())
 }
 
+mod ffi {
+    use super::*;
+    use libc::c_char;
+    use std::ffi::{CStr, CString};
+
+    /// Opaque handle to a `prometheus::Registry`, for use across the FFI boundary.
+    pub enum PrometheusRegistry {}
+
+    fn parse_listen_addr(addr: &str) -> Result<NetListener, String> {
+        if let Some(path) = addr.strip_prefix("ipc://") {
+            let l = mio::net::UnixListener::bind(path)
+                .map_err(|e| format!("failed to bind {path}: {e}"))?;
+            Ok(NetListener::Unix(l))
+        } else if let Ok(socket_addr) = addr.parse::<std::net::SocketAddr>() {
+            let l = mio::net::TcpListener::bind(socket_addr)
+                .map_err(|e| format!("failed to bind {socket_addr}: {e}"))?;
+            Ok(NetListener::Tcp(l))
+        } else if let Ok(port) = addr.parse::<u16>() {
+            let socket_addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+            let l = mio::net::TcpListener::bind(socket_addr)
+                .map_err(|e| format!("failed to bind {socket_addr}: {e}"))?;
+            Ok(NetListener::Tcp(l))
+        } else {
+            Err(format!("invalid listen address: {addr}"))
+        }
+    }
+
+    /// Create and start a prometheus HTTP server listening on `addr`. The provided `registry` is
+    /// cloned internally so the server is independent of the registry's lifetime. Returns an opaque
+    /// handle; call `prometheus_server_destroy` when done. On failure, returns null and writes a
+    /// heap-allocated error string to `*error`; call `prometheus_server_error_free` to release it.
+    ///
+    /// # Safety
+    ///
+    /// `addr` must be a valid null-terminated C string. `registry` must be a valid non-null pointer.
+    /// `error` must be a valid non-null pointer to a `*const c_char`.
+    #[no_mangle]
+    pub unsafe extern "C" fn prometheus_server_create(
+        addr: *const c_char,
+        registry: *const PrometheusRegistry,
+        error: *mut *const c_char,
+    ) -> *mut PrometheusServer {
+        let addr = CStr::from_ptr(addr).to_str().expect("invalid addr string");
+        let registry = &*(registry as *const prometheus::Registry);
+
+        let listener = match parse_listen_addr(addr) {
+            Ok(l) => l,
+            Err(e) => {
+                *error = CString::new(e).unwrap_or_default().into_raw();
+                return std::ptr::null_mut();
+            }
+        };
+
+        *error = std::ptr::null();
+        Box::into_raw(Box::new(PrometheusServer::new(listener, registry.clone())))
+    }
+
+    /// Destroy an error string returned by `prometheus_server_create`.
+    ///
+    /// # Safety
+    ///
+    /// `error` must be a pointer previously written by `prometheus_server_create`, or null.
+    #[no_mangle]
+    pub unsafe extern "C" fn prometheus_server_error_destroy(error: *const c_char) {
+        if !error.is_null() {
+            drop(CString::from_raw(error as *mut c_char));
+        }
+    }
+
+    /// Destroy a prometheus server handle returned by `prometheus_server_create`. Blocks until the
+    /// server thread has stopped.
+    ///
+    /// # Safety
+    ///
+    /// `server` must be a valid pointer returned by `prometheus_server_create`, or null.
+    #[no_mangle]
+    pub unsafe extern "C" fn prometheus_server_destroy(server: *mut PrometheusServer) {
+        if !server.is_null() {
+            drop(Box::from_raw(server));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
