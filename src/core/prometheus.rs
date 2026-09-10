@@ -279,7 +279,7 @@ async fn handle_connection<S: AsyncRead + AsyncWrite>(
     Ok(())
 }
 
-mod ffi {
+pub mod ffi {
     use super::*;
     use libc::c_char;
     use std::ffi::{CStr, CString};
@@ -309,7 +309,8 @@ mod ffi {
     /// Create and start a prometheus HTTP server listening on `addr`. The provided `registry` is
     /// cloned internally so the server is independent of the registry's lifetime. Returns an opaque
     /// handle; call `prometheus_server_destroy` when done. On failure, returns null and writes a
-    /// heap-allocated error string to `*error`; call `prometheus_server_error_free` to release it.
+    /// heap-allocated error string to `*error`; call `prometheus_server_error_destroy` to release
+    /// it.
     ///
     /// # Safety
     ///
