@@ -1360,8 +1360,7 @@ public:
         }
 
         stats = std::make_unique<StatsManager>(
-            config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax,
-            PROMETHEUS_CONNECTIONS_MAX);
+            config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax);
         connectionsRefreshedConnection = stats->connectionsRefreshed.connect(
             boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
         unsubscribedConnection = stats->unsubscribed.connect(boost::bind(

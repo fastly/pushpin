@@ -280,8 +280,7 @@ public:
 
         // Set up StatsManager
         if (!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty()) {
-            stats =
-                std::make_unique<StatsManager>(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX);
+            stats = std::make_unique<StatsManager>(config.sessionsMax, 0);
 
             connMaxConnection = stats->connMax.connect(
                 boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
