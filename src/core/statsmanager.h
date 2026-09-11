@@ -25,6 +25,7 @@
 #define STATSMANAGER_H
 
 #include "packet/statspacket.h"
+#include "rust/bindings.h"
 #include "stats.h"
 #include <boost/signals2.hpp>
 
@@ -39,6 +40,26 @@ public:
     enum ConnectionType { Http, WebSocket };
 
     enum Format { TnetStringFormat, JsonFormat };
+
+    /// RAII wrapper around the Rust-backed CommonMetrics object, which holds the prometheus
+    /// registry and all metric handles.
+    class CommonMetrics {
+    public:
+        ~CommonMetrics();
+
+        CommonMetrics(const CommonMetrics &) = delete;
+        CommonMetrics &operator=(const CommonMetrics &) = delete;
+
+        static std::unique_ptr<CommonMetrics> create(const QString &prefix);
+
+        const ffi::PrometheusRegistry *registry() const;
+        void update(uint32_t requestReceived, uint32_t connectionConnected,
+                    uint32_t connectionMinute, uint32_t messageReceived, uint32_t messageSent);
+
+    private:
+        explicit CommonMetrics(ffi::CommonMetrics *handle);
+        ffi::CommonMetrics *inner_;
+    };
 
     StatsManager(int connectionsMax, int subscriptionsMax);
     ~StatsManager();
