@@ -1322,6 +1322,30 @@ private:
     }
 };
 
+StatsManager::CommonMetrics::CommonMetrics(ffi::CommonMetrics *handle) : inner_(handle) {}
+
+StatsManager::CommonMetrics::~CommonMetrics() { ffi::statsmanager_commonmetrics_destroy(inner_); }
+
+// static
+std::unique_ptr<StatsManager::CommonMetrics>
+StatsManager::CommonMetrics::create(const QString &prefix) {
+    ffi::CommonMetrics *handle = ffi::statsmanager_commonmetrics_create(prefix.toUtf8().data());
+    if (!handle)
+        return nullptr;
+    return std::unique_ptr<StatsManager::CommonMetrics>(new StatsManager::CommonMetrics(handle));
+}
+
+const ffi::PrometheusRegistry *StatsManager::CommonMetrics::registry() const {
+    return ffi::statsmanager_commonmetrics_registry(inner_);
+}
+
+void StatsManager::CommonMetrics::update(uint32_t requestReceived, uint32_t connectionConnected,
+                                         uint32_t connectionMinute, uint32_t messageReceived,
+                                         uint32_t messageSent) {
+    ffi::statsmanager_commonmetrics_update(inner_, requestReceived, connectionConnected,
+                                           connectionMinute, messageReceived, messageSent);
+}
+
 StatsManager::StatsManager(int connectionsMax, int subscriptionsMax) {
     d = new Private(this, connectionsMax, subscriptionsMax);
 }
