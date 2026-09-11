@@ -173,6 +173,7 @@ impl App {
             try_register_process_collector(&registry)
                 .expect("failed to register process collector");
 
+            crate::core::log::init_metrics(&registry);
             metrics::init(&registry);
 
             let l = NetListener::bind_config(&config.listen_config)

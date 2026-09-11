@@ -21,7 +21,7 @@ static TOTAL_REQUESTS: OnceLock<Counter> = OnceLock::new();
 
 pub fn total_requests() -> &'static Counter {
     TOTAL_REQUESTS.get_or_init(|| {
-        prometheus::Counter::new(
+        Counter::new(
             "requests_total",
             "Total number of requests processed by connmgr",
         )
