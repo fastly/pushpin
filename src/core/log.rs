@@ -24,6 +24,7 @@ use crate::core::select::{select_2, Select2};
 use crate::core::task::{get_reactor, CancellationSender, CancellationToken};
 use log::{debug, error, warn, LevelFilter, Log, Metadata, Record};
 use mio::net::UnixListener;
+use prometheus::IntCounterVec;
 use std::cell::Cell;
 use std::fmt::{self, Write as _};
 use std::fs::File;
@@ -41,6 +42,47 @@ use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
 static LOCAL_OFFSET: OnceLock<Option<UtcOffset>> = OnceLock::new();
+
+static LOG_MESSAGES_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+
+fn log_messages_total() -> &'static IntCounterVec {
+    LOG_MESSAGES_TOTAL.get_or_init(|| {
+        IntCounterVec::new(
+            prometheus::opts!(
+                "log_messages_total",
+                "Total number of log events emitted by level"
+            ),
+            &["level"],
+        )
+        .expect("failed to create log_messages_total counter")
+    })
+}
+
+pub fn init_metrics(registry: &prometheus::Registry) {
+    registry
+        .register(Box::new(log_messages_total().clone()))
+        .expect("failed to register log_messages_total counter");
+}
+
+fn level_to_lower_str(l: log::Level) -> &'static str {
+    match l {
+        log::Level::Error => "error",
+        log::Level::Warn => "warn",
+        log::Level::Info => "info",
+        log::Level::Debug => "debug",
+        log::Level::Trace => "trace",
+    }
+}
+
+fn level_to_upper_str(l: log::Level) -> &'static str {
+    match l {
+        log::Level::Error => "ERR",
+        log::Level::Warn => "WARN",
+        log::Level::Info => "INFO",
+        log::Level::Debug => "DEBUG",
+        log::Level::Trace => "TRACE",
+    }
+}
 
 // Obtains the local offset and caches it forever. This call may fail if
 // there are multiple threads running when it is called for the first time,
@@ -74,13 +116,7 @@ fn write_record<W: fmt::Write>(record: &Record, dest: &mut W) {
 
     let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
 
-    let lname = match record.level() {
-        log::Level::Error => "ERR",
-        log::Level::Warn => "WARN",
-        log::Level::Info => "INFO",
-        log::Level::Debug => "DEBUG",
-        log::Level::Trace => "TRACE",
-    };
+    let lname = level_to_upper_str(record.level());
 
     if record.level() <= log::Level::Info || record.target().is_empty() {
         writeln!(dest, "[{}] {} {}", lname, ts, record.args()).expect("failed to write log output");
@@ -222,6 +258,10 @@ impl Log for SimpleLogger {
         }
 
         write_record(record, &mut output);
+
+        log_messages_total()
+            .with_label_values(&[level_to_lower_str(record.metadata().level())])
+            .inc();
     }
 
     fn flush(&self) {}

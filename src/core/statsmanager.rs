@@ -42,6 +42,8 @@ impl CommonMetrics {
 
         try_register_process_collector(&registry).expect("failed to register process collector");
 
+        crate::core::log::init_metrics(&registry);
+
         let request_received = IntCounter::new("request_received", "Number of requests received")
             .expect("failed to create request_received");
         registry
