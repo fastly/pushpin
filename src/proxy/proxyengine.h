@@ -25,11 +25,13 @@
 #define PROXYENGINE_H
 
 #include "jwt.h"
+#include "statsmanager.h"
 #include "xffrule.h"
 #include <QHostAddress>
 #include <QStringList>
 #include <boost/signals2.hpp>
 #include <map>
+#include <memory>
 
 // Each session can have a bunch of timers:
 // 2 per incoming zhttprequest/zwebsocket
@@ -50,7 +52,6 @@
 using std::map;
 using Connection = boost::signals2::scoped_connection;
 
-class StatsManager;
 class DomainMap;
 
 /// Orchestrates the core proxy service:
@@ -106,8 +107,7 @@ public:
         int statsConnectionTtl;
         int statsConnectionsMaxTtl;
         int statsReportInterval;
-        QString prometheusPort;
-        QString prometheusPrefix;
+        std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
 
         Configuration()
             : id(0),

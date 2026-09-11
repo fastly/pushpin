@@ -16,6 +16,16 @@
 
 use crate::core::prometheus::try_register_process_collector;
 use prometheus::{IntCounter, IntGauge};
+use slab::Slab;
+
+#[derive(Default)]
+struct PrevValues {
+    request_received: u32,
+    connection_connected: u32,
+    connection_minute: u32,
+    message_received: u32,
+    message_sent: u32,
+}
 
 /// Metrics needed by the `StatsManager` C++ class.
 pub struct CommonMetrics {
@@ -25,10 +35,7 @@ pub struct CommonMetrics {
     connection_minute: IntCounter,
     message_received: IntCounter,
     message_sent: IntCounter,
-    prev_request_received: u32,
-    prev_connection_minute: u32,
-    prev_message_received: u32,
-    prev_message_sent: u32,
+    instances: Slab<PrevValues>,
 }
 
 impl CommonMetrics {
@@ -88,45 +95,75 @@ impl CommonMetrics {
             connection_minute,
             message_received,
             message_sent,
-            prev_request_received: 0,
-            prev_connection_minute: 0,
-            prev_message_received: 0,
-            prev_message_sent: 0,
+            instances: Slab::new(),
+        }
+    }
+
+    fn register(&mut self) -> usize {
+        self.instances.insert(PrevValues::default())
+    }
+
+    fn unregister(&mut self, id: usize) {
+        let prev = self.instances.remove(id);
+        if prev.connection_connected > 0 {
+            self.connection_connected
+                .sub(prev.connection_connected as i64);
         }
     }
 
     fn update(
         &mut self,
+        id: usize,
         request_received: u32,
         connection_connected: u32,
         connection_minute: u32,
         message_received: u32,
         message_sent: u32,
     ) {
-        let delta = request_received.saturating_sub(self.prev_request_received);
-        if delta > 0 {
-            self.request_received.inc_by(delta as u64);
-            self.prev_request_received = request_received;
+        // Compute deltas and update prev values in a scoped borrow so we can
+        // subsequently call methods on the rest of `self`.
+        let (req_delta, conn_delta, conn_min_delta, msg_recv_delta, msg_sent_delta) = {
+            let prev = &mut self.instances[id];
+
+            let req_delta = request_received.saturating_sub(prev.request_received);
+            let conn_delta = (connection_connected as i64) - (prev.connection_connected as i64);
+            let conn_min_delta = connection_minute.saturating_sub(prev.connection_minute);
+            let msg_recv_delta = message_received.saturating_sub(prev.message_received);
+            let msg_sent_delta = message_sent.saturating_sub(prev.message_sent);
+
+            prev.request_received = request_received;
+            prev.connection_connected = connection_connected;
+            prev.connection_minute = connection_minute;
+            prev.message_received = message_received;
+            prev.message_sent = message_sent;
+
+            (
+                req_delta,
+                conn_delta,
+                conn_min_delta,
+                msg_recv_delta,
+                msg_sent_delta,
+            )
+        };
+
+        if req_delta > 0 {
+            self.request_received.inc_by(req_delta as u64);
         }
 
-        self.connection_connected.set(connection_connected as i64);
-
-        let delta = connection_minute.saturating_sub(self.prev_connection_minute);
-        if delta > 0 {
-            self.connection_minute.inc_by(delta as u64);
-            self.prev_connection_minute = connection_minute;
+        if conn_delta != 0 {
+            self.connection_connected.add(conn_delta);
         }
 
-        let delta = message_received.saturating_sub(self.prev_message_received);
-        if delta > 0 {
-            self.message_received.inc_by(delta as u64);
-            self.prev_message_received = message_received;
+        if conn_min_delta > 0 {
+            self.connection_minute.inc_by(conn_min_delta as u64);
         }
 
-        let delta = message_sent.saturating_sub(self.prev_message_sent);
-        if delta > 0 {
-            self.message_sent.inc_by(delta as u64);
-            self.prev_message_sent = message_sent;
+        if msg_recv_delta > 0 {
+            self.message_received.inc_by(msg_recv_delta as u64);
+        }
+
+        if msg_sent_delta > 0 {
+            self.message_sent.inc_by(msg_sent_delta as u64);
         }
     }
 }
@@ -188,15 +225,49 @@ mod ffi {
         &m.registry as *const prometheus::Registry as *const PrometheusRegistry
     }
 
-    /// Update all metrics to the current totals. For counters the delta since the last call is
-    /// computed internally; `connection_connected` is a gauge and is set directly.
+    /// Register a new StatsManager instance and return an opaque ID for it. Pass this ID to
+    /// `statsmanager_commonmetrics_update` and `statsmanager_commonmetrics_unregister`.
     ///
     /// # Safety
     ///
     /// `m` must be a valid non-null pointer returned by `statsmanager_commonmetrics_create`.
     #[no_mangle]
+    pub unsafe extern "C" fn statsmanager_commonmetrics_register(m: *mut CommonMetrics) -> usize {
+        let m = unsafe { m.as_mut().unwrap() };
+        m.register()
+    }
+
+    /// Unregister a StatsManager instance previously registered with
+    /// `statsmanager_commonmetrics_register`. After this call, `id` must not be passed to
+    /// `statsmanager_commonmetrics_update`.
+    ///
+    /// # Safety
+    ///
+    /// `m` must be a valid non-null pointer returned by `statsmanager_commonmetrics_create`.
+    /// `id` must be a value previously returned by `statsmanager_commonmetrics_register` on
+    /// the same instance that has not yet been unregistered.
+    #[no_mangle]
+    pub unsafe extern "C" fn statsmanager_commonmetrics_unregister(
+        m: *mut CommonMetrics,
+        id: usize,
+    ) {
+        let m = unsafe { m.as_mut().unwrap() };
+        m.unregister(id);
+    }
+
+    /// Update all metrics to the current totals for the given StatsManager instance. For counters
+    /// the delta since the last call (per instance) is computed internally;
+    /// `connection_connected` is a gauge and is set directly.
+    ///
+    /// # Safety
+    ///
+    /// `m` must be a valid non-null pointer returned by `statsmanager_commonmetrics_create`.
+    /// `id` must be a value previously returned by `statsmanager_commonmetrics_register` on
+    /// the same instance that has not yet been unregistered.
+    #[no_mangle]
     pub unsafe extern "C" fn statsmanager_commonmetrics_update(
         m: *mut CommonMetrics,
+        id: usize,
         request_received: u32,
         connection_connected: u32,
         connection_minute: u32,
@@ -206,6 +277,7 @@ mod ffi {
         let m = unsafe { m.as_mut().unwrap() };
 
         m.update(
+            id,
             request_received,
             connection_connected,
             connection_minute,

@@ -279,7 +279,7 @@ public:
         }
 
         // Set up StatsManager
-        if (!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty()) {
+        if (!config.statsSpec.isEmpty() || config.commonMetrics) {
             stats = std::make_unique<StatsManager>(config.sessionsMax, 0);
 
             connMaxConnection = stats->connMax.connect(
@@ -300,15 +300,8 @@ public:
                 }
             }
 
-            if (!config.prometheusPort.isEmpty()) {
-                stats->setPrometheusPrefix(config.prometheusPrefix);
-
-                if (!stats->setPrometheusPort(config.prometheusPort)) {
-                    log_error("unable to bind to prometheus port: %s",
-                              qPrintable(config.prometheusPort));
-                    return false;
-                }
-            }
+            if (config.commonMetrics)
+                stats->setCommonMetrics(config.commonMetrics);
         }
 
         if (!config.commandSpec.isEmpty()) {

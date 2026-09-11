@@ -28,6 +28,8 @@
 #include "rust/bindings.h"
 #include "stats.h"
 #include <boost/signals2.hpp>
+#include <cstddef>
+#include <memory>
 
 class QHostAddress;
 
@@ -42,7 +44,9 @@ public:
     enum Format { TnetStringFormat, JsonFormat };
 
     /// RAII wrapper around the Rust-backed CommonMetrics object, which holds the prometheus
-    /// registry and all metric handles.
+    /// registry and all metric handles. Multiple StatsManager instances may share one
+    /// CommonMetrics via std::shared_ptr; each registers itself to obtain a per-instance ID
+    /// that is passed to update().
     class CommonMetrics {
     public:
         ~CommonMetrics();
@@ -53,7 +57,9 @@ public:
         static std::unique_ptr<CommonMetrics> create(const QString &prefix);
 
         const ffi::PrometheusRegistry *registry() const;
-        void update(uint32_t requestReceived, uint32_t connectionConnected,
+        size_t registerInstance();
+        void unregisterInstance(size_t id);
+        void update(size_t id, uint32_t requestReceived, uint32_t connectionConnected,
                     uint32_t connectionMinute, uint32_t messageReceived, uint32_t messageSent);
 
     private:
@@ -77,8 +83,7 @@ public:
     void setSubscriptionLinger(int secs);
     void setReportInterval(int secs);
     void setOutputFormat(Format format);
-    bool setPrometheusPort(const QString &port);
-    void setPrometheusPrefix(const QString &prefix);
+    void setCommonMetrics(std::shared_ptr<CommonMetrics> commonMetrics);
 
     // RouteId may be empty for non-identified route
 

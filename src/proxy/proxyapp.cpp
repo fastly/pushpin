@@ -27,12 +27,14 @@
 #include "eventloop.h"
 #include "log.h"
 #include "processquit.h"
+#include "prometheus.h"
 #include "proxyargsdata.h"
 #include "proxyengine.h"
 #include "rust/bindings.h"
 #include "rustthread.h"
 #include "settings.h"
 #include "simplehttpserver.h"
+#include "statsmanager.h"
 #include "timer.h"
 #include "xffrule.h"
 #include <QFile>
@@ -235,7 +237,23 @@ public:
 };
 
 static int runLoop(const QString &logFile, const Engine::Configuration &config,
-                   const QStringList &routeLines, const QString &routesFile, int workerCount) {
+                   const QStringList &routeLines, const QString &routesFile, int workerCount,
+                   const QString &prometheusPort, const QString &prometheusPrefix) {
+    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
+    std::unique_ptr<PrometheusServer> prometheusServer;
+
+    if (!prometheusPort.isEmpty()) {
+        commonMetrics = StatsManager::CommonMetrics::create(prometheusPrefix);
+
+        QString promError;
+        prometheusServer =
+            PrometheusServer::create(prometheusPort, commonMetrics->registry(), &promError);
+        if (!prometheusServer) {
+            log_error("unable to bind to prometheus port: %s", qPrintable(promError));
+            return 1;
+        }
+    }
+
     // Plenty for the main thread
     int timersMax = 100;
 
@@ -291,6 +309,7 @@ static int runLoop(const QString &logFile, const Engine::Configuration &config,
             Engine::Configuration wconfig = config;
 
             wconfig.id = n;
+            wconfig.commonMetrics = commonMetrics;
 
             if (workerCount > 1) {
                 wconfig.clientId += '-' + QByteArray::number(n);
@@ -558,9 +577,8 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     config.statsConnectionTtl = statsConnectionTtl;
     config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
     config.statsReportInterval = statsReportInterval;
-    config.prometheusPort = prometheusPort;
-    config.prometheusPrefix = prometheusPrefix;
 
-    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount);
+    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount, prometheusPort,
+                   prometheusPrefix);
 }
 }

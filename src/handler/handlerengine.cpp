@@ -42,6 +42,7 @@
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
 #include "packet/wscontrolpacket.h"
+#include "prometheus.h"
 #include "publishformat.h"
 #include "publishitem.h"
 #include "publishlastids.h"
@@ -1120,6 +1121,8 @@ public:
     std::unique_ptr<ZmqSocket> proxyStatsSock;
     std::unique_ptr<ZmqValve> proxyStatsValve;
     std::unique_ptr<SimpleHttpServer> controlHttpServer;
+    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
+    std::unique_ptr<PrometheusServer> prometheusServer;
     std::unique_ptr<StatsManager> stats;
     std::unique_ptr<RateLimiter> publishLimiter;
     std::unique_ptr<RateLimiter> updateLimiter;
@@ -1391,13 +1394,17 @@ public:
         }
 
         if (!config.prometheusPort.isEmpty()) {
-            stats->setPrometheusPrefix(config.prometheusPrefix);
+            commonMetrics = StatsManager::CommonMetrics::create(config.prometheusPrefix);
 
-            if (!stats->setPrometheusPort(config.prometheusPort)) {
-                log_error("unable to bind to prometheus port: %s",
-                          qPrintable(config.prometheusPort));
+            QString promError;
+            prometheusServer = PrometheusServer::create(config.prometheusPort,
+                                                        commonMetrics->registry(), &promError);
+            if (!prometheusServer) {
+                log_error("unable to bind to prometheus port: %s", qPrintable(promError));
                 return false;
             }
+
+            stats->setCommonMetrics(commonMetrics);
         }
 
         if (!config.proxyStatsSpecs.isEmpty()) {
