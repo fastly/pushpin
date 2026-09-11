@@ -1,3 +1,9 @@
+pushpin (1.42.0-1) UNRELEASED; urgency=medium
+
+  * New upstream version
+
+ -- Clint Edwards <clintjedwards@fastly.clintjedwards>  Thu, 10 Sep 2026 20:22:20 -0600
+
 pushpin (1.40.0-1) unstable; urgency=medium
 
   * New upstream version

@@ -1,6 +1,29 @@
 Pushpin Changelog
 =================
 
+v. 1.42.0 (2026-09-01)
+
+  * Add Prometheus metrics support for connection manager monitoring. (90c805e) ([#48394](https://github.com/fastly/pushpin/pull/48394))
+  * Add bearer token authentication support in pushpin-publish tool. (712e262) ([#48315](https://github.com/fastly/pushpin/pull/48315))
+  * Add client certificate and key parameters for mutual TLS authentication. (871ed73) ([#48260](https://github.com/fastly/pushpin/pull/48260))
+  * Add ability to dynamically resize header read/write buffers for large headers. (59c7ec8, 08464e1, b8987b9) ([#48362](https://github.com/fastly/pushpin/pull/48362), [#48368](https://github.com/fastly/pushpin/pull/48368), [#48372](https://github.com/fastly/pushpin/pull/48372))
+  * Add option to send debug logs to a Unix socket for external processing. (9d7950b) ([#48300](https://github.com/fastly/pushpin/pull/48300))
+  * Update build system to require and use Qt 6 instead of Qt 5. (5b20ce5, fb34d02) ([#48253](https://github.com/fastly/pushpin/pull/48253), [#48272](https://github.com/fastly/pushpin/pull/48272))
+  * Port command line argument handling for proxy and handler components to Rust. (0817f58) ([#48232](https://github.com/fastly/pushpin/pull/48232))
+  * Improve memory management with optimized reference counting and system allocator support. (2777153, 6327179, 76f5d3a) ([#48306](https://github.com/fastly/pushpin/pull/48306), [#48305](https://github.com/fastly/pushpin/pull/48305), [#48296](https://github.com/fastly/pushpin/pull/48296))
+  * Add copy-on-write types throughout codebase to reduce memory allocations. (9d76127, 147b9a5, 59769539) ([#48228](https://github.com/fastly/pushpin/pull/48228), [#48376](https://github.com/fastly/pushpin/pull/48376), [#48388](https://github.com/fastly/pushpin/pull/48388))
+  * Unify logging system to use Rust logger throughout, removing C++ logging system. (902f5fb, a91ca7e) ([#48334](https://github.com/fastly/pushpin/pull/48334), [#48339](https://github.com/fastly/pushpin/pull/48339))
+  * Consolidate Docker and Debian packaging repositories into main repository. (135f12d, 3975828)
+  * Fix batch_key cleanup when connections are removed from batches. (019b9d9) ([#48311](https://github.com/fastly/pushpin/pull/48311))
+  * Fix sync flush failures in WebSocket deflate encoder. (c8f7b00) ([#48307](https://github.com/fastly/pushpin/pull/48307))
+  * Fix send_header resumption and add comprehensive resumption tests. (2b332d2) ([#48367](https://github.com/fastly/pushpin/pull/48367))
+  * Fix authority matching for internal routing in handler. (385b173) ([#48342](https://github.com/fastly/pushpin/pull/48342))
+  * Fix sub-millisecond timeout resolution to prevent early timeouts and hangs. (0b5e5c5) ([#48284](https://github.com/fastly/pushpin/pull/48284))
+  * Fix reference counting leaks in memory pool when pool is full. (8127c5e) ([#48344](https://github.com/fastly/pushpin/pull/48344))
+  * Improve EOF detection in connection handling. (c26d242) ([#48245](https://github.com/fastly/pushpin/pull/48245))
+  * Legacy runner is no longer built by default.
+  * Remove updates checker.
+
 v. 1.41.0 (2025-08-08)
 
   * Add support for gone links.
