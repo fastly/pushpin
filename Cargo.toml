@@ -25,12 +25,11 @@ assets = [
     { source = "dist/usr/share/doc/pushpin/README.md.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
     { source = "dist/usr/share/doc/pushpin/NEWS.Debian.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
     { source = "dist/usr/share/doc/pushpin/changelog.Debian.gz", dest = "usr/share/doc/pushpin/", mode = "644" },
-    { source = "source/tools/*.py", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
-    { source = "source/tools/*.php", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
-    { source = "source/tools/*.js", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
-    { source = "source/tools/*.sh", dest = "usr/share/doc/pushpin/examples/tools/", mode = "755" },
-    { source = "source/tools/zhttp/*.py", dest = "usr/share/doc/pushpin/examples/tools/zhttp/", mode = "644" },
-    { source = "source/tools/echo/*", dest = "usr/share/doc/pushpin/examples/tools/echo/", mode = "644" },
+    { source = "tools/*.py", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.php", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.js", dest = "usr/share/doc/pushpin/examples/tools/", mode = "644" },
+    { source = "tools/*.sh", dest = "usr/share/doc/pushpin/examples/tools/", mode = "755" },
+    { source = "tools/zhttp/*.py", dest = "usr/share/doc/pushpin/examples/tools/zhttp/", mode = "644" },
 ]
 preserve-symlinks = true
 maintainer-scripts = "packaging/debian/debian"
