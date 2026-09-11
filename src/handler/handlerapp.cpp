@@ -87,11 +87,10 @@ static int runLoop(const QString &logFile, const HandlerEngine::Configuration &c
     // Enough timers for sessions, plus an extra 100 for misc
     int timersMax = (config.connectionsMax * timersPerSession) + 100;
 
-    // Enough for control requests and prometheus requests, plus an extra 100 for misc. Client
-    // sessions don't use socket notifiers
-    int socketNotifiersMax = (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST *
-                              (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX)) +
-                             100;
+    // Enough for control requests, plus an extra 100 for misc. Client sessions don't use socket
+    // notifiers
+    int socketNotifiersMax =
+        (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * CONTROL_CONNECTIONS_MAX) + 100;
 
     int registrationsMax = timersMax + socketNotifiersMax;
 

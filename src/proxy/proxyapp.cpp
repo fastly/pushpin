@@ -190,10 +190,8 @@ public:
         int timersMax =
             (config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100;
 
-        // Enough for zroutes and prometheus requests, plus an extra 100 for misc
-        int socketNotifiersMax =
-            (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) +
-            (SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * PROMETHEUS_CONNECTIONS_MAX) + 100;
+        // Enough for zroutes, plus an extra 100 for misc
+        int socketNotifiersMax = (SOCKETNOTIFIERS_PER_ZROUTE * ZROUTES_MAX) + 100;
 
         int registrationsMax = timersMax + socketNotifiersMax;
         EventLoop loop(registrationsMax);

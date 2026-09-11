@@ -24,11 +24,9 @@
 #include "statsmanager.h"
 
 #include "datetime.h"
-#include "defercall.h"
-#include "httpheaders.h"
 #include "json.h"
 #include "log.h"
-#include "simplehttpserver.h"
+#include "rust/bindings.h"
 #include "timer.h"
 #include "timerwheel.h"
 #include "tnetstring.h"
@@ -285,26 +283,6 @@ public:
         bool isEmpty() { return (requestsReceived == 0); }
     };
 
-    class PrometheusMetric {
-    public:
-        enum Type {
-            RequestReceived,
-            ConnectionConnected,
-            ConnectionMinute,
-            MessageReceived,
-            MessageSent
-        };
-
-        Type mtype;
-        QString name;
-        QString type;
-        QString help;
-
-        PrometheusMetric(Type _mtype, const QString &_name, const QString &_type,
-                         const QString &_help)
-            : mtype(_mtype), name(_name), type(_type), help(_help) {}
-    };
-
     typedef QPair<QString, QString> SubscriptionKey;
 
     StatsManager *q;
@@ -323,10 +301,9 @@ public:
     int subscriptionLinger;
     int reportInterval;
     std::unique_ptr<ZmqSocket> sock;
-    std::unique_ptr<SimpleHttpServer> prometheusServer;
-    int prometheusConnectionsMax;
     QString prometheusPrefix;
-    QList<PrometheusMetric> prometheusMetrics;
+    ffi::CommonMetrics *commonMetrics;
+    ffi::PrometheusServer *prometheusServer;
     QHash<QByteArray, uint32_t> routeActivity;
     QHash<QByteArray, ConnectionInfo *> connectionInfoById;
     QHash<QByteArray, QSet<ConnectionInfo *>> connectionInfoByRoute;
@@ -353,10 +330,8 @@ public:
     Connection reportTimerConnection;
     Connection refreshTimerConnection;
     Connection externalConnectionsMaxTimerConnection;
-    Connection promServerConnection;
 
-    Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax,
-            int _prometheusConnectionsMax)
+    Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax)
         : q(_q),
           connectionsMax(_connectionsMax),
           subscriptionsMax(_subscriptionsMax),
@@ -370,7 +345,8 @@ public:
           subscriptionTtl(60 * 1000),
           subscriptionLinger(60 * 1000),
           reportInterval(10 * 1000),
-          prometheusConnectionsMax(_prometheusConnectionsMax),
+          commonMetrics(nullptr),
+          prometheusServer(nullptr),
           currentConnectionInfoRefreshBucket(0),
           currentSubscriptionRefreshBucket(0),
           wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)) {
@@ -392,26 +368,15 @@ public:
         setupConnectionBuckets();
         setupSubscriptionBuckets();
 
-        prometheusMetrics += PrometheusMetric(PrometheusMetric::RequestReceived, "request_received",
-                                              "counter", "Number of requests received");
-        prometheusMetrics +=
-            PrometheusMetric(PrometheusMetric::ConnectionConnected, "connection_connected", "gauge",
-                             "Number of concurrent connections");
-        prometheusMetrics +=
-            PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter",
-                             "Number of minutes clients have been connected");
-        prometheusMetrics +=
-            PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter",
-                             "Number of messages received by the publish API");
-        prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent, "message_sent",
-                                              "counter", "Number of messages sent to clients");
-
         startTime = DateTime::currentMSecsSinceEpoch();
 
         connectionsMaxes.lastRefresh = startTime;
     }
 
     ~Private() {
+        ffi::prometheus_server_destroy(prometheusServer);
+        ffi::statsmanager_commonmetrics_destroy(commonMetrics);
+
         qDeleteAll(connectionInfoById);
 
         QMutableHashIterator<QByteArray, QHash<QByteArray, ConnectionInfo *>> it(
@@ -445,40 +410,35 @@ public:
     }
 
     bool setPrometheusPort(const QString &portStr) {
-        assert(!prometheusServer);
+        assert(!commonMetrics && !prometheusServer);
 
-        prometheusServer = std::make_unique<SimpleHttpServer>(prometheusConnectionsMax, 8192, 8192);
-        promServerConnection = prometheusServer->requestReady.connect(
-            boost::bind(&Private::prometheus_requestReady, this));
+        commonMetrics = ffi::statsmanager_commonmetrics_create(prometheusPrefix.toUtf8().data());
+        if (!commonMetrics)
+            return false;
 
-        if (portStr.startsWith("ipc://")) {
-            if (!prometheusServer->listenLocal(portStr.mid(6))) {
-                promServerConnection.disconnect();
-                prometheusServer.reset();
+        const ffi::PrometheusRegistry *registry =
+            ffi::statsmanager_commonmetrics_registry(commonMetrics);
 
-                return false;
-            }
-        } else {
-            QHostAddress addr;
-            int port = -1;
-
-            int pos = portStr.indexOf(':');
-            if (pos >= 0) {
-                addr = QHostAddress(portStr.mid(0, pos));
-                port = portStr.mid(pos + 1).toInt();
-            } else {
-                port = portStr.toInt();
-            }
-
-            if (!prometheusServer->listen(addr, port)) {
-                promServerConnection.disconnect();
-                prometheusServer.reset();
-
-                return false;
-            }
+        const char *error = nullptr;
+        prometheusServer = ffi::prometheus_server_create(portStr.toUtf8().data(), registry, &error);
+        if (!prometheusServer) {
+            log_error("prometheus_server_create: %s", error);
+            ffi::prometheus_server_error_destroy(error);
+            ffi::statsmanager_commonmetrics_destroy(commonMetrics);
+            commonMetrics = nullptr;
+            return false;
         }
 
         return true;
+    }
+
+    void combinedReportChanged() {
+        if (commonMetrics) {
+            ffi::statsmanager_commonmetrics_update(
+                commonMetrics, combinedReport.requestsReceived, combinedReport.connectionsMax,
+                combinedReport.connectionsMinutes, combinedReport.messagesReceived,
+                combinedReport.messagesSent);
+        }
     }
 
     void setupConnectionBuckets() {
@@ -723,6 +683,8 @@ public:
         combinedReport.connectionsMax -= report->connectionsMax;
 
         reports.remove(report->routeId);
+
+        combinedReportChanged();
     }
 
     ConnectionsMax &getOrCreateConnectionsMax(const QByteArray &routeId) {
@@ -913,6 +875,8 @@ public:
             // Add the new total to the combined report
             combinedReport.connectionsMax += report->connectionsMax;
             combinedReport.lastUpdate = now;
+
+            combinedReportChanged();
         }
     }
 
@@ -930,6 +894,7 @@ public:
 
             report->addConnectionsMinutes(mins, now);
             combinedReport.addConnectionsMinutes(mins, now);
+            combinedReportChanged();
         }
     }
 
@@ -1173,6 +1138,7 @@ public:
 
             r.connectionsMinutes += mins;
             combinedReport.addConnectionsMinutes(mins, now);
+            combinedReportChanged();
         }
     }
 
@@ -1354,53 +1320,10 @@ private:
 
         expireExternalConnectionsMaxes(currentTime);
     }
-
-    void prometheus_requestReady() {
-        SimpleHttpRequest *req = prometheusServer->takeNext();
-
-        QString data;
-
-        foreach (const PrometheusMetric &m, prometheusMetrics) {
-            Variant value;
-
-            switch (m.mtype) {
-            case PrometheusMetric::RequestReceived:
-                value = Variant(combinedReport.requestsReceived);
-                break;
-            case PrometheusMetric::ConnectionConnected:
-                value = Variant(combinedReport.connectionsMax);
-                break;
-            case PrometheusMetric::ConnectionMinute:
-                value = Variant(combinedReport.connectionsMinutes);
-                break;
-            case PrometheusMetric::MessageReceived:
-                value = Variant(combinedReport.messagesReceived);
-                break;
-            case PrometheusMetric::MessageSent:
-                value = Variant(combinedReport.messagesSent);
-                break;
-            }
-
-            if (value.isNull())
-                continue;
-
-            data += QString("# HELP %1%2 %3\n"
-                            "# TYPE %4%5 %6\n"
-                            "%7%8 %9\n")
-                        .arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type,
-                             prometheusPrefix, m.name, value.toString());
-        }
-
-        req->finished.connect([=] { DeferCall::deleteLater(req); });
-
-        HttpHeaders headers;
-        headers += HttpHeader("Content-Type", "text/plain");
-        req->respond(200, "OK", headers, data.toUtf8());
-    }
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax) {
-    d = new Private(this, connectionsMax, subscriptionsMax, prometheusConnectionsMax);
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax) {
+    d = new Private(this, connectionsMax, subscriptionsMax);
 }
 
 StatsManager::~StatsManager() { delete d; }
@@ -1527,6 +1450,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
             // Minutes are rounded up so count one immediately
             report->addConnectionsMinutes(1, now);
             d->combinedReport.addConnectionsMinutes(1, now);
+            d->combinedReportChanged();
         }
     }
 
@@ -1669,6 +1593,7 @@ void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks) {
 
     report->addMessageReceived(blocks, now);
     d->combinedReport.addMessageReceived(blocks, now);
+    d->combinedReportChanged();
 }
 
 void StatsManager::addMessageSent(const QByteArray &routeId, const QString &transport, int blocks) {
@@ -1681,6 +1606,7 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 
     report->addMessageSent(transport, blocks, now);
     d->combinedReport.addMessageSent(transport, blocks, now);
+    d->combinedReportChanged();
 }
 
 void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, uint32_t count) {
@@ -1700,6 +1626,7 @@ void StatsManager::addRequestsReceived(uint32_t count) {
 
     d->combinedCounts.requestsReceived += count;
     d->combinedReport.addRequestsReceived(count, now);
+    d->combinedReportChanged();
 
     if (!d->activityTimer->isActive())
         d->activityTimer->start(ACTIVITY_TIMEOUT);
@@ -1793,6 +1720,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
                     // Minutes are rounded up so count one immediately
                     report->addConnectionsMinutes(1, now);
                     d->combinedReport.addConnectionsMinutes(1, now);
+                    d->combinedReportChanged();
                 }
             } else {
                 c->ttl = packet.ttl;

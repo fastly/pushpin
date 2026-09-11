@@ -40,7 +40,7 @@ public:
 
     enum Format { TnetStringFormat, JsonFormat };
 
-    StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax);
+    StatsManager(int connectionsMax, int subscriptionsMax);
     ~StatsManager();
 
     bool connectionSendEnabled() const;
