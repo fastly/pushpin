@@ -582,4 +582,5 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
 
     return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount, commonMetrics);
 }
+
 }

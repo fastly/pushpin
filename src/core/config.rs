@@ -630,6 +630,34 @@ pub enum NetListenConfig {
     Unix(UnixListenConfig),
 }
 
+impl NetListenConfig {
+    /// Parse config file prometheus_port format.
+    pub fn from_prometheus_port_str(s: &str) -> Result<Self, String> {
+        if let Some(path) = s.strip_prefix("ipc://") {
+            Ok(Self::Unix(UnixListenConfig {
+                path: path.into(),
+                mode: None,
+                user: None,
+                group: None,
+                params: HashMap::new(),
+            }))
+        } else {
+            let addr = if let Ok(addr) = s.parse::<std::net::SocketAddr>() {
+                addr
+            } else if let Ok(port) = s.parse::<u16>() {
+                std::net::SocketAddr::from(([0, 0, 0, 0], port))
+            } else {
+                return Err(format!("invalid prometheus_port config: {s}"));
+            };
+
+            Ok(Self::Tcp(TcpListenConfig {
+                addr,
+                params: HashMap::new(),
+            }))
+        }
+    }
+}
+
 impl FromStr for NetListenConfig {
     type Err = String;
 
