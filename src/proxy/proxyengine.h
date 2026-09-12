@@ -107,7 +107,6 @@ public:
         int statsConnectionTtl;
         int statsConnectionsMaxTtl;
         int statsReportInterval;
-        std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
 
         Configuration()
             : id(0),
