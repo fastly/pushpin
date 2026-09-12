@@ -94,6 +94,7 @@ public:
     Engine *q;
     bool destroying;
     DomainMap *domainMap;
+    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
     Configuration config;
     std::unique_ptr<ZhttpManager> zhttpIn;
     std::unique_ptr<ZhttpManager> intZhttpIn;
@@ -123,7 +124,9 @@ public:
     Connection connMaxConnection;
     Connection rrConnection;
 
-    Private(Engine *_q, DomainMap *_domainMap) : q(_q), destroying(false), domainMap(_domainMap) {}
+    Private(Engine *_q, DomainMap *_domainMap,
+            std::shared_ptr<StatsManager::CommonMetrics> _commonMetrics)
+        : q(_q), destroying(false), domainMap(_domainMap), commonMetrics(_commonMetrics) {}
 
     ~Private() {
         destroying = true;
@@ -279,7 +282,7 @@ public:
         }
 
         // Set up StatsManager
-        if (!config.statsSpec.isEmpty() || config.commonMetrics) {
+        if (!config.statsSpec.isEmpty() || commonMetrics) {
             stats = std::make_unique<StatsManager>(config.sessionsMax, 0);
 
             connMaxConnection = stats->connMax.connect(
@@ -300,8 +303,8 @@ public:
                 }
             }
 
-            if (config.commonMetrics)
-                stats->setCommonMetrics(config.commonMetrics);
+            if (commonMetrics)
+                stats->setCommonMetrics(commonMetrics);
         }
 
         if (!config.commandSpec.isEmpty()) {
@@ -944,7 +947,9 @@ private:
     }
 };
 
-Engine::Engine(DomainMap *domainMap) { d = new Private(this, domainMap); }
+Engine::Engine(DomainMap *domainMap, std::shared_ptr<StatsManager::CommonMetrics> commonMetrics) {
+    d = new Private(this, domainMap, commonMetrics);
+}
 
 Engine::~Engine() { delete d; }
 

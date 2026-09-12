@@ -129,7 +129,7 @@ public:
               statsReportInterval(-1) {}
     };
 
-    Engine(DomainMap *domainMap);
+    Engine(DomainMap *domainMap, std::shared_ptr<StatsManager::CommonMetrics> commonMetrics = {});
     ~Engine();
 
     StatsManager *statsManager() const;
