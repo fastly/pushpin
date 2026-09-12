@@ -301,7 +301,7 @@ public:
     int subscriptionLinger;
     int reportInterval;
     std::unique_ptr<ZmqSocket> sock;
-    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
+    std::shared_ptr<CommonMetrics> commonMetrics;
     size_t commonMetricsRegistrationId;
     QHash<QByteArray, uint32_t> routeActivity;
     QHash<QByteArray, ConnectionInfo *> connectionInfoById;
@@ -407,7 +407,7 @@ public:
         return true;
     }
 
-    void setCommonMetrics(std::shared_ptr<StatsManager::CommonMetrics> cm) {
+    void setCommonMetrics(std::shared_ptr<CommonMetrics> cm) {
         assert(!commonMetrics);
         commonMetrics = std::move(cm);
         commonMetricsRegistrationId = commonMetrics->registerInstance();
@@ -1312,7 +1312,7 @@ StatsManager::CommonMetrics::create(const QString &prefix) {
     ffi::CommonMetrics *handle = ffi::statsmanager_commonmetrics_create(prefix.toUtf8().data());
     if (!handle)
         return nullptr;
-    return std::unique_ptr<StatsManager::CommonMetrics>(new StatsManager::CommonMetrics(handle));
+    return std::unique_ptr<CommonMetrics>(new CommonMetrics(handle));
 }
 
 const ffi::PrometheusRegistry *StatsManager::CommonMetrics::registry() const {
