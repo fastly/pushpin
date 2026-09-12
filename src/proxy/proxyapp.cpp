@@ -27,12 +27,14 @@
 #include "eventloop.h"
 #include "log.h"
 #include "processquit.h"
+#include "prometheus.h"
 #include "proxyargsdata.h"
 #include "proxyengine.h"
 #include "rust/bindings.h"
 #include "rustthread.h"
 #include "settings.h"
 #include "simplehttpserver.h"
+#include "statsmanager.h"
 #include "timer.h"
 #include "xffrule.h"
 #include <QFile>
@@ -95,8 +97,9 @@ enum CommandLineParseResult {
 /// Wraps Engine with lifecycle signals and defer call support
 class EngineWorker {
 public:
-    EngineWorker(const Engine::Configuration &config, DomainMap *domainMap)
-        : config_(config), engine_(std::make_unique<Engine>(domainMap)) {}
+    EngineWorker(const Engine::Configuration &config, DomainMap *domainMap,
+                 std::shared_ptr<StatsManager::CommonMetrics> commonMetrics)
+        : config_(config), engine_(std::make_unique<Engine>(domainMap, commonMetrics)) {}
 
     DeferCall deferCall;
 
@@ -139,10 +142,12 @@ public:
     QWaitCondition w;
     Engine::Configuration config;
     DomainMap *domainMap;
+    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
     EngineWorker *worker;
 
-    EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap)
-        : config(_config), domainMap(_domainMap), worker(nullptr) {}
+    EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap,
+                 std::shared_ptr<StatsManager::CommonMetrics> _commonMetrics)
+        : config(_config), domainMap(_domainMap), commonMetrics(_commonMetrics), worker(nullptr) {}
 
     ~EngineThread() {
         stop();
@@ -197,7 +202,7 @@ public:
         EventLoop loop(registrationsMax);
 
         // Create worker on the stack in this thread
-        EngineWorker worker_local(config, domainMap);
+        EngineWorker worker_local(config, domainMap, commonMetrics);
 
         // Set member pointer for cross-thread access
         worker = &worker_local;
@@ -235,7 +240,8 @@ public:
 };
 
 static int runLoop(const QString &logFile, const Engine::Configuration &config,
-                   const QStringList &routeLines, const QString &routesFile, int workerCount) {
+                   const QStringList &routeLines, const QString &routesFile, int workerCount,
+                   std::shared_ptr<StatsManager::CommonMetrics> commonMetrics) {
     // Plenty for the main thread
     int timersMax = 100;
 
@@ -307,7 +313,7 @@ static int runLoop(const QString &logFile, const Engine::Configuration &config,
                 wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
             }
 
-            EngineThread *t = new EngineThread(wconfig, domainMap.get());
+            EngineThread *t = new EngineThread(wconfig, domainMap.get(), commonMetrics);
             if (!t->start()) {
                 delete t;
 
@@ -501,6 +507,21 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     else
         sessionsMax = clientMaxconn;
 
+    std::shared_ptr<StatsManager::CommonMetrics> commonMetrics;
+    std::unique_ptr<PrometheusServer> prometheusServer;
+
+    if (!prometheusPort.isEmpty()) {
+        commonMetrics = StatsManager::CommonMetrics::create(prometheusPrefix);
+
+        QString promError;
+        prometheusServer =
+            PrometheusServer::create(prometheusPort, commonMetrics->registry(), &promError);
+        if (!prometheusServer) {
+            log_error("unable to bind to prometheus port: %s", qPrintable(promError));
+            return 1;
+        }
+    }
+
     Engine::Configuration config;
     config.appVersion = Config::get().version;
     config.clientId = "proxy_" + QByteArray::number(getpid());
@@ -558,9 +579,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     config.statsConnectionTtl = statsConnectionTtl;
     config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
     config.statsReportInterval = statsReportInterval;
-    config.prometheusPort = prometheusPort;
-    config.prometheusPrefix = prometheusPrefix;
 
-    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount);
+    return runLoop(args.logFile, config, args.routeLines, routesFile, workerCount, commonMetrics);
 }
 }

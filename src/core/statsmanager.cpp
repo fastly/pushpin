@@ -301,9 +301,8 @@ public:
     int subscriptionLinger;
     int reportInterval;
     std::unique_ptr<ZmqSocket> sock;
-    QString prometheusPrefix;
-    ffi::CommonMetrics *commonMetrics;
-    ffi::PrometheusServer *prometheusServer;
+    std::shared_ptr<CommonMetrics> commonMetrics;
+    size_t commonMetricsRegistrationId;
     QHash<QByteArray, uint32_t> routeActivity;
     QHash<QByteArray, ConnectionInfo *> connectionInfoById;
     QHash<QByteArray, QSet<ConnectionInfo *>> connectionInfoByRoute;
@@ -345,8 +344,7 @@ public:
           subscriptionTtl(60 * 1000),
           subscriptionLinger(60 * 1000),
           reportInterval(10 * 1000),
-          commonMetrics(nullptr),
-          prometheusServer(nullptr),
+          commonMetricsRegistrationId(0),
           currentConnectionInfoRefreshBucket(0),
           currentSubscriptionRefreshBucket(0),
           wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)) {
@@ -374,8 +372,8 @@ public:
     }
 
     ~Private() {
-        ffi::prometheus_server_destroy(prometheusServer);
-        ffi::statsmanager_commonmetrics_destroy(commonMetrics);
+        if (commonMetrics)
+            commonMetrics->unregisterInstance(commonMetricsRegistrationId);
 
         qDeleteAll(connectionInfoById);
 
@@ -409,35 +407,17 @@ public:
         return true;
     }
 
-    bool setPrometheusPort(const QString &portStr) {
-        assert(!commonMetrics && !prometheusServer);
-
-        commonMetrics = ffi::statsmanager_commonmetrics_create(prometheusPrefix.toUtf8().data());
-        if (!commonMetrics)
-            return false;
-
-        const ffi::PrometheusRegistry *registry =
-            ffi::statsmanager_commonmetrics_registry(commonMetrics);
-
-        const char *error = nullptr;
-        prometheusServer = ffi::prometheus_server_create(portStr.toUtf8().data(), registry, &error);
-        if (!prometheusServer) {
-            log_error("prometheus_server_create: %s", error);
-            ffi::prometheus_server_error_destroy(error);
-            ffi::statsmanager_commonmetrics_destroy(commonMetrics);
-            commonMetrics = nullptr;
-            return false;
-        }
-
-        return true;
+    void setCommonMetrics(std::shared_ptr<CommonMetrics> cm) {
+        assert(!commonMetrics);
+        commonMetrics = std::move(cm);
+        commonMetricsRegistrationId = commonMetrics->registerInstance();
     }
 
     void combinedReportChanged() {
         if (commonMetrics) {
-            ffi::statsmanager_commonmetrics_update(
-                commonMetrics, combinedReport.requestsReceived, combinedReport.connectionsMax,
-                combinedReport.connectionsMinutes, combinedReport.messagesReceived,
-                combinedReport.messagesSent);
+            commonMetrics->update(commonMetricsRegistrationId, combinedReport.requestsReceived,
+                                  combinedReport.connectionsMax, combinedReport.connectionsMinutes,
+                                  combinedReport.messagesReceived, combinedReport.messagesSent);
         }
     }
 
@@ -1332,17 +1312,25 @@ StatsManager::CommonMetrics::create(const QString &prefix) {
     ffi::CommonMetrics *handle = ffi::statsmanager_commonmetrics_create(prefix.toUtf8().data());
     if (!handle)
         return nullptr;
-    return std::unique_ptr<StatsManager::CommonMetrics>(new StatsManager::CommonMetrics(handle));
+    return std::unique_ptr<CommonMetrics>(new CommonMetrics(handle));
 }
 
 const ffi::PrometheusRegistry *StatsManager::CommonMetrics::registry() const {
     return ffi::statsmanager_commonmetrics_registry(inner_);
 }
 
-void StatsManager::CommonMetrics::update(uint32_t requestReceived, uint32_t connectionConnected,
-                                         uint32_t connectionMinute, uint32_t messageReceived,
-                                         uint32_t messageSent) {
-    ffi::statsmanager_commonmetrics_update(inner_, requestReceived, connectionConnected,
+size_t StatsManager::CommonMetrics::registerInstance() {
+    return ffi::statsmanager_commonmetrics_register(inner_);
+}
+
+void StatsManager::CommonMetrics::unregisterInstance(size_t id) {
+    ffi::statsmanager_commonmetrics_unregister(inner_, id);
+}
+
+void StatsManager::CommonMetrics::update(size_t id, uint32_t requestReceived,
+                                         uint32_t connectionConnected, uint32_t connectionMinute,
+                                         uint32_t messageReceived, uint32_t messageSent) {
+    ffi::statsmanager_commonmetrics_update(inner_, id, requestReceived, connectionConnected,
                                            connectionMinute, messageReceived, messageSent);
 }
 
@@ -1388,9 +1376,9 @@ void StatsManager::setReportInterval(int secs) {
 
 void StatsManager::setOutputFormat(Format format) { d->outputFormat = format; }
 
-bool StatsManager::setPrometheusPort(const QString &port) { return d->setPrometheusPort(port); }
-
-void StatsManager::setPrometheusPrefix(const QString &prefix) { d->prometheusPrefix = prefix; }
+void StatsManager::setCommonMetrics(std::shared_ptr<CommonMetrics> commonMetrics) {
+    d->setCommonMetrics(std::move(commonMetrics));
+}
 
 void StatsManager::addActivity(const QByteArray &routeId, uint32_t count) {
     if (d->routeActivity.contains(routeId))
