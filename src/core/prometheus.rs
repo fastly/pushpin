@@ -281,30 +281,12 @@ async fn handle_connection<S: AsyncRead + AsyncWrite>(
 
 pub mod ffi {
     use super::*;
+    use crate::core::config::NetListenConfig;
     use libc::c_char;
     use std::ffi::{CStr, CString};
 
     /// Opaque handle to a `prometheus::Registry`, for use across the FFI boundary.
     pub enum PrometheusRegistry {}
-
-    fn parse_listen_addr(addr: &str) -> Result<NetListener, String> {
-        if let Some(path) = addr.strip_prefix("ipc://") {
-            let l = mio::net::UnixListener::bind(path)
-                .map_err(|e| format!("failed to bind {path}: {e}"))?;
-            Ok(NetListener::Unix(l))
-        } else if let Ok(socket_addr) = addr.parse::<std::net::SocketAddr>() {
-            let l = mio::net::TcpListener::bind(socket_addr)
-                .map_err(|e| format!("failed to bind {socket_addr}: {e}"))?;
-            Ok(NetListener::Tcp(l))
-        } else if let Ok(port) = addr.parse::<u16>() {
-            let socket_addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
-            let l = mio::net::TcpListener::bind(socket_addr)
-                .map_err(|e| format!("failed to bind {socket_addr}: {e}"))?;
-            Ok(NetListener::Tcp(l))
-        } else {
-            Err(format!("invalid listen address: {addr}"))
-        }
-    }
 
     /// Create and start a prometheus HTTP server listening on `addr`. The provided `registry` is
     /// cloned internally so the server is independent of the registry's lifetime. Returns an opaque
@@ -325,7 +307,15 @@ pub mod ffi {
         let addr = CStr::from_ptr(addr).to_str().expect("invalid addr string");
         let registry = &*(registry as *const prometheus::Registry);
 
-        let listener = match parse_listen_addr(addr) {
+        let config = match NetListenConfig::from_prometheus_port_str(addr) {
+            Ok(c) => c,
+            Err(e) => {
+                *error = CString::new(e).unwrap_or_default().into_raw();
+                return std::ptr::null_mut();
+            }
+        };
+
+        let listener = match NetListener::bind_config(&config) {
             Ok(l) => l,
             Err(e) => {
                 *error = CString::new(e).unwrap_or_default().into_raw();
