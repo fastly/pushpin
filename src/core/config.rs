@@ -634,6 +634,10 @@ impl NetListenConfig {
     /// Parse config file prometheus_port format.
     pub fn from_prometheus_port_str(s: &str) -> Result<Self, String> {
         if let Some(path) = s.strip_prefix("ipc://") {
+            if path.is_empty() {
+                return Err(format!("invalid listen address '{s}'; ipc path is empty"));
+            }
+
             Ok(Self::Unix(UnixListenConfig {
                 path: path.into(),
                 mode: None,
@@ -647,7 +651,9 @@ impl NetListenConfig {
             } else if let Ok(port) = s.parse::<u16>() {
                 std::net::SocketAddr::from(([0, 0, 0, 0], port))
             } else {
-                return Err(format!("invalid prometheus_port config: {s}"));
+                return Err(format!(
+                    "invalid listen address '{s}'; expected ipc://PATH, IP:PORT, or PORT"
+                ));
             };
 
             Ok(Self::Tcp(TcpListenConfig {

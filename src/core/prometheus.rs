@@ -304,7 +304,16 @@ pub mod ffi {
         registry: *const PrometheusRegistry,
         error: *mut *const c_char,
     ) -> *mut PrometheusServer {
-        let addr = CStr::from_ptr(addr).to_str().expect("invalid addr string");
+        let addr = match CStr::from_ptr(addr).to_str() {
+            Ok(addr) => addr,
+            Err(e) => {
+                *error = CString::new(format!("invalid listen address: {e}"))
+                    .unwrap_or_default()
+                    .into_raw();
+                return std::ptr::null_mut();
+            }
+        };
+
         let registry = &*(registry as *const prometheus::Registry);
 
         let config = match NetListenConfig::from_prometheus_port_str(addr) {
