@@ -471,7 +471,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     int statsConnectionsMaxTtl = settings.value("proxy/stats_connections_max_ttl", 60).toInt();
     int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
     QString prometheusPort = settings.value("proxy/prometheus_port").toString();
-    QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
+    QString prometheusPrefix = settings.value("proxy/prometheus_prefix", "proxy").toString();
 
     QList<QByteArray> origHeadersNeedMark;
     foreach (const QString &s, origHeadersNeedMarkStr)

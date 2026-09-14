@@ -165,10 +165,12 @@ impl App {
         let mut prometheus = None;
 
         if let Some(config) = &config.prometheus {
-            let combined_prefix = format!("{}connmgr", config.prefix);
-
-            let registry = prometheus::Registry::new_custom(Some(combined_prefix), None)
-                .expect("failed to create prometheus registry");
+            let trimmed = config.prefix.trim_end_matches('_');
+            let registry = prometheus::Registry::new_custom(
+                (!trimmed.is_empty()).then(|| trimmed.to_string()),
+                None,
+            )
+            .expect("failed to create prometheus registry");
 
             try_register_process_collector(&registry)
                 .expect("failed to register process collector");
