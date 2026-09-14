@@ -197,7 +197,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
             NetListenConfig::Unix(c) => &mut c.params,
         };
 
-        let prefix = params.remove("prefix").unwrap_or_default();
+        let prefix = params.remove("prefix").unwrap_or("connmgr".to_string());
 
         if let Some(k) = params.keys().next() {
             return Err(format!("failed to parse prometheus: invalid param: {}", k).into());
