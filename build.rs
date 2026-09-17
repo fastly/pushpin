@@ -9,31 +9,20 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::str::FromStr;
-use time::macros::format_description;
-use time::OffsetDateTime;
 
 const DEFAULT_PREFIX: &str = "/usr/local";
 
 fn get_version() -> String {
-    let mut version = env!("CARGO_PKG_VERSION").to_string();
-
-    if version.ends_with("-dev") {
-        let format = format_description!("[year][month][day]");
-
-        let date_str = OffsetDateTime::now_utc().format(&format).unwrap();
-
-        version.push_str(&format!("-{}", date_str));
-    }
-
-    version
+    env::var("PUSHPIN_BUILD_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string())
 }
 
 fn get_version_int() -> Result<u32, Box<dyn Error>> {
-    let version = env!("CARGO_PKG_VERSION");
+    let version =
+        env::var("PUSHPIN_BUILD_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
 
     let version = match version.find('-') {
         Some(pos) => &version[..pos],
-        None => version,
+        None => &version,
     };
 
     let mut v = 0;
@@ -614,6 +603,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rustc-link-search={}", qt_install_libs.display());
     }
 
+    println!("cargo:rerun-if-env-changed=PUSHPIN_BUILD_VERSION");
     println!("cargo:rerun-if-env-changed=RELEASE");
     println!("cargo:rerun-if-env-changed=PREFIX");
     println!("cargo:rerun-if-env-changed=BINDIR");
