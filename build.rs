@@ -17,12 +17,11 @@ fn get_version() -> String {
 }
 
 fn get_version_int() -> Result<u32, Box<dyn Error>> {
-    let version =
-        env::var("PUSHPIN_BUILD_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+    let version = env!("CARGO_PKG_VERSION");
 
     let version = match version.find('-') {
         Some(pos) => &version[..pos],
-        None => &version,
+        None => version,
     };
 
     let mut v = 0;
