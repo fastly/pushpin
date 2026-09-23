@@ -144,6 +144,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "pushpin-api"
+test = false
+bench = false
+required-features = ["breaking-changes"]
+
+[[bin]]
 name = "pushpin"
 test = false
 bench = false
