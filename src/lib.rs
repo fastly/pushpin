@@ -21,6 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
+pub mod api;
 /// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
