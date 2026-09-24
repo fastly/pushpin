@@ -27,6 +27,7 @@ use crate::core::task::{CancellationSender, CancellationToken};
 use log::{debug, error, warn};
 use std::cell::RefCell;
 use std::error::Error;
+use std::future::Future;
 use std::pin::pin;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -71,9 +72,10 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new<H>(listener: NetListener, config: Config, handler: H) -> Self
+    pub fn new<H, F>(listener: NetListener, config: Config, handler: H) -> Self
     where
-        H: Fn(Request) -> Response + Send + 'static,
+        H: Fn(Request) -> F + Send + 'static,
+        F: Future<Output = Response>,
     {
         let (stop_s, stop_r) = channel::channel(1);
 
@@ -136,101 +138,124 @@ struct Client {
     _cancel: CancellationSender,
 }
 
-async fn run_server<H>(listener: NetListener, stop: CancellationToken, config: Config, handler: H)
+// Manual async needed to allow F to be non-static
+#[allow(clippy::manual_async_fn)]
+fn run_server<H, F>(
+    listener: NetListener,
+    stop: CancellationToken,
+    config: Config,
+    handler: H,
+) -> impl Future<Output = ()> + 'static
 where
-    H: Fn(Request) -> Response + Send + 'static,
+    H: Fn(Request) -> F + Send + 'static,
+    F: Future<Output = Response>,
 {
-    let listener = AsyncNetListener::new(listener);
+    async move {
+        let listener = AsyncNetListener::new(listener);
 
-    let reactor = Reactor::current().unwrap();
-    let executor = Executor::current().unwrap();
-    let config = Rc::new(config);
-    let handler = Rc::new(handler);
-    let mut clients: Vec<Client> = Vec::new();
+        let reactor = Reactor::current().unwrap();
+        let executor = Executor::current().unwrap();
+        let config = Rc::new(config);
+        let handler = Rc::new(handler);
+        let mut clients: Vec<Client> = Vec::new();
 
-    debug!("simple http server started");
+        debug!("simple http server started");
 
-    // Loop to serve connections. When the loop ends, the `clients` Vec is dropped, which causes
-    // all the client tasks to end as well.
+        // Loop to serve connections. When the loop ends, the `clients` Vec is dropped, which causes
+        // all the client tasks to end as well.
 
-    loop {
-        let stream = match select_2(pin!(listener.accept()), pin!(stop.cancelled())).await {
-            Select2::R1(Ok((stream, _peer_addr))) => stream,
-            Select2::R1(Err(e)) => {
-                error!("simple http server accept error: {}", e);
+        loop {
+            let stream = match select_2(pin!(listener.accept()), pin!(stop.cancelled())).await {
+                Select2::R1(Ok((stream, _peer_addr))) => stream,
+                Select2::R1(Err(e)) => {
+                    error!("simple http server accept error: {}", e);
+                    continue;
+                }
+                Select2::R2(_) => break,
+            };
+
+            // Clear finished clients. With a low connections_max this should be relatively cheap.
+            clients.retain(|c| !matches!(c.done.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
+
+            if clients.len() >= config.connections_max {
+                // Drop the stream to close the connection immediately.
+                warn!("too many simple http server connections, rejecting");
                 continue;
             }
-            Select2::R2(_) => break,
-        };
 
-        // Clear finished clients. With a low connections_max this should be relatively cheap.
-        clients.retain(|c| !matches!(c.done.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
+            let (s_done, r_done) =
+                channel::local_channel(1, 1, &reactor.local_registration_memory());
 
-        if clients.len() >= config.connections_max {
-            // Drop the stream to close the connection immediately.
-            warn!("too many simple http server connections, rejecting");
-            continue;
+            let (cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+            match stream {
+                NetStream::Tcp(s) => executor
+                    .spawn(run_connection(
+                        AsyncTcpStream::new(s),
+                        token,
+                        s_done,
+                        config.clone(),
+                        handler.clone(),
+                    ))
+                    .expect("failed to spawn simple http server connection task"),
+                NetStream::Unix(s) => executor
+                    .spawn(run_connection(
+                        AsyncUnixStream::new(s),
+                        token,
+                        s_done,
+                        config.clone(),
+                        handler.clone(),
+                    ))
+                    .expect("failed to spawn simple http server connection task"),
+            };
+
+            clients.push(Client {
+                done: r_done,
+                _cancel: cancel,
+            })
         }
-
-        let (s_done, r_done) = channel::local_channel(1, 1, &reactor.local_registration_memory());
-
-        let (cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
-
-        match stream {
-            NetStream::Tcp(s) => executor
-                .spawn(run_connection(
-                    AsyncTcpStream::new(s),
-                    token,
-                    s_done,
-                    config.clone(),
-                    handler.clone(),
-                ))
-                .expect("failed to spawn simple http server connection task"),
-            NetStream::Unix(s) => executor
-                .spawn(run_connection(
-                    AsyncUnixStream::new(s),
-                    token,
-                    s_done,
-                    config.clone(),
-                    handler.clone(),
-                ))
-                .expect("failed to spawn simple http server connection task"),
-        };
-
-        clients.push(Client {
-            done: r_done,
-            _cancel: cancel,
-        })
     }
 }
 
-async fn run_connection<S: AsyncRead + AsyncWrite + 'static>(
+// Manual async needed to allow F to be non-static
+#[allow(clippy::manual_async_fn)]
+fn run_connection<H, F, S: AsyncRead + AsyncWrite + 'static>(
     stream: S,
     token: CancellationToken,
     _done: channel::LocalSender<()>, // dropped when function returns, indicating done
     config: Rc<Config>,
-    handler: Rc<dyn Fn(Request) -> Response>,
-) {
-    let result = match select_2(
-        pin!(handle_connection(stream, &config, &*handler)),
-        pin!(token.cancelled()),
-    )
-    .await
-    {
-        Select2::R1(r) => r,
-        Select2::R2(()) => return,
-    };
+    handler: Rc<H>,
+) -> impl Future<Output = ()> + 'static
+where
+    H: Fn(Request) -> F + 'static,
+    F: Future<Output = Response>,
+{
+    async move {
+        let result = match select_2(
+            pin!(handle_connection(stream, &config, &*handler)),
+            pin!(token.cancelled()),
+        )
+        .await
+        {
+            Select2::R1(r) => r,
+            Select2::R2(()) => return,
+        };
 
-    if let Err(e) = result {
-        debug!("simple http server connection error: {e}");
+        if let Err(e) = result {
+            debug!("simple http server connection error: {e}");
+        }
     }
 }
 
-async fn handle_connection<S: AsyncRead + AsyncWrite>(
+async fn handle_connection<H, F, S: AsyncRead + AsyncWrite>(
     stream: S,
     config: &Config,
-    handler: &dyn Fn(Request) -> Response,
-) -> Result<(), Box<dyn Error>> {
+    handler: &H,
+) -> Result<(), Box<dyn Error>>
+where
+    H: Fn(Request) -> F,
+    F: Future<Output = Response>,
+{
     let stream = RefCell::new(stream);
 
     let buffer_size = config.headers_size_max;
@@ -286,12 +311,16 @@ async fn handle_connection<S: AsyncRead + AsyncWrite>(
     Ok(())
 }
 
-async fn process_request<R: AsyncRead, W: AsyncWrite>(
+async fn process_request<H, F, R: AsyncRead, W: AsyncWrite>(
     req: server::Request,
     resp: &mut server::Response<'_, R, W>,
     mut body_buf: ContiguousBuffer,
-    handler: &dyn Fn(Request) -> Response,
-) -> Result<Response, Box<dyn Error>> {
+    handler: &H,
+) -> Result<Response, Box<dyn Error>>
+where
+    H: Fn(Request) -> F,
+    F: Future<Output = Response>,
+{
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
     let (owned_req, req_body) = req.recv_header(resp).recv(&mut scratch, None).await?;
 
@@ -340,7 +369,8 @@ async fn process_request<R: AsyncRead, W: AsyncWrite>(
         uri,
         headers,
         body: body_buf.into_inner(),
-    }))
+    })
+    .await)
 }
 
 #[cfg(test)]
@@ -362,16 +392,20 @@ mod tests {
             let request = request.clone();
 
             Server::new(NetListener::Tcp(listener), Config::default(), move |req| {
-                *request.lock().unwrap() = Some(req);
+                let request = request.clone();
 
-                Response {
-                    code: 200,
-                    reason: "OK".to_string(),
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/plain".to_string().into_bytes(),
-                    )],
-                    body: "hello world\n".to_string().into_bytes(),
+                async move {
+                    *request.lock().unwrap() = Some(req);
+
+                    Response {
+                        code: 200,
+                        reason: "OK".to_string(),
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/plain".to_string().into_bytes(),
+                        )],
+                        body: "hello world\n".to_string().into_bytes(),
+                    }
                 }
             })
         };
@@ -421,16 +455,20 @@ mod tests {
             let request = request.clone();
 
             Server::new(NetListener::Tcp(listener), Config::default(), move |req| {
-                *request.lock().unwrap() = Some(req);
+                let request = request.clone();
 
-                Response {
-                    code: 200,
-                    reason: "OK".to_string(),
-                    headers: vec![(
-                        "Content-Type".to_string(),
-                        "text/plain".to_string().into_bytes(),
-                    )],
-                    body: "world\n".to_string().into_bytes(),
+                async move {
+                    *request.lock().unwrap() = Some(req);
+
+                    Response {
+                        code: 200,
+                        reason: "OK".to_string(),
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/plain".to_string().into_bytes(),
+                        )],
+                        body: "world\n".to_string().into_bytes(),
+                    }
                 }
             })
         };
