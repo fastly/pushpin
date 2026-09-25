@@ -29,6 +29,7 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::future::Future;
 use std::pin::pin;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
@@ -66,17 +67,42 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 
+pub type ResponseFuture<'a> = Pin<Box<dyn Future<Output = Response> + Send + 'a>>;
+
+pub trait Handler: Send + 'static {
+    fn handle<'a>(&'a self, req: Request) -> ResponseFuture<'a>;
+}
+
+pub struct HandlerFn<S, H> {
+    state: S,
+    f: H,
+}
+
+impl<S, H> Handler for HandlerFn<S, H>
+where
+    S: Send + 'static,
+    H: for<'a> Fn(&'a S, Request) -> ResponseFuture<'a> + Send + 'static,
+{
+    fn handle<'a>(&'a self, req: Request) -> ResponseFuture<'a> {
+        (self.f)(&self.state, req)
+    }
+}
+
+pub fn handler_fn<S, H>(state: S, f: H) -> HandlerFn<S, H>
+where
+    S: Send + 'static,
+    H: for<'a> Fn(&'a S, Request) -> ResponseFuture<'a> + Send + 'static,
+{
+    HandlerFn { state, f }
+}
+
 pub struct Server {
     thread: Option<thread::JoinHandle<()>>,
     stop: Option<channel::Sender<()>>,
 }
 
 impl Server {
-    pub fn new<H, F>(listener: NetListener, config: Config, handler: H) -> Self
-    where
-        H: Fn(Request) -> F + Send + 'static,
-        F: Future<Output = Response>,
-    {
+    pub fn new<H: Handler>(listener: NetListener, config: Config, handler: H) -> Self {
         let (stop_s, stop_r) = channel::channel(1);
 
         let thread = thread::Builder::new()
@@ -140,16 +166,12 @@ struct Client {
 
 // Manual async needed to allow F to be non-static
 #[allow(clippy::manual_async_fn)]
-fn run_server<H, F>(
+fn run_server<H: Handler>(
     listener: NetListener,
     stop: CancellationToken,
     config: Config,
     handler: H,
-) -> impl Future<Output = ()> + 'static
-where
-    H: Fn(Request) -> F + Send + 'static,
-    F: Future<Output = Response>,
-{
+) -> impl Future<Output = ()> + 'static {
     async move {
         let listener = AsyncNetListener::new(listener);
 
@@ -219,17 +241,13 @@ where
 
 // Manual async needed to allow F to be non-static
 #[allow(clippy::manual_async_fn)]
-fn run_connection<H, F, S: AsyncRead + AsyncWrite + 'static>(
+fn run_connection<H: Handler, S: AsyncRead + AsyncWrite + 'static>(
     stream: S,
     token: CancellationToken,
     _done: channel::LocalSender<()>, // dropped when function returns, indicating done
     config: Rc<Config>,
     handler: Rc<H>,
-) -> impl Future<Output = ()> + 'static
-where
-    H: Fn(Request) -> F + 'static,
-    F: Future<Output = Response>,
-{
+) -> impl Future<Output = ()> + 'static {
     async move {
         let result = match select_2(
             pin!(handle_connection(stream, &config, &*handler)),
@@ -247,15 +265,11 @@ where
     }
 }
 
-async fn handle_connection<H, F, S: AsyncRead + AsyncWrite>(
+async fn handle_connection<H: Handler, S: AsyncRead + AsyncWrite>(
     stream: S,
     config: &Config,
     handler: &H,
-) -> Result<(), Box<dyn Error>>
-where
-    H: Fn(Request) -> F,
-    F: Future<Output = Response>,
-{
+) -> Result<(), Box<dyn Error>> {
     let stream = RefCell::new(stream);
 
     let buffer_size = config.headers_size_max;
@@ -311,16 +325,12 @@ where
     Ok(())
 }
 
-async fn process_request<H, F, R: AsyncRead, W: AsyncWrite>(
+async fn process_request<H: Handler, R: AsyncRead, W: AsyncWrite>(
     req: server::Request,
     resp: &mut server::Response<'_, R, W>,
     mut body_buf: ContiguousBuffer,
     handler: &H,
-) -> Result<Response, Box<dyn Error>>
-where
-    H: Fn(Request) -> F,
-    F: Future<Output = Response>,
-{
+) -> Result<Response, Box<dyn Error>> {
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
     let (owned_req, req_body) = req.recv_header(resp).recv(&mut scratch, None).await?;
 
@@ -364,13 +374,14 @@ where
         }
     }
 
-    Ok(handler(Request {
-        method,
-        uri,
-        headers,
-        body: body_buf.into_inner(),
-    })
-    .await)
+    Ok(handler
+        .handle(Request {
+            method,
+            uri,
+            headers,
+            body: body_buf.into_inner(),
+        })
+        .await)
 }
 
 #[cfg(test)]
@@ -388,14 +399,12 @@ mod tests {
 
         let request = Arc::new(Mutex::new(None));
 
-        let server = {
-            let request = request.clone();
-
-            Server::new(NetListener::Tcp(listener), Config::default(), move |req| {
-                let request = request.clone();
-
-                async move {
-                    *request.lock().unwrap() = Some(req);
+        let server = Server::new(
+            NetListener::Tcp(listener),
+            Config::default(),
+            handler_fn(request.clone(), move |state, req| {
+                Box::pin(async move {
+                    *state.lock().unwrap() = Some(req);
 
                     Response {
                         code: 200,
@@ -406,9 +415,9 @@ mod tests {
                         )],
                         body: "hello world\n".to_string().into_bytes(),
                     }
-                }
-            })
-        };
+                })
+            }),
+        );
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
 
@@ -451,14 +460,12 @@ mod tests {
 
         let request = Arc::new(Mutex::new(None));
 
-        let server = {
-            let request = request.clone();
-
-            Server::new(NetListener::Tcp(listener), Config::default(), move |req| {
-                let request = request.clone();
-
-                async move {
-                    *request.lock().unwrap() = Some(req);
+        let server = Server::new(
+            NetListener::Tcp(listener),
+            Config::default(),
+            handler_fn(request.clone(), move |state, req| {
+                Box::pin(async move {
+                    *state.lock().unwrap() = Some(req);
 
                     Response {
                         code: 200,
@@ -469,9 +476,9 @@ mod tests {
                         )],
                         body: "world\n".to_string().into_bytes(),
                     }
-                }
-            })
-        };
+                })
+            }),
+        );
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
 
