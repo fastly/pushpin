@@ -524,6 +524,25 @@ impl ContiguousBuffer {
         self.start = 0;
         self.end = 0;
     }
+
+    pub fn into_inner(mut self) -> Vec<u8> {
+        self.buf.drain(..self.start);
+        self.buf.truncate(self.end - self.start);
+
+        self.buf
+    }
+}
+
+impl From<Vec<u8>> for ContiguousBuffer {
+    fn from(v: Vec<u8>) -> Self {
+        let end = v.len();
+
+        Self {
+            buf: v,
+            start: 0,
+            end,
+        }
+    }
 }
 
 impl Buffer for ContiguousBuffer {
