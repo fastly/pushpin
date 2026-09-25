@@ -70,7 +70,7 @@ pub struct Response {
 pub type ResponseFuture<'a> = Pin<Box<dyn Future<Output = Response> + Send + 'a>>;
 
 pub trait Handler: Send + 'static {
-    fn handle<'a>(&'a self, req: Request) -> ResponseFuture<'a>;
+    fn handle(&self, req: Request) -> ResponseFuture<'_>;
 }
 
 pub struct HandlerFn<S, H> {
@@ -83,7 +83,7 @@ where
     S: Send + 'static,
     H: for<'a> Fn(&'a S, Request) -> ResponseFuture<'a> + Send + 'static,
 {
-    fn handle<'a>(&'a self, req: Request) -> ResponseFuture<'a> {
+    fn handle(&self, req: Request) -> ResponseFuture<'_> {
         (self.f)(&self.state, req)
     }
 }
