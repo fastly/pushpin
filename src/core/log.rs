@@ -62,6 +62,11 @@ pub fn init_metrics(registry: &prometheus::Registry) {
     registry
         .register(Box::new(log_messages_total().clone()))
         .expect("failed to register log_messages_total counter");
+
+    // Pre-initialize the metrics so they appear before use
+    for level in ["error", "warn", "info", "debug", "trace"] {
+        let _ = log_messages_total().with_label_values(&[level]);
+    }
 }
 
 fn level_to_lower_str(l: log::Level) -> &'static str {
