@@ -14,23 +14,59 @@
  * limitations under the License.
  */
 
+mod server;
+
+use self::server::Server;
 use log::{debug, info};
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::error::Error;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-pub struct Config {
-    pub _workers: usize,
+pub enum ListenSpec {
+    Tcp {
+        addr: std::net::SocketAddr,
+    },
+    Local {
+        path: PathBuf,
+        mode: Option<u32>,
+        user: Option<String>,
+        group: Option<String>,
+    },
 }
 
-pub struct App;
+pub struct Config {
+    pub maxconn: usize,
+    pub buffer_size: usize,
+    pub body_buffer_size: usize,
+    pub listen: Vec<ListenSpec>,
+}
+
+pub struct App {
+    _server: Server,
+}
 
 impl App {
-    pub fn new(_config: &Config) -> Result<Self, String> {
-        Ok(Self)
+    pub fn new(config: &Config) -> Result<Self, String> {
+        if config.maxconn < 1 {
+            return Err("maxconn must be >= 1".into());
+        }
+
+        if config.listen.len() != 1 {
+            return Err("exactly one listen config must be specified".into());
+        }
+
+        let server = Server::new(
+            config.maxconn,
+            config.buffer_size,
+            config.body_buffer_size,
+            &config.listen[0],
+        )?;
+
+        Ok(Self { _server: server })
     }
 
     pub fn wait_for_term(&self) {
