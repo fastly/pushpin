@@ -24,9 +24,20 @@
 
 #include "rust/bindings.h"
 #include <QByteArray>
+#include <limits>
 
 namespace StatusReasons {
 
-QByteArray getReason(int code) { return ffi::statusreasons_get_reason(code); }
+QByteArray getReason(int code) {
+    uint16_t c = static_cast<uint16_t>(
+        std::clamp(code, static_cast<int>(std::numeric_limits<uint16_t>::min()),
+                   static_cast<int>(std::numeric_limits<uint16_t>::max())));
+
+    const char *s = ffi::statusreasons_get_reason(c);
+    qsizetype size = qstrlen(s);
+
+    // SAFETY: s has a static lifetime
+    return QByteArray::fromRawData(s, size);
+}
 
 } // namespace StatusReasons

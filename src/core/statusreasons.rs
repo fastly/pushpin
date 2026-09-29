@@ -117,6 +117,7 @@ mod ffi {
     use super::*;
     use std::ffi::c_char;
 
+    /// Returned pointer has a static lifetime.
     #[no_mangle]
     pub extern "C" fn statusreasons_get_reason(code: u16) -> *const c_char {
         get_reason_inner(code).1.as_ptr()
