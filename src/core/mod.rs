@@ -38,6 +38,7 @@ pub mod select;
 pub mod shuffle;
 pub mod simplehttpserver;
 pub mod statsmanager;
+pub mod statusreasons;
 pub mod task;
 pub mod test;
 pub mod thread;
