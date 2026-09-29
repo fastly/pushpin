@@ -22,6 +22,7 @@
 
 #include "runnerapp.h"
 
+#include "apiservice.h"
 #include "config.h"
 #include "connmgrservice.h"
 #include "cowurl.h"
@@ -406,6 +407,16 @@ public:
 
         bool allowCompression = settings.value("runner/allow_compression").toBool();
 
+        // Read handler settings for configuring the API
+        QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
+        trimlist(&push_in_sub_specs);
+        QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
+        int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
+        int push_in_http_max_headers_size =
+            settings.value("handler/push_in_http_max_headers_size").toInt();
+        int push_in_http_max_body_size =
+            settings.value("handler/push_in_http_max_body_size").toInt();
+
         QString targetDir;
         if (ffi::is_debug_build())
             targetDir = QDir(exeDir).filePath("target/debug");
@@ -431,6 +442,11 @@ public:
         fi = QFileInfo(QDir(targetDir).filePath("pushpin-handler"));
         if (fi.isFile())
             handlerBin = fi.canonicalFilePath();
+
+        QString apiBin = "pushpin-api";
+        fi = QFileInfo(QDir(targetDir).filePath("pushpin-api"));
+        if (fi.isFile())
+            apiBin = fi.canonicalFilePath();
 
         if (!ensureDir(runDir)) {
             log_error("failed to create directory: %s", qPrintable(runDir));
@@ -620,6 +636,18 @@ public:
             services += new PushpinHandlerService(
                 handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix,
                 filePrefix, portOffset, logLevels.value("handler", defaultLevel));
+
+        if (serviceNames.contains("api")) {
+            QList<ListenPort> apiPorts;
+
+            if (push_in_http_port > 0)
+                apiPorts += ListenPort(QHostAddress(push_in_http_addr), push_in_http_port, false);
+
+            services += new ApiService(apiBin, runDir, !args.mergeOutput ? logDir : QString(),
+                                       filePrefix, logLevels.value("handler", defaultLevel),
+                                       push_in_http_max_headers_size, push_in_http_max_body_size,
+                                       apiPorts, push_in_sub_specs);
+        }
 
         foreach (Service *s, services) {
             serviceConnectionMap[s] = {
