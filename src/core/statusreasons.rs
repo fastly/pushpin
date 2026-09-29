@@ -130,6 +130,18 @@ mod tests {
 
     #[test]
     fn test_get_reason() {
+        // Known
         assert_eq!(get_reason(200), "OK");
+        assert_eq!(get_reason(404), "Not Found");
+
+        // Unknown
+        assert_eq!(get_reason(0), "Undefined Reason");
+
+        // FFI
+        let r = ffi::statusreasons_get_reason(200);
+        assert!(!r.is_null());
+        // SAFETY: r is non-null and guaranteed to be nul-terminated
+        let r = unsafe { CStr::from_ptr(r) };
+        assert_eq!(r.to_str().unwrap(), get_reason(200));
     }
 }
