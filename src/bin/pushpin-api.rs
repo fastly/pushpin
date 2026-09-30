@@ -14,29 +14,66 @@
  * limitations under the License.
  */
 
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::api::{run, Config};
+use pushpin::api::{run, Config, ListenSpec};
+use pushpin::core::config::NetListenConfig;
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
 use std::error::Error;
 use std::process;
 
 // Safety value
-const WORKERS_MAX: usize = 1024;
+const CONNS_MAX: usize = 10_000_000;
 
 struct Args {
-    workers: usize,
+    maxconn: usize,
+    buffer_size: usize,
+    body_buffer_size: usize,
+    listen: Vec<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
-    if args.workers > WORKERS_MAX {
-        return Err("failed to parse workers: value too large".into());
+    if args.maxconn > CONNS_MAX {
+        return Err("maxconn is too large".into());
     }
 
-    let config = Config {
-        _workers: args.workers,
+    let mut config = Config {
+        maxconn: args.maxconn,
+        buffer_size: args.buffer_size,
+        body_buffer_size: args.body_buffer_size,
+        listen: Vec::new(),
     };
+
+    for v in args.listen.iter() {
+        let lc: NetListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse listen: {}", e))?;
+
+        let spec = match lc {
+            NetListenConfig::Tcp(c) => {
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
+                }
+
+                ListenSpec::Tcp { addr: c.addr }
+            }
+            NetListenConfig::Unix(c) => {
+                if let Some(k) = c.params.keys().next() {
+                    return Err(format!("failed to parse listen: invalid param: {}", k).into());
+                }
+
+                ListenSpec::Local {
+                    path: c.path,
+                    mode: c.mode,
+                    user: c.user,
+                    group: c.group,
+                }
+            }
+        };
+
+        config.listen.push(spec);
+    }
 
     run(&config)
 }
@@ -54,12 +91,36 @@ fn main() {
                 .default_value("2"),
         )
         .arg(
-            Arg::new("workers")
-                .long("workers")
+            Arg::new("maxconn")
+                .long("maxconn")
                 .num_args(1)
                 .value_name("N")
-                .help("Number of worker threads")
-                .default_value("2"),
+                .help("Maximum number of concurrent connections")
+                .default_value("50"),
+        )
+        .arg(
+            Arg::new("buffer-size")
+                .long("buffer-size")
+                .num_args(1)
+                .value_name("N")
+                .help("Connection buffer size (two buffers per connection)")
+                .default_value("8192"),
+        )
+        .arg(
+            Arg::new("body-buffer-size")
+                .long("body-buffer-size")
+                .num_args(1)
+                .value_name("N")
+                .help("Body buffer size")
+                .default_value("100000"),
+        )
+        .arg(
+            Arg::new("listen")
+                .long("listen")
+                .num_args(1)
+                .value_name("[addr:]port[,params...]")
+                .action(ArgAction::Append)
+                .help("Port to listen on"),
         )
         .get_matches();
 
@@ -93,17 +154,53 @@ fn main() {
 
     local_offset_check();
 
-    let workers = matches.get_one::<String>("workers").unwrap();
+    let maxconn = matches.get_one::<String>("maxconn").unwrap();
 
-    let workers: usize = match workers.parse() {
+    let maxconn: usize = match maxconn.parse() {
         Ok(x) => x,
         Err(e) => {
-            error!("failed to parse workers: {}", e);
+            error!("failed to parse maxconn: {}", e);
             process::exit(1);
         }
     };
 
-    let args = Args { workers };
+    let buffer_size = matches.get_one::<String>("buffer-size").unwrap();
+
+    let buffer_size: usize = match buffer_size.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse buffer-size: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let body_buffer_size = matches.get_one::<String>("body-buffer-size").unwrap();
+
+    let body_buffer_size: usize = match body_buffer_size.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse body-buffer-size: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let mut listen: Vec<String> = matches
+        .get_many::<String>("listen")
+        .unwrap_or_default()
+        .map(|v| v.to_owned())
+        .collect();
+
+    // Default listen configuration
+    if listen.is_empty() {
+        listen.push("0.0.0.0:5561".to_string());
+    }
+
+    let args = Args {
+        maxconn,
+        buffer_size,
+        body_buffer_size,
+        listen,
+    };
 
     if let Err(e) = process_args_and_run(args) {
         error!("{}", e);
