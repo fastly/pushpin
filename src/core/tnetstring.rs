@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2026 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -745,9 +746,449 @@ impl fmt::Display for Frame<'_> {
     }
 }
 
+mod serde_error {
+    use serde::ser;
+    use std::fmt;
+    use std::io;
+
+    pub type Result<T> = std::result::Result<T, Error>;
+
+    #[derive(Debug)]
+    pub enum Error {
+        Message(String),
+        Io(io::Error),
+    }
+
+    impl fmt::Display for Error {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Error::Message(msg) => f.write_str(msg),
+                Error::Io(e) => write!(f, "io: {}", e),
+            }
+        }
+    }
+
+    impl std::error::Error for Error {}
+
+    impl ser::Error for Error {
+        fn custom<T: fmt::Display>(msg: T) -> Self {
+            Error::Message(msg.to_string())
+        }
+    }
+
+    impl From<io::Error> for Error {
+        fn from(e: io::Error) -> Self {
+            Error::Io(e)
+        }
+    }
+}
+
+mod serde_ser {
+    use super::serde_error::{Error, Result};
+    use serde::{ser, Serialize};
+    use std::io::Write;
+
+    pub fn to_bytes<T>(value: &T) -> Result<Vec<u8>>
+    where
+        T: Serialize,
+    {
+        let mut serializer = Serializer::new();
+
+        value.serialize(&mut serializer)?;
+
+        Ok(serializer.output())
+    }
+
+    pub struct Serializer {
+        bufs: Vec<Vec<u8>>,
+    }
+
+    impl Serializer {
+        fn new() -> Self {
+            Self {
+                bufs: vec![Vec::new()],
+            }
+        }
+
+        fn output(&mut self) -> Vec<u8> {
+            assert_eq!(self.bufs.len(), 1);
+
+            self.bufs.pop().unwrap()
+        }
+
+        fn start_buf(&mut self) {
+            self.bufs.push(Vec::new());
+        }
+
+        fn add(&mut self, data: &[u8], ftype: u8) {
+            let len = self.bufs.len();
+            let buf = &mut self.bufs[len - 1];
+
+            let header = format!("{}:", data.len());
+            buf.write_all(header.as_bytes()).unwrap();
+            buf.write_all(data).unwrap();
+            buf.write_all(&[ftype]).unwrap();
+        }
+
+        fn end_buf(&mut self, ftype: u8) {
+            let buf = self.bufs.pop().unwrap();
+
+            self.add(&buf, ftype);
+        }
+    }
+
+    impl ser::Serializer for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        type SerializeSeq = Self;
+        type SerializeTuple = Self;
+        type SerializeTupleStruct = Self;
+        type SerializeTupleVariant = Self;
+        type SerializeMap = Self;
+        type SerializeStruct = Self;
+        type SerializeStructVariant = Self;
+
+        fn serialize_bool(self, v: bool) -> Result<()> {
+            let s = match v {
+                true => "true",
+                false => "false",
+            };
+
+            self.add(s.as_bytes(), b'!');
+
+            Ok(())
+        }
+
+        fn serialize_i8(self, v: i8) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i16(self, v: i16) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i32(self, v: i32) -> Result<()> {
+            self.serialize_i64(i64::from(v))
+        }
+
+        fn serialize_i64(self, v: i64) -> Result<()> {
+            let s = format!("{}", v);
+            self.add(s.as_bytes(), b'#');
+
+            Ok(())
+        }
+
+        fn serialize_u8(self, v: u8) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u16(self, v: u16) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u32(self, v: u32) -> Result<()> {
+            self.serialize_u64(u64::from(v))
+        }
+
+        fn serialize_u64(self, v: u64) -> Result<()> {
+            let s = format!("{}", v);
+            self.add(s.as_bytes(), b'#');
+
+            Ok(())
+        }
+
+        fn serialize_f32(self, v: f32) -> Result<()> {
+            self.serialize_f64(f64::from(v))
+        }
+
+        fn serialize_f64(self, v: f64) -> Result<()> {
+            let s = format!("{}", v);
+            self.add(s.as_bytes(), b'^');
+
+            Ok(())
+        }
+
+        fn serialize_char(self, v: char) -> Result<()> {
+            let mut buf = [0; 4];
+            self.serialize_bytes(v.encode_utf8(&mut buf).as_bytes())?;
+
+            Ok(())
+        }
+
+        fn serialize_str(self, v: &str) -> Result<()> {
+            self.serialize_bytes(v.as_bytes())
+        }
+
+        fn serialize_bytes(self, v: &[u8]) -> Result<()> {
+            self.add(v, b',');
+
+            Ok(())
+        }
+
+        fn serialize_none(self) -> Result<()> {
+            self.serialize_unit()
+        }
+
+        fn serialize_some<T>(self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(self)
+        }
+
+        fn serialize_unit(self) -> Result<()> {
+            self.add(&[], b'~');
+
+            Ok(())
+        }
+
+        fn serialize_unit_struct(self, _name: &'static str) -> Result<()> {
+            self.serialize_unit()
+        }
+
+        fn serialize_unit_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            variant: &'static str,
+        ) -> Result<()> {
+            self.serialize_str(variant)
+        }
+
+        fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(self)
+        }
+
+        fn serialize_newtype_variant<T>(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            variant: &'static str,
+            value: &T,
+        ) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.start_buf();
+            variant.serialize(&mut *self)?;
+            value.serialize(&mut *self)?;
+            self.end_buf(b'}');
+
+            Ok(())
+        }
+
+        fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+            self.start_buf();
+
+            Ok(self)
+        }
+
+        fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_tuple_struct(
+            self,
+            _name: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeTupleStruct> {
+            self.serialize_seq(Some(len))
+        }
+
+        fn serialize_tuple_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeTupleVariant> {
+            self.start_buf();
+            variant.serialize(&mut *self)?;
+            self.start_buf();
+
+            Ok(self)
+        }
+
+        fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+            self.start_buf();
+
+            Ok(self)
+        }
+
+        fn serialize_struct(
+            self,
+            _name: &'static str,
+            len: usize,
+        ) -> Result<Self::SerializeStruct> {
+            self.serialize_map(Some(len))
+        }
+
+        fn serialize_struct_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeStructVariant> {
+            self.start_buf();
+            variant.serialize(&mut *self)?;
+            self.start_buf();
+
+            Ok(self)
+        }
+    }
+
+    impl ser::SerializeSeq for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b']');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTuple for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_element<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b']');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTupleStruct for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b']');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeTupleVariant for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b']');
+            self.end_buf(b'}');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeMap for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_key<T>(&mut self, key: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            key.serialize(&mut **self)
+        }
+
+        fn serialize_value<T>(&mut self, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b'}');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeStruct for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            key.serialize(&mut **self)?;
+
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b'}');
+
+            Ok(())
+        }
+    }
+
+    impl ser::SerializeStructVariant for &mut Serializer {
+        type Ok = ();
+        type Error = Error;
+
+        fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            key.serialize(&mut **self)?;
+
+            value.serialize(&mut **self)
+        }
+
+        fn end(self) -> Result<()> {
+            self.end_buf(b'}');
+            self.end_buf(b'}');
+
+            Ok(())
+        }
+    }
+}
+
+pub use serde_ser::to_bytes;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Serialize;
+    use std::str;
 
     #[test]
     fn test_length() {
@@ -1077,5 +1518,39 @@ mod tests {
         // Won't fit
         let e = w.write_string(b"foo").unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::WriteZero);
+    }
+
+    #[test]
+    fn test_serde_to_bytes() {
+        #[derive(Serialize)]
+        struct Test {
+            vstr: String,
+
+            #[serde(with = "serde_bytes")]
+            vbin: Vec<u8>,
+
+            vint: i32,
+            vuint: u32,
+            vfloat: f32,
+            vbool1: bool,
+            vbool2: bool,
+            vnull: (),
+            varr: [i16; 3],
+        }
+
+        let test = Test {
+            vstr: "foo".to_string(),
+            vbin: b"bar".to_vec(),
+            vint: -42,
+            vuint: 42,
+            vfloat: 0.5,
+            vbool1: true,
+            vbool2: false,
+            vnull: (),
+            varr: [1, 2, 3],
+        };
+
+        let expected = "134:4:vstr,3:foo,4:vbin,3:bar,4:vint,3:-42#5:vuint,2:42#6:vfloat,3:0.5^6:vbool1,4:true!6:vbool2,5:false!5:vnull,0:~4:varr,12:1:1#1:2#1:3#]}";
+        assert_eq!(str::from_utf8(&to_bytes(&test).unwrap()).unwrap(), expected);
     }
 }
