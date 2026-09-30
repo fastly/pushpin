@@ -337,18 +337,36 @@ async fn process_request<H: Handler, R: AsyncRead, W: AsyncWrite>(
     let (method, uri, headers) = {
         let req = owned_req.get();
 
-        if req.body_size == BodySize::Unknown {
-            return Ok(Response {
-                code: 411,
-                reason: "Length Required".to_string(),
-                headers: vec![(
-                    "Content-Type".to_string(),
-                    "text/plain".to_string().into_bytes(),
-                )],
-                body: "Request requires Content-Length.\n"
-                    .to_string()
-                    .into_bytes(),
-            });
+        match req.body_size {
+            BodySize::Known(size) if size > body_buf.remaining_capacity() => {
+                req_body.discard_header(owned_req);
+
+                return Ok(Response {
+                    code: 413,
+                    reason: "Content Too Large".to_string(),
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/plain".to_string().into_bytes(),
+                    )],
+                    body: "Content too large.\n".to_string().into_bytes(),
+                });
+            }
+            BodySize::Unknown => {
+                req_body.discard_header(owned_req);
+
+                return Ok(Response {
+                    code: 411,
+                    reason: "Length Required".to_string(),
+                    headers: vec![(
+                        "Content-Type".to_string(),
+                        "text/plain".to_string().into_bytes(),
+                    )],
+                    body: "Request requires Content-Length.\n"
+                        .to_string()
+                        .into_bytes(),
+                });
+            }
+            _ => {} // No body, or size within limit
         }
 
         (
@@ -369,7 +387,12 @@ async fn process_request<H: Handler, R: AsyncRead, W: AsyncWrite>(
                 body_buf.write_commit(size);
                 break;
             }
-            RecvStatus::Read((), size) => body_buf.write_commit(size),
+            RecvStatus::Read((), size) => {
+                // There's always room
+                assert!(size > 0);
+
+                body_buf.write_commit(size);
+            }
             RecvStatus::NeedBytes(()) => req_body.add_to_buffer().await?,
         }
     }
@@ -521,5 +544,181 @@ mod tests {
         );
 
         assert_eq!(body, "world\n");
+    }
+
+    #[test]
+    fn length_required() {
+        let listener = TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let request = Arc::new(Mutex::new(None));
+
+        let server = Server::new(
+            NetListener::Tcp(listener),
+            Config::default(),
+            handler_fn(request.clone(), move |state, req| {
+                Box::pin(async move {
+                    *state.lock().unwrap() = Some(req);
+
+                    Response {
+                        code: 200,
+                        reason: "OK".to_string(),
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/plain".to_string().into_bytes(),
+                        )],
+                        body: "world\n".to_string().into_bytes(),
+                    }
+                })
+            }),
+        );
+
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+
+        let data = concat!(
+            "POST /path HTTP/1.0\r\n",
+            "Host: localhost\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        )
+        .as_bytes();
+
+        stream.write_all(&data).unwrap();
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+
+        drop(server);
+
+        assert!(request.lock().unwrap().is_none());
+
+        assert!(
+            response.starts_with("HTTP/1.0 411 Length Required\r\n"),
+            "unexpected response: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn content_too_large() {
+        let listener = TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let request = Arc::new(Mutex::new(None));
+
+        let server = Server::new(
+            NetListener::Tcp(listener),
+            Config {
+                connections_max: 1,
+                headers_size_max: 1_024,
+                body_size_max: 5,
+            },
+            handler_fn(request.clone(), move |state, req| {
+                Box::pin(async move {
+                    *state.lock().unwrap() = Some(req);
+
+                    Response {
+                        code: 200,
+                        reason: "OK".to_string(),
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/plain".to_string().into_bytes(),
+                        )],
+                        body: "world\n".to_string().into_bytes(),
+                    }
+                })
+            }),
+        );
+
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+
+        let data = concat!(
+            "POST /path HTTP/1.0\r\n",
+            "Host: localhost\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+        )
+        .as_bytes();
+
+        stream.write_all(&data).unwrap();
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+
+        drop(server);
+
+        assert!(request.lock().unwrap().is_none());
+
+        assert!(
+            response.starts_with("HTTP/1.0 413 Content Too Large\r\n"),
+            "unexpected response: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn content_overflow() {
+        let listener = TcpListener::bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let request = Arc::new(Mutex::new(None));
+
+        let server = Server::new(
+            NetListener::Tcp(listener),
+            Config {
+                connections_max: 1,
+                headers_size_max: 1_024,
+                body_size_max: 5,
+            },
+            handler_fn(request.clone(), move |state, req| {
+                Box::pin(async move {
+                    *state.lock().unwrap() = Some(req);
+
+                    Response {
+                        code: 200,
+                        reason: "OK".to_string(),
+                        headers: vec![(
+                            "Content-Type".to_string(),
+                            "text/plain".to_string().into_bytes(),
+                        )],
+                        body: "world\n".to_string().into_bytes(),
+                    }
+                })
+            }),
+        );
+
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+
+        let data = concat!(
+            "POST /path HTTP/1.0\r\n",
+            "Host: localhost\r\n",
+            "Content-Length: 5\r\n",
+            "\r\n",
+            "hellooooo\n",
+        )
+        .as_bytes();
+
+        stream.write_all(&data).unwrap();
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+
+        drop(server);
+
+        let request = request.lock().unwrap().take().unwrap();
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.uri, "/path");
+        assert_eq!(request.headers.len(), 2);
+        assert_eq!(request.headers[0].0, "Host");
+        assert_eq!(str::from_utf8(&request.headers[0].1).unwrap(), "localhost");
+        assert_eq!(request.headers[1].0, "Content-Length");
+        assert_eq!(str::from_utf8(&request.headers[1].1).unwrap(), "5");
+        assert_eq!(str::from_utf8(&request.body).unwrap(), "hello");
+
+        assert!(
+            response.starts_with("HTTP/1.0 200 OK\r\n"),
+            "unexpected response: {}",
+            response
+        );
     }
 }
