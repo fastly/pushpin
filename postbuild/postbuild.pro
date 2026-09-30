@@ -31,6 +31,12 @@ handler_bin.target = $$bin_dir/pushpin-handler
 handler_bin.depends = $$target_dir/pushpin-handler
 handler_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-handler $$bin_dir/pushpin-handler
 
+include_api {
+	api_bin.target = $$bin_dir/pushpin-api
+	api_bin.depends = $$target_dir/pushpin-api
+	api_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-api $$bin_dir/pushpin-api
+}
+
 runner_bin.target = $$root_dir/pushpin
 runner_bin.depends = $$target_dir/pushpin
 runner_bin.commands = cp -a $$target_dir/pushpin $$root_dir/pushpin
@@ -43,7 +49,11 @@ QMAKE_EXTRA_TARGETS += \
 	connmgr_bin \
 	m2adapter_bin \
 	proxy_bin \
-	handler_bin \
+	handler_bin
+
+include_api:QMAKE_EXTRA_TARGETS += api_bin
+
+QMAKE_EXTRA_TARGETS += \
 	runner_bin \
 	publish_bin
 
@@ -51,7 +61,11 @@ PRE_TARGETDEPS += \
 	$$bin_dir/pushpin-connmgr \
 	$$bin_dir/m2adapter \
 	$$bin_dir/pushpin-proxy \
-	$$bin_dir/pushpin-handler \
+	$$bin_dir/pushpin-handler
+
+include_api:PRE_TARGETDEPS += $$bin_dir/pushpin-api
+
+PRE_TARGETDEPS += \
 	$$root_dir/pushpin \
 	$$bin_dir/pushpin-publish
 
@@ -73,7 +87,11 @@ unix:!isEmpty(BINDIR) {
 		$$bin_dir/pushpin-connmgr \
 		$$bin_dir/m2adapter \
 		$$bin_dir/pushpin-proxy \
-		$$bin_dir/pushpin-handler \
+		$$bin_dir/pushpin-handler
+
+	include_api:binfiles.files += $$bin_dir/pushpin-api
+
+	binfiles.files += \
 		$$root_dir/pushpin \
 		$$bin_dir/pushpin-publish
 
