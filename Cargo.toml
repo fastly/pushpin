@@ -56,7 +56,8 @@ license-file = ["packaging/debian/license-file", "0"]
 default = ["do-qmake", "do-cpp-build"]
 do-qmake = []
 do-cpp-build = []
-breaking-changes = []
+breaking-changes = ["include-api"]
+include-api = []
 
 [profile.dev]
 panic = "abort"
@@ -148,7 +149,7 @@ bench = false
 name = "pushpin-api"
 test = false
 bench = false
-required-features = ["breaking-changes"]
+required-features = ["include-api"]
 
 [[bin]]
 name = "pushpin"

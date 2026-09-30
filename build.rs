@@ -174,6 +174,7 @@ fn write_postbuild_conf_pri(
     config_dir: &str,
     run_dir: &str,
     log_dir: &str,
+    include_api: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut out = Vec::new();
 
@@ -182,6 +183,11 @@ fn write_postbuild_conf_pri(
     writeln!(&mut out, "CONFIGDIR = {}/pushpin", config_dir)?;
     writeln!(&mut out, "RUNDIR = {}/pushpin", run_dir)?;
     writeln!(&mut out, "LOGDIR = {}/pushpin", log_dir)?;
+
+    if include_api {
+        writeln!(&mut out)?;
+        writeln!(&mut out, "CONFIG += include_api")?;
+    }
 
     write_if_different(dest, &out)
 }
@@ -527,6 +533,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let version_ge_2 = get_version_int()? >= 0x020000 || cfg!(feature = "breaking-changes");
+    let include_api = cfg!(feature = "include-api");
 
     write_cpp_conf_pri(
         &cpp_build_dir.join("conf.pri"),
@@ -543,6 +550,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &config_dir,
         &run_dir,
         &log_dir,
+        include_api,
     )?;
 
     if cfg!(feature = "do-qmake") {
