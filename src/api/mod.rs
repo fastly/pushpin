@@ -42,7 +42,11 @@ pub struct Config {
     pub maxconn: usize,
     pub buffer_size: usize,
     pub body_buffer_size: usize,
+    pub content_max: usize,
     pub listen: Vec<ListenSpec>,
+    pub item_out: Vec<String>,
+    pub item_out_bind: bool,
+    pub ipc_file_mode: u32,
 }
 
 pub struct App {
