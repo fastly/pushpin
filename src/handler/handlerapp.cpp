@@ -316,8 +316,11 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     config.pushInSpec = push_in_spec;
     config.pushInSubSpecs = push_in_sub_specs;
     config.pushInSubConnect = push_in_sub_connect;
-    config.pushInHttpAddr = QHostAddress(push_in_http_addr);
-    config.pushInHttpPort = push_in_http_port;
+    if (!services.contains("api")) {
+        // Only serve the API here if the api component is not enabled
+        config.pushInHttpAddr = QHostAddress(push_in_http_addr);
+        config.pushInHttpPort = push_in_http_port;
+    }
     config.pushInHttpMaxHeadersSize = push_in_http_max_headers_size;
     config.pushInHttpMaxBodySize = push_in_http_max_body_size;
     config.ipcFileMode = ipcFileMode;

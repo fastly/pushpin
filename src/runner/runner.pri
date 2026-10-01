@@ -8,6 +8,7 @@ HEADERS += \
 	$$PWD/zurlservice.h \
 	$$PWD/pushpinproxyservice.h \
 	$$PWD/pushpinhandlerservice.h \
+	$$PWD/apiservice.h \
 	$$PWD/runnerapp.h \
 	$$PWD/main.h
 
@@ -20,5 +21,6 @@ SOURCES += \
 	$$PWD/zurlservice.cpp \
 	$$PWD/pushpinproxyservice.cpp \
 	$$PWD/pushpinhandlerservice.cpp \
+	$$PWD/apiservice.cpp \
 	$$PWD/runnerapp.cpp \
 	$$PWD/runnermain.cpp
