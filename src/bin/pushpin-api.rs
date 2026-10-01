@@ -30,7 +30,11 @@ struct Args {
     maxconn: usize,
     buffer_size: usize,
     body_buffer_size: usize,
+    content_max: usize,
     listen: Vec<String>,
+    item_out_specs: Vec<String>,
+    item_out_bind: bool,
+    ipc_file_mode: u32,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -42,7 +46,11 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         maxconn: args.maxconn,
         buffer_size: args.buffer_size,
         body_buffer_size: args.body_buffer_size,
+        content_max: args.content_max,
         listen: Vec::new(),
+        item_out: args.item_out_specs,
+        item_out_bind: args.item_out_bind,
+        ipc_file_mode: args.ipc_file_mode,
     };
 
     for v in args.listen.iter() {
@@ -115,12 +123,42 @@ fn main() {
                 .default_value("100000"),
         )
         .arg(
+            Arg::new("content-max")
+                .long("content-max")
+                .num_args(1)
+                .value_name("N")
+                .help("Item content bytes max")
+                .default_value("65536"),
+        )
+        .arg(
             Arg::new("listen")
                 .long("listen")
                 .num_args(1)
                 .value_name("[addr:]port[,params...]")
                 .action(ArgAction::Append)
                 .help("Port to listen on"),
+        )
+        .arg(
+            Arg::new("item-out")
+                .long("item-out")
+                .num_args(1)
+                .value_name("spec")
+                .action(ArgAction::Append)
+                .help("ZeroMQ item out PUB spec")
+                .default_value("tcp://localhost:5562"),
+        )
+        .arg(
+            Arg::new("item-out-bind")
+                .long("item-out-bind")
+                .action(ArgAction::SetTrue)
+                .help("ZeroMQ item out PUB sockets should bind instead of connect"),
+        )
+        .arg(
+            Arg::new("ipc-file-mode")
+                .long("ipc-file-mode")
+                .num_args(1)
+                .value_name("octal")
+                .help("Permissions for ZeroMQ IPC binds"),
         )
         .get_matches();
 
@@ -184,11 +222,42 @@ fn main() {
         }
     };
 
+    let content_max = matches.get_one::<String>("content-max").unwrap();
+
+    let content_max: usize = match content_max.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse content-max: {}", e);
+            process::exit(1);
+        }
+    };
+
     let mut listen: Vec<String> = matches
         .get_many::<String>("listen")
         .unwrap_or_default()
         .map(|v| v.to_owned())
         .collect();
+
+    let item_out_specs: Vec<String> = matches
+        .get_many::<String>("item-out")
+        .unwrap()
+        .map(|v| v.to_owned())
+        .collect();
+
+    let item_out_bind = *matches.get_one("item-out-bind").unwrap();
+
+    let ipc_file_mode = matches
+        .get_one::<String>("ipc-file-mode")
+        .cloned()
+        .unwrap_or_else(|| String::from("0"));
+
+    let ipc_file_mode = match u32::from_str_radix(&ipc_file_mode, 8) {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse ipc-file-mode: {}", e);
+            process::exit(1);
+        }
+    };
 
     // Default listen configuration
     if listen.is_empty() {
@@ -199,7 +268,11 @@ fn main() {
         maxconn,
         buffer_size,
         body_buffer_size,
+        content_max,
         listen,
+        item_out_specs,
+        item_out_bind,
+        ipc_file_mode,
     };
 
     if let Err(e) = process_args_and_run(args) {
