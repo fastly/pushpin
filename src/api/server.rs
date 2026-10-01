@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::api::item::{validate_item, InPublishItems};
 use crate::api::ListenSpec;
 use crate::core::fs::{set_group, set_user};
 use crate::core::net::NetListener;
@@ -21,6 +22,7 @@ use crate::core::net::SocketAddr;
 use crate::core::simplehttpserver::{self, Request, Response};
 use log::info;
 use mio::net::{TcpListener, UnixListener};
+use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -34,7 +36,19 @@ fn empty_ok() -> Response {
     }
 }
 
-fn not_found(msg: &str) -> Response {
+pub fn bad_request<T: AsRef<str>>(message: T) -> Response {
+    Response {
+        code: 400,
+        reason: "Bad Request".to_string(),
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain".to_string().into_bytes(),
+        )],
+        body: format!("{}\n", message.as_ref()).into_bytes(),
+    }
+}
+
+fn not_found<T: AsRef<str>>(message: T) -> Response {
     Response {
         code: 404,
         reason: "Not Found".to_string(),
@@ -42,16 +56,31 @@ fn not_found(msg: &str) -> Response {
             "Content-Type".to_string(),
             "text/plain".to_string().into_bytes(),
         )],
-        body: format!("{msg}\n").into_bytes(),
+        body: format!("{}\n", message.as_ref()).into_bytes(),
     }
 }
 
-fn method_not_allowed(methods: &str) -> Response {
+fn method_not_allowed<T: AsRef<str>>(methods: T) -> Response {
     Response {
         code: 405,
         reason: "Method Not Allowed".to_string(),
-        headers: vec![("Allow".to_string(), methods.to_string().into_bytes())],
+        headers: vec![(
+            "Allow".to_string(),
+            methods.as_ref().to_string().into_bytes(),
+        )],
         body: Vec::new(),
+    }
+}
+
+fn not_implemented<T: AsRef<str>>(message: T) -> Response {
+    Response {
+        code: 501,
+        reason: "Not Implemented".to_string(),
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain".to_string().into_bytes(),
+        )],
+        body: format!("{}\n", message.as_ref()).into_bytes(),
     }
 }
 
@@ -62,15 +91,34 @@ async fn publish(req: Request) -> Response {
         _ => return method_not_allowed("OPTIONS, POST"),
     }
 
-    Response {
-        code: 501,
-        reason: "Not Implemented".to_string(),
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain".to_string().into_bytes(),
-        )],
-        body: "Not implemented\n".to_string().into_bytes(),
+    let items: InPublishItems = match serde_json::from_slice(&req.body) {
+        Ok(items) => items,
+        Err(e) => return bad_request(format!("JSON parse/schema error: {}", e)),
+    };
+
+    let mut out = "Validated items below. Publishing not implemented.\n\n".to_string();
+
+    for (n, item) in items.items.iter().enumerate() {
+        let (item, size) = match validate_item(item, 1_000_000, false) {
+            Ok(ret) => ret,
+            Err(e) => return bad_request(format!("item {}: {}", n + 1, e)),
+        };
+
+        let payload = match item.serialize() {
+            Ok(item) => item,
+            Err(_) => return bad_request(format!("item {}: failed to serialize", n + 1)),
+        };
+
+        writeln!(
+            &mut out,
+            "{} size={}",
+            String::from_utf8_lossy(&payload),
+            size
+        )
+        .unwrap();
     }
+
+    not_implemented(out)
 }
 
 fn publish_noslash() -> Response {
@@ -207,9 +255,16 @@ mod tests {
         };
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
-        stream
-            .write_all(b"POST /publish/ HTTP/1.0\r\nHost: localhost\r\n\r\n")
-            .unwrap();
+
+        let data = concat!(
+            "POST /publish/ HTTP/1.0\r\n",
+            "Host: localhost\r\n",
+            "Content-Length: 12\r\n",
+            "\r\n",
+            "{\"items\":[]}"
+        );
+
+        stream.write_all(data.as_bytes()).unwrap();
 
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();

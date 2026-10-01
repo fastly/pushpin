@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-mod server;
+pub mod item;
+pub mod server;
 
 use self::server::Server;
 use log::{debug, info};
