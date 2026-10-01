@@ -18,6 +18,7 @@ pub mod item;
 pub mod server;
 
 use self::server::Server;
+use crate::core::zmq::SpecInfo;
 use log::{debug, info};
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
@@ -52,6 +53,7 @@ pub struct Config {
 
 pub struct App {
     _server: Server,
+    _zmq_context: zmq::Context,
 }
 
 impl App {
@@ -64,14 +66,32 @@ impl App {
             return Err("exactly one listen config must be specified".into());
         }
 
+        let mut item_out_specs = Vec::new();
+
+        for spec in config.item_out.iter() {
+            item_out_specs.push(SpecInfo {
+                spec: spec.clone(),
+                bind: config.item_out_bind,
+                ipc_file_mode: config.ipc_file_mode,
+            });
+        }
+
+        let zmq_context = zmq::Context::new();
+
         let server = Server::new(
             config.maxconn,
             config.buffer_size,
             config.body_buffer_size,
+            config.content_max,
             &config.listen[0],
+            &zmq_context,
+            &item_out_specs,
         )?;
 
-        Ok(Self { _server: server })
+        Ok(Self {
+            _server: server,
+            _zmq_context: zmq_context,
+        })
     }
 
     pub fn wait_for_term(&self) {

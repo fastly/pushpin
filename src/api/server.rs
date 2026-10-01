@@ -20,12 +20,13 @@ use crate::core::fs::{set_group, set_user};
 use crate::core::net::NetListener;
 use crate::core::net::SocketAddr;
 use crate::core::simplehttpserver::{self, Request, Response};
-use log::info;
+use crate::core::zmq::{SpecInfo, ZmqSocket};
+use log::{debug, error, info};
 use mio::net::{TcpListener, UnixListener};
-use std::fmt::Write;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Mutex;
 
 fn empty_ok() -> Response {
     Response {
@@ -36,7 +37,19 @@ fn empty_ok() -> Response {
     }
 }
 
-pub fn bad_request<T: AsRef<str>>(message: T) -> Response {
+fn ok<T: AsRef<str>>(message: T) -> Response {
+    Response {
+        code: 200,
+        reason: "OK".to_string(),
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain".to_string().into_bytes(),
+        )],
+        body: format!("{}\n", message.as_ref()).into_bytes(),
+    }
+}
+
+fn bad_request<T: AsRef<str>>(message: T) -> Response {
     Response {
         code: 400,
         reason: "Bad Request".to_string(),
@@ -72,19 +85,12 @@ fn method_not_allowed<T: AsRef<str>>(methods: T) -> Response {
     }
 }
 
-fn not_implemented<T: AsRef<str>>(message: T) -> Response {
-    Response {
-        code: 501,
-        reason: "Not Implemented".to_string(),
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain".to_string().into_bytes(),
-        )],
-        body: format!("{}\n", message.as_ref()).into_bytes(),
-    }
+struct Context<'a> {
+    content_max: usize,
+    item_out_sock: &'a Mutex<ZmqSocket>,
 }
 
-async fn publish(req: Request) -> Response {
+async fn publish(ctx: &Context<'_>, req: Request) -> Response {
     match req.method.as_str() {
         "OPTIONS" => return empty_ok(),
         "POST" => {}
@@ -96,10 +102,8 @@ async fn publish(req: Request) -> Response {
         Err(e) => return bad_request(format!("JSON parse/schema error: {}", e)),
     };
 
-    let mut out = "Validated items below. Publishing not implemented.\n\n".to_string();
-
     for (n, item) in items.items.iter().enumerate() {
-        let (item, size) = match validate_item(item, 1_000_000, false) {
+        let (item, _) = match validate_item(item, ctx.content_max, false) {
             Ok(ret) => ret,
             Err(e) => return bad_request(format!("item {}: {}", n + 1, e)),
         };
@@ -109,26 +113,46 @@ async fn publish(req: Request) -> Response {
             Err(_) => return bad_request(format!("item {}: failed to serialize", n + 1)),
         };
 
-        writeln!(
-            &mut out,
-            "{} size={}",
-            String::from_utf8_lossy(&payload),
-            size
-        )
-        .unwrap();
+        let msgs = [
+            zmq::Message::from(item.channel.into_bytes()),
+            zmq::Message::from(payload),
+        ];
+
+        let item_out_sock = ctx.item_out_sock.lock().unwrap();
+
+        if let Err(e) = item_out_sock.send_multipart(msgs, 0) {
+            error!("failed to send item: {e}");
+        }
     }
 
-    not_implemented(out)
+    debug!(
+        "control: {} {} code=200 items={}",
+        req.method,
+        req.uri,
+        items.items.len()
+    );
+
+    ok("Published")
 }
 
 fn publish_noslash() -> Response {
     not_found("Publish endpoint needs trailing slash: publish/")
 }
 
-async fn handle_request(req: Request) -> Response {
+struct State {
+    content_max: usize,
+    item_out_sock: Mutex<ZmqSocket>,
+}
+
+async fn handle_request(state: &State, req: Request) -> Response {
+    let ctx = Context {
+        content_max: state.content_max,
+        item_out_sock: &state.item_out_sock,
+    };
+
     match req.uri.as_str() {
         "/publish" => publish_noslash(),
-        "/publish/" => publish(req).await,
+        "/publish/" => publish(&ctx, req).await,
         _ => not_found("Not found"),
     }
 }
@@ -146,8 +170,17 @@ impl Server {
         maxconn: usize,
         headers_size_max: usize,
         body_size_max: usize,
+        content_max: usize,
         listen: &ListenSpec,
+        zmq_context: &zmq::Context,
+        item_out_specs: &[SpecInfo],
     ) -> Result<Self, String> {
+        let item_out_sock = ZmqSocket::new(zmq_context, zmq::PUB);
+
+        if let Err(e) = item_out_sock.apply_specs(item_out_specs) {
+            return Err(format!("failed to set item out specs: {}", e));
+        }
+
         let (listener, addr) = match listen {
             ListenSpec::Tcp { addr } => {
                 let l = match TcpListener::bind(*addr) {
@@ -213,6 +246,11 @@ impl Server {
             }
         };
 
+        let state = State {
+            content_max,
+            item_out_sock: Mutex::new(item_out_sock),
+        };
+
         Ok(Self {
             addr,
             _server: simplehttpserver::Server::new(
@@ -222,7 +260,9 @@ impl Server {
                     headers_size_max,
                     body_size_max,
                 },
-                simplehttpserver::handler_fn((), move |_, req| Box::pin(handle_request(req))),
+                simplehttpserver::handler_fn(state, move |state, req| {
+                    Box::pin(handle_request(state, req))
+                }),
             ),
         })
     }
@@ -237,18 +277,38 @@ impl Server {
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+    use std::str;
 
     #[test]
     fn publish() {
+        let zmq_context = zmq::Context::new();
+
+        let item_in_sock = zmq_context.socket(zmq::SUB).unwrap();
+        item_in_sock.set_subscribe(&[]).unwrap();
+        item_in_sock.bind("inproc://test-api-publish-item").unwrap();
+
         let server = Server::new(
             1,
             1_024,
             100_000,
+            10_000,
             &ListenSpec::Tcp {
                 addr: "127.0.0.1:0".parse().unwrap(),
             },
+            &zmq_context,
+            &[SpecInfo {
+                spec: "inproc://test-api-publish-item".to_string(),
+                bind: false,
+                ipc_file_mode: 0,
+            }],
         )
         .unwrap();
+
+        // Activate the subscription without receiving
+        zmq::poll(&mut [item_in_sock.as_poll_item(zmq::POLLIN)], 1).unwrap();
+
+        // Ensure we are subscribed
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         let SocketAddr::Ip(addr) = server.addr() else {
             panic!("expected tcp listen address");
@@ -256,12 +316,18 @@ mod tests {
 
         let mut stream = std::net::TcpStream::connect(addr).unwrap();
 
-        let data = concat!(
-            "POST /publish/ HTTP/1.0\r\n",
-            "Host: localhost\r\n",
-            "Content-Length: 12\r\n",
-            "\r\n",
-            "{\"items\":[]}"
+        let items = "{\"items\":[{\"channel\":\"test\",\"formats\":{\"http-stream\":{\"content\":\"hello world\"}}}]}";
+
+        let data = format!(
+            concat!(
+                "POST /publish/ HTTP/1.0\r\n",
+                "Host: localhost\r\n",
+                "Content-Length: {}\r\n",
+                "\r\n",
+                "{}",
+            ),
+            items.len(),
+            items
         );
 
         stream.write_all(data.as_bytes()).unwrap();
@@ -272,7 +338,72 @@ mod tests {
         drop(server);
 
         assert!(
-            response.starts_with("HTTP/1.0 501 Not Implemented\r\n"),
+            response.starts_with("HTTP/1.0 200 OK\r\n"),
+            "unexpected response: {}",
+            response
+        );
+
+        let expected =
+            "74:7:formats,60:11:http-stream,41:6:action,4:send,7:content,11:hello world,}}}";
+
+        let msgs = item_in_sock.recv_multipart(0).unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(str::from_utf8(&*msgs[0]).unwrap(), "test");
+        assert_eq!(str::from_utf8(&*msgs[1]).unwrap(), expected);
+    }
+
+    #[test]
+    fn publish_content_too_large() {
+        const SMALL_CONTENT_MAX: usize = 10;
+
+        let zmq_context = zmq::Context::new();
+
+        let server = Server::new(
+            1,
+            1_024,
+            100_000,
+            SMALL_CONTENT_MAX,
+            &ListenSpec::Tcp {
+                addr: "127.0.0.1:0".parse().unwrap(),
+            },
+            &zmq_context,
+            &[SpecInfo {
+                spec: "inproc://test-api-publish-content-too-large-item".to_string(),
+                bind: false,
+                ipc_file_mode: 0,
+            }],
+        )
+        .unwrap();
+
+        let SocketAddr::Ip(addr) = server.addr() else {
+            panic!("expected tcp listen address");
+        };
+
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+
+        let items = "{\"items\":[{\"channel\":\"test\",\"formats\":{\"http-stream\":{\"content\":\"hello world\"}}}]}";
+
+        let data = format!(
+            concat!(
+                "POST /publish/ HTTP/1.0\r\n",
+                "Host: localhost\r\n",
+                "Content-Length: {}\r\n",
+                "\r\n",
+                "{}",
+            ),
+            items.len(),
+            items
+        );
+
+        stream.write_all(data.as_bytes()).unwrap();
+
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+
+        drop(server);
+
+        assert!(
+            response.starts_with("HTTP/1.0 400 Bad Request\r\n"),
             "unexpected response: {}",
             response
         );
