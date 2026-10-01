@@ -188,6 +188,22 @@ impl ZmqSocket {
         Ok(())
     }
 
+    pub fn send_multipart<I>(&self, msgs: I, flags: i32) -> Result<(), zmq::Error>
+    where
+        I: IntoIterator<Item = zmq::Message>,
+    {
+        let flags = flags & zmq::DONTWAIT;
+
+        if let Err(e) = self.inner.send_multipart(msgs, flags) {
+            self.update_events();
+            return Err(e);
+        }
+
+        self.update_events();
+
+        Ok(())
+    }
+
     pub fn send_to(
         &self,
         header: &MultipartHeader,
@@ -241,6 +257,22 @@ impl ZmqSocket {
         self.update_events();
 
         Ok(msg)
+    }
+
+    pub fn recv_multipart(&self, flags: i32) -> Result<Vec<Vec<u8>>, zmq::Error> {
+        let flags = flags & zmq::DONTWAIT;
+
+        let parts = match self.inner.recv_multipart(flags) {
+            Ok(parts) => parts,
+            Err(e) => {
+                self.update_events();
+                return Err(e);
+            }
+        };
+
+        self.update_events();
+
+        Ok(parts)
     }
 
     pub fn recv_routed(&self, flags: i32) -> Result<(MultipartHeader, zmq::Message), zmq::Error> {
@@ -1457,6 +1489,7 @@ mod tests {
     use crate::core::reactor::Reactor;
     use crate::core::task::poll_async;
     use std::rc::Rc;
+    use std::str;
     use std::thread;
 
     #[test]
@@ -1493,6 +1526,34 @@ mod tests {
         );
 
         assert_eq!(s.events().contains(zmq::POLLOUT), false);
+    }
+
+    #[test]
+    fn multipart() {
+        let zmq_context = zmq::Context::new();
+
+        let s = ZmqSocket::new(&zmq_context, zmq::PUSH);
+        s.apply_specs(&[SpecInfo {
+            spec: String::from("inproc://zmq-multipart-test"),
+            bind: true,
+            ipc_file_mode: 0,
+        }])
+        .unwrap();
+
+        let r = ZmqSocket::new(&zmq_context, zmq::PULL);
+        r.apply_specs(&[SpecInfo {
+            spec: String::from("inproc://zmq-multipart-test"),
+            bind: false,
+            ipc_file_mode: 0,
+        }])
+        .unwrap();
+
+        s.send_multipart([zmq::Message::from("foo"), zmq::Message::from("bar")], 0)
+            .unwrap();
+        let parts = r.recv_multipart(0).unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(str::from_utf8(&parts[0]).unwrap(), "foo");
+        assert_eq!(str::from_utf8(&parts[1]).unwrap(), "bar");
     }
 
     #[test]
