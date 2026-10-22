@@ -39,6 +39,10 @@ public:
 
     CowByteArray toUtf8() const { return inner_.toUtf8(); }
 
+    static CowString fromUtf8(const CowByteArray &ba) {
+        return QString::fromUtf8(ba.asQByteArray());
+    }
+
     const QString &asQString() const { return inner_; }
     QString &asQString() { return inner_; }
 

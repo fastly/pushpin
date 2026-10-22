@@ -153,6 +153,27 @@ static void conversions() {
     TEST_ASSERT_EQ(a.asQByteArray(), "hello");
 }
 
+static void fromPercentEncoding() {
+    TEST_ASSERT_EQ(CowByteArray::fromPercentEncoding("hello%20world"), "hello world");
+    TEST_ASSERT_EQ(CowByteArray::fromPercentEncoding("foo%3Dbar"), "foo=bar");
+    TEST_ASSERT_EQ(CowByteArray::fromPercentEncoding("no+encoding"), "no+encoding");
+}
+
+static void fromBase64() {
+    TEST_ASSERT_EQ(CowByteArray::fromBase64("aGVsbG8="), "hello");
+    TEST_ASSERT_EQ(CowByteArray::fromBase64("aGVsbG8gd29ybGQ="), "hello world");
+}
+
+static void number() {
+    TEST_ASSERT_EQ(CowByteArray::number(42), "42");
+    TEST_ASSERT_EQ(CowByteArray::number(-7), "-7");
+    TEST_ASSERT_EQ(CowByteArray::number(255, 16), "ff");
+    TEST_ASSERT_EQ(CowByteArray::number((uint)100), "100");
+    TEST_ASSERT_EQ(CowByteArray::number((int64_t)1000000000000LL), "1000000000000");
+    TEST_ASSERT_EQ(CowByteArray::number((uint64_t)18446744073709551615ULL), "18446744073709551615");
+    TEST_ASSERT_EQ(CowByteArray::number(3.14, 'f', 2), "3.14");
+}
+
 static void listConstructors() {
     // Default
     CowByteArrayList a;
@@ -245,6 +266,9 @@ extern "C" int cowbytearray_test(ffi::TestException *out_ex) {
     TEST_CATCH(methods());
     TEST_CATCH(operators());
     TEST_CATCH(conversions());
+    TEST_CATCH(fromPercentEncoding());
+    TEST_CATCH(fromBase64());
+    TEST_CATCH(number());
     TEST_CATCH(listConstructors());
     TEST_CATCH(listMethods());
     TEST_CATCH(listOperators());

@@ -57,6 +57,15 @@ static void methods() {
     CowString b("hello");
     CowByteArray ba = b.toUtf8();
     TEST_ASSERT_EQ(ba, "hello");
+
+    // FromUtf8
+    CowByteArray utf8("hello");
+    CowString c = CowString::fromUtf8(utf8);
+    TEST_ASSERT_EQ(c, "hello");
+
+    // FromUtf8 round-trip
+    CowString d("world");
+    TEST_ASSERT_EQ(CowString::fromUtf8(d.toUtf8()), "world");
 }
 
 static void operators() {
