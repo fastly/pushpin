@@ -115,6 +115,22 @@ public:
 
     double toDouble(bool *ok = nullptr) const { return inner_.toDouble(ok); }
 
+    static CowByteArray number(int n, int base = 10) { return QByteArray::number(n, base); }
+    static CowByteArray number(uint n, int base = 10) { return QByteArray::number(n, base); }
+    static CowByteArray number(int64_t n, int base = 10) { return QByteArray::number(n, base); }
+    static CowByteArray number(uint64_t n, int base = 10) { return QByteArray::number(n, base); }
+    static CowByteArray number(double n, char format = 'g', int precision = 6) {
+        return QByteArray::number(n, format, precision);
+    }
+
+    static CowByteArray fromPercentEncoding(const CowByteArray &input, char percent = '%') {
+        return QByteArray::fromPercentEncoding(input.inner_, percent);
+    }
+
+    static CowByteArray fromBase64(const CowByteArray &base64) {
+        return QByteArray::fromBase64(base64.inner_);
+    }
+
     char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }
     char &operator[](ssize_t i) { return inner_[(qsizetype)i]; }
 
