@@ -32,7 +32,7 @@
 class TestHttpRequest : public HttpRequest {
 public:
     // Pair of sender + request id
-    typedef QPair<QByteArray, QByteArray> Rid;
+    typedef QPair<CowByteArray, CowByteArray> Rid;
 
     TestHttpRequest();
     ~TestHttpRequest();

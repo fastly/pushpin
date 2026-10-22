@@ -42,7 +42,7 @@ class ZhttpManager;
 class ZhttpRequest : public HttpRequest {
 public:
     // Pair of sender + request id
-    typedef QPair<QByteArray, QByteArray> Rid;
+    typedef QPair<CowByteArray, CowByteArray> Rid;
 
     class ServerState {
     public:
@@ -122,16 +122,16 @@ private:
     friend class ZhttpManager;
     ZhttpRequest();
     void setupClient(ZhttpManager *manager, bool req);
-    bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq,
+    bool setupServer(ZhttpManager *manager, const CowByteArray &id, int seq,
                      const ZhttpRequestPacket &packet);
     void setupServer(ZhttpManager *manager, const ServerState &state);
     void startServer();
     bool isServer() const;
-    QByteArray toAddress() const;
+    CowByteArray toAddress() const;
     bool routerResp() const;
     int outSeqInc();
-    void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
-    void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
+    void handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet);
+    void handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet);
 };
 
 #endif

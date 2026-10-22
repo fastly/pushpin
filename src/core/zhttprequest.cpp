@@ -64,7 +64,7 @@ public:
     State state;
     ZhttpRequest::Rid rid;
     bool doReq;
-    QByteArray toAddress;
+    CowByteArray toAddress;
     QHostAddress peerAddress;
     CowString connectHost;
     int connectPort;
@@ -463,7 +463,7 @@ public:
         }
     }
 
-    void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet) {
+    void handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet) {
         if (paused)
             return;
 
@@ -565,7 +565,7 @@ public:
         }
     }
 
-    void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet) {
+    void handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet) {
         if (state == ClientRequestStartWait) {
             if (packet.from.isEmpty()) {
                 state = Stopped;
@@ -579,13 +579,13 @@ public:
                 return;
             }
 
-            toAddress = packet.from.asQByteArray();
+            toAddress = packet.from;
 
             state = ClientRequesting;
 
             startKeepAlive();
         } else if (state == ClientRequestFinishWait) {
-            toAddress = packet.from.asQByteArray();
+            toAddress = packet.from;
 
             state = ClientReceiving;
 
@@ -750,7 +750,7 @@ public:
                 manager->writeHttp(out);
             } else {
                 assert(!toAddress.isEmpty());
-                manager->writeHttp(out, toAddress);
+                manager->writeHttp(out, toAddress.asQByteArray());
             }
         }
     }
@@ -763,7 +763,7 @@ public:
         out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
         out.userData = userData;
 
-        manager->writeHttp(out, rid.first, routerResp);
+        manager->writeHttp(out, rid.first.asQByteArray(), routerResp);
     }
 
     void writeCancel() {
@@ -1185,11 +1185,11 @@ void ZhttpRequest::setupClient(ZhttpManager *manager, bool req) {
     d->manager->link(this);
 }
 
-bool ZhttpRequest::setupServer(ZhttpManager *manager, const QByteArray &id, int seq,
+bool ZhttpRequest::setupServer(ZhttpManager *manager, const CowByteArray &id, int seq,
                                const ZhttpRequestPacket &packet) {
     d->manager = manager;
     d->server = true;
-    d->rid = Rid(packet.from.asQByteArray(), id);
+    d->rid = Rid(packet.from, id);
     return d->setupServer(seq, packet);
 }
 
@@ -1205,19 +1205,19 @@ void ZhttpRequest::startServer() { d->startServer(); }
 
 bool ZhttpRequest::isServer() const { return d->server; }
 
-QByteArray ZhttpRequest::toAddress() const { return d->toAddress; }
+CowByteArray ZhttpRequest::toAddress() const { return d->toAddress; }
 
 bool ZhttpRequest::routerResp() const { return d->routerResp; }
 
 int ZhttpRequest::outSeqInc() { return d->outSeq++; }
 
-void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet) {
+void ZhttpRequest::handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet) {
     assert(d->manager);
 
     d->handle(id, seq, packet);
 }
 
-void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet) {
+void ZhttpRequest::handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet) {
     assert(d->manager);
 
     d->handle(id, seq, packet);

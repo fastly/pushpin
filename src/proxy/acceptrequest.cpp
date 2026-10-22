@@ -36,8 +36,8 @@ static Variant acceptDataToVariant(const AcceptData &adata) {
             VariantHash vrequest;
 
             VariantHash vrid;
-            vrid["sender"] = r.rid.first;
-            vrid["id"] = r.rid.second;
+            vrid["sender"] = r.rid.first.asQByteArray();
+            vrid["id"] = r.rid.second.asQByteArray();
 
             vrequest["rid"] = vrid;
 

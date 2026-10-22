@@ -37,7 +37,7 @@ class ZhttpManager;
 class ZWebSocket : public WebSocket {
 public:
     // Pair of sender + request id
-    typedef QPair<QByteArray, QByteArray> Rid;
+    typedef QPair<CowByteArray, CowByteArray> Rid;
 
     ~ZWebSocket();
 
@@ -86,15 +86,15 @@ private:
     friend class ZhttpManager;
     ZWebSocket();
     void setupClient(ZhttpManager *manager);
-    bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq,
+    bool setupServer(ZhttpManager *manager, const CowByteArray &id, int seq,
                      const ZhttpRequestPacket &packet);
     void startServer();
     bool isServer() const;
-    QByteArray toAddress() const;
+    CowByteArray toAddress() const;
     bool routerResp() const;
     int outSeqInc();
-    void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
-    void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
+    void handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet);
+    void handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet);
 };
 
 #endif

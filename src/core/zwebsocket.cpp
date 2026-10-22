@@ -53,7 +53,7 @@ public:
     bool server;
     InternalState state;
     ZWebSocket::Rid rid;
-    QByteArray toAddress;
+    CowByteArray toAddress;
     QHostAddress peerAddress;
     CowString connectHost;
     int connectPort;
@@ -413,7 +413,7 @@ public:
             inContentType = -1;
     }
 
-    void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet) {
+    void handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet) {
         if (packet.type == ZhttpRequestPacket::Error) {
             errorCondition = convertError(packet.condition.asQByteArray());
 
@@ -495,7 +495,7 @@ public:
         }
     }
 
-    void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet) {
+    void handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet) {
         if (packet.type == ZhttpResponsePacket::Error) {
             errorCondition = convertError(packet.condition.asQByteArray());
 
@@ -521,7 +521,7 @@ public:
         }
 
         if (!packet.from.isEmpty())
-            toAddress = packet.from.asQByteArray();
+            toAddress = packet.from;
 
         if (seq != inSeq) {
             log_warning("zws client: error id=%s received message out of sequence, canceling",
@@ -659,7 +659,7 @@ public:
             manager->writeWs(out);
         } else {
             assert(!toAddress.isEmpty());
-            manager->writeWs(out, toAddress);
+            manager->writeWs(out, toAddress.asQByteArray());
         }
     }
 
@@ -671,7 +671,7 @@ public:
         out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
         out.userData = userData;
 
-        manager->writeWs(out, rid.first, routerResp);
+        manager->writeWs(out, rid.first.asQByteArray(), routerResp);
     }
 
     void writeFrameInternal(const Frame &frame, int credits = -1) {
@@ -1040,11 +1040,11 @@ void ZWebSocket::setupClient(ZhttpManager *manager) {
     d->manager->link(this);
 }
 
-bool ZWebSocket::setupServer(ZhttpManager *manager, const QByteArray &id, int seq,
+bool ZWebSocket::setupServer(ZhttpManager *manager, const CowByteArray &id, int seq,
                              const ZhttpRequestPacket &packet) {
     d->manager = manager;
     d->server = true;
-    d->rid = Rid(packet.from.asQByteArray(), id);
+    d->rid = Rid(packet.from, id);
     return d->setupServer(seq, packet);
 }
 
@@ -1052,19 +1052,19 @@ void ZWebSocket::startServer() { d->startServer(); }
 
 bool ZWebSocket::isServer() const { return d->server; }
 
-QByteArray ZWebSocket::toAddress() const { return d->toAddress; }
+CowByteArray ZWebSocket::toAddress() const { return d->toAddress; }
 
 bool ZWebSocket::routerResp() const { return d->routerResp; }
 
 int ZWebSocket::outSeqInc() { return d->outSeq++; }
 
-void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet) {
+void ZWebSocket::handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet) {
     assert(d->manager);
 
     d->handle(id, seq, packet);
 }
 
-void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet) {
+void ZWebSocket::handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet) {
     assert(d->manager);
 
     d->handle(id, seq, packet);

@@ -548,10 +548,9 @@ public:
 
             const ZhttpResponsePacket::Id &id = p.ids.first();
 
-            ZhttpRequest *req =
-                clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id.asQByteArray()));
+            ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
             if (req) {
-                req->handle(id.id.asQByteArray(), id.seq, p);
+                req->handle(id.id, id.seq, p);
                 if (self.expired())
                     return;
 
@@ -598,10 +597,9 @@ public:
 
         foreach (const ZhttpResponsePacket::Id &id, p.ids) {
             // Is this for a websocket?
-            ZWebSocket *sock =
-                clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id.asQByteArray()));
+            ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id));
             if (sock) {
-                sock->handle(id.id.asQByteArray(), id.seq, p);
+                sock->handle(id.id, id.seq, p);
                 if (self.expired())
                     return;
 
@@ -609,10 +607,9 @@ public:
             }
 
             // Is this for an http request?
-            ZhttpRequest *req =
-                clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id.asQByteArray()));
+            ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
             if (req) {
-                req->handle(id.id.asQByteArray(), id.seq, p);
+                req->handle(id.id, id.seq, p);
                 if (self.expired())
                     return;
 
@@ -701,7 +698,7 @@ public:
         const ZhttpRequestPacket::Id &id = p.ids.first();
 
         if (p.uri.scheme() == "wss" || p.uri.scheme() == "ws") {
-            ZWebSocket::Rid rid(p.from.asQByteArray(), id.id.asQByteArray());
+            ZWebSocket::Rid rid(p.from, id.id);
 
             ZWebSocket *sock = serverSocksByRid.value(rid);
             if (sock) {
@@ -711,7 +708,7 @@ public:
             }
 
             sock = new ZWebSocket;
-            if (!sock->setupServer(q, id.id.asQByteArray(), id.seq, p)) {
+            if (!sock->setupServer(q, id.id, id.seq, p)) {
                 delete sock;
                 return;
             }
@@ -724,7 +721,7 @@ public:
 
             q->socketReady();
         } else if (p.uri.scheme() == "https" || p.uri.scheme() == "http") {
-            ZhttpRequest::Rid rid(p.from.asQByteArray(), id.id.asQByteArray());
+            ZhttpRequest::Rid rid(p.from, id.id);
 
             ZhttpRequest *req = serverReqsByRid.value(rid);
             if (req) {
@@ -735,7 +732,7 @@ public:
             }
 
             req = new ZhttpRequest;
-            if (!req->setupServer(q, id.id.asQByteArray(), id.seq, p)) {
+            if (!req->setupServer(q, id.id, id.seq, p)) {
                 delete req;
                 return;
             }
@@ -795,10 +792,9 @@ public:
 
         foreach (const ZhttpRequestPacket::Id &id, p.ids) {
             // Is this for a websocket?
-            ZWebSocket *sock = serverSocksByRid.value(
-                ZWebSocket::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
+            ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
             if (sock) {
-                sock->handle(id.id.asQByteArray(), id.seq, p);
+                sock->handle(id.id, id.seq, p);
                 if (self.expired())
                     return;
 
@@ -806,10 +802,9 @@ public:
             }
 
             // Is this for an http request?
-            ZhttpRequest *req = serverReqsByRid.value(
-                ZhttpRequest::Rid(p.from.asQByteArray(), id.id.asQByteArray()));
+            ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
             if (req) {
-                req->handle(id.id.asQByteArray(), id.seq, p);
+                req->handle(id.id, id.seq, p);
                 if (self.expired())
                     return;
 
@@ -832,7 +827,7 @@ public:
         const QSet<KeepAliveRegistration *> &bucket =
             sessionRefreshBuckets[currentSessionRefreshBucket];
         foreach (KeepAliveRegistration *r, bucket) {
-            QPair<QByteArray, QByteArray> rid;
+            ZhttpRequest::Rid rid;
             bool isServer;
             if (r->type == HttpSession) {
                 rid = r->p.req->rid();
@@ -854,14 +849,14 @@ public:
 
                 groupIndex = ((r->type - 1) * 2) + (routerResp ? 1 : 0);
 
-                sender = rid.first;
+                sender = rid.first.asQByteArray();
             } else {
                 groupIndex = r->type - 1;
 
                 if (r->type == HttpSession)
-                    sender = r->p.req->toAddress();
+                    sender = r->p.req->toAddress().asQByteArray();
                 else // WebSocketSession
-                    sender = r->p.sock->toAddress();
+                    sender = r->p.sock->toAddress().asQByteArray();
             }
 
             assert(!sender.isEmpty());

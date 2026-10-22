@@ -815,7 +815,7 @@ private:
 
         foreach (const RetryRequestPacket::Request &req, p.requests) {
             ZhttpRequest::ServerState ss;
-            ss.rid = ZhttpRequest::Rid(req.rid.first.asQByteArray(), req.rid.second.asQByteArray());
+            ss.rid = ZhttpRequest::Rid(req.rid.first, req.rid.second);
             ss.peerAddress = req.peerAddress;
             ss.requestMethod = p.requestData.method.asQString();
             ss.requestUri = p.requestData.uri;

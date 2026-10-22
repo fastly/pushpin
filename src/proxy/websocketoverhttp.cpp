@@ -140,10 +140,10 @@ static QByteArray encodeEvents(const QList<WebSocketOverHttp::Event> &events) {
 
     foreach (const WebSocketOverHttp::Event &e, events) {
         if (!e.content.isNull()) {
-            out += e.type + ' ' + QByteArray::number(e.content.size(), 16) + "\r\n" + e.content +
-                   "\r\n";
+            out += e.type.asQByteArray() + ' ' + QByteArray::number(e.content.size(), 16) + "\r\n" +
+                   e.content.asQByteArray() + "\r\n";
         } else {
-            out += e.type + "\r\n";
+            out += e.type.asQByteArray() + "\r\n";
         }
     }
 
@@ -730,16 +730,16 @@ private:
                 state = Connected;
                 emitConnected = true;
             } else if (e.type == "TEXT") {
-                appendInMessage(Frame::Text, e.content);
+                appendInMessage(Frame::Text, e.content.asQByteArray());
                 emitReadyRead = true;
             } else if (e.type == "BINARY") {
-                appendInMessage(Frame::Binary, e.content);
+                appendInMessage(Frame::Binary, e.content.asQByteArray());
                 emitReadyRead = true;
             } else if (e.type == "PING") {
-                appendInMessage(Frame::Ping, e.content);
+                appendInMessage(Frame::Ping, e.content.asQByteArray());
                 emitReadyRead = true;
             } else if (e.type == "PONG") {
-                appendInMessage(Frame::Pong, e.content);
+                appendInMessage(Frame::Pong, e.content.asQByteArray());
                 emitReadyRead = true;
             } else if (e.type == "CLOSE") {
                 peerClosing = true;
@@ -747,7 +747,7 @@ private:
                     int hi = (unsigned char)e.content[0];
                     int lo = (unsigned char)e.content[1];
                     peerCloseCode = (hi << 8) + lo;
-                    peerCloseReason = QString::fromUtf8(e.content.mid(2));
+                    peerCloseReason = QString::fromUtf8(e.content.mid(2).asQByteArray());
                 }
 
                 closed = true;
@@ -919,7 +919,7 @@ WebSocketOverHttp::~WebSocketOverHttp() {
     }
 }
 
-void WebSocketOverHttp::setConnectionId(const QByteArray &id) { d->cid = id; }
+void WebSocketOverHttp::setConnectionId(const CowByteArray &id) { d->cid = id.asQByteArray(); }
 
 void WebSocketOverHttp::setMaxEventsPerRequest(int max) { d->maxEvents = max; }
 

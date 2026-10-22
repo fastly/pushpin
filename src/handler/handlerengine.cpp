@@ -695,7 +695,7 @@ public:
         // manager. We do this by processing the conn-max packets above and adding to the stats
         // manager below, without returning to the event loop in between
         foreach (const RequestState &rs, requestStates) {
-            QByteArray cid = rs.rid.first + ':' + rs.rid.second;
+            QByteArray cid = rs.rid.first.asQByteArray() + ':' + rs.rid.second.asQByteArray();
 
             int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(rs.unreportedTime, 0);
 
@@ -895,7 +895,8 @@ private:
                 RetryRequestPacket rp;
 
                 foreach (const RequestState &rs, requestStates) {
-                    QByteArray cid = rs.rid.first + ':' + rs.rid.second;
+                    QByteArray cid =
+                        rs.rid.first.asQByteArray() + ':' + rs.rid.second.asQByteArray();
 
                     needRemoveFromStats.remove(cid);
 
@@ -1009,7 +1010,7 @@ private:
             adata.haveInspectInfo = haveInspectInfo;
             adata.inspectInfo = inspectInfo;
 
-            QByteArray cid = rid.first + ':' + rid.second;
+            QByteArray cid = rid.first.asQByteArray() + ':' + rid.second.asQByteArray();
             needRemoveFromStats.remove(cid);
 
             sessions += std::make_shared<HttpSession>(
