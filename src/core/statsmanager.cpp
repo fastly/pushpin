@@ -288,7 +288,7 @@ public:
     StatsManager *q;
     int connectionsMax;
     int subscriptionsMax;
-    QByteArray instanceId;
+    CowByteArray instanceId;
     int ipcFileMode;
     QString spec;
     Format outputFormat;
@@ -1340,7 +1340,7 @@ StatsManager::StatsManager(int connectionsMax, int subscriptionsMax) {
 
 StatsManager::~StatsManager() { delete d; }
 
-void StatsManager::setInstanceId(const QByteArray &instanceId) { d->instanceId = instanceId; }
+void StatsManager::setInstanceId(const CowByteArray &instanceId) { d->instanceId = instanceId; }
 
 void StatsManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
 

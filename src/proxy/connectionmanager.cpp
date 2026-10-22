@@ -61,7 +61,7 @@ QByteArray ConnectionManager::addConnection(WebSocket *sock) {
 
     Private::Item *i = new Private::Item;
     i->sock = sock;
-    i->cid = UuidUtil::createUuid();
+    i->cid = UuidUtil::createUuid().asQByteArray();
     d->itemsBySock[i->sock] = i;
     d->itemsByCid[i->cid] = i;
 

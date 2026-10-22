@@ -16,6 +16,7 @@
 
 #include "json.h"
 
+#include "cowbytearray.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -71,7 +72,7 @@ static Variant jsonValueToVariant(const QJsonValue &v) {
 
 namespace Json {
 
-QByteArray toString(const Variant &variant) {
+CowByteArray toString(const Variant &variant) {
     QJsonValue jv = variantToJsonValue(variant);
 
     if (jv.isObject())
@@ -84,9 +85,9 @@ QByteArray toString(const Variant &variant) {
     return arr.mid(1, arr.size() - 2); // strip surrounding [ and ]
 }
 
-Variant fromString(const QByteArray &json) {
+Variant fromString(const CowByteArray &json) {
     QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &err);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray(), &err);
     if (err.error != QJsonParseError::NoError)
         return Variant();
 

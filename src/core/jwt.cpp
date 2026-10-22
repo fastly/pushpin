@@ -183,11 +183,11 @@ QByteArray encode(const Variant &claim, const EncodingKey &key) {
         return QByteArray();
     }
 
-    QByteArray claimJson = Json::toString(claim.toMap());
+    CowByteArray claimJson = Json::toString(claim.toMap());
     if (claimJson.isNull())
         return QByteArray();
 
-    return encodeWithAlgorithm(alg, claimJson, key);
+    return encodeWithAlgorithm(alg, claimJson.asQByteArray(), key);
 }
 
 Variant decode(const QByteArray &token, const DecodingKey &key) {

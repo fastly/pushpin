@@ -23,11 +23,11 @@
 #ifndef STATUSREASONS_H
 #define STATUSREASONS_H
 
-class QByteArray;
+#include "cowbytearray.h"
 
 namespace StatusReasons {
 
-QByteArray getReason(int code);
+CowByteArray getReason(int code);
 
 }
 

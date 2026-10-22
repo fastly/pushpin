@@ -54,7 +54,7 @@ public:
     };
 
     ZrpcManager *q;
-    QByteArray instanceId;
+    CowByteArray instanceId;
     int ipcFileMode;
     bool doBind;
     int timeout;
@@ -236,7 +236,7 @@ ZrpcManager::~ZrpcManager() { delete d; }
 
 int ZrpcManager::timeout() const { return d->timeout; }
 
-void ZrpcManager::setInstanceId(const QByteArray &instanceId) { d->instanceId = instanceId; }
+void ZrpcManager::setInstanceId(const CowByteArray &instanceId) { d->instanceId = instanceId; }
 
 void ZrpcManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
 

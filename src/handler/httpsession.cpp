@@ -67,7 +67,7 @@ static QByteArray applyBodyPatch(const QByteArray &in, const VariantList &bodyPa
             vbody = VariantUtil::convertToJsonStyle(vbody);
         if (vbody.isValid() &&
             (typeId(vbody) == VariantType::Map || typeId(vbody) == VariantType::List)) {
-            body = Json::toString(vbody);
+            body = Json::toString(vbody).asQByteArray();
 
             if (in.endsWith("\r\n"))
                 body += "\r\n";
@@ -836,7 +836,7 @@ private:
 
                     result["body"] = QString::fromUtf8(body);
 
-                    QByteArray resultJson = Json::toString(result);
+                    QByteArray resultJson = Json::toString(result).asQByteArray();
 
                     body = "/**/" + adata.jsonpCallback + '(' + resultJson + ");\n";
                 } else {

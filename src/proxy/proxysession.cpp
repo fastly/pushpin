@@ -746,7 +746,7 @@ public:
                         }
 
                         if (reason.isEmpty())
-                            reason = StatusReasons::getReason(responseData.code);
+                            reason = StatusReasons::getReason(responseData.code).asQByteArray();
 
                         responseData.reason = reason;
                     }

@@ -483,7 +483,7 @@ public:
                 VariantList messages;
                 messages += QString::fromUtf8(frame.data.asQByteArray());
 
-                QByteArray arrayJson = Json::toString(messages);
+                CowByteArray arrayJson = Json::toString(messages);
                 Frame f(Frame::Text, "a" + arrayJson, false);
 
                 pendingWrites += WriteItem(WriteItem::User, frame.data.size());

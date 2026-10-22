@@ -23,12 +23,11 @@
 #include "statusreasons.h"
 
 #include "rust/bindings.h"
-#include <QByteArray>
 #include <limits>
 
 namespace StatusReasons {
 
-QByteArray getReason(int code) {
+CowByteArray getReason(int code) {
     uint16_t c = static_cast<uint16_t>(
         std::clamp(code, static_cast<int>(std::numeric_limits<uint16_t>::min()),
                    static_cast<int>(std::numeric_limits<uint16_t>::max())));

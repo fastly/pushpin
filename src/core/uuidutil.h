@@ -23,11 +23,11 @@
 #ifndef UUIDUTIL_H
 #define UUIDUTIL_H
 
-class QByteArray;
+#include "cowbytearray.h"
 
 namespace UuidUtil {
 
-QByteArray createUuid();
+CowByteArray createUuid();
 
 }
 

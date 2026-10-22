@@ -63,13 +63,13 @@ const char *iframeHtmlTemplate =
     "</html>\n";
 
 static QByteArray serializeJsonString(const QString &s) {
-    QByteArray tmp = Json::toString(VariantList() << s);
+    CowByteArray tmp = Json::toString(VariantList() << s);
 
     assert(tmp.length() >= 4);
     assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
     assert(tmp[1] == '"' && tmp[tmp.length() - 2] == '"');
 
-    return tmp.mid(1, tmp.length() - 2);
+    return tmp.mid(1, tmp.length() - 2).asQByteArray();
 }
 
 class SockJsManager::Private {
@@ -302,7 +302,7 @@ public:
         QByteArray body;
 
         if (data.isValid())
-            body = Json::toString(data);
+            body = Json::toString(data).asQByteArray();
 
         if (!prefix.isEmpty())
             body.prepend(prefix);

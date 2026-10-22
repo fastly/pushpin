@@ -29,12 +29,12 @@ static void variantMapSerialization() {
     vmap["boolean"] = true;
     vmap["null"] = Variant();
 
-    QByteArray json = Json::toString(vmap);
+    CowByteArray json = Json::toString(vmap);
     TEST_ASSERT(!json.isEmpty());
 
     // Should be valid JSON
     QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &error);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray(), &error);
     TEST_ASSERT_EQ(error.error, QJsonParseError::NoError);
     TEST_ASSERT_EQ(doc.isObject(), true);
 
@@ -49,12 +49,12 @@ static void variantListSerialization() {
     VariantList vlist;
     vlist << "item1" << 123 << false << Variant();
 
-    QByteArray json = Json::toString(vlist);
+    CowByteArray json = Json::toString(vlist);
     TEST_ASSERT(!json.isEmpty());
 
     // Should be valid JSON array
     QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &error);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray(), &error);
     TEST_ASSERT_EQ(error.error, QJsonParseError::NoError);
     TEST_ASSERT_EQ(doc.isArray(), true);
 
@@ -71,11 +71,11 @@ static void variantHashSerialization() {
     vhash["key1"] = "value1";
     vhash["key2"] = 999;
 
-    QByteArray json = Json::toString(vhash);
+    CowByteArray json = Json::toString(vhash);
     TEST_ASSERT(!json.isEmpty());
 
     QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &error);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray(), &error);
     TEST_ASSERT_EQ(error.error, QJsonParseError::NoError);
     TEST_ASSERT_EQ(doc.isObject(), true);
 }
@@ -92,11 +92,11 @@ static void nestedStructure() {
     outerMap["inner"] = innerMap;
     outerMap["simple"] = "value";
 
-    QByteArray json = Json::toString(outerMap);
+    CowByteArray json = Json::toString(outerMap);
     TEST_ASSERT(!json.isEmpty());
 
     QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(json, &error);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray(), &error);
     TEST_ASSERT_EQ(error.error, QJsonParseError::NoError);
 
     QJsonObject obj = doc.object();
@@ -113,7 +113,7 @@ static void roundtrip() {
     original["test"] = "roundtrip";
     original["number"] = 42;
 
-    QByteArray json = Json::toString(original);
+    CowByteArray json = Json::toString(original);
 
     // Deserialize back
     Variant restored = Json::fromString(json);
@@ -134,11 +134,11 @@ static void compatibilityWithQtJson() {
     QByteArray qtJson =
         QJsonDocument(QJsonObject::fromVariantMap(testData)).toJson(QJsonDocument::Compact);
 
-    QByteArray json = Json::toString(testData);
+    CowByteArray json = Json::toString(testData);
 
     // Both should parse to equivalent structures
     QJsonDocument qtDoc = QJsonDocument::fromJson(qtJson);
-    QJsonDocument doc = QJsonDocument::fromJson(json);
+    QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray());
 
     TEST_ASSERT_EQ(qtDoc.isObject(), true);
     TEST_ASSERT_EQ(doc.isObject(), true);
@@ -155,34 +155,34 @@ static void compatibilityWithQtJson() {
 static void scalarValues() {
     // Test individual scalar values
     Variant stringVar("test string");
-    QByteArray stringJson = Json::toString(stringVar);
+    CowByteArray stringJson = Json::toString(stringVar);
     TEST_ASSERT(!stringJson.isEmpty());
     // Should produce clean scalar: "test string"
     TEST_ASSERT_EQ(stringJson, QByteArray("\"test string\""));
 
     Variant intVar(123);
-    QByteArray intJson = Json::toString(intVar);
+    CowByteArray intJson = Json::toString(intVar);
     TEST_ASSERT(!intJson.isEmpty());
     // Should produce clean scalar: 123
     TEST_ASSERT_EQ(intJson, QByteArray("123"));
 
     Variant boolVar(true);
-    QByteArray boolJson = Json::toString(boolVar);
+    CowByteArray boolJson = Json::toString(boolVar);
     TEST_ASSERT(!boolJson.isEmpty());
     // Should produce clean scalar: true
     TEST_ASSERT_EQ(boolJson, QByteArray("true"));
 
     // For Qt compatibility testing, wrap scalars in objects since Qt JSON only handles
     // objects/arrays
-    QByteArray wrappedStringJson = "{\"value\":" + stringJson + "}";
-    QByteArray wrappedIntJson = "{\"value\":" + intJson + "}";
-    QByteArray wrappedBoolJson = "{\"value\":" + boolJson + "}";
+    CowByteArray wrappedStringJson = "{\"value\":" + stringJson + "}";
+    CowByteArray wrappedIntJson = "{\"value\":" + intJson + "}";
+    CowByteArray wrappedBoolJson = "{\"value\":" + boolJson + "}";
 
     // Wrapped versions should be parseable by Qt JSON
     QJsonParseError error1, error2, error3;
-    QJsonDocument doc1 = QJsonDocument::fromJson(wrappedStringJson, &error1);
-    QJsonDocument doc2 = QJsonDocument::fromJson(wrappedIntJson, &error2);
-    QJsonDocument doc3 = QJsonDocument::fromJson(wrappedBoolJson, &error3);
+    QJsonDocument doc1 = QJsonDocument::fromJson(wrappedStringJson.asQByteArray(), &error1);
+    QJsonDocument doc2 = QJsonDocument::fromJson(wrappedIntJson.asQByteArray(), &error2);
+    QJsonDocument doc3 = QJsonDocument::fromJson(wrappedBoolJson.asQByteArray(), &error3);
 
     TEST_ASSERT_EQ(error1.error, QJsonParseError::NoError);
     TEST_ASSERT_EQ(error2.error, QJsonParseError::NoError);

@@ -26,7 +26,7 @@
 
 namespace UuidUtil {
 
-QByteArray createUuid() {
+CowByteArray createUuid() {
     QByteArray out = QUuid::createUuid().toString().toLatin1();
     if (out[0] == '{' && out[out.length() - 1] == '}')
         out = out.mid(1, out.length() - 2);

@@ -24,7 +24,7 @@
 #ifndef ZRPCMANAGER_H
 #define ZRPCMANAGER_H
 
-#include <QByteArray>
+#include "cowbytearray.h"
 #include <QList>
 #include <boost/signals2.hpp>
 
@@ -42,7 +42,7 @@ public:
 
     int timeout() const;
 
-    void setInstanceId(const QByteArray &instanceId);
+    void setInstanceId(const CowByteArray &instanceId);
     void setIpcFileMode(int mode);
     void setBind(bool enable);
     void setTimeout(int ms);

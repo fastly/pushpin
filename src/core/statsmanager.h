@@ -72,7 +72,7 @@ public:
 
     bool connectionSendEnabled() const;
 
-    void setInstanceId(const QByteArray &instanceId);
+    void setInstanceId(const CowByteArray &instanceId);
     void setIpcFileMode(int mode);
     bool setSpec(const QString &spec);
     void setConnectionSendEnabled(bool enabled);

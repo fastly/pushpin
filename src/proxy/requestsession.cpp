@@ -105,13 +105,13 @@ static bool validMethod(const QString &in) {
 }
 
 static QByteArray serializeJsonString(const QString &s) {
-    QByteArray tmp = Json::toString(VariantList() << s);
+    CowByteArray tmp = Json::toString(VariantList() << s);
 
     assert(tmp.length() >= 4);
     assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
     assert(tmp[1] == '"' && tmp[tmp.length() - 2] == '"');
 
-    return tmp.mid(1, tmp.length() - 2);
+    return tmp.mid(1, tmp.length() - 2).asQByteArray();
 }
 
 static QByteArray ridToString(const ZhttpRequest::Rid &rid) {
@@ -524,7 +524,7 @@ public:
                     vheaders[h.first.asQByteArray()] = h.second.asQByteArray();
             }
 
-            QByteArray headersJson = Json::toString(vheaders);
+            QByteArray headersJson = Json::toString(vheaders).asQByteArray();
             if (headersJson.isNull())
                 return QByteArray();
 
