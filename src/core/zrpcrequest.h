@@ -24,6 +24,7 @@
 #ifndef ZRPCREQUEST_H
 #define ZRPCREQUEST_H
 
+#include "cowbytearray.h"
 #include "variant.h"
 #include <boost/signals2.hpp>
 
@@ -40,18 +41,18 @@ public:
     ZrpcRequest(ZrpcManager *manager);
     virtual ~ZrpcRequest();
 
-    QByteArray from() const;
-    QByteArray id() const;
+    CowByteArray from() const;
+    CowByteArray id() const;
     QString method() const;
     VariantHash args() const;
     bool success() const;
     Variant result() const;
     ErrorCondition errorCondition() const;
-    QByteArray errorConditionString() const;
+    CowByteArray errorConditionString() const;
 
     void start(const QString &method, const VariantHash &args = VariantHash());
     void respond(const Variant &result = Variant());
-    void respondError(const QByteArray &condition, const Variant &result = Variant());
+    void respondError(const CowByteArray &condition, const Variant &result = Variant());
 
     void setError(ErrorCondition condition, const Variant &result = Variant());
 

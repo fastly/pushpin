@@ -24,9 +24,9 @@
 #ifndef JWT_H
 #define JWT_H
 
+#include "cowbytearray.h"
 #include "rust/bindings.h"
 #include "variant.h"
-#include <QByteArray>
 #include <QDir>
 #include <QSharedData>
 
@@ -65,8 +65,8 @@ public:
         }
     }
 
-    static EncodingKey fromSecret(const QByteArray &key);
-    static EncodingKey fromPem(const QByteArray &key);
+    static EncodingKey fromSecret(const CowByteArray &key);
+    static EncodingKey fromPem(const CowByteArray &key);
     static EncodingKey fromFile(const QString &fileName);
     static EncodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
@@ -103,8 +103,8 @@ public:
         }
     }
 
-    static DecodingKey fromSecret(const QByteArray &key);
-    static DecodingKey fromPem(const QByteArray &key);
+    static DecodingKey fromSecret(const CowByteArray &key);
+    static DecodingKey fromPem(const CowByteArray &key);
     static DecodingKey fromFile(const QString &fileName);
     static DecodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
@@ -123,13 +123,13 @@ private:
 };
 
 // Returns token, null on error
-QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key);
+CowByteArray encodeWithAlgorithm(Algorithm alg, const CowByteArray &claim, const EncodingKey &key);
 
 // Returns claim, null on error
-QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
+CowByteArray decodeWithAlgorithm(Algorithm alg, const CowByteArray &token, const DecodingKey &key);
 
-QByteArray encode(const Variant &claim, const EncodingKey &key);
-Variant decode(const QByteArray &token, const DecodingKey &key);
+CowByteArray encode(const Variant &claim, const EncodingKey &key);
+Variant decode(const CowByteArray &token, const DecodingKey &key);
 
 } // namespace Jwt
 

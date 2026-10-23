@@ -96,7 +96,7 @@ private:
         if (req->success())
             setFinished(true);
         else
-            setFinished(false, req->errorConditionString());
+            setFinished(false, req->errorConditionString().asQByteArray());
     }
 };
 

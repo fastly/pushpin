@@ -384,19 +384,19 @@ SimpleHttpRequest::~SimpleHttpRequest() { delete d; }
 
 QString SimpleHttpRequest::requestMethod() const { return d->method; }
 
-QByteArray SimpleHttpRequest::requestUri() const { return d->uri.asQByteArray(); }
+CowByteArray SimpleHttpRequest::requestUri() const { return d->uri; }
 
 HttpHeaders SimpleHttpRequest::requestHeaders() const { return d->reqHeaders; }
 
-QByteArray SimpleHttpRequest::requestBody() const { return d->reqBody.asQByteArray(); }
+CowByteArray SimpleHttpRequest::requestBody() const { return d->reqBody; }
 
-void SimpleHttpRequest::respond(int code, const QByteArray &reason, const HttpHeaders &headers,
-                                const QByteArray &body) {
-    d->respond(code, reason, headers, body);
+void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                                const CowByteArray &body) {
+    d->respond(code, reason.asQByteArray(), headers, body.asQByteArray());
 }
 
-void SimpleHttpRequest::respond(int code, const QByteArray &reason, const QString &body) {
-    d->respond(code, reason, body);
+void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const QString &body) {
+    d->respond(code, reason.asQByteArray(), body);
 }
 
 class SimpleHttpServerPrivate {

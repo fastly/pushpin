@@ -864,7 +864,7 @@ private:
             return;
         }
 
-        QByteArray reqFrom = req->from();
+        CowByteArray reqFrom = req->from();
 
         VariantHash result;
         result["accepted"] = true;
@@ -900,7 +900,7 @@ private:
 
                     needRemoveFromStats.remove(cid);
 
-                    int unreportedTime = stats->removeConnection(cid, true, reqFrom);
+                    int unreportedTime = stats->removeConnection(cid, true, reqFrom.asQByteArray());
 
                     RetryRequestPacket::Request rpreq;
                     rpreq.rid = rs.rid;
@@ -948,9 +948,9 @@ private:
                 }
 
                 rp.route = route.toUtf8();
-                rp.retrySeq = stats->lastRetrySeq(reqFrom);
+                rp.retrySeq = stats->lastRetrySeq(reqFrom.asQByteArray());
 
-                retryPacketReady(reqFrom, rp);
+                retryPacketReady(reqFrom.asQByteArray(), rp);
 
                 setFinished(true);
                 return;
@@ -990,7 +990,7 @@ private:
                 implicitChannelsSet += channel;
 
             HttpSession::AcceptData adata;
-            adata.from = reqFrom;
+            adata.from = reqFrom.asQByteArray();
             adata.requestData = origRequestData;
             adata.logicalPeerAddress = rs.logicalPeerAddress;
             adata.debug = rs.debug;
@@ -1579,9 +1579,10 @@ private:
         req->respond(code, reason, outHeaders, body.toUtf8());
         req->finished.connect([=] { DeferCall::deleteLater(req); });
 
-        QString msg = QString("control: %1 %2 code=%3 %4")
-                          .arg(req->requestMethod(), QString::fromUtf8(req->requestUri()),
-                               QString::number(code), QString::number(body.size()));
+        QString msg =
+            QString("control: %1 %2 code=%3 %4")
+                .arg(req->requestMethod(), QString::fromUtf8(req->requestUri().asQByteArray()),
+                     QString::number(code), QString::number(body.size()));
         if (items > -1)
             msg += QString(" items=%1").arg(items);
 
@@ -2665,9 +2666,9 @@ private:
         if (!req)
             return;
 
-        QByteArray path = req->requestUri();
+        CowByteArray path = req->requestUri();
         if (path.length() > 1 && path[path.length() - 1] == '/')
-            path.truncate(path.length() - 1);
+            path = path.mid(0, path.length() - 1);
 
         HttpHeaders headers = req->requestHeaders();
 

@@ -24,6 +24,7 @@
 #ifndef SIMPLEHTTPSERVER_H
 #define SIMPLEHTTPSERVER_H
 
+#include "cowbytearray.h"
 #include <QHostAddress>
 #include <boost/signals2.hpp>
 #include <map>
@@ -43,13 +44,13 @@ public:
     ~SimpleHttpRequest();
 
     QString requestMethod() const;
-    QByteArray requestUri() const;
+    CowByteArray requestUri() const;
     HttpHeaders requestHeaders() const;
-    QByteArray requestBody() const;
+    CowByteArray requestBody() const;
 
-    void respond(int code, const QByteArray &reason, const HttpHeaders &headers,
-                 const QByteArray &body);
-    void respond(int code, const QByteArray &reason, const QString &body);
+    void respond(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                 const CowByteArray &body);
+    void respond(int code, const CowByteArray &reason, const QString &body);
 
     Signal finished;
 

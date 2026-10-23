@@ -30,7 +30,7 @@
 #include "qtcompat.h"
 #include "variant.h"
 
-static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key) {
+static CowByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key) {
     VariantMap claim;
     claim["iss"] = QString::fromUtf8(iss);
     claim["exp"] = (qint64)(DateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600);
@@ -255,7 +255,7 @@ void applyHostHeader(HttpHeaders *headers, const CowUrl &uri) {
 void applyGripSig(const char *logprefix, void *object, HttpHeaders *headers,
                   const QByteArray &sigIss, const Jwt::EncodingKey &sigKey) {
     if (!sigIss.isEmpty() && !sigKey.isNull()) {
-        QByteArray token = make_token(sigIss, sigKey);
+        CowByteArray token = make_token(sigIss, sigKey);
         if (!token.isEmpty()) {
             headers->removeAll("Grip-Sig");
             headers->append(HttpHeader("Grip-Sig", token));
