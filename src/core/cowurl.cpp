@@ -64,17 +64,17 @@ CowUrl &CowUrl::operator=(const CowUrl &other) {
     return *this;
 }
 
-CowUrl CowUrl::fromEncoded(const QByteArray &input, [[maybe_unused]] ParsingMode mode) {
+CowUrl CowUrl::fromEncoded(const CowByteArray &input, [[maybe_unused]] ParsingMode mode) {
     CowUrl url;
     url.inner_ = ffi::cow_url_from_string(input.constData());
     return url;
 }
 
-QString CowUrl::fromPercentEncoding(const QByteArray &input) {
-    return QString::fromUtf8(QByteArray::fromPercentEncoding(input));
+QString CowUrl::fromPercentEncoding(const CowByteArray &input) {
+    return QString::fromUtf8(QByteArray::fromPercentEncoding(input.asQByteArray()));
 }
 
-QByteArray CowUrl::toPercentEncoding(const QString &input) {
+CowByteArray CowUrl::toPercentEncoding(const QString &input) {
     return input.toUtf8().toPercentEncoding();
 }
 
@@ -141,9 +141,9 @@ QString CowUrl::toString([[maybe_unused]] ComponentFormattingOptions options) co
     return dataToString(ffi::cow_url_to_string(inner_));
 }
 
-QByteArray CowUrl::toEncoded() const {
+CowByteArray CowUrl::toEncoded() const {
     if (!inner_) {
-        return QByteArray();
+        return CowByteArray();
     }
 
     return dataToByteArray(ffi::cow_url_to_string(inner_));

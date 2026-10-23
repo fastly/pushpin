@@ -357,7 +357,7 @@ public:
         {
             state = WaitingToUpdate;
 
-            QString key = QString::fromUtf8(nextUri.toEncoded());
+            QString key = QString::fromUtf8(nextUri.toEncoded().asQByteArray());
 
             UpdateAction *action = static_cast<UpdateAction *>(updateLimiter->lastAction(key));
             if (!action || action->sessions.count() >= UPDATES_PER_ACTION_MAX) {

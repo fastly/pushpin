@@ -65,7 +65,7 @@ private:
     friend class ZrpcRequest;
     void link(ZrpcRequest *req);
     void unlink(ZrpcRequest *req);
-    void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet);
+    void write(const CowByteArrayList &headers, const ZrpcResponsePacket &packet);
 };
 
 #endif

@@ -214,7 +214,7 @@ Variant WsControlPacket::toVariant() const {
             vitem["req-id"] = item.requestId.asQByteArray();
 
         if (!item.uri.isEmpty())
-            vitem["uri"] = item.uri.toEncoded();
+            vitem["uri"] = item.uri.toEncoded().asQByteArray();
 
         if (!item.contentType.isEmpty())
             vitem["content-type"] = item.contentType.asQByteArray();

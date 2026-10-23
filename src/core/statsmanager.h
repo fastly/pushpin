@@ -87,19 +87,19 @@ public:
 
     // RouteId may be empty for non-identified route
 
-    void addActivity(const QByteArray &routeId, uint32_t count = 1);
+    void addActivity(const CowByteArray &routeId, uint32_t count = 1);
     void addMessage(const QString &channel, const QString &itemId, const QString &transport,
                     uint32_t count = 1, int blocks = -1);
 
-    void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type,
+    void addConnection(const CowByteArray &id, const CowByteArray &routeId, ConnectionType type,
                        const QHostAddress &peerAddress, bool ssl, bool quiet,
                        int reportOffset = -1);
-    int removeConnection(const QByteArray &id, bool linger,
-                         const QByteArray &source = QByteArray()); // Return unreported time
+    int removeConnection(const CowByteArray &id, bool linger,
+                         const CowByteArray &source = CowByteArray()); // Return unreported time
 
     // Manager automatically refreshes, but it may be useful to force a send before removing with
     // linger
-    void refreshConnection(const QByteArray &id);
+    void refreshConnection(const CowByteArray &id);
 
     void addSubscription(const QString &mode, const QString &channel, uint32_t subscriberCount);
 
@@ -107,14 +107,14 @@ public:
     void removeSubscription(const QString &mode, const QString &channel, bool linger);
 
     // For reporting and combined
-    void addMessageReceived(const QByteArray &routeId, int blocks = -1);
-    void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
-    void incCounter(const QByteArray &routeId, Stats::Counter c, uint32_t count = 1);
+    void addMessageReceived(const CowByteArray &routeId, int blocks = -1);
+    void addMessageSent(const CowByteArray &routeId, const QString &transport, int blocks = -1);
+    void incCounter(const CowByteArray &routeId, Stats::Counter c, uint32_t count = 1);
 
     // For combined only
     void addRequestsReceived(uint32_t count);
 
-    bool checkConnection(const QByteArray &id) const;
+    bool checkConnection(const CowByteArray &id) const;
 
     // Conn, conn-max, and report packets received from the proxy should be passed into this method.
     // returns true if the packet should not also be forwarded on
@@ -123,14 +123,14 @@ public:
     // Directly send, for proxy->handler pass-through
     void sendPacket(const StatsPacket &packet);
 
-    void flushReport(const QByteArray &routeId);
+    void flushReport(const CowByteArray &routeId);
 
-    int64_t lastRetrySeq(const QByteArray &source) const;
+    int64_t lastRetrySeq(const CowByteArray &source) const;
 
-    StatsPacket getConnMaxPacket(const QByteArray &routeId);
-    void setRetrySeq(const QByteArray &routeId, int value);
+    StatsPacket getConnMaxPacket(const CowByteArray &routeId);
+    void setRetrySeq(const CowByteArray &routeId, int value);
 
-    boost::signals2::signal<void(const QList<QByteArray> &)> connectionsRefreshed;
+    boost::signals2::signal<void(const CowByteArrayList &)> connectionsRefreshed;
     boost::signals2::signal<void(const QString &, const QString &)> unsubscribed;
     boost::signals2::signal<void(const QList<StatsPacket> &)> reported;
     boost::signals2::signal<void(const StatsPacket &)> connMax;

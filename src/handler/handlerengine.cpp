@@ -247,7 +247,7 @@ private:
                 requestData.headers.getAll("Grip-Last").asQByteArrayList();
             std::sort(gripLastHeaders.begin(), gripLastHeaders.end());
 
-            QByteArray key = "auto|" + uri.toEncoded();
+            QByteArray key = "auto|" + uri.toEncoded().asQByteArray();
 
             foreach (const QByteArray &h, gripLastHeaders)
                 key += '|' + h;
@@ -900,7 +900,7 @@ private:
 
                     needRemoveFromStats.remove(cid);
 
-                    int unreportedTime = stats->removeConnection(cid, true, reqFrom.asQByteArray());
+                    int unreportedTime = stats->removeConnection(cid, true, reqFrom);
 
                     RetryRequestPacket::Request rpreq;
                     rpreq.rid = rs.rid;
@@ -948,7 +948,7 @@ private:
                 }
 
                 rp.route = route.toUtf8();
-                rp.retrySeq = stats->lastRetrySeq(reqFrom.asQByteArray());
+                rp.retrySeq = stats->lastRetrySeq(reqFrom);
 
                 retryPacketReady(reqFrom.asQByteArray(), rp);
 
@@ -2139,11 +2139,11 @@ private:
         writeRetryPacket(instanceAddress, packet);
     }
 
-    void stats_connectionsRefreshed(const QList<QByteArray> &ids) {
+    void stats_connectionsRefreshed(const CowByteArrayList &ids) {
         if (stateClient) {
             // Find sids of the connections
             QHash<QString, LastIds> sidLastIds;
-            foreach (const QByteArray &id, ids) {
+            for (const auto &id : ids) {
                 int at = id.indexOf(':');
                 assert(at != -1);
                 ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
@@ -2636,7 +2636,7 @@ private:
         if (p.type == StatsPacket::Activity) {
             if (p.count > 0) {
                 // Merge with our own stats
-                stats->addActivity(p.route.asQByteArray(), p.count);
+                stats->addActivity(p.route, p.count);
             }
         } else if (p.type == StatsPacket::Counts) {
             if (p.requestsReceived > 0) {

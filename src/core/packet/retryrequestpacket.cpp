@@ -80,7 +80,7 @@ Variant RetryRequestPacket::toVariant() const {
     VariantHash vrequestData;
 
     vrequestData["method"] = requestData.method.toUtf8().asQByteArray();
-    vrequestData["uri"] = requestData.uri.toEncoded();
+    vrequestData["uri"] = requestData.uri.toEncoded().asQByteArray();
 
     VariantList vheaders;
     foreach (const HttpHeader &h, requestData.headers) {
