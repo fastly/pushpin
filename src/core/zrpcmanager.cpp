@@ -137,7 +137,10 @@ public:
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-        clientSock->write(QList<QByteArray>() << QByteArray() << buf.asQByteArray());
+        CowByteArrayList msg;
+        msg += CowByteArray();
+        msg += buf;
+        clientSock->write(msg);
     }
 
     void write(const CowByteArrayList &headers, const ZrpcResponsePacket &packet) {
@@ -151,8 +154,8 @@ public:
 
         CowByteArrayList message;
         message += headers;
-        message += QByteArray();
-        message += buf.asQByteArray();
+        message += CowByteArray();
+        message += buf;
         serverSock->write(message);
     }
 

@@ -23,6 +23,7 @@
 
 #include "statspacket.h"
 
+#include "cowstring.h"
 #include "qtcompat.h"
 #include "variant.h"
 
@@ -237,7 +238,7 @@ bool StatsPacket::fromVariant(const CowByteArray &_type, const Variant &in) {
             if (!obj.contains("type") || typeId(obj["type"]) != VariantType::ByteArray)
                 return false;
 
-            QByteArray typeStr = obj["type"].toByteArray();
+            CowByteArray typeStr = obj["type"].toByteArray();
             if (typeStr == "ws")
                 connectionType = WebSocket;
             else if (typeStr == "http")
@@ -249,8 +250,8 @@ bool StatsPacket::fromVariant(const CowByteArray &_type, const Variant &in) {
                 if (typeId(obj["peer-address"]) != VariantType::ByteArray)
                     return false;
 
-                QByteArray peerAddressStr = obj["peer-address"].toByteArray();
-                if (!peerAddress.setAddress(QString::fromUtf8(peerAddressStr)))
+                CowByteArray peerAddressStr = obj["peer-address"].toByteArray();
+                if (!peerAddress.setAddress(CowString::fromUtf8(peerAddressStr).asQString()))
                     return false;
             }
 
