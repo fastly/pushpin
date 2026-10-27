@@ -164,13 +164,25 @@ static void fromBase64() {
     TEST_ASSERT_EQ(CowByteArray::fromBase64("aGVsbG8gd29ybGQ="), "hello world");
 }
 
+static void fromHex() {
+    TEST_ASSERT_EQ(CowByteArray::fromHex("48656c6c6f"), "Hello");
+    TEST_ASSERT_EQ(CowByteArray::fromHex(""), "");
+
+    // Round-trip with known binary data
+    CowByteArray binary("\x00\xff\x10\xab", 4);
+    TEST_ASSERT_EQ(CowByteArray::fromHex("00ff10ab"), binary);
+}
+
 static void number() {
     TEST_ASSERT_EQ(CowByteArray::number(42), "42");
     TEST_ASSERT_EQ(CowByteArray::number(-7), "-7");
     TEST_ASSERT_EQ(CowByteArray::number(255, 16), "ff");
     TEST_ASSERT_EQ(CowByteArray::number((uint)100), "100");
-    TEST_ASSERT_EQ(CowByteArray::number((int64_t)1000000000000LL), "1000000000000");
-    TEST_ASSERT_EQ(CowByteArray::number((uint64_t)18446744073709551615ULL), "18446744073709551615");
+    TEST_ASSERT_EQ(CowByteArray::number((long)2000000000L), "2000000000");
+    TEST_ASSERT_EQ(CowByteArray::number((long)-2000000000L), "-2000000000");
+    TEST_ASSERT_EQ(CowByteArray::number((unsigned long)4000000000UL), "4000000000");
+    TEST_ASSERT_EQ(CowByteArray::number(1000000000000LL), "1000000000000");
+    TEST_ASSERT_EQ(CowByteArray::number(18446744073709551615ULL), "18446744073709551615");
     TEST_ASSERT_EQ(CowByteArray::number(3.14, 'f', 2), "3.14");
 }
 
@@ -268,6 +280,7 @@ extern "C" int cowbytearray_test(ffi::TestException *out_ex) {
     TEST_CATCH(conversions());
     TEST_CATCH(fromPercentEncoding());
     TEST_CATCH(fromBase64());
+    TEST_CATCH(fromHex());
     TEST_CATCH(number());
     TEST_CATCH(listConstructors());
     TEST_CATCH(listMethods());
