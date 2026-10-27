@@ -108,7 +108,9 @@ QString Settings::resolveVars(const QString &in) const {
 
         x += portOffset_;
 
-        out.replace(start, at, QString::number(x));
+        QString port = QString::number(x);
+        out.replace(start, at - start, port);
+        at = start + port.length();
     }
 
     return out;
