@@ -182,6 +182,11 @@ mod tests {
         unsafe { ffi::eventloop_test(out_ex) == 0 }
     }
 
+    fn settings_test(out_ex: &mut TestException) -> bool {
+        // SAFETY: safe to call
+        unsafe { ffi::settings_test(out_ex) == 0 }
+    }
+
     #[test]
     fn cowbytearray() {
         run_cpp(cowbytearray_test);
@@ -235,5 +240,10 @@ mod tests {
     #[test]
     fn eventloop() {
         run_cpp(eventloop_test);
+    }
+
+    #[test]
+    fn settings() {
+        run_cpp(settings_test);
     }
 }
