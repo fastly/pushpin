@@ -139,7 +139,7 @@ Variant Settings::value(const QString &key, const Variant &defaultValue) const {
     if (v.isValid()) {
         if (typeId(v) == VariantType::String) {
             v = resolveVars(v.toString());
-        } else if (typeId(v) == VariantType::List) {
+        } else if (typeId(v) == VariantType::StringList) {
             QStringList oldList = v.toStringList();
             QStringList newList;
             foreach (QString s, oldList)
