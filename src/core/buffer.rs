@@ -1075,7 +1075,7 @@ impl<'a> BufferBudget<'a> {
 
     /// Expand buffer if it is full and budget allows
     pub fn expand_buffer_if_needed(&mut self, buf: &mut VecRingBuffer) -> usize {
-        let local_limit_ok = self.blocks_max.map_or(true, |max| self.blocks_used < max);
+        let local_limit_ok = self.blocks_max.is_none_or(|max| self.blocks_used < max);
 
         if buf.remaining_capacity() == 0 && local_limit_ok && self.blocks_avail.dec(1).is_ok() {
             self.blocks_used += 1;
