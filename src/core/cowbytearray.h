@@ -117,8 +117,18 @@ public:
 
     static CowByteArray number(int n, int base = 10) { return QByteArray::number(n, base); }
     static CowByteArray number(uint n, int base = 10) { return QByteArray::number(n, base); }
-    static CowByteArray number(int64_t n, int base = 10) { return QByteArray::number(n, base); }
-    static CowByteArray number(uint64_t n, int base = 10) { return QByteArray::number(n, base); }
+    static CowByteArray number(long n, int base = 10) {
+        return QByteArray::number((qlonglong)n, base);
+    }
+    static CowByteArray number(unsigned long n, int base = 10) {
+        return QByteArray::number((qulonglong)n, base);
+    }
+    static CowByteArray number(long long n, int base = 10) {
+        return QByteArray::number((qlonglong)n, base);
+    }
+    static CowByteArray number(unsigned long long n, int base = 10) {
+        return QByteArray::number((qulonglong)n, base);
+    }
     static CowByteArray number(double n, char format = 'g', int precision = 6) {
         return QByteArray::number(n, format, precision);
     }
@@ -129,6 +139,10 @@ public:
 
     static CowByteArray fromBase64(const CowByteArray &base64) {
         return QByteArray::fromBase64(base64.inner_);
+    }
+
+    static CowByteArray fromHex(const CowByteArray &hexEncoded) {
+        return QByteArray::fromHex(hexEncoded.inner_);
     }
 
     char operator[](ssize_t i) const { return inner_[(qsizetype)i]; }
