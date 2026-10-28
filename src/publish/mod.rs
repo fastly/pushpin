@@ -23,7 +23,6 @@
 
 use crate::core::tnetstring;
 use rustls::crypto::{ring, CryptoProvider};
-use rustls::pki_types::CertificateDer;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
@@ -241,8 +240,15 @@ impl TlsStream {
     fn new(stream: net::TcpStream, host: &str) -> Result<Self, Box<dyn Error>> {
         let mut root_store = rustls::RootCertStore::empty();
 
-        for cert in rustls_native_certs::load_native_certs()? {
-            root_store.add(CertificateDer::from_slice(&cert.0)).unwrap();
+        let ret = rustls_native_certs::load_native_certs();
+        if !ret.errors.is_empty() {
+            let error_strs: Vec<String> = ret.errors.into_iter().map(|e| e.to_string()).collect();
+
+            return Err(error_strs.join(", ").into());
+        }
+
+        for cert in ret.certs {
+            root_store.add(cert).unwrap();
         }
 
         let config = rustls::ClientConfig::builder()
