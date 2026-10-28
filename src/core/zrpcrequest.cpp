@@ -40,7 +40,7 @@ class ZrpcRequest::Private {
 public:
     ZrpcRequest *q;
     ZrpcManager *manager;
-    QList<QByteArray> reqHeaders;
+    CowByteArrayList reqHeaders;
     CowByteArray from;
     CowByteArray id;
     QString method;
@@ -86,7 +86,7 @@ public:
         manager->write(reqHeaders, p);
     }
 
-    void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
+    void handle(const CowByteArrayList &headers, const ZrpcRequestPacket &packet) {
         reqHeaders = headers;
         from = packet.from;
         id = packet.id;
@@ -212,7 +212,7 @@ void ZrpcRequest::setupClient(ZrpcManager *manager) {
 
 void ZrpcRequest::setupServer(ZrpcManager *manager) { d->manager = manager; }
 
-void ZrpcRequest::handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet) {
+void ZrpcRequest::handle(const CowByteArrayList &headers, const ZrpcRequestPacket &packet) {
     assert(d->manager);
 
     d->handle(headers, packet);

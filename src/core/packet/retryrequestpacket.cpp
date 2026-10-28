@@ -80,7 +80,7 @@ Variant RetryRequestPacket::toVariant() const {
     VariantHash vrequestData;
 
     vrequestData["method"] = requestData.method.toUtf8().asQByteArray();
-    vrequestData["uri"] = requestData.uri.toEncoded();
+    vrequestData["uri"] = requestData.uri.toEncoded().asQByteArray();
 
     VariantList vheaders;
     foreach (const HttpHeader &h, requestData.headers) {
@@ -113,7 +113,7 @@ Variant RetryRequestPacket::toVariant() const {
             while (it.hasNext()) {
                 it.next();
 
-                vlastIds[QString::fromUtf8(it.key().asQByteArray())] = it.value().asQByteArray();
+                vlastIds[CowString::fromUtf8(it.key()).asQString()] = it.value().asQByteArray();
             }
 
             vinspect["last-ids"] = vlastIds;
@@ -157,7 +157,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in) {
 
         VariantHash vrid = vrequest["rid"].toHash();
 
-        QByteArray sender, id;
+        CowByteArray sender, id;
 
         if (!vrid.contains("sender") || typeId(vrid["sender"]) != VariantType::ByteArray)
             return false;
@@ -273,8 +273,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in) {
                 typeId(list[1]) != VariantType::ByteArray)
                 return false;
 
-            requestData.headers +=
-                QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
+            requestData.headers += HttpHeader(list[0].toByteArray(), list[1].toByteArray());
         }
     }
 
@@ -315,8 +314,8 @@ bool RetryRequestPacket::fromVariant(const Variant &in) {
                 if (typeId(it.value()) != VariantType::ByteArray)
                     return false;
 
-                QByteArray key = it.key().toUtf8();
-                QByteArray val = it.value().toByteArray();
+                CowByteArray key = it.key().toUtf8();
+                CowByteArray val = it.value().toByteArray();
                 inspectInfo.lastIds.insert(key, val);
             }
         }

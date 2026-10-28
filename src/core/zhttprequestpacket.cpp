@@ -53,7 +53,7 @@ Variant ZhttpRequestPacket::toVariant() const {
         }
     }
 
-    QByteArray typeStr;
+    CowByteArray typeStr;
     switch (type) {
     case Error:
         typeStr = "error";
@@ -87,7 +87,7 @@ Variant ZhttpRequestPacket::toVariant() const {
     }
 
     if (!typeStr.isEmpty())
-        obj["type"] = typeStr;
+        obj["type"] = typeStr.asQByteArray();
 
     if (type == Error && !condition.isEmpty())
         obj["condition"] = condition.asQByteArray();
@@ -114,7 +114,7 @@ Variant ZhttpRequestPacket::toVariant() const {
         obj["method"] = method.toUtf8().asQByteArray();
 
     if (!uri.isEmpty())
-        obj["uri"] = uri.toEncoded();
+        obj["uri"] = uri.toEncoded().asQByteArray();
 
     if (!headers.isEmpty()) {
         VariantList vheaders;
@@ -144,7 +144,7 @@ Variant ZhttpRequestPacket::toVariant() const {
         obj["peer-address"] = peerAddress.toString().toUtf8();
 
     if (peerPort != -1)
-        obj["peer-port"] = QByteArray::number(peerPort);
+        obj["peer-port"] = CowByteArray::number(peerPort).asQByteArray();
 
     if (!connectHost.isEmpty())
         obj["connect-host"] = connectHost.toUtf8().asQByteArray();
@@ -253,7 +253,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["type"]) != VariantType::ByteArray)
             return false;
 
-        QByteArray typeStr = obj["type"].toByteArray();
+        CowByteArray typeStr = obj["type"].toByteArray();
 
         if (typeStr == "error")
             type = Error;

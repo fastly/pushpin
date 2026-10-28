@@ -91,12 +91,12 @@ private:
     void unlink(ZWebSocket *sock);
     bool canWriteImmediately() const;
     void writeHttp(const ZhttpRequestPacket &packet);
-    void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-    void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+    void writeHttp(const ZhttpRequestPacket &packet, const CowByteArray &instanceAddress);
+    void writeHttp(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                    bool routerResp);
     void writeWs(const ZhttpRequestPacket &packet);
-    void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-    void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+    void writeWs(const ZhttpRequestPacket &packet, const CowByteArray &instanceAddress);
+    void writeWs(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                  bool routerResp);
 
     void registerKeepAlive(ZhttpRequest *req);

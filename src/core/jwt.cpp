@@ -55,12 +55,12 @@ EncodingKey EncodingKey::fromFile(const QString &fileName) {
         return EncodingKey();
     }
 
-    QByteArray data = f.readAll();
+    CowByteArray data = f.readAll();
 
     if (data.startsWith("-----BEGIN"))
         return fromPem(data);
     else
-        return fromSecret(QByteArray::fromHex(data.trimmed()));
+        return fromSecret(CowByteArray::fromHex(data.trimmed()));
 }
 
 EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir) {
@@ -72,10 +72,10 @@ EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 
         return fromFile(keyFile);
     } else if (!s.isEmpty()) {
-        QByteArray secret;
+        CowByteArray secret;
 
         if (s.startsWith("base64:"))
-            secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+            secret = CowByteArray::fromBase64(s.mid(7).toUtf8());
         else
             secret = s.toUtf8();
 
@@ -109,12 +109,12 @@ DecodingKey DecodingKey::fromFile(const QString &fileName) {
         return DecodingKey();
     }
 
-    QByteArray data = f.readAll();
+    CowByteArray data = f.readAll();
 
     if (data.startsWith("-----BEGIN"))
         return fromPem(data);
     else
-        return fromSecret(QByteArray::fromHex(data.trimmed()));
+        return fromSecret(CowByteArray::fromHex(data.trimmed()));
 }
 
 DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir) {
@@ -126,10 +126,10 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 
         return fromFile(keyFile);
     } else if (!s.isEmpty()) {
-        QByteArray secret;
+        CowByteArray secret;
 
         if (s.startsWith("base64:"))
-            secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+            secret = CowByteArray::fromBase64(s.mid(7).toUtf8());
         else
             secret = s.toUtf8();
 
@@ -147,7 +147,7 @@ CowByteArray encodeWithAlgorithm(Algorithm alg, const CowByteArray &claim, const
         return CowByteArray();
     }
 
-    CowByteArray out = QByteArray(token);
+    CowByteArray out = token;
     ffi::jwt_str_destroy(token);
 
     return out;
@@ -161,7 +161,7 @@ CowByteArray decodeWithAlgorithm(Algorithm alg, const CowByteArray &token, const
         return CowByteArray();
     }
 
-    CowByteArray out = QByteArray(claim);
+    CowByteArray out = claim;
     ffi::jwt_str_destroy(claim);
 
     return out;

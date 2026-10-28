@@ -25,7 +25,7 @@ UnixListener::~UnixListener() { reset(); }
 bool UnixListener::bind(const QString &path) {
     reset();
 
-    QByteArray p = path.toUtf8();
+    CowByteArray p = path.toUtf8();
     errorCondition_ = 0;
 
     inner_ = ffi::unix_listener_bind(p.data(), &errorCondition_);

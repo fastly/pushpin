@@ -336,7 +336,7 @@ public:
         return best;
     }
 
-    void tryRespondCancel(SessionType type, const QByteArray &id,
+    void tryRespondCancel(SessionType type, const CowByteArray &id,
                           const ZhttpRequestPacket &packet) {
         assert(!packet.from.isEmpty());
 
@@ -346,7 +346,7 @@ public:
             out.from = instanceId;
             out.ids += ZhttpResponsePacket::Id(id);
             out.type = ZhttpResponsePacket::Cancel;
-            write(type, out, packet.from.asQByteArray(), packet.routerResp);
+            write(type, out, packet.from, packet.routerResp);
         }
     }
 
@@ -362,18 +362,23 @@ public:
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT",
                                                logprefix);
 
-            client_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
+            CowByteArrayList msg;
+            msg += buf;
+            client_out_sock->write(msg);
         } else {
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body",
                                                "%s client req: OUT", logprefix);
 
-            client_req_sock->write(QList<QByteArray>() << QByteArray() << buf.asQByteArray());
+            CowByteArrayList msg;
+            msg += CowByteArray();
+            msg += buf;
+            client_req_sock->write(msg);
         }
     }
 
     void write(SessionType type, const ZhttpRequestPacket &packet,
-               const QByteArray &instanceAddress) {
+               const CowByteArray &instanceAddress) {
         assert(client_out_stream_sock);
         const char *logprefix = logPrefixForType(type);
 
@@ -384,15 +389,15 @@ public:
             LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s",
                                            logprefix, instanceAddress.data());
 
-        QList<QByteArray> msg;
+        CowByteArrayList msg;
         msg += instanceAddress;
-        msg += QByteArray();
-        msg += buf.asQByteArray();
+        msg += CowByteArray();
+        msg += buf;
         client_out_stream_sock->write(msg);
     }
 
     void write(SessionType type, const ZhttpResponsePacket &packet,
-               const QByteArray &instanceAddress, bool routerResp) {
+               const CowByteArray &instanceAddress, bool routerResp) {
         assert(server_out_sock);
         const char *logprefix = logPrefixForType(type);
 
@@ -406,10 +411,10 @@ public:
                                                "%s server: OUT (router) %s", logprefix,
                                                instanceAddress.data());
 
-            QList<QByteArray> msg;
+            CowByteArrayList msg;
             msg += instanceAddress;
-            msg += QByteArray();
-            msg += buf.asQByteArray();
+            msg += CowByteArray();
+            msg += buf;
             server_in_stream_sock->write(msg);
         } else {
             CowByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
@@ -419,7 +424,9 @@ public:
                                                "%s server: OUT %s", logprefix,
                                                instanceAddress.data());
 
-            server_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
+            CowByteArrayList msg;
+            msg += buf;
+            server_out_sock->write(msg);
         }
     }
 
@@ -482,7 +489,7 @@ public:
     }
 
     void writeKeepAlive(SessionType type, const QList<ZhttpRequestPacket::Id> &ids,
-                        const QByteArray &zhttpAddress) {
+                        const CowByteArray &zhttpAddress) {
         ZhttpRequestPacket zreq;
         zreq.from = instanceId;
         zreq.ids = ids;
@@ -491,7 +498,7 @@ public:
     }
 
     void writeKeepAlive(SessionType type, const QList<ZhttpResponsePacket::Id> &ids,
-                        const QByteArray &zhttpAddress, bool routerResp) {
+                        const CowByteArray &zhttpAddress, bool routerResp) {
         ZhttpResponsePacket zresp;
         zresp.from = instanceId;
         zresp.ids = ids;
@@ -703,7 +710,7 @@ public:
             ZWebSocket *sock = serverSocksByRid.value(rid);
             if (sock) {
                 log_warning("zws server: received message for existing request id, canceling");
-                tryRespondCancel(WebSocketSession, id.id.asQByteArray(), p);
+                tryRespondCancel(WebSocketSession, id.id, p);
                 return;
             }
 
@@ -727,7 +734,7 @@ public:
             if (req) {
                 log_warning("zhttp server: received message for existing request id, "
                             "canceling");
-                tryRespondCancel(HttpSession, id.id.asQByteArray(), p);
+                tryRespondCancel(HttpSession, id.id, p);
                 return;
             }
 
@@ -747,7 +754,7 @@ public:
         } else {
             log_debug("zhttp/zws server: rejecting unsupported scheme: %s",
                       qPrintable(p.uri.scheme()));
-            tryRespondCancel(UnknownSession, id.id.asQByteArray(), p);
+            tryRespondCancel(UnknownSession, id.id, p);
             return;
         }
     }
@@ -817,9 +824,9 @@ public:
     }
 
     void refresh_timeout() {
-        QHash<QByteArray, QList<KeepAliveRegistration *>>
+        QHash<CowByteArray, QList<KeepAliveRegistration *>>
             clientSessionsBySender[2]; // Index corresponds to type
-        QHash<QByteArray, QList<KeepAliveRegistration *>>
+        QHash<CowByteArray, QList<KeepAliveRegistration *>>
             serverSessionsBySender[4]; // Index corresponds to type and response
                                        // mode
 
@@ -839,7 +846,7 @@ public:
             }
 
             int groupIndex;
-            QByteArray sender;
+            CowByteArray sender;
             bool routerResp = false;
             if (isServer) {
                 if (r->type == HttpSession)
@@ -849,19 +856,19 @@ public:
 
                 groupIndex = ((r->type - 1) * 2) + (routerResp ? 1 : 0);
 
-                sender = rid.first.asQByteArray();
+                sender = rid.first;
             } else {
                 groupIndex = r->type - 1;
 
                 if (r->type == HttpSession)
-                    sender = r->p.req->toAddress().asQByteArray();
+                    sender = r->p.req->toAddress();
                 else // WebSocketSession
-                    sender = r->p.sock->toAddress().asQByteArray();
+                    sender = r->p.sock->toAddress();
             }
 
             assert(!sender.isEmpty());
 
-            QHash<QByteArray, QList<KeepAliveRegistration *>> &sessionsBySender =
+            QHash<CowByteArray, QList<KeepAliveRegistration *>> &sessionsBySender =
                 (isServer ? serverSessionsBySender[groupIndex]
                           : clientSessionsBySender[groupIndex]);
 
@@ -911,11 +918,11 @@ public:
         for (int n = 0; n < 2; ++n) {
             SessionType type = (SessionType)(n + 1);
 
-            QHashIterator<QByteArray, QList<KeepAliveRegistration *>> sit(
+            QHashIterator<CowByteArray, QList<KeepAliveRegistration *>> sit(
                 clientSessionsBySender[n]);
             while (sit.hasNext()) {
                 sit.next();
-                const QByteArray &sender = sit.key();
+                const CowByteArray &sender = sit.key();
                 const QList<KeepAliveRegistration *> &sessions = sit.value();
 
                 if (!sessions.isEmpty()) {
@@ -939,11 +946,11 @@ public:
             SessionType type = (SessionType)((n / 2) + 1);
             bool routerResp = n % 2 == 0 ? false : true;
 
-            QHashIterator<QByteArray, QList<KeepAliveRegistration *>> sit(
+            QHashIterator<CowByteArray, QList<KeepAliveRegistration *>> sit(
                 serverSessionsBySender[n]);
             while (sit.hasNext()) {
                 sit.next();
-                const QByteArray &sender = sit.key();
+                const CowByteArray &sender = sit.key();
                 const QList<KeepAliveRegistration *> &sessions = sit.value();
 
                 if (!sessions.isEmpty()) {
@@ -1139,11 +1146,12 @@ void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet) {
     d->write(Private::HttpSession, packet);
 }
 
-void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress) {
+void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet,
+                             const CowByteArray &instanceAddress) {
     d->write(Private::HttpSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                              bool routerResp) {
     d->write(Private::HttpSession, packet, instanceAddress, routerResp);
 }
@@ -1152,11 +1160,11 @@ void ZhttpManager::writeWs(const ZhttpRequestPacket &packet) {
     d->write(Private::WebSocketSession, packet);
 }
 
-void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress) {
+void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const CowByteArray &instanceAddress) {
     d->write(Private::WebSocketSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                            bool routerResp) {
     d->write(Private::WebSocketSession, packet, instanceAddress, routerResp);
 }

@@ -21,6 +21,7 @@
 
 #include "tnetstring.h"
 
+#include "cowstring.h"
 #include "qtcompat.h"
 #include "variant.h"
 #include <assert.h>
@@ -28,25 +29,25 @@
 namespace TnetString {
 
 CowByteArray fromByteArray(const CowByteArray &in) {
-    return QByteArray::number(in.size()) + ':' + in + ',';
+    return CowByteArray::number(in.size()) + ':' + in + ',';
 }
 
 CowByteArray fromInt(int64_t in) {
-    QByteArray val = QByteArray::number(in);
-    return QByteArray::number(val.size()) + ':' + val + '#';
+    CowByteArray val = CowByteArray::number(in);
+    return CowByteArray::number(val.size()) + ':' + val + '#';
 }
 
 CowByteArray fromDouble(double in) {
-    QByteArray val = QByteArray::number(in);
-    return QByteArray::number(val.size()) + ':' + val + '^';
+    CowByteArray val = CowByteArray::number(in);
+    return CowByteArray::number(val.size()) + ':' + val + '^';
 }
 
 CowByteArray fromBool(bool in) {
-    QByteArray val = in ? "true" : "false";
-    return QByteArray::number(val.size()) + ':' + val + '!';
+    CowByteArray val = in ? "true" : "false";
+    return CowByteArray::number(val.size()) + ':' + val + '!';
 }
 
-CowByteArray fromNull() { return QByteArray("0:~"); }
+CowByteArray fromNull() { return CowByteArray("0:~"); }
 
 CowByteArray fromVariant(const Variant &in) {
     switch (typeId(in)) {
@@ -78,14 +79,14 @@ CowByteArray fromHash(const VariantHash &in) {
         val += fromByteArray(it.key().toUtf8());
         val += fromVariant(it.value());
     }
-    return QByteArray::number(val.size()) + ':' + val + '}';
+    return CowByteArray::number(val.size()) + ':' + val + '}';
 }
 
 CowByteArray fromList(const VariantList &in) {
     CowByteArray val;
     for (const Variant &v : in)
         val += fromVariant(v);
-    return QByteArray::number(val.size()) + ':' + val + ']';
+    return CowByteArray::number(val.size()) + ':' + val + ']';
 }
 
 bool check(const CowByteArray &in, int offset, Type *type, int *dataOffset, int *dataSize) {
@@ -282,7 +283,7 @@ VariantHash toHash(const CowByteArray &in, [[maybe_unused]] int offset, int data
             return VariantHash();
         }
 
-        out[QString::fromUtf8(key.asQByteArray())] = val;
+        out[CowString::fromUtf8(key).asQString()] = val;
         at = ioffset + isize + 1; // Position to next item
     }
 
@@ -401,7 +402,7 @@ QString variantToString(const Variant &in, int indent) {
             out += QString(indent, ' ');
         out += ']';
     } else if (type == VariantType::ByteArray) {
-        QByteArray val = in.toByteArray();
+        CowByteArray val = in.toByteArray();
         out += '\"' + byteArrayToEscapedString(val) + '\"';
     } else if (type == VariantType::Double)
         out += QString::number(in.toDouble());

@@ -7,7 +7,7 @@ repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
 license = "Apache-2.0"
 edition = "2018"
-rust-version = "1.81"
+rust-version = "1.85"
 default-run = "pushpin"
 
 [package.metadata.deb]
@@ -71,21 +71,21 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 arrayvec = "0.7"
 base64 = "0.13"
-clap = { version = "=4.3.24", features = ["cargo", "string", "wrap_help", "derive"] }
+clap = { version = "4.6", features = ["cargo", "string", "wrap_help", "derive"] }
 config = "0.14"
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "9"
 libc = "0.2"
 log = "0.4"
-miniz_oxide = "0.6"
+miniz_oxide = "0.9"
 mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
-notify = "7"
+notify = "8"
 openssl = "=0.10.72"
 paste = "1.0"
 prometheus = { version = "0.14", default-features = false, features = ["process"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-rustls-native-certs = "0.6"
+rustls-native-certs = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0"

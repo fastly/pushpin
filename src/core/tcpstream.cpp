@@ -36,7 +36,7 @@ TcpStream::~TcpStream() { reset(); }
 bool TcpStream::connect(const QHostAddress &addr, uint16_t port) {
     reset();
 
-    QByteArray ip = addr.toString().toUtf8();
+    CowByteArray ip = addr.toString().toUtf8();
     errorCondition_ = 0;
 
     inner_ = ffi::tcp_stream_connect(ip.data(), port, &errorCondition_);

@@ -91,11 +91,11 @@ static void validToken() {
 }
 
 static void validTokenBinaryKey() {
-    QByteArray key;
-    key += 0x01;
-    key += 0x61;
-    key += 0x80;
-    key += 0xfe;
+    CowByteArray key;
+    key += (char)0x01;
+    key += (char)0x61;
+    key += (char)0x80;
+    key += (char)0xfe;
     Variant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-"
                                  "eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI",
                                  Jwt::DecodingKey::fromSecret(key));
@@ -136,11 +136,11 @@ static void loadKey() {
 }
 
 static void es256EncodeDecode() {
-    Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_ec_private_key_pem));
+    Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(test_ec_private_key_pem);
     TEST_ASSERT(!privateKey.isNull());
     TEST_ASSERT_EQ(privateKey.type(), Jwt::KeyType::Ec);
 
-    Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_ec_public_key_pem));
+    Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(test_ec_public_key_pem);
     TEST_ASSERT(!publicKey.isNull());
     TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Ec);
 
@@ -165,11 +165,11 @@ static void es256EncodeDecode() {
 }
 
 static void rs256EncodeDecode() {
-    Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_rsa_private_key_pem));
+    Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(test_rsa_private_key_pem);
     TEST_ASSERT(!privateKey.isNull());
     TEST_ASSERT_EQ(privateKey.type(), Jwt::KeyType::Rsa);
 
-    Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_rsa_public_key_pem));
+    Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(test_rsa_public_key_pem);
     TEST_ASSERT(!publicKey.isNull());
     TEST_ASSERT_EQ(publicKey.type(), Jwt::KeyType::Rsa);
 

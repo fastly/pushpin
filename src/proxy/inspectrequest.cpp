@@ -111,7 +111,7 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool ge
     VariantHash args;
 
     args["method"] = hdata.method.toUtf8().asQByteArray();
-    args["uri"] = hdata.uri.toEncoded();
+    args["uri"] = hdata.uri.toEncoded().asQByteArray();
 
     VariantList vheaders;
     foreach (const HttpHeader &h, hdata.headers) {

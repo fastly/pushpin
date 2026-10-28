@@ -16,6 +16,7 @@
 
 #include "tcplistener.h"
 
+#include "cowstring.h"
 #include "socketnotifier.h"
 #include <assert.h>
 
@@ -30,7 +31,7 @@ bool TcpListener::bind(const QHostAddress &addr, uint16_t port) {
     if (a.isNull())
         a = QHostAddress::Any;
 
-    QByteArray ip = a.toString().toUtf8();
+    CowByteArray ip = a.toString().toUtf8();
     errorCondition_ = 0;
 
     inner_ = ffi::tcp_listener_bind(ip.data(), port, &errorCondition_);
@@ -49,14 +50,14 @@ bool TcpListener::bind(const QHostAddress &addr, uint16_t port) {
 std::tuple<QHostAddress, uint16_t> TcpListener::localAddress() const {
     assert(inner_);
 
-    QByteArray ip(256, 0);
+    CowByteArray ip(256, 0);
     size_t ip_size = ip.size();
     uint16_t port;
     if (ffi::tcp_listener_local_addr(inner_, ip.data(), &ip_size, &port) != 0)
         return {QHostAddress(), 0};
 
     ip.resize(ip_size);
-    QHostAddress addr(QString::fromUtf8(ip));
+    QHostAddress addr(CowString::fromUtf8(ip).asQString());
 
     return {addr, port};
 }
