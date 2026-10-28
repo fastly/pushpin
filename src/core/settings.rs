@@ -135,11 +135,20 @@ impl Settings {
         while let Some(i) = out[at..].find("tcp://") {
             let host = at + i + 6;
 
-            let Some(colon) = out[host..].find(':') else {
+            // Skip past an IPv6 address, since it contains colons
+            let host_end = match out[host..].strip_prefix('[') {
+                Some(rest) => match rest.find(']') {
+                    Some(n) => host + 1 + n,
+                    None => break,
+                },
+                None => host,
+            };
+
+            let Some(colon) = out[host_end..].find(':') else {
                 break;
             };
 
-            let start = host + colon + 1;
+            let start = host_end + colon + 1;
             let end = out[start..]
                 .find(|c: char| !c.is_ascii_digit())
                 .map_or(out.len(), |n| start + n);
