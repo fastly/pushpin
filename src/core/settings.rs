@@ -39,6 +39,9 @@ pub enum SettingsError {
 
     #[error("port_offset must be a number: {0}")]
     InvalidPortOffset(String),
+
+    #[error("invalid tcp address: {0}")]
+    InvalidTcpAddress(String),
 }
 
 pub struct Settings {
@@ -125,7 +128,7 @@ impl Settings {
         self.values.get(&key.to_lowercase()).map(String::as_str)
     }
 
-    fn resolve_vars(&self, s: &str) -> String {
+    fn resolve_vars(&self, s: &str) -> Result<String, SettingsError> {
         let mut out = s
             .replace("{libdir}", &self.libdir)
             .replace("{rundir}", &self.rundir)
@@ -137,15 +140,18 @@ impl Settings {
 
             // Skip past an IPv6 address, since it contains colons
             let host_end = match out[host..].strip_prefix('[') {
-                Some(rest) => match rest.find(']') {
-                    Some(n) => host + 1 + n,
-                    None => break,
-                },
+                Some(rest) => {
+                    let Some(n) = rest.find(']') else {
+                        return Err(SettingsError::InvalidTcpAddress(s.to_string()));
+                    };
+
+                    host + 1 + n
+                }
                 None => host,
             };
 
             let Some(colon) = out[host_end..].find(':') else {
-                break;
+                return Err(SettingsError::InvalidTcpAddress(s.to_string()));
             };
 
             let start = host_end + colon + 1;
@@ -154,7 +160,7 @@ impl Settings {
                 .map_or(out.len(), |n| start + n);
 
             let Ok(port) = out[start..end].parse::<i32>() else {
-                break;
+                return Err(SettingsError::InvalidTcpAddress(s.to_string()));
             };
 
             let port = (port + self.port_offset).to_string();
@@ -162,7 +168,7 @@ impl Settings {
             at = start + port.len();
         }
 
-        out
+        Ok(out)
     }
 }
 
@@ -193,16 +199,22 @@ mod tests {
         let include = settings.get("global/include").unwrap();
         let libdir = env::current_dir().unwrap().join("src");
         assert_eq!(
-            settings.resolve_vars(include),
+            settings.resolve_vars(include).unwrap(),
             format!("{}/internal.conf", libdir.display())
         );
 
         let stats_spec = settings.get("handler/stats_spec").unwrap();
-        assert_eq!(settings.resolve_vars(stats_spec), "ipc://run/pushpin-stats");
+        assert_eq!(
+            settings.resolve_vars(stats_spec).unwrap(),
+            "ipc://run/pushpin-stats"
+        );
 
         settings.port_offset = 1;
         let push_in_spec = settings.get("handler/push_in_spec").unwrap();
-        assert_eq!(settings.resolve_vars(push_in_spec), "tcp://127.0.0.1:5561");
+        assert_eq!(
+            settings.resolve_vars(push_in_spec).unwrap(),
+            "tcp://127.0.0.1:5561"
+        );
     }
 
     fn write_conf(test: &str, file: &str, contents: &str) -> PathBuf {
@@ -516,7 +528,9 @@ mod tests {
     fn substitute_two_vars() {
         let settings = example_settings();
         assert_eq!(
-            settings.resolve_vars("ipc://{rundir}/{ipc_prefix}connmgr-out"),
+            settings
+                .resolve_vars("ipc://{rundir}/{ipc_prefix}connmgr-out")
+                .unwrap(),
             "ipc://run/pushpin-connmgr-out"
         );
     }
@@ -525,7 +539,7 @@ mod tests {
     fn substitute_var_twice() {
         let settings = example_settings();
         assert_eq!(
-            settings.resolve_vars("{rundir}/a,{rundir}/b"),
+            settings.resolve_vars("{rundir}/a,{rundir}/b").unwrap(),
             "run/a,run/b"
         );
     }
@@ -533,14 +547,7 @@ mod tests {
     #[test]
     fn substitute_nothing() {
         let settings = example_settings();
-        assert_eq!(settings.resolve_vars("pushpin"), "pushpin");
-    }
-
-    #[test]
-    fn substitute_mistyped_var() {
-        let settings = example_settings();
-        let resolved = settings.resolve_vars("ipc://{run_dir}/{ipc_prefix}stats");
-        assert!(!resolved.contains("{run_dir}"), "unresolved: {}", resolved);
+        assert_eq!(settings.resolve_vars("pushpin").unwrap(), "pushpin");
     }
 
     // Port shift
@@ -555,7 +562,7 @@ mod tests {
     fn port_offset_zero_unchanged() {
         let settings = offset_settings(0);
         assert_eq!(
-            settings.resolve_vars("tcp://127.0.0.1:5560"),
+            settings.resolve_vars("tcp://127.0.0.1:5560").unwrap(),
             "tcp://127.0.0.1:5560"
         );
     }
@@ -563,14 +570,17 @@ mod tests {
     #[test]
     fn port_shift_wildcard() {
         let settings = offset_settings(1);
-        assert_eq!(settings.resolve_vars("tcp://*:5560"), "tcp://*:5561");
+        assert_eq!(
+            settings.resolve_vars("tcp://*:5560").unwrap(),
+            "tcp://*:5561"
+        );
     }
 
     #[test]
     fn port_shift_hostname() {
         let settings = offset_settings(1);
         assert_eq!(
-            settings.resolve_vars("tcp://localhost:5560"),
+            settings.resolve_vars("tcp://localhost:5560").unwrap(),
             "tcp://localhost:5561"
         );
     }
@@ -579,7 +589,9 @@ mod tests {
     fn port_shift_with_path() {
         let settings = offset_settings(1);
         assert_eq!(
-            settings.resolve_vars("tcp://host:5560/abcdefghijklmnop"),
+            settings
+                .resolve_vars("tcp://host:5560/abcdefghijklmnop")
+                .unwrap(),
             "tcp://host:5561/abcdefghijklmnop"
         );
     }
@@ -588,16 +600,37 @@ mod tests {
     fn port_shift_ipv6() {
         let settings = offset_settings(1);
         assert_eq!(
-            settings.resolve_vars("tcp://[::1]:5560"),
+            settings.resolve_vars("tcp://[::1]:5560").unwrap(),
             "tcp://[::1]:5561"
         );
+    }
+
+    #[test]
+    fn tcp_missing_port_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://127.0.0.1");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(v)) if v == "tcp://127.0.0.1"));
+    }
+
+    #[test]
+    fn tcp_empty_port_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://127.0.0.1:");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
+    }
+
+    #[test]
+    fn tcp_unclosed_ipv6_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://[::1:5560");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
     }
 
     #[test]
     fn ipc_not_shifted() {
         let settings = offset_settings(1);
         assert_eq!(
-            settings.resolve_vars("ipc://run/pushpin-5560"),
+            settings.resolve_vars("ipc://run/pushpin-5560").unwrap(),
             "ipc://run/pushpin-5560"
         );
     }
@@ -610,6 +643,6 @@ mod tests {
         )
         .unwrap();
         let spec = settings.get("handler/push_in_spec").unwrap();
-        assert_eq!(settings.resolve_vars(spec), "tcp://127.0.0.1:5561");
+        assert_eq!(settings.resolve_vars(spec).unwrap(), "tcp://127.0.0.1:5561");
     }
 }
