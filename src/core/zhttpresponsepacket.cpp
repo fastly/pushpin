@@ -51,7 +51,7 @@ Variant ZhttpResponsePacket::toVariant() const {
         }
     }
 
-    QByteArray typeStr;
+    CowByteArray typeStr;
     switch (type) {
     case Error:
         typeStr = "error";
@@ -85,7 +85,7 @@ Variant ZhttpResponsePacket::toVariant() const {
     }
 
     if (!typeStr.isEmpty())
-        obj["type"] = typeStr;
+        obj["type"] = typeStr.asQByteArray();
 
     if (type == Error && !condition.isEmpty())
         obj["condition"] = condition.asQByteArray();
@@ -195,7 +195,7 @@ bool ZhttpResponsePacket::fromVariant(const Variant &in) {
         if (typeId(obj["type"]) != VariantType::ByteArray)
             return false;
 
-        QByteArray typeStr = obj["type"].toByteArray();
+        CowByteArray typeStr = obj["type"].toByteArray();
 
         if (typeStr == "error")
             type = Error;

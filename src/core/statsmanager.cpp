@@ -70,8 +70,8 @@ public:
 
     class ConnectionInfo : public TimerBase {
     public:
-        QByteArray id;
-        QByteArray routeId;
+        CowByteArray id;
+        CowByteArray routeId;
         ConnectionType type;
         QHostAddress peerAddress;
         bool ssl;
@@ -80,7 +80,7 @@ public:
         bool linger;
         int64_t lastReport;
         int64_t retrySeq;
-        QByteArray from;    // External or linger source
+        CowByteArray from;  // External or linger source
         int ttl;            // External
         int64_t lastActive; // External
 
@@ -136,8 +136,8 @@ public:
 
     class ConnectionsMaxes {
     public:
-        QHash<QByteArray, ConnectionsMax> maxes;
-        QSet<QByteArray> needSend;
+        QHash<CowByteArray, ConnectionsMax> maxes;
+        QSet<CowByteArray> needSend;
         int64_t lastRefresh;
 
         ConnectionsMaxes() : lastRefresh(0) {}
@@ -145,12 +145,12 @@ public:
 
     class ExternalConnectionsMaxes {
     public:
-        QHash<QByteArray, ExternalConnectionsMax> maxes;
+        QHash<CowByteArray, ExternalConnectionsMax> maxes;
 
         uint32_t total() const {
             uint32_t count = 0;
 
-            QHashIterator<QByteArray, ExternalConnectionsMax> it(maxes);
+            QHashIterator<CowByteArray, ExternalConnectionsMax> it(maxes);
             while (it.hasNext()) {
                 it.next();
                 const ExternalConnectionsMax &cm = it.value();
@@ -172,7 +172,7 @@ public:
 
     class Report {
     public:
-        QByteArray routeId;
+        CowByteArray routeId;
         uint32_t connectionsMax;
         bool connectionsMaxStale;
         uint32_t connectionsMinutes;
@@ -185,7 +185,7 @@ public:
         Stats::Counters counters;
         int64_t lastUpdate;
         int64_t startTime;
-        QHash<QByteArray, Report> externalReports;
+        QHash<CowByteArray, Report> externalReports;
 
         Report()
             : connectionsMax(0),
@@ -209,7 +209,7 @@ public:
         uint32_t externalConnectionsMinutes() const {
             uint32_t count = 0;
 
-            QHashIterator<QByteArray, Report> it(externalReports);
+            QHashIterator<CowByteArray, Report> it(externalReports);
             while (it.hasNext()) {
                 it.next();
                 const Report &r = it.value();
@@ -303,22 +303,22 @@ public:
     std::unique_ptr<ZmqSocket> sock;
     std::shared_ptr<CommonMetrics> commonMetrics;
     size_t commonMetricsRegistrationId;
-    QHash<QByteArray, uint32_t> routeActivity;
-    QHash<QByteArray, ConnectionInfo *> connectionInfoById;
-    QHash<QByteArray, QSet<ConnectionInfo *>> connectionInfoByRoute;
-    QHash<QByteArray, RetryInfo> retryInfoBySource;
+    QHash<CowByteArray, uint32_t> routeActivity;
+    QHash<CowByteArray, ConnectionInfo *> connectionInfoById;
+    QHash<CowByteArray, QSet<ConnectionInfo *>> connectionInfoByRoute;
+    QHash<CowByteArray, RetryInfo> retryInfoBySource;
     QVector<QSet<ConnectionInfo *>> connectionInfoRefreshBuckets;
     int currentConnectionInfoRefreshBucket;
-    QHash<QByteArray, QHash<QByteArray, ConnectionInfo *>> externalConnectionInfoByFrom;
-    QHash<QByteArray, QSet<ConnectionInfo *>> externalConnectionInfoByRoute;
+    QHash<CowByteArray, QHash<CowByteArray, ConnectionInfo *>> externalConnectionInfoByFrom;
+    QHash<CowByteArray, QSet<ConnectionInfo *>> externalConnectionInfoByRoute;
     QHash<SubscriptionKey, Subscription *> subscriptionsByKey;
     QVector<QSet<Subscription *>> subscriptionRefreshBuckets;
     int currentSubscriptionRefreshBucket;
     ConnectionsMaxes connectionsMaxes;
-    QHash<QByteArray, ExternalConnectionsMaxes> externalConnectionsMaxes;
+    QHash<CowByteArray, ExternalConnectionsMaxes> externalConnectionsMaxes;
     TimerWheel wheel;
     int64_t startTime;
-    QHash<QByteArray, Report *> reports;
+    QHash<CowByteArray, Report *> reports;
     Counts combinedCounts;
     Report combinedReport;
     std::unique_ptr<Timer> activityTimer;
@@ -377,7 +377,7 @@ public:
 
         qDeleteAll(connectionInfoById);
 
-        QMutableHashIterator<QByteArray, QHash<QByteArray, ConnectionInfo *>> it(
+        QMutableHashIterator<CowByteArray, QHash<CowByteArray, ConnectionInfo *>> it(
             externalConnectionInfoByFrom);
         while (it.hasNext()) {
             it.next();
@@ -560,7 +560,7 @@ public:
     }
 
     void insertExternalConnection(ConnectionInfo *c) {
-        QHash<QByteArray, ConnectionInfo *> &extConnectionInfoById =
+        QHash<CowByteArray, ConnectionInfo *> &extConnectionInfoById =
             externalConnectionInfoByFrom[c->from];
         extConnectionInfoById[c->id] = c;
 
@@ -577,7 +577,7 @@ public:
     void removeExternalConnection(ConnectionInfo *c) {
         assert(externalConnectionInfoByFrom.contains(c->from));
 
-        QHash<QByteArray, ConnectionInfo *> &extConnectionInfoById =
+        QHash<CowByteArray, ConnectionInfo *> &extConnectionInfoById =
             externalConnectionInfoByFrom[c->from];
         extConnectionInfoById.remove(c->id);
 
@@ -595,7 +595,7 @@ public:
         wheelRemove(c);
     }
 
-    void removeLingeringConnections(const QByteArray &source, uint64_t retrySeq) {
+    void removeLingeringConnections(const CowByteArray &source, uint64_t retrySeq) {
         if (!retryInfoBySource.contains(source))
             return;
 
@@ -646,7 +646,7 @@ public:
         }
     }
 
-    Report *getOrCreateReport(const QByteArray &routeId) {
+    Report *getOrCreateReport(const CowByteArray &routeId) {
         Report *report = reports.value(routeId);
         if (!report) {
             report = new Report;
@@ -667,7 +667,7 @@ public:
         combinedReportChanged();
     }
 
-    ConnectionsMax &getOrCreateConnectionsMax(const QByteArray &routeId) {
+    ConnectionsMax &getOrCreateConnectionsMax(const CowByteArray &routeId) {
         if (!connectionsMaxes.maxes.contains(routeId))
             connectionsMaxes.maxes.insert(routeId, ConnectionsMax());
 
@@ -677,7 +677,7 @@ public:
     void write(const StatsPacket &packet) {
         assert(sock);
 
-        QByteArray prefix;
+        CowByteArray prefix;
         if (packet.type == StatsPacket::Activity)
             prefix = "activity";
         else if (packet.type == StatsPacket::Message)
@@ -707,11 +707,13 @@ public:
                 log_debug("stats: OUT %s %s", prefix.data(),
                           qPrintable(TnetString::variantToString(vpacket, -1)));
 
-            sock->write(QList<QByteArray>() << buf.asQByteArray());
+            CowByteArrayList msg;
+            msg += buf;
+            sock->write(msg);
         }
     }
 
-    void sendActivity(const QByteArray &routeId, uint32_t count) {
+    void sendActivity(const CowByteArray &routeId, uint32_t count) {
         if (!sock)
             return;
 
@@ -807,11 +809,11 @@ public:
         write(p);
     }
 
-    void sendConnectionsMax(const QByteArray &routeId, ConnectionsMax *cm, int64_t now) {
+    void sendConnectionsMax(const CowByteArray &routeId, ConnectionsMax *cm, int64_t now) {
         q->connMax(getConnMaxPacket(routeId, cm, now));
     }
 
-    void updateConnectionsMax(const QByteArray &routeId, int64_t now) {
+    void updateConnectionsMax(const CowByteArray &routeId, int64_t now) {
         uint32_t localConns = connectionInfoByRoute.value(routeId).count();
         uint32_t extConns = externalConnectionInfoByRoute.value(routeId).count();
 
@@ -880,7 +882,7 @@ public:
 
     void handleExpirations(int64_t now) {
         CowByteArrayList refreshedConnIds;
-        QSet<QByteArray> routesUpdated;
+        QSet<CowByteArray> routesUpdated;
 
         for (int i = 0; i < EXPIRE_MAX; ++i) {
             TimerWheel::Expired expired = wheel.takeExpired();
@@ -964,7 +966,7 @@ public:
         if (!refreshedConnIds.isEmpty())
             q->connectionsRefreshed(refreshedConnIds);
 
-        foreach (const QByteArray &routeId, routesUpdated)
+        foreach (const CowByteArray &routeId, routesUpdated)
             updateConnectionsMax(routeId, now);
     }
 
@@ -1022,12 +1024,12 @@ public:
 
         connectionsMaxes.lastRefresh = now;
 
-        QList<QByteArray> toRemove;
+        QList<CowByteArray> toRemove;
 
-        QMutableHashIterator<QByteArray, ConnectionsMax> it(connectionsMaxes.maxes);
+        QMutableHashIterator<CowByteArray, ConnectionsMax> it(connectionsMaxes.maxes);
         while (it.hasNext()) {
             it.next();
-            const QByteArray &routeId = it.key();
+            const CowByteArray &routeId = it.key();
             ConnectionsMax &cm = it.value();
 
             if (cm.valueToSend() == 0) {
@@ -1040,17 +1042,17 @@ public:
             sendConnectionsMax(routeId, &cm, now);
         }
 
-        foreach (const QByteArray &routeId, toRemove)
+        foreach (const CowByteArray &routeId, toRemove)
             connectionsMaxes.maxes.remove(routeId);
     }
 
     void expireExternalConnectionsMaxes(int64_t now) {
-        QMutableHashIterator<QByteArray, ExternalConnectionsMaxes> it(externalConnectionsMaxes);
+        QMutableHashIterator<CowByteArray, ExternalConnectionsMaxes> it(externalConnectionsMaxes);
         while (it.hasNext()) {
             it.next();
-            QHash<QByteArray, ExternalConnectionsMax> &maxesForRoute = it.value().maxes;
+            QHash<CowByteArray, ExternalConnectionsMax> &maxesForRoute = it.value().maxes;
 
-            QMutableHashIterator<QByteArray, ExternalConnectionsMax> rit(maxesForRoute);
+            QMutableHashIterator<CowByteArray, ExternalConnectionsMax> rit(maxesForRoute);
             while (rit.hasNext()) {
                 rit.next();
                 ExternalConnectionsMax &cm = rit.value();
@@ -1066,27 +1068,27 @@ public:
 
     void mergeExternalConnectionsMax(const StatsPacket &packet, int64_t now) {
         if (packet.retrySeq >= 0)
-            removeLingeringConnections(packet.from.asQByteArray(), (uint64_t)packet.retrySeq);
+            removeLingeringConnections(packet.from, (uint64_t)packet.retrySeq);
 
-        QHash<QByteArray, ExternalConnectionsMax> &maxes =
-            externalConnectionsMaxes[packet.route.asQByteArray()].maxes;
+        QHash<CowByteArray, ExternalConnectionsMax> &maxes =
+            externalConnectionsMaxes[packet.route].maxes;
 
-        if (!maxes.contains(packet.from.asQByteArray()))
-            maxes.insert(packet.from.asQByteArray(), ExternalConnectionsMax());
+        if (!maxes.contains(packet.from))
+            maxes.insert(packet.from, ExternalConnectionsMax());
 
-        ExternalConnectionsMax &cm = maxes[packet.from.asQByteArray()];
+        ExternalConnectionsMax &cm = maxes[packet.from];
 
         cm.value = (uint32_t)qMax(packet.connectionsMax, 0);
         cm.expires = now + (qMax(packet.ttl, 0) * 1000);
 
-        updateConnectionsMax(packet.route.asQByteArray(), now);
+        updateConnectionsMax(packet.route, now);
     }
 
     void mergeExternalReport(const StatsPacket &packet, bool includeConnections) {
         if (reportInterval <= 0)
             return;
 
-        Report *report = getOrCreateReport(packet.route.asQByteArray());
+        Report *report = getOrCreateReport(packet.route);
 
         Stats::Counters counters;
 
@@ -1109,10 +1111,10 @@ public:
         combinedReport.addCounters(counters, now);
 
         if (includeConnections) {
-            if (!report->externalReports.contains(packet.from.asQByteArray()))
-                report->externalReports[packet.from.asQByteArray()] = Report();
+            if (!report->externalReports.contains(packet.from))
+                report->externalReports[packet.from] = Report();
 
-            Report &r = report->externalReports[packet.from.asQByteArray()];
+            Report &r = report->externalReports[packet.from];
 
             int mins = qMax(packet.connectionsMinutes, 0);
 
@@ -1122,7 +1124,7 @@ public:
         }
     }
 
-    StatsPacket reportToPacket(Report *report, const QByteArray &routeId, int64_t now) {
+    StatsPacket reportToPacket(Report *report, const CowByteArray &routeId, int64_t now) {
         if (report->connectionsMaxStale)
             updateConnectionsMax(routeId, now);
 
@@ -1167,7 +1169,7 @@ public:
         return p;
     }
 
-    void flushReport(const QByteArray &routeId) {
+    void flushReport(const CowByteArray &routeId) {
         Report *report = getOrCreateReport(routeId);
 
         int64_t now = DateTime::currentMSecsSinceEpoch();
@@ -1185,7 +1187,7 @@ public:
         q->reported(QList<StatsPacket>() << p);
     }
 
-    StatsPacket getConnMaxPacket(const QByteArray &routeId, ConnectionsMax *cm, int64_t now) {
+    StatsPacket getConnMaxPacket(const CowByteArray &routeId, ConnectionsMax *cm, int64_t now) {
         uint32_t value = cm->valueToSend();
 
         StatsPacket p;
@@ -1205,7 +1207,7 @@ public:
 
 private:
     void activity_timeout() {
-        QHashIterator<QByteArray, uint32_t> it(routeActivity);
+        QHashIterator<CowByteArray, uint32_t> it(routeActivity);
         while (it.hasNext()) {
             it.next();
             sendActivity(it.key(), it.value());
@@ -1221,9 +1223,9 @@ private:
 
         int64_t now = DateTime::currentMSecsSinceEpoch();
 
-        QSet<QByteArray> needSendNext;
+        QSet<CowByteArray> needSendNext;
 
-        foreach (const QByteArray &routeId, connectionsMaxes.needSend) {
+        foreach (const CowByteArray &routeId, connectionsMaxes.needSend) {
             ConnectionsMax &cm = connectionsMaxes.maxes[routeId];
 
             if (cm.valueToSend() == cm.lastSentValue)
@@ -1249,11 +1251,11 @@ private:
 
         // Note: here we iterate over all reports, which will be one per route ID. This could become
         // a problem if there are thousands of route IDs (at which point we can consider bucketing)
-        QHashIterator<QByteArray, Report *> it(reports);
+        QHashIterator<CowByteArray, Report *> it(reports);
         while (it.hasNext()) {
             it.next();
 
-            const QByteArray &routeId = it.key();
+            const CowByteArray &routeId = it.key();
             Report *report = it.value();
 
             StatsPacket p = reportToPacket(report, routeId, now);
@@ -1381,10 +1383,10 @@ void StatsManager::setCommonMetrics(std::shared_ptr<CommonMetrics> commonMetrics
 }
 
 void StatsManager::addActivity(const CowByteArray &routeId, uint32_t count) {
-    if (d->routeActivity.contains(routeId.asQByteArray()))
-        d->routeActivity[routeId.asQByteArray()] += count;
+    if (d->routeActivity.contains(routeId))
+        d->routeActivity[routeId] += count;
     else
-        d->routeActivity[routeId.asQByteArray()] = count;
+        d->routeActivity[routeId] = count;
 
     if (!d->activityTimer->isActive())
         d->activityTimer->start(ACTIVITY_TIMEOUT);
@@ -1410,13 +1412,14 @@ void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &rou
         // Check if this connection should replace a lingering external one.
         // Note: this iterates over all the known external sources, which at at the time of this
         // writing is almost certainly just 1 (a single pushpin-proxy source).
-        QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
+        QHashIterator<CowByteArray, QHash<CowByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);
         while (it.hasNext()) {
             it.next();
-            const QHash<QByteArray, Private::ConnectionInfo *> &extConnectionInfoById = it.value();
+            const QHash<CowByteArray, Private::ConnectionInfo *> &extConnectionInfoById =
+                it.value();
 
-            Private::ConnectionInfo *other = extConnectionInfoById.value(id.asQByteArray());
+            Private::ConnectionInfo *other = extConnectionInfoById.value(id);
             if (other) {
                 replacing = true;
                 lastReport = other->lastReport;
@@ -1432,7 +1435,7 @@ void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &rou
     // If we already had an entry, silently overwrite it. This can happen if we sent an accepted
     // connection off to the handler, kept it lingering in our table, and then the handler passed it
     // back to us for retrying
-    Private::ConnectionInfo *c = d->connectionInfoById.value(id.asQByteArray());
+    Private::ConnectionInfo *c = d->connectionInfoById.value(id);
     if (c) {
         replacing = true;
         lastReport = c->lastReport;
@@ -1443,8 +1446,8 @@ void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &rou
 
     c = new Private::ConnectionInfo;
     c->timerType = Private::TimerBase::Type::Connection;
-    c->id = id.asQByteArray();
-    c->routeId = routeId.asQByteArray();
+    c->id = id;
+    c->routeId = routeId;
     c->type = type;
     c->peerAddress = peerAddress;
     c->ssl = ssl;
@@ -1472,12 +1475,12 @@ void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &rou
 
 int StatsManager::removeConnection(const CowByteArray &id, bool linger,
                                    const CowByteArray &source) {
-    Private::ConnectionInfo *c = d->connectionInfoById.value(id.asQByteArray());
+    Private::ConnectionInfo *c = d->connectionInfoById.value(id);
     if (!c)
         return 0;
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
-    QByteArray routeId = c->routeId;
+    CowByteArray routeId = c->routeId;
     int unreportedTime = 0;
 
     if (d->reportInterval > 0)
@@ -1487,12 +1490,12 @@ int StatsManager::removeConnection(const CowByteArray &id, bool linger,
         if (!c->linger) {
             c->linger = true;
 
-            if (!d->retryInfoBySource.contains(source.asQByteArray()))
-                d->retryInfoBySource.insert(source.asQByteArray(), Private::RetryInfo());
+            if (!d->retryInfoBySource.contains(source))
+                d->retryInfoBySource.insert(source, Private::RetryInfo());
 
-            Private::RetryInfo &ri = d->retryInfoBySource[source.asQByteArray()];
+            Private::RetryInfo &ri = d->retryInfoBySource[source];
 
-            c->from = source.asQByteArray();
+            c->from = source;
             c->retrySeq = (int64_t)ri.nextSeq++;
 
             ri.connectionInfoBySeq.insert((uint64_t)c->retrySeq, c);
@@ -1519,7 +1522,7 @@ int StatsManager::removeConnection(const CowByteArray &id, bool linger,
 }
 
 void StatsManager::refreshConnection(const CowByteArray &id) {
-    Private::ConnectionInfo *c = d->connectionInfoById.value(id.asQByteArray());
+    Private::ConnectionInfo *c = d->connectionInfoById.value(id);
     if (!c)
         return;
 
@@ -1600,7 +1603,7 @@ void StatsManager::addMessageReceived(const CowByteArray &routeId, int blocks) {
     if (d->reportInterval <= 0)
         return;
 
-    Private::Report *report = d->getOrCreateReport(routeId.asQByteArray());
+    Private::Report *report = d->getOrCreateReport(routeId);
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
@@ -1614,7 +1617,7 @@ void StatsManager::addMessageSent(const CowByteArray &routeId, const QString &tr
     if (d->reportInterval <= 0)
         return;
 
-    Private::Report *report = d->getOrCreateReport(routeId.asQByteArray());
+    Private::Report *report = d->getOrCreateReport(routeId);
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
@@ -1627,7 +1630,7 @@ void StatsManager::incCounter(const CowByteArray &routeId, Stats::Counter c, uin
     if (d->reportInterval <= 0)
         return;
 
-    Private::Report *report = d->getOrCreateReport(routeId.asQByteArray());
+    Private::Report *report = d->getOrCreateReport(routeId);
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
@@ -1647,7 +1650,7 @@ void StatsManager::addRequestsReceived(uint32_t count) {
 }
 
 bool StatsManager::checkConnection(const CowByteArray &id) const {
-    return d->connectionInfoById.contains(id.asQByteArray());
+    return d->connectionInfoById.contains(id);
 }
 
 bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport) {
@@ -1662,8 +1665,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
         if (packet.type == StatsPacket::Connected) {
             // Is there a local connection with the same ID?
-            Private::ConnectionInfo *c =
-                d->connectionInfoById.value(packet.connectionId.asQByteArray());
+            Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
             if (c) {
                 // If there is a non-lingering local connection, ignore the packet
                 if (!c->linger) {
@@ -1684,19 +1686,19 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
         // note: this iterates over all the known external sources, which at at the time of this
         // writing is almost certainly just 1 (a single pushpin-proxy source).
         QList<Private::ConnectionInfo *> toDelete;
-        QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo *>> it(
+        QHashIterator<CowByteArray, QHash<CowByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);
         while (it.hasNext()) {
             it.next();
-            const QByteArray &from = it.key();
+            const CowByteArray &from = it.key();
 
-            if (from == packet.from.asQByteArray())
+            if (from == packet.from)
                 continue;
 
-            const QHash<QByteArray, Private::ConnectionInfo *> &extConnectionInfoById = it.value();
+            const QHash<CowByteArray, Private::ConnectionInfo *> &extConnectionInfoById =
+                it.value();
 
-            Private::ConnectionInfo *c =
-                extConnectionInfoById.value(packet.connectionId.asQByteArray());
+            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
             if (c)
                 toDelete += c;
         }
@@ -1705,23 +1707,22 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             delete c;
         }
 
-        QHash<QByteArray, Private::ConnectionInfo *> &extConnectionInfoById =
-            d->externalConnectionInfoByFrom[packet.from.asQByteArray()];
+        QHash<CowByteArray, Private::ConnectionInfo *> &extConnectionInfoById =
+            d->externalConnectionInfoByFrom[packet.from];
 
         if (packet.type == StatsPacket::Connected) {
             // Add/update
-            Private::ConnectionInfo *c =
-                extConnectionInfoById.value(packet.connectionId.asQByteArray());
+            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
             if (!c) {
                 c = new Private::ConnectionInfo;
                 c->timerType = Private::TimerBase::Type::ExternalConnection;
-                c->id = packet.connectionId.asQByteArray();
-                c->routeId = packet.route.asQByteArray();
+                c->id = packet.connectionId;
+                c->routeId = packet.route;
                 c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
                 c->peerAddress = packet.peerAddress;
                 c->ssl = packet.ssl;
                 c->lastReport = lastReport;
-                c->from = packet.from.asQByteArray();
+                c->from = packet.from;
                 c->lastActive = now;
                 d->insertExternalConnection(c);
 
@@ -1746,10 +1747,9 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
             d->updateConnectionsMinutes(c, now);
         } else // Disconnected
         {
-            Private::ConnectionInfo *c =
-                extConnectionInfoById.value(packet.connectionId.asQByteArray());
+            Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
             if (c) {
-                QByteArray routeId = c->routeId;
+                CowByteArray routeId = c->routeId;
 
                 d->updateConnectionsMinutes(c, now);
                 d->removeExternalConnection(c);
@@ -1784,29 +1784,27 @@ void StatsManager::sendPacket(const StatsPacket &packet) {
     d->write(p);
 }
 
-void StatsManager::flushReport(const CowByteArray &routeId) {
-    d->flushReport(routeId.asQByteArray());
-}
+void StatsManager::flushReport(const CowByteArray &routeId) { d->flushReport(routeId); }
 
 int64_t StatsManager::lastRetrySeq(const CowByteArray &source) const {
-    if (!d->retryInfoBySource.contains(source.asQByteArray()))
+    if (!d->retryInfoBySource.contains(source))
         return -1;
 
-    Private::RetryInfo &ri = d->retryInfoBySource[source.asQByteArray()];
+    Private::RetryInfo &ri = d->retryInfoBySource[source];
 
     return ((int64_t)ri.nextSeq) - 1;
 }
 
 StatsPacket StatsManager::getConnMaxPacket(const CowByteArray &routeId) {
-    Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId.asQByteArray());
+    Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId);
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
-    return d->getConnMaxPacket(routeId.asQByteArray(), &cm, now);
+    return d->getConnMaxPacket(routeId, &cm, now);
 }
 
 void StatsManager::setRetrySeq(const CowByteArray &routeId, int value) {
-    Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId.asQByteArray());
+    Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId);
 
     cm.retrySeq = value;
 }

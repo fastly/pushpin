@@ -205,7 +205,7 @@ void ZrpcRequest::onError() {
 }
 
 void ZrpcRequest::setupClient(ZrpcManager *manager) {
-    d->id = UuidUtil::createUuid().asQByteArray();
+    d->id = UuidUtil::createUuid();
     d->manager = manager;
     d->manager->link(this);
 }

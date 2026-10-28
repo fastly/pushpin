@@ -49,7 +49,7 @@ public:
     std::unique_ptr<ReadWrite> stream;
     State state;
     CowByteArray inBuf;
-    QByteArray outBuf;
+    CowByteArray outBuf;
     bool version1dot0;
     QString method;
     CowByteArray uri;
@@ -81,8 +81,8 @@ public:
         deferCall.defer([&] { process(); });
     }
 
-    void respond(int code, const QByteArray &reason, const HttpHeaders &headers,
-                 const QByteArray &body) {
+    void respond(int code, const CowByteArray &reason, const HttpHeaders &headers,
+                 const CowByteArray &body) {
         if (state != WriteBody)
             return;
 
@@ -92,16 +92,16 @@ public:
         outHeaders.removeAll("Content-Length");
 
         outHeaders += HttpHeader("Connection", "close");
-        outHeaders += HttpHeader("Content-Length", QByteArray::number(body.size()));
+        outHeaders += HttpHeader("Content-Length", CowByteArray::number(body.size()));
 
-        QByteArray respData = "HTTP/";
+        CowByteArray respData = "HTTP/";
         if (version1dot0)
             respData += "1.0 ";
         else
             respData += "1.1 ";
-        respData += QByteArray::number(code) + " " + reason + "\r\n";
+        respData += CowByteArray::number(code) + " " + reason + "\r\n";
         foreach (const HttpHeader &h, outHeaders)
-            respData += (h.first + ": " + h.second + "\r\n").asQByteArray();
+            respData += h.first + ": " + h.second + "\r\n";
         respData += "\r\n";
         respData += body;
 
@@ -112,7 +112,7 @@ public:
         deferCall.defer([&] { process(); });
     }
 
-    void respond(int code, const QByteArray &reason, const QString &body) {
+    void respond(int code, const CowByteArray &reason, const QString &body) {
         HttpHeaders headers;
         headers += HttpHeader("Content-Type", "text/plain");
 
@@ -122,7 +122,7 @@ public:
     Signal ready;
 
 private:
-    void respondError(int code, const QByteArray &reason, const QString &body) {
+    void respondError(int code, const CowByteArray &reason, const QString &body) {
         state = WriteBody;
         respond(code, reason, body + '\n');
     }
@@ -154,7 +154,7 @@ private:
         if (at == -1)
             return false;
 
-        method = QString::fromLatin1(requestLine.mid(0, at).asQByteArray());
+        method = CowString::fromUtf8(requestLine.mid(0, at)).asQString();
         if (method.isEmpty())
             return false;
 
@@ -258,7 +258,7 @@ private:
 
                 if (reqHeaders.contains("Content-Length")) {
                     bool ok;
-                    contentLength = reqHeaders.get("Content-Length").asQByteArray().toInt(&ok);
+                    contentLength = reqHeaders.get("Content-Length").toInt(&ok);
                     if (!ok) {
                         respondBadRequest("Bad Content-Length.");
                         return true;
@@ -270,7 +270,7 @@ private:
                     }
 
                     if (reqHeaders.get("Expect") == "100-continue") {
-                        QByteArray respData = "HTTP/";
+                        CowByteArray respData = "HTTP/";
                         if (version1dot0)
                             respData += "1.0 ";
                         else
@@ -392,11 +392,11 @@ CowByteArray SimpleHttpRequest::requestBody() const { return d->reqBody; }
 
 void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const HttpHeaders &headers,
                                 const CowByteArray &body) {
-    d->respond(code, reason.asQByteArray(), headers, body.asQByteArray());
+    d->respond(code, reason, headers, body);
 }
 
 void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const QString &body) {
-    d->respond(code, reason.asQByteArray(), body);
+    d->respond(code, reason, body);
 }
 
 class SimpleHttpServerPrivate {

@@ -36,7 +36,7 @@ CowByteArray getReason(int code) {
     qsizetype size = qstrlen(s);
 
     // SAFETY: s has a static lifetime
-    return QByteArray::fromRawData(s, size);
+    return CowByteArray(QByteArray::fromRawData(s, size));
 }
 
 } // namespace StatusReasons

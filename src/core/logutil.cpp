@@ -42,7 +42,7 @@ static QString trim(const QString &in, int max) {
         return in;
 }
 
-static QByteArray trim(const QByteArray &in, int max) {
+static CowByteArray trim(const CowByteArray &in, int max) {
     if (in.size() > max && max >= 7)
         return in.mid(0, max / 2) + "..." + in.mid(in.size() - (max / 2) + 3);
     else
@@ -56,8 +56,8 @@ static QString makeLastIdsStr(const HttpHeaders &headers) {
     foreach (const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last")) {
         if (!first)
             out += ' ';
-        out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first.asQByteArray()),
-                                     QString::fromUtf8(params.get("last-id").asQByteArray()));
+        out += QString("#%1=%2").arg(CowString::fromUtf8(params[0].first).asQString(),
+                                     CowString::fromUtf8(params.get("last-id")).asQString());
         first = false;
     }
 
@@ -66,7 +66,7 @@ static QString makeLastIdsStr(const HttpHeaders &headers) {
 
 static void logPacketWithOutputLevel(int outputLevel, int level, const QString &message,
                                      const Variant &data = Variant(), int dataMax = -1,
-                                     const QByteArray &content = QByteArray(),
+                                     const CowByteArray &content = CowByteArray(),
                                      int contentMax = -1) {
     QString out = message;
 
@@ -76,15 +76,15 @@ static void logPacketWithOutputLevel(int outputLevel, int level, const QString &
 
     if (!content.isNull()) {
         out += ' ' + QString::number(content.size()) + ' ';
-        QByteArray buf = trim(content, contentMax);
-        out += TnetString::variantToString(Variant(buf), -1);
+        CowByteArray buf = trim(content, contentMax);
+        out += TnetString::variantToString(Variant(buf.asQByteArray()), -1);
     }
 
     logWithOutputLevel(outputLevel, level, "%s", qPrintable(out));
 }
 
 static void logPacket(int level, const QString &message, const Variant &data = Variant(),
-                      int dataMax = -1, const QByteArray &content = QByteArray(),
+                      int dataMax = -1, const CowByteArray &content = CowByteArray(),
                       int contentMax = -1) {
     logPacketWithOutputLevel(-1, level, message, data, dataMax, content, contentMax);
 }
@@ -93,14 +93,14 @@ static void logPacket(int level, const Variant &data, const char *fmt, va_list a
     logPacket(level, QString::vasprintf(fmt, ap), data, MAX_DATA_LENGTH);
 }
 
-static void logPacket(int level, const QByteArray &content, const char *fmt, va_list ap) {
+static void logPacket(int level, const CowByteArray &content, const char *fmt, va_list ap) {
     logPacket(level, QString::vasprintf(fmt, ap), Variant(), -1, content, MAX_CONTENT_LENGTH);
 }
 
 static void logPacket(int level, const Variant &data, const QString &contentField, const char *fmt,
                       va_list ap) {
     Variant meta;
-    QByteArray content;
+    CowByteArray content;
 
     if (typeId(data) == VariantType::Hash) {
         // Extract content. Meta is the remaining data
@@ -128,7 +128,7 @@ void logVariant(int level, const Variant &data, const char *fmt, ...) {
 void logByteArray(int level, const CowByteArray &content, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    logPacket(level, content.asQByteArray(), fmt, ap);
+    logPacket(level, content, fmt, ap);
     va_end(ap);
 }
 
@@ -154,7 +154,7 @@ void logRequest(int level, const RequestData &data, const Config &config) {
     if (config.fromAddress && !data.fromAddress.isNull())
         msg += QString(" from=%1").arg(data.fromAddress.toString());
 
-    CowUrl ref = CowUrl(QString::fromUtf8(data.requestData.headers.get("Referer").asQByteArray()));
+    CowUrl ref = CowUrl(CowString::fromUtf8(data.requestData.headers.get("Referer")).asQString());
     if (!ref.isEmpty())
         msg += QString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded));
 
@@ -178,7 +178,8 @@ void logRequest(int level, const RequestData &data, const Config &config) {
         msg += QString::asprintf(" shared=%p", data.sharedBy);
 
     if (config.userAgent) {
-        QString userAgent = data.requestData.headers.get("User-Agent").asQByteArray();
+        QString userAgent =
+            CowString::fromUtf8(data.requestData.headers.get("User-Agent")).asQString();
         if (!userAgent.isEmpty())
             msg += QString(" ua=%1").arg(userAgent);
     }

@@ -229,7 +229,7 @@ public:
         requestMethod = ss.requestMethod;
         requestUri = ss.requestUri;
         requestHeaders = ss.requestHeaders;
-        requestBodyBuf += ss.requestBody.asQByteArray();
+        requestBodyBuf += ss.requestBody;
         if (ss.inSeq >= 0)
             inSeq = ss.inSeq;
         if (ss.outSeq >= 0)
@@ -344,7 +344,7 @@ public:
 
     CowByteArray readBody(int size) {
         if (server) {
-            QByteArray out = requestBodyBuf.take(size).asQByteArray();
+            CowByteArray out = requestBodyBuf.take(size);
             if (out.isEmpty())
                 return out;
 
@@ -360,7 +360,7 @@ public:
 
             return out;
         } else {
-            QByteArray out = responseBodyBuf.take(size).asQByteArray();
+            CowByteArray out = responseBodyBuf.take(size);
             if (out.isEmpty())
                 return out;
 
@@ -390,7 +390,7 @@ public:
                 // If we have data to send, and the credits to do so, then send data. also send
                 // credits if we need to.
 
-                QByteArray buf = requestBodyBuf.take(outCredits).asQByteArray();
+                CowByteArray buf = requestBodyBuf.take(outCredits);
 
                 outCredits -= buf.size();
                 writableChanged = true;
@@ -469,7 +469,7 @@ public:
 
         if (packet.type == ZhttpRequestPacket::Error) {
             errored = true;
-            errorCondition = convertError(packet.condition.asQByteArray());
+            errorCondition = convertError(packet.condition);
 
             log_debug("zhttp server: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -595,7 +595,7 @@ public:
 
         if (packet.type == ZhttpResponsePacket::Error) {
             errored = true;
-            errorCondition = convertError(packet.condition.asQByteArray());
+            errorCondition = convertError(packet.condition);
 
             log_debug("zhttp client: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -716,9 +716,9 @@ public:
         assert(!pausing && !paused);
 
         if (server)
-            responseBodyBuf += body.asQByteArray();
+            responseBodyBuf += body;
         else
-            requestBodyBuf += body.asQByteArray();
+            requestBodyBuf += body;
 
         update();
     }
@@ -772,7 +772,7 @@ public:
         writePacket(out);
     }
 
-    void writeError(const QByteArray &condition) {
+    void writeError(const CowByteArray &condition) {
         ZhttpResponsePacket out;
         out.type = ZhttpResponsePacket::Error;
         out.condition = condition;
@@ -803,7 +803,7 @@ public:
             writeCancel();
     }
 
-    static ErrorCondition convertError(const QByteArray &cond) {
+    static ErrorCondition convertError(const CowByteArray &cond) {
         // Zhttp conditions:
         //  remote-connection-failed
         //  connection-timeout
