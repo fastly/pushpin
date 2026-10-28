@@ -36,6 +36,9 @@ pub enum SettingsError {
 
     #[error("key outside of a section: {0}")]
     KeyOutsideSection(String),
+
+    #[error("port_offset must be a number: {0}")]
+    InvalidPortOffset(String),
 }
 
 pub struct Settings {
@@ -104,10 +107,10 @@ impl Settings {
             .cloned()
             .unwrap_or_else(|| "pushpin-".to_string());
 
-        let port_offset = values
-            .get("global/port_offset")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
+        let port_offset = match get("global/port_offset") {
+            Some(v) => v.parse().map_err(|_| SettingsError::InvalidPortOffset(v))?,
+            None => 0,
+        };
 
         Ok(Self {
             values,
@@ -491,7 +494,7 @@ mod tests {
     #[test]
     fn port_offset_not_a_number_errors() {
         let r = load_conf("port_offset_nan", "[global]\nport_offset=one\n");
-        assert!(r.is_err());
+        assert!(matches!(r, Err(SettingsError::InvalidPortOffset(v)) if v == "one"));
     }
 
     // Substitution
