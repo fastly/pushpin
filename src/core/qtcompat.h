@@ -41,7 +41,8 @@ enum Type {
     ByteArray = QMetaType::QByteArray,
     Hash = QMetaType::QVariantHash,
     Map = QMetaType::QVariantMap,
-    List = QMetaType::QVariantList
+    List = QMetaType::QVariantList,
+    StringList = QMetaType::QStringList
 };
 }
 
