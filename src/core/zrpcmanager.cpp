@@ -49,7 +49,7 @@ class ZrpcManager::Private {
 public:
     class PendingItem {
     public:
-        QList<QByteArray> headers;
+        CowByteArrayList headers;
         ZrpcRequestPacket packet;
     };
 
@@ -137,10 +137,13 @@ public:
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-        clientSock->write(QList<QByteArray>() << QByteArray() << buf.asQByteArray());
+        CowByteArrayList msg;
+        msg += CowByteArray();
+        msg += buf;
+        clientSock->write(msg);
     }
 
-    void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet) {
+    void write(const CowByteArrayList &headers, const ZrpcResponsePacket &packet) {
         assert(serverSock);
 
         Variant vpacket = packet.toVariant();
@@ -149,10 +152,10 @@ public:
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-        QList<QByteArray> message;
+        CowByteArrayList message;
         message += headers;
-        message += QByteArray();
-        message += buf.asQByteArray();
+        message += CowByteArray();
+        message += buf;
         serverSock->write(message);
     }
 
@@ -219,7 +222,7 @@ public:
         }
 
         PendingItem i;
-        i.headers = req.headers().asQByteArrayList();
+        i.headers = req.headers();
         i.packet = p;
         pending += i;
 
@@ -280,6 +283,6 @@ void ZrpcManager::unlink(ZrpcRequest *req) { d->clientReqsById.remove(req->id())
 
 void ZrpcManager::write(const ZrpcRequestPacket &packet) { d->write(packet); }
 
-void ZrpcManager::write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet) {
+void ZrpcManager::write(const CowByteArrayList &headers, const ZrpcResponsePacket &packet) {
     d->write(headers, packet);
 }

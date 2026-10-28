@@ -81,7 +81,7 @@ CowByteArray toString(const Variant &variant) {
         return QJsonDocument(jv.toArray()).toJson(QJsonDocument::Compact);
 
     // For scalars (null, bool, number, string), use the array trick to get proper encoding
-    QByteArray arr = QJsonDocument(QJsonArray{jv}).toJson(QJsonDocument::Compact);
+    CowByteArray arr = QJsonDocument(QJsonArray{jv}).toJson(QJsonDocument::Compact);
     return arr.mid(1, arr.size() - 2); // strip surrounding [ and ]
 }
 

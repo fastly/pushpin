@@ -160,7 +160,7 @@ static void runIo(std::function<void()> loop_wait) {
 
     // Write until we fill the system buffer
     while (true) {
-        QByteArray chunk(100000, 'a');
+        CowByteArray chunk(100000, 'a');
         int ret = s->write(chunk);
 
         if (ret < 0) {
@@ -209,7 +209,7 @@ static void runIo(std::function<void()> loop_wait) {
 
     // Write more
     {
-        QByteArray chunk(100000, 'a');
+        CowByteArray chunk(100000, 'a');
         int ret = s->write(chunk);
         TEST_ASSERT(ret > 0);
 

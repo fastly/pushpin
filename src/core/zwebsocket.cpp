@@ -392,7 +392,7 @@ public:
         }
     }
 
-    void handleIncomingDataPacket(const QByteArray &contentType, const QByteArray &data,
+    void handleIncomingDataPacket(const CowByteArray &contentType, const CowByteArray &data,
                                   bool more) {
         Frame::Type ftype;
         if (inContentType != -1) {
@@ -406,7 +406,7 @@ public:
             inContentType = (int)ftype;
         }
 
-        inFrames += Frame(ftype, !data.isNull() ? data : QByteArray(""), more);
+        inFrames += Frame(ftype, !data.isNull() ? data : CowByteArray(""), more);
         inSize += data.size();
 
         if (!more)
@@ -415,7 +415,7 @@ public:
 
     void handle(const CowByteArray &id, int seq, const ZhttpRequestPacket &packet) {
         if (packet.type == ZhttpRequestPacket::Error) {
-            errorCondition = convertError(packet.condition.asQByteArray());
+            errorCondition = convertError(packet.condition);
 
             log_debug("zws server: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -462,8 +462,7 @@ public:
                 log_warning("zws client: id=%s server is sending too fast", id.data());
 
             if (packet.type == ZhttpRequestPacket::Data) {
-                handleIncomingDataPacket(packet.contentType.asQByteArray(),
-                                         packet.body.asQByteArray(), packet.more);
+                handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
             } else if (packet.type == ZhttpRequestPacket::Ping) {
                 inFrames += Frame(Frame::Ping, packet.body, false);
                 inSize += packet.body.size();
@@ -480,7 +479,7 @@ public:
             readableChanged = true;
             update();
         } else if (packet.type == ZhttpRequestPacket::Close) {
-            handlePeerClose(packet.code, QString::fromUtf8(packet.body.asQByteArray()));
+            handlePeerClose(packet.code, CowString::fromUtf8(packet.body).asQString());
         } else if (packet.type == ZhttpRequestPacket::Credit) {
             if (packet.credits > 0) {
                 outCredits += packet.credits;
@@ -497,7 +496,7 @@ public:
 
     void handle(const CowByteArray &id, int seq, const ZhttpResponsePacket &packet) {
         if (packet.type == ZhttpResponsePacket::Error) {
-            errorCondition = convertError(packet.condition.asQByteArray());
+            errorCondition = convertError(packet.condition);
 
             log_debug("zws client: error id=%s cond=%s", id.data(), packet.condition.data());
 
@@ -593,8 +592,7 @@ public:
                     log_warning("zws client: id=%s server is sending too fast", id.data());
 
                 if (packet.type == ZhttpResponsePacket::Data) {
-                    handleIncomingDataPacket(packet.contentType.asQByteArray(),
-                                             packet.body.asQByteArray(), packet.more);
+                    handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
                 } else if (packet.type == ZhttpResponsePacket::Ping) {
                     inFrames += Frame(Frame::Ping, packet.body, false);
                     inSize += packet.body.size();
@@ -612,7 +610,7 @@ public:
                 update();
             }
         } else if (packet.type == ZhttpResponsePacket::Close) {
-            handlePeerClose(packet.code, QString::fromUtf8(packet.body.asQByteArray()));
+            handlePeerClose(packet.code, CowString::fromUtf8(packet.body).asQString());
         } else if (packet.type == ZhttpResponsePacket::Credit) {
             if (packet.credits > 0) {
                 outCredits += packet.credits;
@@ -659,7 +657,7 @@ public:
             manager->writeWs(out);
         } else {
             assert(!toAddress.isEmpty());
-            manager->writeWs(out, toAddress.asQByteArray());
+            manager->writeWs(out, toAddress);
         }
     }
 
@@ -671,12 +669,12 @@ public:
         out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
         out.userData = userData;
 
-        manager->writeWs(out, rid.first.asQByteArray(), routerResp);
+        manager->writeWs(out, rid.first, routerResp);
     }
 
     void writeFrameInternal(const Frame &frame, int credits = -1) {
         // For content frames, set the type
-        QByteArray contentType;
+        CowByteArray contentType;
         if (frame.type == Frame::Binary || frame.type == Frame::Text ||
             frame.type == Frame::Continuation) {
             Frame::Type ftype = (Frame::Type)-1;
@@ -774,7 +772,7 @@ public:
         }
     }
 
-    void writeError(const QByteArray &condition) {
+    void writeError(const CowByteArray &condition) {
         ZhttpResponsePacket out;
         out.type = ZhttpResponsePacket::Error;
         out.condition = condition;
@@ -806,7 +804,7 @@ public:
             writeCancel();
     }
 
-    static ErrorCondition convertError(const QByteArray &cond) {
+    static ErrorCondition convertError(const CowByteArray &cond) {
         // Zws conditions:
         //  remote-connection-failed
         //  connection-timeout

@@ -131,13 +131,13 @@ static void compatibilityWithQtJson() {
     testData["number"] = 42;
     testData["bool"] = true;
 
-    QByteArray qtJson =
+    CowByteArray qtJson =
         QJsonDocument(QJsonObject::fromVariantMap(testData)).toJson(QJsonDocument::Compact);
 
     CowByteArray json = Json::toString(testData);
 
     // Both should parse to equivalent structures
-    QJsonDocument qtDoc = QJsonDocument::fromJson(qtJson);
+    QJsonDocument qtDoc = QJsonDocument::fromJson(qtJson.asQByteArray());
     QJsonDocument doc = QJsonDocument::fromJson(json.asQByteArray());
 
     TEST_ASSERT_EQ(qtDoc.isObject(), true);
@@ -158,19 +158,19 @@ static void scalarValues() {
     CowByteArray stringJson = Json::toString(stringVar);
     TEST_ASSERT(!stringJson.isEmpty());
     // Should produce clean scalar: "test string"
-    TEST_ASSERT_EQ(stringJson, QByteArray("\"test string\""));
+    TEST_ASSERT_EQ(stringJson, "\"test string\"");
 
     Variant intVar(123);
     CowByteArray intJson = Json::toString(intVar);
     TEST_ASSERT(!intJson.isEmpty());
     // Should produce clean scalar: 123
-    TEST_ASSERT_EQ(intJson, QByteArray("123"));
+    TEST_ASSERT_EQ(intJson, "123");
 
     Variant boolVar(true);
     CowByteArray boolJson = Json::toString(boolVar);
     TEST_ASSERT(!boolJson.isEmpty());
     // Should produce clean scalar: true
-    TEST_ASSERT_EQ(boolJson, QByteArray("true"));
+    TEST_ASSERT_EQ(boolJson, "true");
 
     // For Qt compatibility testing, wrap scalars in objects since Qt JSON only handles
     // objects/arrays

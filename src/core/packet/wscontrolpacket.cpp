@@ -164,7 +164,7 @@ Variant WsControlPacket::toVariant() const {
 
         vitem["cid"] = item.cid.asQByteArray();
 
-        QByteArray typeStr;
+        CowByteArray typeStr;
         switch (item.type) {
         case Item::Here:
             typeStr = "here";
@@ -208,13 +208,13 @@ Variant WsControlPacket::toVariant() const {
         default:
             assert(0);
         }
-        vitem["type"] = typeStr;
+        vitem["type"] = typeStr.asQByteArray();
 
         if (!item.requestId.isEmpty())
             vitem["req-id"] = item.requestId.asQByteArray();
 
         if (!item.uri.isEmpty())
-            vitem["uri"] = item.uri.toEncoded();
+            vitem["uri"] = item.uri.toEncoded().asQByteArray();
 
         if (!item.contentType.isEmpty())
             vitem["content-type"] = item.contentType.asQByteArray();
@@ -299,7 +299,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
 
         if (!vitem.contains("type") || typeId(vitem["type"]) != VariantType::ByteArray)
             return false;
-        QByteArray typeStr = vitem["type"].toByteArray();
+        CowByteArray typeStr = vitem["type"].toByteArray();
 
         if (typeStr == "here")
             item.type = Item::Here;
@@ -348,7 +348,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (typeId(vitem["content-type"]) != VariantType::ByteArray)
                 return false;
 
-            QByteArray contentType = vitem["content-type"].toByteArray();
+            CowByteArray contentType = vitem["content-type"].toByteArray();
             if (!contentType.isEmpty())
                 item.contentType = contentType;
         }
@@ -392,7 +392,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (typeId(vitem["route"]) != VariantType::ByteArray)
                 return false;
 
-            QByteArray route = vitem["route"].toByteArray();
+            CowByteArray route = vitem["route"].toByteArray();
             if (!route.isEmpty())
                 item.route = route;
         }
@@ -408,7 +408,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (typeId(vitem["channel-prefix"]) != VariantType::ByteArray)
                 return false;
 
-            QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
+            CowByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
             if (!channelPrefix.isEmpty())
                 item.channelPrefix = channelPrefix;
         }
@@ -431,7 +431,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (typeId(vitem["channel"]) != VariantType::ByteArray)
                 return false;
 
-            QByteArray channel = vitem["channel"].toByteArray();
+            CowByteArray channel = vitem["channel"].toByteArray();
             if (!channel.isEmpty())
                 item.channel = channel;
         }
@@ -458,7 +458,7 @@ bool WsControlPacket::fromVariant(const Variant &in) {
             if (!canConvert(vitem["keep-alive-mode"], VariantType::ByteArray))
                 return false;
 
-            QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
+            CowByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
             if (!keepAliveMode.isEmpty())
                 item.keepAliveMode = keepAliveMode;
         }

@@ -27,7 +27,7 @@
 
 namespace Cors {
 
-static bool isSimpleHeader(const QByteArray &in) {
+static bool isSimpleHeader(const CowByteArray &in) {
     return (qstricmp(in.data(), "Cache-Control") == 0 ||
             qstricmp(in.data(), "Content-Language") == 0 ||
             qstricmp(in.data(), "Content-Length") == 0 ||
@@ -35,8 +35,8 @@ static bool isSimpleHeader(const QByteArray &in) {
             qstricmp(in.data(), "Last-Modified") == 0 || qstricmp(in.data(), "Pragma") == 0);
 }
 
-static bool headerNamesContains(const QList<QByteArray> &names, const QByteArray &name) {
-    foreach (const QByteArray &i, names) {
+static bool headerNamesContains(const CowByteArrayList &names, const CowByteArray &name) {
+    for (CowByteArrayConstRef i : names) {
         if (qstricmp(name.data(), i.data()) == 0)
             return true;
     }
@@ -44,13 +44,13 @@ static bool headerNamesContains(const QList<QByteArray> &names, const QByteArray
     return false;
 }
 
-static bool headerNameStartsWith(const QByteArray &name, const char *value) {
+static bool headerNameStartsWith(const CowByteArray &name, const char *value) {
     return (qstrnicmp(name.data(), value, qstrlen(value)) == 0);
 }
 
 void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHeaders) {
     if (!responseHeaders->contains("Access-Control-Allow-Methods")) {
-        QByteArray method = requestHeaders.get("Access-Control-Request-Method").asQByteArray();
+        CowByteArray method = requestHeaders.get("Access-Control-Request-Method");
 
         if (!method.isEmpty())
             *responseHeaders += HttpHeader("Access-Control-Allow-Methods", method);
@@ -74,13 +74,12 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
     }
 
     if (!responseHeaders->contains("Access-Control-Expose-Headers")) {
-        QList<QByteArray> exposeHeaders;
+        CowByteArrayList exposeHeaders;
         foreach (const HttpHeader &h, *responseHeaders) {
-            if (!isSimpleHeader(h.first.asQByteArray()) &&
-                !headerNameStartsWith(h.first.asQByteArray(), "Access-Control-") &&
-                !headerNameStartsWith(h.first.asQByteArray(), "Grip-") &&
-                !headerNamesContains(exposeHeaders, h.first.asQByteArray()))
-                exposeHeaders += h.first.asQByteArray();
+            if (!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") &&
+                !headerNameStartsWith(h.first, "Grip-") &&
+                !headerNamesContains(exposeHeaders, h.first))
+                exposeHeaders += h.first;
         }
 
         if (!exposeHeaders.isEmpty())
