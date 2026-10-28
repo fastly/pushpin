@@ -71,7 +71,7 @@ private:
     ZrpcRequest();
     void setupClient(ZrpcManager *manager);
     void setupServer(ZrpcManager *manager);
-    void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet);
+    void handle(const CowByteArrayList &headers, const ZrpcRequestPacket &packet);
     void handle(const ZrpcResponsePacket &packet);
 };
 

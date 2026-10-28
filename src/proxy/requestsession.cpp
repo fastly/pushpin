@@ -689,9 +689,9 @@ public:
 
         // If we have no query items anymore, strip the '?'
         if (query.isEmpty()) {
-            QByteArray tmp = uri.toEncoded();
+            CowByteArray tmp = uri.toEncoded();
             if (tmp.length() > 0 && tmp[tmp.length() - 1] == '?') {
-                tmp.truncate(tmp.length() - 1);
+                tmp = tmp.mid(0, tmp.length() - 1);
                 uri = CowUrl::fromEncoded(tmp, CowUrl::StrictMode);
             }
         }

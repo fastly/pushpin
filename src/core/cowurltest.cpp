@@ -32,7 +32,7 @@ static void basicUrlOperations() {
     TEST_ASSERT(urlString.startsWith("https://example.com"));
 
     // Test toEncoded
-    QByteArray encoded = url.toEncoded();
+    CowByteArray encoded = url.toEncoded();
     TEST_ASSERT(!encoded.isEmpty());
 }
 

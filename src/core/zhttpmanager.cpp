@@ -373,7 +373,7 @@ public:
     }
 
     void write(SessionType type, const ZhttpRequestPacket &packet,
-               const QByteArray &instanceAddress) {
+               const CowByteArray &instanceAddress) {
         assert(client_out_stream_sock);
         const char *logprefix = logPrefixForType(type);
 
@@ -384,7 +384,7 @@ public:
             LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s",
                                            logprefix, instanceAddress.data());
 
-        QList<QByteArray> msg;
+        CowByteArrayList msg;
         msg += instanceAddress;
         msg += QByteArray();
         msg += buf.asQByteArray();
@@ -392,7 +392,7 @@ public:
     }
 
     void write(SessionType type, const ZhttpResponsePacket &packet,
-               const QByteArray &instanceAddress, bool routerResp) {
+               const CowByteArray &instanceAddress, bool routerResp) {
         assert(server_out_sock);
         const char *logprefix = logPrefixForType(type);
 
@@ -406,7 +406,7 @@ public:
                                                "%s server: OUT (router) %s", logprefix,
                                                instanceAddress.data());
 
-            QList<QByteArray> msg;
+            CowByteArrayList msg;
             msg += instanceAddress;
             msg += QByteArray();
             msg += buf.asQByteArray();
@@ -419,7 +419,9 @@ public:
                                                "%s server: OUT %s", logprefix,
                                                instanceAddress.data());
 
-            server_out_sock->write(QList<QByteArray>() << buf.asQByteArray());
+            CowByteArrayList msg;
+            msg += buf.asQByteArray();
+            server_out_sock->write(msg);
         }
     }
 
@@ -1139,11 +1141,12 @@ void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet) {
     d->write(Private::HttpSession, packet);
 }
 
-void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress) {
+void ZhttpManager::writeHttp(const ZhttpRequestPacket &packet,
+                             const CowByteArray &instanceAddress) {
     d->write(Private::HttpSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+void ZhttpManager::writeHttp(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                              bool routerResp) {
     d->write(Private::HttpSession, packet, instanceAddress, routerResp);
 }
@@ -1152,11 +1155,11 @@ void ZhttpManager::writeWs(const ZhttpRequestPacket &packet) {
     d->write(Private::WebSocketSession, packet);
 }
 
-void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress) {
+void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const CowByteArray &instanceAddress) {
     d->write(Private::WebSocketSession, packet, instanceAddress);
 }
 
-void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress,
+void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const CowByteArray &instanceAddress,
                            bool routerResp) {
     d->write(Private::WebSocketSession, packet, instanceAddress, routerResp);
 }

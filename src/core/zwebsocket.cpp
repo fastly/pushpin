@@ -659,7 +659,7 @@ public:
             manager->writeWs(out);
         } else {
             assert(!toAddress.isEmpty());
-            manager->writeWs(out, toAddress.asQByteArray());
+            manager->writeWs(out, toAddress);
         }
     }
 
@@ -671,7 +671,7 @@ public:
         out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
         out.userData = userData;
 
-        manager->writeWs(out, rid.first.asQByteArray(), routerResp);
+        manager->writeWs(out, rid.first, routerResp);
     }
 
     void writeFrameInternal(const Frame &frame, int credits = -1) {

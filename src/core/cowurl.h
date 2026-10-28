@@ -17,8 +17,8 @@
 #ifndef COWURL_H
 #define COWURL_H
 
+#include "cowbytearray.h"
 #include "rust/bindings.h"
-#include <QByteArray>
 #include <QByteArrayView>
 #include <QHash>
 #include <QString>
@@ -49,9 +49,9 @@ public:
     bool operator!=(const CowUrl &other) const;
     bool operator<(const CowUrl &other) const;
 
-    static CowUrl fromEncoded(const QByteArray &input, ParsingMode mode = StrictMode);
-    static QString fromPercentEncoding(const QByteArray &input);
-    static QByteArray toPercentEncoding(const QString &input);
+    static CowUrl fromEncoded(const CowByteArray &input, ParsingMode mode = StrictMode);
+    static QString fromPercentEncoding(const CowByteArray &input);
+    static CowByteArray toPercentEncoding(const QString &input);
 
     // Validates that a potentially relative URL string is syntactically valid
     // by attempting to resolve it against a dummy base URL
@@ -80,7 +80,7 @@ public:
     CowUrl resolved(const QString &relativeString) const;
 
     QString toString(ComponentFormattingOptions options = FullyEncoded) const;
-    QByteArray toEncoded() const;
+    CowByteArray toEncoded() const;
 
 private:
     friend size_t qHash(const CowUrl &url, size_t seed) noexcept;
