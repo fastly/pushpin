@@ -15,9 +15,28 @@
  */
 
 use ini::Ini;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum SettingsError {
+    #[error(transparent)]
+    Ini(#[from] ini::Error),
+
+    #[error("line without '=' in [{0}]: {1}")]
+    MissingEquals(String, String),
+
+    #[error("repeated section [{0}]")]
+    RepeatedSection(String),
+
+    #[error("duplicate key {0}")]
+    DuplicateKey(String),
+
+    #[error("key outside of a section: {0}")]
+    KeyOutsideSection(String),
+}
 
 pub struct Settings {
     values: HashMap<String, String>,
@@ -28,17 +47,36 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn load(path: &Path) -> Result<Self, ini::Error> {
+    pub fn load(path: &Path) -> Result<Self, SettingsError> {
         let mut values = HashMap::new();
+        let mut sections = HashSet::new();
 
         for (section, props) in Ini::load_from_file(path)?.iter() {
-            for (key, value) in props.iter() {
-                let key = match section {
-                    Some(section) => format!("{section}/{key}"),
-                    None => key.to_string(),
-                };
+            let Some(section) = section else {
+                if let Some((key, _)) = props.iter().next() {
+                    return Err(SettingsError::KeyOutsideSection(key.to_string()));
+                }
 
-                values.insert(key.to_lowercase(), value.to_string());
+                continue;
+            };
+
+            let section = section.to_lowercase();
+
+            if !sections.insert(section.clone()) {
+                return Err(SettingsError::RepeatedSection(section));
+            }
+
+            for (key, value) in props.iter() {
+                // rust-ini joins a line without '=' onto the next line's key
+                if let Some((line, _)) = key.split_once('\n') {
+                    return Err(SettingsError::MissingEquals(section, line.to_string()));
+                }
+
+                let key = format!("{section}/{}", key.to_lowercase());
+
+                if values.insert(key.clone(), value.to_string()).is_some() {
+                    return Err(SettingsError::DuplicateKey(key));
+                }
             }
         }
 
@@ -165,7 +203,7 @@ mod tests {
         path
     }
 
-    fn load_conf(test: &str, contents: &str) -> Result<Settings, ini::Error> {
+    fn load_conf(test: &str, contents: &str) -> Result<Settings, SettingsError> {
         Settings::load(&write_conf(test, "pushpin.conf", contents))
     }
 
@@ -188,7 +226,7 @@ mod tests {
     #[test]
     fn duplicate_key_errors() {
         let r = load_conf("dup_key", "[proxy]\nworkers=2\nworkers=4\n");
-        assert!(r.is_err());
+        assert!(matches!(r, Err(SettingsError::DuplicateKey(k)) if k == "proxy/workers"));
     }
 
     #[test]
@@ -197,7 +235,7 @@ mod tests {
             "dup_section",
             "[proxy]\nworkers=2\n[handler]\n[proxy]\ndebug=true\n",
         );
-        assert!(r.is_err());
+        assert!(matches!(r, Err(SettingsError::RepeatedSection(s)) if s == "proxy"));
     }
 
     #[test]
@@ -252,7 +290,10 @@ mod tests {
     #[test]
     fn line_without_equals_errors() {
         let r = load_conf("no_equals", "[proxy]\nworkers 4\nsig_iss=pushpin\n");
-        assert!(r.is_err());
+        assert!(matches!(
+            r,
+            Err(SettingsError::MissingEquals(s, line)) if s == "proxy" && line == "workers 4"
+        ));
     }
 
     #[test]
@@ -264,7 +305,7 @@ mod tests {
     #[test]
     fn key_outside_section_errors() {
         let r = load_conf("no_section", "workers=4\n[proxy]\nsig_iss=pushpin\n");
-        assert!(r.is_err());
+        assert!(matches!(r, Err(SettingsError::KeyOutsideSection(k)) if k == "workers"));
     }
 
     #[test]
