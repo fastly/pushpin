@@ -81,6 +81,7 @@ impl MessageDistributor for ZmqDistributor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str;
 
     #[test]
     fn zmq_distribute() {
