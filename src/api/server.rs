@@ -15,6 +15,7 @@
  */
 
 use crate::api::item::{validate_item, InPublishItems};
+use crate::api::metrics;
 use crate::api::ListenSpec;
 use crate::core::fs::{set_group, set_user};
 use crate::core::net::NetListener;
@@ -149,6 +150,8 @@ async fn handle_request(state: &State, req: Request) -> Response {
         content_max: state.content_max,
         item_out_sock: &state.item_out_sock,
     };
+
+    metrics::total_requests().inc();
 
     match req.uri.as_str() {
         "/publish" => publish_noslash(),
