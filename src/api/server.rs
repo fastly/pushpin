@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::api::distributor::MessageDistributor;
 use crate::api::item::{validate_item, InPublishItems};
 use crate::api::metrics;
 use crate::api::ListenSpec;
@@ -21,13 +22,11 @@ use crate::core::fs::{set_group, set_user};
 use crate::core::net::NetListener;
 use crate::core::net::SocketAddr;
 use crate::core::simplehttpserver::{self, Request, Response};
-use crate::core::zmq::{SpecInfo, ZmqSocket};
 use log::{debug, error, info};
 use mio::net::{TcpListener, UnixListener};
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Mutex;
 
 fn empty_ok() -> Response {
     Response {
@@ -88,7 +87,7 @@ fn method_not_allowed<T: AsRef<str>>(methods: T) -> Response {
 
 struct Context<'a> {
     content_max: usize,
-    item_out_sock: &'a Mutex<ZmqSocket>,
+    distributors: &'a [Box<dyn MessageDistributor>],
 }
 
 async fn publish(ctx: &Context<'_>, req: Request) -> Response {
@@ -103,6 +102,8 @@ async fn publish(ctx: &Context<'_>, req: Request) -> Response {
         Err(e) => return bad_request(format!("JSON parse/schema error: {}", e)),
     };
 
+    let metadata = [];
+
     for (n, item) in items.items.iter().enumerate() {
         let (item, _) = match validate_item(item, ctx.content_max, false) {
             Ok(ret) => ret,
@@ -114,15 +115,11 @@ async fn publish(ctx: &Context<'_>, req: Request) -> Response {
             Err(_) => return bad_request(format!("item {}: failed to serialize", n + 1)),
         };
 
-        let msgs = [
-            zmq::Message::from(item.channel.into_bytes()),
-            zmq::Message::from(payload),
-        ];
-
-        let item_out_sock = ctx.item_out_sock.lock().unwrap();
-
-        if let Err(e) = item_out_sock.send_multipart(msgs, 0) {
-            error!("failed to send item: {e}");
+        for d in ctx.distributors {
+            match d.distribute(&metadata, &item.channel, payload.clone()) {
+                Ok(()) => debug!("sent item via {}", d.name()),
+                Err(e) => error!("failed to send item via {}: {}", d.name(), e),
+            }
         }
     }
 
@@ -142,13 +139,13 @@ fn publish_noslash() -> Response {
 
 struct State {
     content_max: usize,
-    item_out_sock: Mutex<ZmqSocket>,
+    distributors: Vec<Box<dyn MessageDistributor>>,
 }
 
 async fn handle_request(state: &State, req: Request) -> Response {
     let ctx = Context {
         content_max: state.content_max,
-        item_out_sock: &state.item_out_sock,
+        distributors: &state.distributors,
     };
 
     metrics::total_requests().inc();
@@ -175,15 +172,8 @@ impl Server {
         body_size_max: usize,
         content_max: usize,
         listen: &ListenSpec,
-        zmq_context: &zmq::Context,
-        item_out_specs: &[SpecInfo],
+        distributors: Vec<Box<dyn MessageDistributor>>,
     ) -> Result<Self, String> {
-        let item_out_sock = ZmqSocket::new(zmq_context, zmq::PUB);
-
-        if let Err(e) = item_out_sock.apply_specs(item_out_specs) {
-            return Err(format!("failed to set item out specs: {}", e));
-        }
-
         let (listener, addr) = match listen {
             ListenSpec::Tcp { addr } => {
                 let l = match TcpListener::bind(*addr) {
@@ -251,7 +241,7 @@ impl Server {
 
         let state = State {
             content_max,
-            item_out_sock: Mutex::new(item_out_sock),
+            distributors,
         };
 
         Ok(Self {
@@ -279,16 +269,53 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::distributor::MetadataValue;
+    use std::error::Error;
     use std::io::{Read, Write};
     use std::str;
+    use std::sync::{Arc, Mutex};
+
+    struct DistributeCall {
+        metadata: Vec<(String, MetadataValue)>,
+        channel: String,
+        item: Vec<u8>,
+    }
+
+    #[derive(Default)]
+    struct MockDistributor {
+        calls: Arc<Mutex<Vec<DistributeCall>>>,
+    }
+
+    impl MessageDistributor for MockDistributor {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        fn distribute(
+            &self,
+            metadata: &[(&str, MetadataValue)],
+            channel: &str,
+            item: Vec<u8>,
+        ) -> Result<(), Box<dyn Error>> {
+            let mut calls = self.calls.lock().unwrap();
+
+            calls.push(DistributeCall {
+                metadata: metadata
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
+                channel: channel.to_owned(),
+                item,
+            });
+
+            Ok(())
+        }
+    }
 
     #[test]
     fn publish() {
-        let zmq_context = zmq::Context::new();
-
-        let item_in_sock = zmq_context.socket(zmq::SUB).unwrap();
-        item_in_sock.set_subscribe(&[]).unwrap();
-        item_in_sock.bind("inproc://test-api-publish-item").unwrap();
+        let distributor = MockDistributor::default();
+        let calls = distributor.calls.clone();
 
         let server = Server::new(
             1,
@@ -298,20 +325,9 @@ mod tests {
             &ListenSpec::Tcp {
                 addr: "127.0.0.1:0".parse().unwrap(),
             },
-            &zmq_context,
-            &[SpecInfo {
-                spec: "inproc://test-api-publish-item".to_string(),
-                bind: false,
-                ipc_file_mode: 0,
-            }],
+            vec![Box::new(distributor)],
         )
         .unwrap();
-
-        // Activate the subscription without receiving
-        zmq::poll(&mut [item_in_sock.as_poll_item(zmq::POLLIN)], 1).unwrap();
-
-        // Ensure we are subscribed
-        std::thread::sleep(std::time::Duration::from_millis(100));
 
         let SocketAddr::Ip(addr) = server.addr() else {
             panic!("expected tcp listen address");
@@ -349,17 +365,16 @@ mod tests {
         let expected =
             "74:7:formats,60:11:http-stream,41:6:action,4:send,7:content,11:hello world,}}}";
 
-        let msgs = item_in_sock.recv_multipart(0).unwrap();
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(str::from_utf8(&*msgs[0]).unwrap(), "test");
-        assert_eq!(str::from_utf8(&*msgs[1]).unwrap(), expected);
+        let calls = &*calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].metadata.is_empty());
+        assert_eq!(calls[0].channel, "test");
+        assert_eq!(str::from_utf8(&calls[0].item).unwrap(), expected);
     }
 
     #[test]
     fn publish_content_too_large() {
         const SMALL_CONTENT_MAX: usize = 10;
-
-        let zmq_context = zmq::Context::new();
 
         let server = Server::new(
             1,
@@ -369,12 +384,7 @@ mod tests {
             &ListenSpec::Tcp {
                 addr: "127.0.0.1:0".parse().unwrap(),
             },
-            &zmq_context,
-            &[SpecInfo {
-                spec: "inproc://test-api-publish-content-too-large-item".to_string(),
-                bind: false,
-                ipc_file_mode: 0,
-            }],
+            Vec::new(),
         )
         .unwrap();
 
