@@ -52,39 +52,45 @@ pub struct Settings {
     port_offset: i32,
 }
 
-impl Settings {
-    pub fn load(path: &Path) -> Result<Self, SettingsError> {
-        let mut values = HashMap::new();
-        let mut sections = HashSet::new();
+fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
+    let mut values = HashMap::new();
+    let mut sections = HashSet::new();
 
-        for (section, props) in Ini::load_from_file(path)?.iter() {
-            let Some(section) = section else {
-                if let Some((key, _)) = props.iter().next() {
-                    return Err(SettingsError::KeyOutsideSection(key.to_string()));
-                }
-
-                continue;
-            };
-
-            let section = section.to_lowercase();
-
-            if !sections.insert(section.clone()) {
-                return Err(SettingsError::RepeatedSection(section));
+    for (section, props) in Ini::load_from_file(path)?.iter() {
+        let Some(section) = section else {
+            if let Some((key, _)) = props.iter().next() {
+                return Err(SettingsError::KeyOutsideSection(key.to_string()));
             }
 
-            for (key, value) in props.iter() {
-                // rust-ini joins a line without '=' onto the next line's key
-                if let Some((line, _)) = key.split_once('\n') {
-                    return Err(SettingsError::MissingEquals(section, line.to_string()));
-                }
+            continue;
+        };
 
-                let key = format!("{section}/{}", key.to_lowercase());
+        let section = section.to_lowercase();
 
-                if values.insert(key.clone(), value.to_string()).is_some() {
-                    return Err(SettingsError::DuplicateKey(key));
-                }
+        if !sections.insert(section.clone()) {
+            return Err(SettingsError::RepeatedSection(section));
+        }
+
+        for (key, value) in props.iter() {
+            // rust-ini joins a line without '=' onto the next line's key
+            if let Some((line, _)) = key.split_once('\n') {
+                return Err(SettingsError::MissingEquals(section, line.to_string()));
+            }
+
+            let key = format!("{section}/{}", key.to_lowercase());
+
+            if values.insert(key.clone(), value.to_string()).is_some() {
+                return Err(SettingsError::DuplicateKey(key));
             }
         }
+    }
+
+    Ok(values)
+}
+
+impl Settings {
+    pub fn load(path: &Path) -> Result<Self, SettingsError> {
+        let values = read_file(path)?;
 
         let get = |key: &str| values.get(key).filter(|v| !v.is_empty()).cloned();
 
@@ -115,13 +121,32 @@ impl Settings {
             None => 0,
         };
 
-        Ok(Self {
+        let mut settings = Self {
             values,
             libdir,
             rundir,
             ipc_prefix,
             port_offset,
-        })
+        };
+
+        let include = match settings.values.get("global/include").map(String::as_str) {
+            Some("internal.conf") => "{libdir}/internal.conf".to_string(),
+            Some(include) => include.to_string(),
+            None => String::new(),
+        };
+
+        let include = settings.resolve_vars(&include)?;
+
+        if !include.is_empty() {
+            // Relative to the config file, unless absolute
+            let include = path.parent().unwrap_or(Path::new("")).join(include);
+
+            for (key, value) in read_file(&include)? {
+                settings.values.entry(key).or_insert(value);
+            }
+        }
+
+        Ok(settings)
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
