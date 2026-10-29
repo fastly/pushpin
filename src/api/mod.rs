@@ -15,9 +15,13 @@
  */
 
 pub mod item;
+pub mod metrics;
 pub mod server;
 
 use self::server::Server;
+use crate::core::config::NetListenConfig;
+use crate::core::net::NetListener;
+use crate::core::prometheus::{try_register_process_collector, PrometheusServer};
 use crate::core::zmq::SpecInfo;
 use log::{debug, info};
 use signal_hook;
@@ -40,6 +44,11 @@ pub enum ListenSpec {
     },
 }
 
+pub struct PrometheusConfig {
+    pub listen_config: NetListenConfig,
+    pub prefix: String,
+}
+
 pub struct Config {
     pub maxconn: usize,
     pub buffer_size: usize,
@@ -49,11 +58,13 @@ pub struct Config {
     pub item_out: Vec<String>,
     pub item_out_bind: bool,
     pub ipc_file_mode: u32,
+    pub prometheus: Option<PrometheusConfig>,
 }
 
 pub struct App {
     _server: Server,
     _zmq_context: zmq::Context,
+    _prometheus: Option<PrometheusServer>,
 }
 
 impl App {
@@ -78,6 +89,28 @@ impl App {
 
         let zmq_context = zmq::Context::new();
 
+        let mut prometheus = None;
+
+        if let Some(config) = &config.prometheus {
+            let trimmed = config.prefix.trim_end_matches('_');
+            let registry = prometheus::Registry::new_custom(
+                (!trimmed.is_empty()).then(|| trimmed.to_string()),
+                None,
+            )
+            .expect("failed to create prometheus registry");
+
+            try_register_process_collector(&registry)
+                .expect("failed to register process collector");
+
+            crate::core::log::init_metrics(&registry);
+            metrics::init(&registry);
+
+            let l = NetListener::bind_config(&config.listen_config)
+                .map_err(|e| format!("prometheus listener: {e}"))?;
+
+            prometheus = Some(PrometheusServer::new(l, registry));
+        }
+
         let server = Server::new(
             config.maxconn,
             config.buffer_size,
@@ -91,6 +124,7 @@ impl App {
         Ok(Self {
             _server: server,
             _zmq_context: zmq_context,
+            _prometheus: prometheus,
         })
     }
 

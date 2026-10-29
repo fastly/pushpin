@@ -16,7 +16,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::api::{run, Config, ListenSpec};
+use pushpin::api::{run, Config, ListenSpec, PrometheusConfig};
 use pushpin::core::config::NetListenConfig;
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
@@ -35,6 +35,7 @@ struct Args {
     item_out_specs: Vec<String>,
     item_out_bind: bool,
     ipc_file_mode: u32,
+    prometheus: Option<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -51,6 +52,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         item_out: args.item_out_specs,
         item_out_bind: args.item_out_bind,
         ipc_file_mode: args.ipc_file_mode,
+        prometheus: None,
     };
 
     for v in args.listen.iter() {
@@ -81,6 +83,31 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         };
 
         config.listen.push(spec);
+    }
+
+    if let Some(v) = &args.prometheus {
+        let mut spec: NetListenConfig = match v.parse() {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(format!("failed to parse prometheus: {}", e).into());
+            }
+        };
+
+        let params = match &mut spec {
+            NetListenConfig::Tcp(c) => &mut c.params,
+            NetListenConfig::Unix(c) => &mut c.params,
+        };
+
+        let prefix = params.remove("prefix").unwrap_or("api".to_string());
+
+        if let Some(k) = params.keys().next() {
+            return Err(format!("failed to parse prometheus: invalid param: {}", k).into());
+        }
+
+        config.prometheus = Some(PrometheusConfig {
+            listen_config: spec,
+            prefix,
+        });
     }
 
     run(&config)
@@ -159,6 +186,13 @@ fn main() {
                 .num_args(1)
                 .value_name("octal")
                 .help("Permissions for ZeroMQ IPC binds"),
+        )
+        .arg(
+            Arg::new("prometheus")
+                .long("prometheus")
+                .num_args(1)
+                .value_name("[addr:]port[,params...]")
+                .help("Address/port to serve Prometheus metrics on"),
         )
         .get_matches();
 
@@ -264,6 +298,8 @@ fn main() {
         listen.push("0.0.0.0:5561".to_string());
     }
 
+    let prometheus = matches.get_one::<String>("prometheus").cloned();
+
     let args = Args {
         maxconn,
         buffer_size,
@@ -273,6 +309,7 @@ fn main() {
         item_out_specs,
         item_out_bind,
         ipc_file_mode,
+        prometheus,
     };
 
     if let Err(e) = process_args_and_run(args) {
