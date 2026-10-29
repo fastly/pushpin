@@ -644,7 +644,7 @@ public:
                 apiPorts += ListenPort(QHostAddress(push_in_http_addr), push_in_http_port, false);
 
             services += new ApiService(apiBin, runDir, !args.mergeOutput ? logDir : QString(),
-                                       filePrefix, logLevels.value("handler", defaultLevel),
+                                       filePrefix, logLevels.value("api", defaultLevel),
                                        push_in_http_max_headers_size, push_in_http_max_body_size,
                                        apiPorts, push_in_sub_specs);
         }
