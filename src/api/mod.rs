@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
+pub mod distributor;
 pub mod item;
 pub mod metrics;
 pub mod server;
 
+use self::distributor::{MessageDistributor, ZmqDistributor};
 use self::server::Server;
 use crate::core::config::NetListenConfig;
 use crate::core::net::NetListener;
@@ -68,23 +70,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: &Config) -> Result<Self, String> {
+    pub fn new(config: &Config) -> Result<Self, Box<dyn Error>> {
         if config.maxconn < 1 {
             return Err("maxconn must be >= 1".into());
         }
 
         if config.listen.len() != 1 {
             return Err("exactly one listen config must be specified".into());
-        }
-
-        let mut item_out_specs = Vec::new();
-
-        for spec in config.item_out.iter() {
-            item_out_specs.push(SpecInfo {
-                spec: spec.clone(),
-                bind: config.item_out_bind,
-                ipc_file_mode: config.ipc_file_mode,
-            });
         }
 
         let zmq_context = zmq::Context::new();
@@ -111,14 +103,31 @@ impl App {
             prometheus = Some(PrometheusServer::new(l, registry));
         }
 
+        let mut distributors: Vec<Box<dyn MessageDistributor>> = Vec::new();
+
+        if !config.item_out.is_empty() {
+            let mut item_out_specs = Vec::new();
+
+            for spec in config.item_out.iter() {
+                item_out_specs.push(SpecInfo {
+                    spec: spec.clone(),
+                    bind: config.item_out_bind,
+                    ipc_file_mode: config.ipc_file_mode,
+                });
+            }
+
+            let d = ZmqDistributor::new(&zmq_context, &item_out_specs)?;
+
+            distributors.push(Box::new(d));
+        }
+
         let server = Server::new(
             config.maxconn,
             config.buffer_size,
             config.body_buffer_size,
             config.content_max,
             &config.listen[0],
-            &zmq_context,
-            &item_out_specs,
+            distributors,
         )?;
 
         Ok(Self {
@@ -155,12 +164,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     debug!("starting...");
 
     {
-        let a = match App::new(config) {
-            Ok(a) => a,
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
+        let a = App::new(config)?;
 
         info!("started");
 
