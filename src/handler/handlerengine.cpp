@@ -1449,7 +1449,11 @@ public:
                                                                    config.pushInHttpMaxBodySize);
             controlServerConnection = controlHttpServer->requestReady.connect(
                 boost::bind(&Private::controlHttpServer_requestReady, this));
-            controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
+            if (!controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort)) {
+                log_error("failed to bind http control server: %s:%d",
+                          qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
+                return false;
+            }
 
             log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()),
                      config.pushInHttpPort);
