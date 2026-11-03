@@ -72,7 +72,7 @@ crate-type = ["rlib", "staticlib"]
 arrayvec = "0.7"
 base64 = "0.13"
 clap = { version = "4.6", features = ["cargo", "string", "wrap_help", "derive"] }
-config = { version = "=0.15.20", default-features = false, features = ["ini"] }
+config = { version = "=0.15.25", default-features = false, features = ["ini"] }
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "9"
