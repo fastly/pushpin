@@ -289,6 +289,11 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
         return 1;
     }
 
+    if (!push_in_http_addr.isEmpty() && QHostAddress(push_in_http_addr).isNull()) {
+        log_error("invalid push_in_http_addr: %s", qPrintable(push_in_http_addr));
+        return 1;
+    }
+
     HandlerEngine::Configuration config;
     config.appVersion = Config::get().version;
     config.instanceId = "handler_" + QByteArray::number(getpid());

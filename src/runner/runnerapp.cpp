@@ -526,6 +526,12 @@ public:
             return;
         }
 
+        if (!push_in_http_addr.isEmpty() && QHostAddress(push_in_http_addr).isNull()) {
+            log_error("invalid push_in_http_addr: %s", qPrintable(push_in_http_addr));
+            q->quit(1);
+            return;
+        }
+
         if (args.id >= 0) {
             ipcPrefix = QString("p%1-").arg(args.id);
             portOffset = args.id * 10;
