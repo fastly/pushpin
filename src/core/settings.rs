@@ -16,8 +16,11 @@
 
 use ini::Ini;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::env;
+use std::net::IpAddr;
 use std::path::Path;
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -169,6 +172,89 @@ impl Settings {
         self.values.get(&key.to_lowercase()).map(String::as_str)
     }
 
+    pub fn set_ipc_prefix(&mut self, ipc_prefix: &str) {
+        self.ipc_prefix = ipc_prefix.to_string();
+    }
+
+    pub fn set_port_offset(&mut self, port_offset: i32) {
+        self.port_offset = port_offset;
+    }
+
+    pub fn string(&self, key: &str) -> Result<Option<String>, SettingsError> {
+        match self.get(key) {
+            None => Ok(None),
+            Some(v) if v.contains(',') => Err(invalid_value(key, v, "a single value")),
+            Some(v) => self.resolve_vars(v).map(Some),
+        }
+    }
+
+    pub fn list(&self, key: &str) -> Result<Vec<String>, SettingsError> {
+        match self.get(key) {
+            None => Ok(Vec::new()),
+            Some(value) => value
+                .split(',')
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| self.resolve_vars(v))
+                .collect(),
+        }
+    }
+
+    pub fn number<T: FromStr + Default>(&self, key: &str) -> Result<Option<T>, SettingsError> {
+        match self.get(key) {
+            None | Some("-1") => Ok(None),
+            Some("") => Ok(Some(T::default())),
+            Some(v) => v
+                .parse()
+                .map(Some)
+                .map_err(|_| invalid_value(key, v, "a number")),
+        }
+    }
+
+    pub fn bool(&self, key: &str) -> Result<Option<bool>, SettingsError> {
+        match self.get(key) {
+            None => Ok(None),
+            Some("" | "0") => Ok(Some(false)),
+            Some("1") => Ok(Some(true)),
+            Some(v) if v.eq_ignore_ascii_case("false") => Ok(Some(false)),
+            Some(v) if v.eq_ignore_ascii_case("true") => Ok(Some(true)),
+            Some(v) => Err(invalid_value(key, v, "true or false")),
+        }
+    }
+
+    pub fn ip_addr(&self, key: &str) -> Result<Option<IpAddr>, SettingsError> {
+        match self.get(key) {
+            None | Some("") => Ok(None),
+            Some(v) => v
+                .parse()
+                .map(Some)
+                .map_err(|_| invalid_value(key, v, "an IP address")),
+        }
+    }
+
+    pub fn octal(&self, key: &str) -> Result<Option<u32>, SettingsError> {
+        match self.get(key) {
+            None | Some("-1") => Ok(None),
+            Some(v) => u32::from_str_radix(v, 8)
+                .map(Some)
+                .map_err(|_| invalid_value(key, v, "an octal number")),
+        }
+    }
+
+    pub fn adjust_port(&self, key: &str) -> Result<Option<u16>, SettingsError> {
+        match self.get(key) {
+            None | Some("-1") => Ok(None),
+            Some("") => Ok(Some(0)),
+            Some(v) => match v.parse::<u16>() {
+                Ok(0) => Ok(Some(0)),
+                Ok(port) => u16::try_from(i32::from(port) + self.port_offset)
+                    .map(Some)
+                    .map_err(|_| invalid_value(key, v, "a port")),
+                Err(_) => Err(invalid_value(key, v, "a port")),
+            },
+        }
+    }
+
     fn resolve_vars(&self, s: &str) -> Result<String, SettingsError> {
         let mut out = s
             .replace("{libdir}", &self.libdir)
@@ -218,6 +304,7 @@ impl Settings {
 mod tests {
     use super::*;
     use crate::core::test_dir;
+    use std::fmt::Debug;
     use std::fs;
     use std::path::PathBuf;
 
@@ -690,5 +777,302 @@ mod tests {
         .unwrap();
         let spec = settings.get("handler/push_in_spec").unwrap();
         assert_eq!(settings.resolve_vars(spec).unwrap(), "tcp://127.0.0.1:5561");
+    }
+
+    // Typed values
+
+    fn is_invalid(r: Result<impl Debug, SettingsError>, k: &str, v: &str) -> bool {
+        matches!(r, Err(SettingsError::InvalidValue { key, value, .. }) if key == k && value == v)
+    }
+
+    #[test]
+    fn string_substitutes_vars() {
+        let settings = load_conf(
+            "string_vars",
+            "[global]\nrundir=run\n[handler]\nstats_spec=ipc://{rundir}/{ipc_prefix}stats\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.string("handler/stats_spec").unwrap(),
+            Some("ipc://run/pushpin-stats".to_string())
+        );
+    }
+
+    #[test]
+    fn string_missing_or_empty() {
+        let settings = load_conf("string_empty", "[proxy]\nupstream_key=\n").unwrap();
+        assert_eq!(
+            settings.string("proxy/upstream_key").unwrap(),
+            Some(String::new())
+        );
+        assert_eq!(settings.string("proxy/sig_key").unwrap(), None);
+    }
+
+    #[test]
+    fn string_given_list_errors() {
+        let settings = load_conf("string_list", "[proxy]\nsig_iss=a,b\n").unwrap();
+        assert!(is_invalid(
+            settings.string("proxy/sig_iss"),
+            "proxy/sig_iss",
+            "a,b"
+        ));
+    }
+
+    #[test]
+    fn list_splits_and_trims() {
+        let settings = load_conf(
+            "list_split",
+            "[runner]\nservices=connmgr, proxy ,,handler\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.list("runner/services").unwrap(),
+            vec!["connmgr", "proxy", "handler"]
+        );
+    }
+
+    #[test]
+    fn list_substitutes_each_item() {
+        let settings = example_settings();
+        assert_eq!(
+            settings.list("proxy/m2a_in_specs").unwrap(),
+            vec![
+                "ipc://run/pushpin-m2zhttp-out",
+                "ipc://run/pushpin-m2zws-out"
+            ]
+        );
+    }
+
+    #[test]
+    fn list_missing_or_empty() {
+        let settings = load_conf("list_empty", "[proxy]\nx_forwarded_for=\n").unwrap();
+        assert!(settings.list("proxy/x_forwarded_for").unwrap().is_empty());
+        assert!(settings
+            .list("proxy/x_forwarded_for_trusted")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn number_parses() {
+        let settings = load_conf("number", "[proxy]\nworkers=4\n").unwrap();
+        assert_eq!(settings.number::<u32>("proxy/workers").unwrap(), Some(4));
+        assert_eq!(
+            settings.number::<u32>("proxy/max_open_requests").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn number_invalid_errors() {
+        let settings =
+            load_conf("number_bad", "[proxy]\nworkers=4x\nmax_open_requests=1,2\n").unwrap();
+        assert!(is_invalid(
+            settings.number::<u32>("proxy/workers"),
+            "proxy/workers",
+            "4x"
+        ));
+        assert!(is_invalid(
+            settings.number::<u32>("proxy/max_open_requests"),
+            "proxy/max_open_requests",
+            "1,2"
+        ));
+    }
+
+    #[test]
+    fn number_negative_for_unsigned_errors() {
+        let settings = load_conf("number_negative", "[handler]\nmessage_wait=-5\n").unwrap();
+        assert!(is_invalid(
+            settings.number::<u32>("handler/message_wait"),
+            "handler/message_wait",
+            "-5"
+        ));
+    }
+
+    #[test]
+    fn bool_parses() {
+        let settings = load_conf(
+            "bool",
+            "[proxy]\ndebug=true\nlog_from=false\nauto_cross_origin=TRUE\n",
+        )
+        .unwrap();
+        assert_eq!(settings.bool("proxy/debug").unwrap(), Some(true));
+        assert_eq!(settings.bool("proxy/log_from").unwrap(), Some(false));
+        assert_eq!(
+            settings.bool("proxy/auto_cross_origin").unwrap(),
+            Some(true)
+        );
+        assert_eq!(settings.bool("proxy/log_user_agent").unwrap(), None);
+    }
+
+    #[test]
+    fn bool_invalid_errors() {
+        let settings = load_conf("bool_bad", "[proxy]\ndebug=yes\nlog_from=2\n").unwrap();
+        assert!(is_invalid(
+            settings.bool("proxy/debug"),
+            "proxy/debug",
+            "yes"
+        ));
+        assert!(is_invalid(
+            settings.bool("proxy/log_from"),
+            "proxy/log_from",
+            "2"
+        ));
+    }
+
+    #[test]
+    fn bool_one_zero_and_empty() {
+        let settings = load_conf(
+            "bool_one_zero",
+            "[proxy]\ndebug=1\nlog_from=0\nauto_cross_origin=\n",
+        )
+        .unwrap();
+        assert_eq!(settings.bool("proxy/debug").unwrap(), Some(true));
+        assert_eq!(settings.bool("proxy/log_from").unwrap(), Some(false));
+        assert_eq!(
+            settings.bool("proxy/auto_cross_origin").unwrap(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn minus_one_is_unset() {
+        let settings = load_conf(
+            "minus_one",
+            "[handler]\nmessage_rate=-1\nipc_file_mode=-1\npush_in_http_port=-1\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.number::<u32>("handler/message_rate").unwrap(),
+            None
+        );
+        assert_eq!(settings.octal("handler/ipc_file_mode").unwrap(), None);
+        assert_eq!(
+            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn empty_number_and_port_are_zero() {
+        let settings = load_conf(
+            "empty_zero",
+            "[global]\nport_offset=1\n[handler]\nmessage_wait=\npush_in_http_port=\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.number::<u32>("handler/message_wait").unwrap(),
+            Some(0)
+        );
+        assert_eq!(
+            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn octal_parses() {
+        let settings = load_conf("octal", "[handler]\nipc_file_mode=777\n").unwrap();
+        assert_eq!(
+            settings.octal("handler/ipc_file_mode").unwrap(),
+            Some(0o777)
+        );
+    }
+
+    #[test]
+    fn octal_empty_errors() {
+        let settings = load_conf("octal_empty", "[handler]\nipc_file_mode=\n").unwrap();
+        assert!(is_invalid(
+            settings.octal("handler/ipc_file_mode"),
+            "handler/ipc_file_mode",
+            ""
+        ));
+    }
+
+    #[test]
+    fn octal_invalid_errors() {
+        let settings = load_conf(
+            "octal_bad",
+            "[handler]\nipc_file_mode=abc\n[proxy]\nipc_file_mode=789\n",
+        )
+        .unwrap();
+        assert!(is_invalid(
+            settings.octal("handler/ipc_file_mode"),
+            "handler/ipc_file_mode",
+            "abc"
+        ));
+        assert!(is_invalid(
+            settings.octal("proxy/ipc_file_mode"),
+            "proxy/ipc_file_mode",
+            "789"
+        ));
+    }
+
+    #[test]
+    fn port_shifted_by_offset() {
+        let settings = load_conf(
+            "port_shift",
+            "[global]\nport_offset=1\n[handler]\npush_in_http_port=5561\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            Some(5562)
+        );
+    }
+
+    #[test]
+    fn port_zero_not_shifted() {
+        let settings = load_conf(
+            "port_zero",
+            "[global]\nport_offset=1\n[handler]\npush_in_http_port=0\n",
+        )
+        .unwrap();
+        assert_eq!(
+            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn port_invalid_errors() {
+        let settings = load_conf(
+            "port_bad",
+            "[global]\nport_offset=1\n[handler]\npush_in_http_port=70000\n[runner]\nhttp_port=65535\n",
+        )
+        .unwrap();
+        assert!(is_invalid(
+            settings.adjust_port("handler/push_in_http_port"),
+            "handler/push_in_http_port",
+            "70000"
+        ));
+        assert!(is_invalid(
+            settings.adjust_port("runner/http_port"),
+            "runner/http_port",
+            "65535"
+        ));
+    }
+
+    #[test]
+    fn overrides_apply() {
+        let mut settings = load_conf(
+            "overrides",
+            "[global]\nrundir=run\n[handler]\nstats_spec=ipc://{rundir}/{ipc_prefix}stats\npush_in_spec=tcp://127.0.0.1:5560\npush_in_http_port=5561\n",
+        )
+        .unwrap();
+        settings.set_ipc_prefix("p1-");
+        settings.set_port_offset(10);
+        assert_eq!(
+            settings.string("handler/stats_spec").unwrap(),
+            Some("ipc://run/p1-stats".to_string())
+        );
+        assert_eq!(
+            settings.string("handler/push_in_spec").unwrap(),
+            Some("tcp://127.0.0.1:5570".to_string())
+        );
+        assert_eq!(
+            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            Some(5571)
+        );
     }
 }
