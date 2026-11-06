@@ -52,6 +52,9 @@ pub enum SettingsError {
 
     #[error("invalid libdir: {}", .0.display())]
     InvalidLibdir(PathBuf),
+
+    #[error("must set {0}")]
+    Missing(&'static str),
 }
 
 pub struct Settings {
@@ -325,6 +328,30 @@ impl Settings {
         }
 
         Ok(out)
+    }
+}
+
+pub struct CommonSettings {
+    pub services: Vec<String>,
+    pub proxy_workers: u32,
+    pub client_maxconn: u32,
+    pub stats_connection_send: bool,
+    pub stats_connection_ttl: u32,
+}
+
+impl CommonSettings {
+    pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
+        Ok(Self {
+            services: settings.list("runner/services")?,
+            proxy_workers: settings.number("proxy/workers")?.unwrap_or(1),
+            client_maxconn: settings.number("runner/client_maxconn")?.unwrap_or(50000),
+            stats_connection_send: settings
+                .bool("global/stats_connection_send")?
+                .unwrap_or(true),
+            stats_connection_ttl: settings
+                .number("global/stats_connection_ttl")?
+                .unwrap_or(120),
+        })
     }
 }
 
