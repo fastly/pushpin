@@ -16,6 +16,7 @@
 
 use ini::Ini;
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::path::Path;
 use thiserror::Error;
 
@@ -35,10 +36,32 @@ pub enum SettingsError {
 
     #[error("key outside of a section: {0}")]
     KeyOutsideSection(String),
+
+    #[error("{key} must be {expected}: {value}")]
+    InvalidValue {
+        key: String,
+        value: String,
+        expected: &'static str,
+    },
+
+    #[error("invalid tcp address: {0}")]
+    InvalidTcpAddress(String),
 }
 
 pub struct Settings {
     values: HashMap<String, String>,
+    libdir: String,
+    rundir: String,
+    ipc_prefix: String,
+    port_offset: i32,
+}
+
+fn invalid_value(key: &str, value: &str, expected: &'static str) -> SettingsError {
+    SettingsError::InvalidValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        expected,
+    }
 }
 
 fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
@@ -80,11 +103,114 @@ impl Settings {
     pub fn load(path: &Path) -> Result<Self, SettingsError> {
         let values = read_file(path)?;
 
-        Ok(Self { values })
+        let get = |key: &str| values.get(key).filter(|v| !v.is_empty()).cloned();
+
+        let libdir = get("global/libdir").unwrap_or_else(|| {
+            if Path::new("src/bin/pushpin.rs").exists() {
+                // Running in tree
+                env::current_dir()
+                    .unwrap_or_default()
+                    .join("src")
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                // Use compiled value
+                env!("LIB_DIR").to_string()
+            }
+        });
+
+        let rundir = get("global/rundir")
+            .or_else(|| get("runner/rundir")) // Fallback to runner section (deprecated)
+            .unwrap_or_default();
+
+        let ipc_prefix = values
+            .get("global/ipc_prefix")
+            .cloned()
+            .unwrap_or_else(|| "pushpin-".to_string());
+
+        let port_offset = match get("global/port_offset") {
+            Some(v) => v
+                .parse()
+                .map_err(|_| invalid_value("global/port_offset", &v, "a number"))?,
+            None => 0,
+        };
+
+        let mut settings = Self {
+            values,
+            libdir,
+            rundir,
+            ipc_prefix,
+            port_offset,
+        };
+
+        let include = match settings.values.get("global/include").map(String::as_str) {
+            // If include is exactly "internal.conf", rewrite relative to libdir.
+            // TODO: remove this hack at next major version
+            Some("internal.conf") => "{libdir}/internal.conf".to_string(),
+            Some(include) => include.to_string(),
+            None => String::new(),
+        };
+
+        let include = settings.resolve_vars(&include)?;
+
+        if !include.is_empty() {
+            // If include is a relative path, then use it relative to the config file location
+            let include = path.parent().unwrap_or(Path::new("")).join(include);
+
+            for (key, value) in read_file(&include)? {
+                settings.values.entry(key).or_insert(value);
+            }
+        }
+
+        Ok(settings)
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
         self.values.get(&key.to_lowercase()).map(String::as_str)
+    }
+
+    fn resolve_vars(&self, s: &str) -> Result<String, SettingsError> {
+        let mut out = s
+            .replace("{libdir}", &self.libdir)
+            .replace("{rundir}", &self.rundir)
+            .replace("{ipc_prefix}", &self.ipc_prefix);
+
+        // Adjust tcp ports
+        let mut at = 0;
+        while let Some(i) = out[at..].find("tcp://") {
+            let host = at + i + 6;
+
+            // Skip past an IPv6 address, since it contains colons
+            let host_end = match out[host..].strip_prefix('[') {
+                Some(rest) => {
+                    let Some(n) = rest.find(']') else {
+                        return Err(SettingsError::InvalidTcpAddress(s.to_string()));
+                    };
+
+                    host + 1 + n
+                }
+                None => host,
+            };
+
+            let Some(colon) = out[host_end..].find(':') else {
+                return Err(SettingsError::InvalidTcpAddress(s.to_string()));
+            };
+
+            let start = host_end + colon + 1;
+            let end = out[start..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map_or(out.len(), |n| start + n);
+
+            let Ok(port) = out[start..end].parse::<i32>() else {
+                return Err(SettingsError::InvalidTcpAddress(s.to_string()));
+            };
+
+            let port = (port + self.port_offset).to_string();
+            out.replace_range(start..end, &port);
+            at = start + port.len();
+        }
+
+        Ok(out)
     }
 }
 
@@ -108,6 +234,31 @@ mod tests {
         assert_eq!(settings.get("proxy/nonexistent"), None);
     }
 
+    #[test]
+    fn resolve_vars() {
+        let mut settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
+
+        let include = settings.get("global/include").unwrap();
+        let libdir = env::current_dir().unwrap().join("src");
+        assert_eq!(
+            settings.resolve_vars(include).unwrap(),
+            format!("{}/internal.conf", libdir.display())
+        );
+
+        let stats_spec = settings.get("handler/stats_spec").unwrap();
+        assert_eq!(
+            settings.resolve_vars(stats_spec).unwrap(),
+            "ipc://run/pushpin-stats"
+        );
+
+        settings.port_offset = 1;
+        let push_in_spec = settings.get("handler/push_in_spec").unwrap();
+        assert_eq!(
+            settings.resolve_vars(push_in_spec).unwrap(),
+            "tcp://127.0.0.1:5561"
+        );
+    }
+
     fn write_conf(test: &str, file: &str, contents: &str) -> PathBuf {
         let dir = test_dir().join("settings").join(test);
         fs::create_dir_all(&dir).unwrap();
@@ -120,6 +271,14 @@ mod tests {
 
     fn load_conf(test: &str, contents: &str) -> Result<Settings, SettingsError> {
         Settings::load(&write_conf(test, "pushpin.conf", contents))
+    }
+
+    fn in_tree_libdir() -> String {
+        env::current_dir()
+            .unwrap()
+            .join("src")
+            .to_string_lossy()
+            .into_owned()
     }
 
     // Parsing
@@ -232,5 +391,304 @@ mod tests {
         let settings = load_conf("crlf", "[proxy]\r\nworkers=4\r\nsig_iss=pushpin\r\n").unwrap();
         assert_eq!(settings.get("proxy/workers"), Some("4"));
         assert_eq!(settings.get("proxy/sig_iss"), Some("pushpin"));
+    }
+
+    // Include
+
+    #[test]
+    fn example_config_loads_internal_conf() {
+        let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
+        assert_eq!(
+            settings.get("proxy/connmgr_in_specs"),
+            Some("ipc://{rundir}/{ipc_prefix}connmgr-out")
+        );
+    }
+
+    #[test]
+    fn include_internal_conf_shorthand() {
+        let settings = load_conf("include_shorthand", "[global]\ninclude=internal.conf\n").unwrap();
+        assert_eq!(
+            settings.get("proxy/connmgr_in_specs"),
+            Some("ipc://{rundir}/{ipc_prefix}connmgr-out")
+        );
+    }
+
+    #[test]
+    fn include_relative_to_config_dir() {
+        write_conf("include_relative", "extra.conf", "[proxy]\nsig_iss=extra\n");
+        let settings = load_conf("include_relative", "[global]\ninclude=extra.conf\n").unwrap();
+        assert_eq!(settings.get("proxy/sig_iss"), Some("extra"));
+    }
+
+    #[test]
+    fn include_absolute_path() {
+        let extra = write_conf("include_absolute", "extra.conf", "[proxy]\nsig_iss=extra\n");
+        let main = format!("[global]\ninclude={}\n", extra.display());
+        let settings = load_conf("include_absolute", &main).unwrap();
+        assert_eq!(settings.get("proxy/sig_iss"), Some("extra"));
+    }
+
+    #[test]
+    fn main_wins_over_include() {
+        write_conf(
+            "include_override",
+            "extra.conf",
+            "[proxy]\nsig_iss=extra\nworkers=2\n",
+        );
+        let settings = load_conf(
+            "include_override",
+            "[global]\ninclude=extra.conf\n[proxy]\nsig_iss=main\n",
+        )
+        .unwrap();
+        assert_eq!(settings.get("proxy/sig_iss"), Some("main"));
+        assert_eq!(settings.get("proxy/workers"), Some("2"));
+    }
+
+    #[test]
+    fn missing_include_errors() {
+        let r = load_conf("include_missing", "[global]\ninclude=nope.conf\n");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn empty_include() {
+        let settings =
+            load_conf("include_empty", "[global]\ninclude=\n[proxy]\nworkers=2\n").unwrap();
+        assert_eq!(settings.get("proxy/workers"), Some("2"));
+    }
+
+    #[test]
+    fn nested_include_not_followed() {
+        write_conf("include_nested", "second.conf", "[proxy]\nsig_iss=second\n");
+        write_conf(
+            "include_nested",
+            "first.conf",
+            "[global]\ninclude=second.conf\n[proxy]\nworkers=2\n",
+        );
+        let settings = load_conf("include_nested", "[global]\ninclude=first.conf\n").unwrap();
+        assert_eq!(settings.get("proxy/workers"), Some("2"));
+        assert_eq!(settings.get("proxy/sig_iss"), None);
+    }
+
+    // Variables
+
+    #[test]
+    fn libdir_from_config() {
+        let settings = load_conf("libdir_config", "[global]\nlibdir=/usr/lib/pushpin\n").unwrap();
+        assert_eq!(settings.libdir, "/usr/lib/pushpin");
+    }
+
+    #[test]
+    fn libdir_unset_in_tree() {
+        let settings = load_conf("libdir_unset", "[global]\nrundir=run\n").unwrap();
+        assert_eq!(settings.libdir, in_tree_libdir());
+    }
+
+    #[test]
+    fn libdir_empty_in_tree() {
+        let settings = load_conf("libdir_empty", "[global]\nlibdir=\n").unwrap();
+        assert_eq!(settings.libdir, in_tree_libdir());
+    }
+
+    #[test]
+    fn rundir_from_global() {
+        let settings = load_conf("rundir_global", "[global]\nrundir=/var/run/pushpin\n").unwrap();
+        assert_eq!(settings.rundir, "/var/run/pushpin");
+    }
+
+    #[test]
+    fn rundir_from_runner() {
+        let settings = load_conf("rundir_runner", "[runner]\nrundir=/var/run/pushpin\n").unwrap();
+        assert_eq!(settings.rundir, "/var/run/pushpin");
+    }
+
+    #[test]
+    fn rundir_global_wins_over_runner() {
+        let settings = load_conf(
+            "rundir_both",
+            "[global]\nrundir=/var/run/global\n[runner]\nrundir=/var/run/runner\n",
+        )
+        .unwrap();
+        assert_eq!(settings.rundir, "/var/run/global");
+    }
+
+    #[test]
+    fn rundir_unset() {
+        let settings = load_conf("rundir_unset", "[global]\nipc_prefix=pushpin-\n").unwrap();
+        assert_eq!(settings.rundir, "");
+    }
+
+    #[test]
+    fn ipc_prefix_default() {
+        let settings = load_conf("ipc_prefix_default", "[global]\nrundir=run\n").unwrap();
+        assert_eq!(settings.ipc_prefix, "pushpin-");
+    }
+
+    #[test]
+    fn ipc_prefix_set() {
+        let settings = load_conf("ipc_prefix_set", "[global]\nipc_prefix=pushpin2-\n").unwrap();
+        assert_eq!(settings.ipc_prefix, "pushpin2-");
+    }
+
+    #[test]
+    fn ipc_prefix_empty() {
+        let settings = load_conf("ipc_prefix_empty", "[global]\nipc_prefix=\n").unwrap();
+        assert_eq!(settings.ipc_prefix, "");
+    }
+
+    #[test]
+    fn port_offset_default() {
+        let settings = load_conf("port_offset_default", "[global]\nrundir=run\n").unwrap();
+        assert_eq!(settings.port_offset, 0);
+    }
+
+    #[test]
+    fn port_offset_set() {
+        let settings = load_conf("port_offset_set", "[global]\nport_offset=10\n").unwrap();
+        assert_eq!(settings.port_offset, 10);
+    }
+
+    #[test]
+    fn port_offset_empty() {
+        let settings = load_conf("port_offset_empty", "[global]\nport_offset=\n").unwrap();
+        assert_eq!(settings.port_offset, 0);
+    }
+
+    #[test]
+    fn port_offset_not_a_number_errors() {
+        let r = load_conf("port_offset_nan", "[global]\nport_offset=one\n");
+        assert!(matches!(
+            r,
+            Err(SettingsError::InvalidValue { key, value, .. })
+                if key == "global/port_offset" && value == "one"
+        ));
+    }
+
+    // Substitution
+
+    fn example_settings() -> Settings {
+        Settings::load(Path::new("examples/config/pushpin.conf")).unwrap()
+    }
+
+    #[test]
+    fn substitute_two_vars() {
+        let settings = example_settings();
+        assert_eq!(
+            settings
+                .resolve_vars("ipc://{rundir}/{ipc_prefix}connmgr-out")
+                .unwrap(),
+            "ipc://run/pushpin-connmgr-out"
+        );
+    }
+
+    #[test]
+    fn substitute_var_twice() {
+        let settings = example_settings();
+        assert_eq!(
+            settings.resolve_vars("{rundir}/a,{rundir}/b").unwrap(),
+            "run/a,run/b"
+        );
+    }
+
+    #[test]
+    fn substitute_nothing() {
+        let settings = example_settings();
+        assert_eq!(settings.resolve_vars("pushpin").unwrap(), "pushpin");
+    }
+
+    // Port shift
+
+    fn offset_settings(port_offset: i32) -> Settings {
+        let mut settings = example_settings();
+        settings.port_offset = port_offset;
+        settings
+    }
+
+    #[test]
+    fn port_offset_zero_unchanged() {
+        let settings = offset_settings(0);
+        assert_eq!(
+            settings.resolve_vars("tcp://127.0.0.1:5560").unwrap(),
+            "tcp://127.0.0.1:5560"
+        );
+    }
+
+    #[test]
+    fn port_shift_wildcard() {
+        let settings = offset_settings(1);
+        assert_eq!(
+            settings.resolve_vars("tcp://*:5560").unwrap(),
+            "tcp://*:5561"
+        );
+    }
+
+    #[test]
+    fn port_shift_hostname() {
+        let settings = offset_settings(1);
+        assert_eq!(
+            settings.resolve_vars("tcp://localhost:5560").unwrap(),
+            "tcp://localhost:5561"
+        );
+    }
+
+    #[test]
+    fn port_shift_with_path() {
+        let settings = offset_settings(1);
+        assert_eq!(
+            settings
+                .resolve_vars("tcp://host:5560/abcdefghijklmnop")
+                .unwrap(),
+            "tcp://host:5561/abcdefghijklmnop"
+        );
+    }
+
+    #[test]
+    fn port_shift_ipv6() {
+        let settings = offset_settings(1);
+        assert_eq!(
+            settings.resolve_vars("tcp://[::1]:5560").unwrap(),
+            "tcp://[::1]:5561"
+        );
+    }
+
+    #[test]
+    fn tcp_missing_port_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://127.0.0.1");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(v)) if v == "tcp://127.0.0.1"));
+    }
+
+    #[test]
+    fn tcp_empty_port_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://127.0.0.1:");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
+    }
+
+    #[test]
+    fn tcp_unclosed_ipv6_errors() {
+        let settings = offset_settings(1);
+        let r = settings.resolve_vars("tcp://[::1:5560");
+        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
+    }
+
+    #[test]
+    fn ipc_not_shifted() {
+        let settings = offset_settings(1);
+        assert_eq!(
+            settings.resolve_vars("ipc://run/pushpin-5560").unwrap(),
+            "ipc://run/pushpin-5560"
+        );
+    }
+
+    #[test]
+    fn port_offset_from_config_file() {
+        let settings = load_conf(
+            "port_offset_file",
+            "[global]\nport_offset=1\n[handler]\npush_in_spec=tcp://127.0.0.1:5560\n",
+        )
+        .unwrap();
+        let spec = settings.get("handler/push_in_spec").unwrap();
+        assert_eq!(settings.resolve_vars(spec).unwrap(), "tcp://127.0.0.1:5561");
     }
 }
