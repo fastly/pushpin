@@ -31,51 +31,26 @@
 #include "httpsessionupdatemanager.h"
 #include "log.h"
 #include "processquit.h"
+#include "pushpin/src/handler/settings.rs.h"
 #include "reactor.h"
 #include "rust/bindings.h"
-#include "settings.h"
 #include "simplehttpserver.h"
 #include "timer.h"
 #include "wssession.h"
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QStringList>
 #include <assert.h>
-#include <iostream>
 #include <unistd.h>
 
-#define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
-#define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
-
-static void trimlist(QStringList *list) {
-    for (int n = 0; n < list->count(); ++n) {
-        if ((*list)[n].isEmpty()) {
-            list->removeAt(n);
-            --n; // Adjust position
-        }
-    }
+static QString toQString(const rust::String &s) {
+    return QString::fromUtf8(s.data(), (qsizetype)s.size());
 }
 
-static QStringList expandSpecs(const QStringList &l, int peerCount) {
-    if (l.count() == 1 && l[0].startsWith("ipc:") && peerCount > 1) {
-        QString base = l[0];
+static QStringList toQStringList(const rust::Vec<rust::String> &v) {
+    QStringList out;
+    for (const rust::String &s : v)
+        out += toQString(s);
 
-        QStringList out;
-        for (int i = 0; i < peerCount; ++i)
-            out += base + QString("-%1").arg(i);
-
-        return out;
-    }
-
-    return l;
-}
-
-static QString firstSpec(const QString &s, int peerCount) {
-    if (s.startsWith("ipc:") && peerCount > 1)
-        return s + "-0";
-
-    return s;
+    return out;
 }
 
 static int runLoop(const QString &logFile, const HandlerEngine::Configuration &config) {
@@ -154,189 +129,56 @@ static int runLoop(const QString &logFile, const HandlerEngine::Configuration &c
     return exitCode.value();
 }
 
-extern "C" {
+namespace ffi {
 
-int handler_init(const ffi::HandlerCliArgs *argsFfi) {
+int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     HandlerArgsData args(argsFfi);
-
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
-    {
-        QFile file(args.configFile);
-        if (!file.open(QIODevice::ReadOnly)) {
-            log_error("failed to open config file: %s", qPrintable(args.configFile));
-            return 1;
-        }
-    }
-
-    Settings settings(args.configFile);
-    if (!args.ipcPrefix.isEmpty())
-        settings.setIpcPrefix(args.ipcPrefix);
-    if (args.portOffset != -1)
-        settings.setPortOffset(args.portOffset);
-
-    QStringList services = settings.value("runner/services").toStringList();
-
-    QStringList connmgr_in_stream_specs =
-        settings.value("proxy/connmgr_in_stream_specs").toStringList();
-    trimlist(&connmgr_in_stream_specs);
-    QStringList connmgr_out_specs = settings.value("proxy/connmgr_out_specs").toStringList();
-    trimlist(&connmgr_out_specs);
-    QStringList condure_in_stream_specs =
-        settings.value("proxy/condure_in_stream_specs").toStringList();
-    trimlist(&condure_in_stream_specs);
-    connmgr_in_stream_specs += condure_in_stream_specs;
-    QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
-    trimlist(&condure_out_specs);
-    connmgr_out_specs += condure_out_specs;
-    int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
-    QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
-    trimlist(&m2a_in_stream_specs);
-    QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
-    trimlist(&m2a_out_specs);
-    QStringList intreq_out_specs = settings.value("handler/proxy_intreq_out_specs").toStringList();
-    trimlist(&intreq_out_specs);
-    QStringList intreq_out_stream_specs =
-        settings.value("handler/proxy_intreq_out_stream_specs").toStringList();
-    trimlist(&intreq_out_stream_specs);
-    QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
-    trimlist(&intreq_in_specs);
-    QStringList proxy_inspect_specs = settings.value("handler/proxy_inspect_specs").toStringList();
-    trimlist(&proxy_inspect_specs);
-    QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
-    if (!proxy_inspect_spec.isEmpty())
-        proxy_inspect_specs += proxy_inspect_spec;
-    QStringList proxy_accept_specs = settings.value("handler/proxy_accept_specs").toStringList();
-    trimlist(&proxy_accept_specs);
-    QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
-    if (!proxy_accept_spec.isEmpty())
-        proxy_accept_specs += proxy_accept_spec;
-    QStringList proxy_retry_out_specs =
-        settings.value("handler/proxy_retry_out_specs").toStringList();
-    trimlist(&proxy_retry_out_specs);
-    QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
-    if (!proxy_retry_out_spec.isEmpty())
-        proxy_retry_out_specs += proxy_retry_out_spec;
-    QStringList ws_control_init_specs =
-        settings.value("handler/proxy_ws_control_init_specs").toStringList();
-    trimlist(&ws_control_init_specs);
-    QStringList ws_control_stream_specs =
-        settings.value("handler/proxy_ws_control_stream_specs").toStringList();
-    trimlist(&ws_control_stream_specs);
-    QString stats_spec = settings.value("handler/stats_spec").toString();
-    QString command_spec = settings.value("handler/command_spec").toString();
-    QString state_spec = settings.value("handler/state_spec").toString();
-    QStringList proxy_stats_specs = settings.value("handler/proxy_stats_specs").toStringList();
-    trimlist(&proxy_stats_specs);
-    QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
-    if (!proxy_stats_spec.isEmpty())
-        proxy_stats_specs += proxy_stats_spec;
-    QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
-    QString push_in_spec = settings.value("handler/push_in_spec").toString();
-    QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
-    trimlist(&push_in_sub_specs);
-    QString push_in_sub_spec = settings.value("handler/push_in_sub_spec").toString();
-    if (!push_in_sub_spec.isEmpty())
-        push_in_sub_specs += push_in_sub_spec;
-    bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
-    QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
-    int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
-    int push_in_http_max_headers_size =
-        settings.value("handler/push_in_http_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE)
-            .toInt();
-    int push_in_http_max_body_size =
-        settings.value("handler/push_in_http_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
-    bool ok;
-    int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
-    bool shareAll = settings.value("handler/share_all").toBool();
-    int messageRate = settings.value("handler/message_rate", -1).toInt();
-    int messageHwm = settings.value("handler/message_hwm", -1).toInt();
-    int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
-    int messageWait = settings.value("handler/message_wait", 5000).toInt();
-    int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
-    bool updateOnFirstSubscription =
-        settings.value("handler/update_on_first_subscription", true).toBool();
-    int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
-    int connectionSubscriptionMax =
-        settings.value("handler/connection_subscription_max", 20).toInt();
-    int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
-    int statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
-    int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
-    int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
-    int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
-    QString statsFormat = settings.value("handler/stats_format").toString();
-    QString prometheusPort = settings.value("handler/prometheus_port").toString();
-    QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
-
-    if (m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty()) {
-        log_error("must set m2a_in_stream_specs and m2a_out_specs");
-        return 1;
-    }
-
-    if (proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() ||
-        proxy_retry_out_specs.isEmpty()) {
-        log_error("must set proxy_inspect_specs, proxy_accept_specs, and "
-                  "proxy_retry_out_specs");
-        return 1;
-    }
-
-    if (!push_in_http_addr.isEmpty() && QHostAddress(push_in_http_addr).isNull()) {
-        log_error("invalid push_in_http_addr: %s", qPrintable(push_in_http_addr));
-        return 1;
-    }
 
     HandlerEngine::Configuration config;
     config.appVersion = Config::get().version;
     config.instanceId = "handler_" + QByteArray::number(getpid());
-    if (!services.contains("mongrel2") &&
-        (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty())) {
-        config.serverInStreamSpecs = connmgr_in_stream_specs;
-        config.serverOutSpecs = connmgr_out_specs;
-    } else {
-        config.serverInStreamSpecs = m2a_in_stream_specs;
-        config.serverOutSpecs = m2a_out_specs;
-    }
-    config.clientOutSpecs = expandSpecs(intreq_out_specs, proxyWorkerCount);
-    config.clientOutStreamSpecs = expandSpecs(intreq_out_stream_specs, proxyWorkerCount);
-    config.clientInSpecs = expandSpecs(intreq_in_specs, proxyWorkerCount);
-    config.inspectSpecs = expandSpecs(proxy_inspect_specs, proxyWorkerCount);
-    config.acceptSpecs = expandSpecs(proxy_accept_specs, proxyWorkerCount);
-    config.retryOutSpecs = expandSpecs(proxy_retry_out_specs, proxyWorkerCount);
-    config.wsControlInitSpecs = expandSpecs(ws_control_init_specs, proxyWorkerCount);
-    config.wsControlStreamSpecs = expandSpecs(ws_control_stream_specs, proxyWorkerCount);
-    config.statsSpec = stats_spec;
-    config.commandSpec = command_spec;
-    config.stateSpec = state_spec;
-    config.proxyStatsSpecs = expandSpecs(proxy_stats_specs, proxyWorkerCount);
-    config.proxyCommandSpec = firstSpec(proxy_command_spec, proxyWorkerCount);
-    config.pushInSpec = push_in_spec;
-    config.pushInSubSpecs = push_in_sub_specs;
-    config.pushInSubConnect = push_in_sub_connect;
-    if (!services.contains("api")) {
-        // Only serve the API here if the api component is not enabled
-        config.pushInHttpAddr = QHostAddress(push_in_http_addr);
-        config.pushInHttpPort = push_in_http_port;
-    }
-    config.pushInHttpMaxHeadersSize = push_in_http_max_headers_size;
-    config.pushInHttpMaxBodySize = push_in_http_max_body_size;
-    config.ipcFileMode = ipcFileMode;
-    config.shareAll = shareAll;
-    config.messageRate = messageRate;
-    config.messageHwm = messageHwm;
-    config.messageBlockSize = messageBlockSize;
-    config.messageWait = messageWait;
-    config.idCacheTtl = idCacheTtl;
-    config.updateOnFirstSubscription = updateOnFirstSubscription;
-    config.connectionsMax = clientMaxconn;
-    config.connectionSubscriptionMax = connectionSubscriptionMax;
-    config.subscriptionLinger = subscriptionLinger;
-    config.statsConnectionSend = statsConnectionSend;
-    config.statsConnectionTtl = statsConnectionTtl;
-    config.statsSubscriptionTtl = statsSubscriptionTtl;
-    config.statsReportInterval = statsReportInterval;
-    config.statsFormat = statsFormat;
-    config.prometheusPort = prometheusPort;
-    config.prometheusPrefix = prometheusPrefix;
+    config.serverInStreamSpecs = toQStringList(s.server_in_stream_specs);
+    config.serverOutSpecs = toQStringList(s.server_out_specs);
+    config.clientOutSpecs = toQStringList(s.client_out_specs);
+    config.clientOutStreamSpecs = toQStringList(s.client_out_stream_specs);
+    config.clientInSpecs = toQStringList(s.client_in_specs);
+    config.inspectSpecs = toQStringList(s.inspect_specs);
+    config.acceptSpecs = toQStringList(s.accept_specs);
+    config.retryOutSpecs = toQStringList(s.retry_out_specs);
+    config.wsControlInitSpecs = toQStringList(s.ws_control_init_specs);
+    config.wsControlStreamSpecs = toQStringList(s.ws_control_stream_specs);
+    config.statsSpec = toQString(s.stats_spec);
+    config.commandSpec = toQString(s.command_spec);
+    config.stateSpec = toQString(s.state_spec);
+    config.proxyStatsSpecs = toQStringList(s.proxy_stats_specs);
+    config.proxyCommandSpec = toQString(s.proxy_command_spec);
+    config.pushInSpec = toQString(s.push_in_spec);
+    config.pushInSubSpecs = toQStringList(s.push_in_sub_specs);
+    config.pushInSubConnect = s.push_in_sub_connect;
+    config.pushInHttpAddr = QHostAddress(toQString(s.push_in_http_addr));
+    config.pushInHttpPort = s.push_in_http_port;
+    config.pushInHttpMaxHeadersSize = s.push_in_http_max_headers_size;
+    config.pushInHttpMaxBodySize = s.push_in_http_max_body_size;
+    config.ipcFileMode = s.ipc_file_mode;
+    config.shareAll = s.share_all;
+    config.messageRate = s.message_rate;
+    config.messageHwm = s.message_hwm;
+    config.messageBlockSize = s.message_block_size;
+    config.messageWait = s.message_wait;
+    config.idCacheTtl = s.id_cache_ttl;
+    config.updateOnFirstSubscription = s.update_on_first_subscription;
+    config.connectionsMax = s.connections_max;
+    config.connectionSubscriptionMax = s.connection_subscription_max;
+    config.subscriptionLinger = s.subscription_linger;
+    config.statsConnectionSend = s.stats_connection_send;
+    config.statsConnectionTtl = s.stats_connection_ttl;
+    config.statsSubscriptionTtl = s.stats_subscription_ttl;
+    config.statsReportInterval = s.stats_report_interval;
+    config.statsFormat = toQString(s.stats_format);
+    config.prometheusPort = toQString(s.prometheus_port);
+    config.prometheusPrefix = toQString(s.prometheus_prefix);
 
     return runLoop(args.logFile, config);
 }
-}
+
+} // namespace ffi

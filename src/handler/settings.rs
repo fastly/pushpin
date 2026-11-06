@@ -15,10 +15,68 @@
  */
 
 use crate::core::settings::{CommonSettings, Settings, SettingsError};
+use std::convert::TryFrom;
 use std::net::IpAddr;
 
 const DEFAULT_HTTP_MAX_HEADERS_SIZE: u32 = 10000;
 const DEFAULT_HTTP_MAX_BODY_SIZE: u32 = 1000000;
+
+/// cbindgen:ignore
+#[allow(clippy::missing_safety_doc)]
+#[cxx::bridge(namespace = "ffi")]
+pub mod ffi {
+    // -1 or empty means unset
+    struct HandlerSettings {
+        server_in_stream_specs: Vec<String>,
+        server_out_specs: Vec<String>,
+        client_out_specs: Vec<String>,
+        client_out_stream_specs: Vec<String>,
+        client_in_specs: Vec<String>,
+        inspect_specs: Vec<String>,
+        accept_specs: Vec<String>,
+        retry_out_specs: Vec<String>,
+        ws_control_init_specs: Vec<String>,
+        ws_control_stream_specs: Vec<String>,
+        stats_spec: String,
+        command_spec: String,
+        state_spec: String,
+        proxy_stats_specs: Vec<String>,
+        proxy_command_spec: String,
+        push_in_spec: String,
+        push_in_sub_specs: Vec<String>,
+        push_in_sub_connect: bool,
+        push_in_http_addr: String,
+        push_in_http_port: i32,
+        push_in_http_max_headers_size: i32,
+        push_in_http_max_body_size: i32,
+        ipc_file_mode: i32,
+        share_all: bool,
+        message_rate: i32,
+        message_hwm: i32,
+        message_block_size: i32,
+        message_wait: i32,
+        id_cache_ttl: i32,
+        update_on_first_subscription: bool,
+        connections_max: i32,
+        connection_subscription_max: i32,
+        subscription_linger: i32,
+        stats_connection_send: bool,
+        stats_connection_ttl: i32,
+        stats_subscription_ttl: i32,
+        stats_report_interval: i32,
+        stats_format: String,
+        prometheus_port: String,
+        prometheus_prefix: String,
+    }
+
+    unsafe extern "C++" {
+        include!("pushpin/src/handler/handlerinit.h");
+
+        type HandlerCliArgs;
+
+        unsafe fn handler_init(args: *const HandlerCliArgs, settings: &HandlerSettings) -> i32;
+    }
+}
 
 pub struct HandlerSettings {
     pub common: CommonSettings,
@@ -207,6 +265,59 @@ impl HandlerSettings {
             prometheus_prefix: settings.string("handler/prometheus_prefix")?,
             common,
         })
+    }
+}
+
+impl HandlerSettings {
+    pub fn to_ffi(&self) -> ffi::HandlerSettings {
+        let int = |x: u32| i32::try_from(x).unwrap_or(i32::MAX);
+        let opt = |x: Option<u32>| x.map_or(-1, int);
+        let string = |s: &Option<String>| s.clone().unwrap_or_default();
+
+        ffi::HandlerSettings {
+            server_in_stream_specs: self.server_in_stream_specs.clone(),
+            server_out_specs: self.server_out_specs.clone(),
+            client_out_specs: self.client_out_specs.clone(),
+            client_out_stream_specs: self.client_out_stream_specs.clone(),
+            client_in_specs: self.client_in_specs.clone(),
+            inspect_specs: self.inspect_specs.clone(),
+            accept_specs: self.accept_specs.clone(),
+            retry_out_specs: self.retry_out_specs.clone(),
+            ws_control_init_specs: self.ws_control_init_specs.clone(),
+            ws_control_stream_specs: self.ws_control_stream_specs.clone(),
+            stats_spec: string(&self.stats_spec),
+            command_spec: string(&self.command_spec),
+            state_spec: string(&self.state_spec),
+            proxy_stats_specs: self.proxy_stats_specs.clone(),
+            proxy_command_spec: string(&self.proxy_command_spec),
+            push_in_spec: string(&self.push_in_spec),
+            push_in_sub_specs: self.push_in_sub_specs.clone(),
+            push_in_sub_connect: self.push_in_sub_connect,
+            push_in_http_addr: self
+                .push_in_http_addr
+                .map_or_else(String::new, |a| a.to_string()),
+            push_in_http_port: self.push_in_http_port.map_or(-1, i32::from),
+            push_in_http_max_headers_size: int(self.push_in_http_max_headers_size),
+            push_in_http_max_body_size: int(self.push_in_http_max_body_size),
+            ipc_file_mode: opt(self.ipc_file_mode),
+            share_all: self.share_all,
+            message_rate: opt(self.message_rate),
+            message_hwm: opt(self.message_hwm),
+            message_block_size: opt(self.message_block_size),
+            message_wait: int(self.message_wait),
+            id_cache_ttl: int(self.id_cache_ttl),
+            update_on_first_subscription: self.update_on_first_subscription,
+            connections_max: int(self.common.client_maxconn),
+            connection_subscription_max: int(self.connection_subscription_max),
+            subscription_linger: int(self.subscription_linger),
+            stats_connection_send: self.common.stats_connection_send,
+            stats_connection_ttl: int(self.common.stats_connection_ttl),
+            stats_subscription_ttl: int(self.stats_subscription_ttl),
+            stats_report_interval: int(self.stats_report_interval),
+            stats_format: string(&self.stats_format),
+            prometheus_port: string(&self.prometheus_port),
+            prometheus_prefix: string(&self.prometheus_prefix),
+        }
     }
 }
 
