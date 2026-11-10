@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -57,6 +57,7 @@ pub struct Settings {
     rundir: String,
     ipc_prefix: String,
     port_offset: i32,
+    config_dir: PathBuf,
 }
 
 fn invalid_value(key: &str, value: &str, expected: &'static str) -> SettingsError {
@@ -144,6 +145,7 @@ impl Settings {
             rundir,
             ipc_prefix,
             port_offset,
+            config_dir: path.parent().unwrap_or(Path::new("")).to_path_buf(),
         };
 
         let include = match settings.values.get("global/include").map(String::as_str) {
@@ -158,7 +160,7 @@ impl Settings {
 
         if !include.is_empty() {
             // If include is a relative path, then use it relative to the config file location
-            let include = path.parent().unwrap_or(Path::new("")).join(include);
+            let include = settings.config_dir.join(include);
 
             for (key, value) in read_file(&include)? {
                 settings.values.entry(key).or_insert(value);
@@ -170,6 +172,10 @@ impl Settings {
 
     pub fn get(&self, key: &str) -> Option<&str> {
         self.values.get(&key.to_lowercase()).map(String::as_str)
+    }
+
+    pub fn config_dir(&self) -> &Path {
+        &self.config_dir
     }
 
     pub fn set_ipc_prefix(&mut self, ipc_prefix: &str) {
@@ -481,6 +487,13 @@ mod tests {
     }
 
     // Include
+
+    #[test]
+    fn config_dir_is_config_file_folder() {
+        let path = write_conf("config_dir", "pushpin.conf", "[proxy]\nworkers=1\n");
+        let settings = Settings::load(&path).unwrap();
+        assert_eq!(settings.config_dir(), path.parent().unwrap());
+    }
 
     #[test]
     fn example_config_loads_internal_conf() {
