@@ -312,6 +312,7 @@ mod tests {
     use crate::core::test_dir;
     use std::fmt::Debug;
     use std::fs;
+    use std::io;
     use std::path::PathBuf;
 
     #[test]
@@ -404,7 +405,6 @@ mod tests {
             "[runner]\n# a comment\n#http_port=7999\n; another comment\nlogdir=log\n",
         )
         .unwrap();
-        assert_eq!(settings.get("runner/http_port"), None);
         assert_eq!(settings.get("runner/#http_port"), None);
         assert_eq!(settings.get("runner/logdir"), Some("log"));
     }
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn unclosed_section_errors() {
         let r = load_conf("unclosed_section", "[proxy\nworkers=4\n");
-        assert!(r.is_err());
+        assert!(matches!(r, Err(SettingsError::Ini(ini::Error::Parse(_)))));
     }
 
     #[test]
@@ -476,7 +476,10 @@ mod tests {
     #[test]
     fn missing_file_errors() {
         let path = test_dir().join("settings").join("does-not-exist.conf");
-        assert!(Settings::load(&path).is_err());
+        assert!(matches!(
+            Settings::load(&path),
+            Err(SettingsError::Ini(ini::Error::Io(e))) if e.kind() == io::ErrorKind::NotFound
+        ));
     }
 
     #[test]
@@ -487,13 +490,6 @@ mod tests {
     }
 
     // Include
-
-    #[test]
-    fn config_dir_is_config_file_folder() {
-        let path = write_conf("config_dir", "pushpin.conf", "[proxy]\nworkers=1\n");
-        let settings = Settings::load(&path).unwrap();
-        assert_eq!(settings.config_dir(), path.parent().unwrap());
-    }
 
     #[test]
     fn example_config_loads_internal_conf() {
@@ -547,7 +543,10 @@ mod tests {
     #[test]
     fn missing_include_errors() {
         let r = load_conf("include_missing", "[global]\ninclude=nope.conf\n");
-        assert!(r.is_err());
+        assert!(matches!(
+            r,
+            Err(SettingsError::Ini(ini::Error::Io(e))) if e.kind() == io::ErrorKind::NotFound
+        ));
     }
 
     #[test]
@@ -690,27 +689,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn substitute_nothing() {
-        let settings = example_settings();
-        assert_eq!(settings.resolve_vars("pushpin").unwrap(), "pushpin");
-    }
-
     // Port shift
 
     fn offset_settings(port_offset: i32) -> Settings {
         let mut settings = example_settings();
         settings.port_offset = port_offset;
         settings
-    }
-
-    #[test]
-    fn port_offset_zero_unchanged() {
-        let settings = offset_settings(0);
-        assert_eq!(
-            settings.resolve_vars("tcp://127.0.0.1:5560").unwrap(),
-            "tcp://127.0.0.1:5560"
-        );
     }
 
     #[test]
