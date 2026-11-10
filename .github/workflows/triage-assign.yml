@@ -1,0 +1,70 @@
+name: Triage assign
+
+# Gives every new issue and outside PR a single owner from the core team. See fastly/fanout#42 for the why.
+
+on:
+  issues:
+    types: [opened]
+
+  # pull_request_target so this works on PRs from forks; plain pull_request only gets a
+  # read-only token there. This is safe because we never check out or run PR code, we
+  # only call the assign API.
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    env:
+      # One GitHub username per line. Edit this to change the rotation; drop yourself for long PTO.
+      # Everyone here needs write access to the repo or GitHub ignores the assignment.
+      ROSTER: |
+        jkarneges
+        clintjedwards
+        serra-fastly
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            // Env values are plain strings, so split the block above back into a list.
+            // Trim and drop blanks so stray whitespace or the trailing newline can't become a "user".
+            const roster = process.env.ROSTER.split("\n")
+              .map((name) => name.trim())
+              .filter((name) => name.length > 0);
+
+            if (roster.length === 0) {
+              core.setFailed("ROSTER is empty; nobody to assign to");
+              return;
+            }
+
+            const item = context.payload.issue ?? context.payload.pull_request;
+            const author = item.user.login;
+
+            // Team members handle their own items. Bot items still get an owner so they aren't ignored.
+            if (roster.includes(author)) {
+              core.info(`Skipping #${item.number}: opened by ${author}`);
+              return;
+            }
+
+            // Someone already picked an owner when it was opened; don't override them.
+            if (item.assignees.length > 0) {
+              core.info(`Skipping #${item.number}: already assigned`);
+              return;
+            }
+
+            // Stateless rotation. Issues and PRs share numbers so it isn't a strict
+            // A, B, C order, but it evens out over time and needs no lookups.
+            const assignee = roster[item.number % roster.length];
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: item.number,
+              assignees: [assignee],
+            });
+
+            core.info(`Assigned #${item.number} to ${assignee}`);
