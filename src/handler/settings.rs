@@ -557,6 +557,58 @@ mod tests {
     }
 
     #[test]
+    fn common_settings_read_from_config() {
+        let s = load_conf(
+            "common",
+            &format!(
+                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n"
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(s.common.client_maxconn, 100);
+        assert!(!s.common.stats_connection_send);
+        assert_eq!(s.common.stats_connection_ttl, 30);
+    }
+
+    #[test]
+    fn to_ffi_unset_values() {
+        let f = load_conf("ffi_unset", GLOBAL).unwrap().to_ffi();
+
+        assert_eq!(f.push_in_http_addr, "");
+        assert_eq!(f.push_in_http_port, -1);
+        assert_eq!(f.ipc_file_mode, -1);
+        assert_eq!(f.message_rate, -1);
+        assert_eq!(f.message_hwm, -1);
+        assert_eq!(f.message_block_size, -1);
+        assert_eq!(f.state_spec, "");
+        assert_eq!(f.stats_format, "");
+    }
+
+    #[test]
+    fn to_ffi_set_values() {
+        let f = load_conf(
+            "ffi_set",
+            &format!(
+                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nmessage_wait=3000000000\nstats_format=json\n"
+            ),
+        )
+        .unwrap()
+        .to_ffi();
+
+        assert_eq!(f.push_in_http_addr, "127.0.0.1");
+        assert_eq!(f.push_in_http_port, 5561);
+        assert_eq!(f.ipc_file_mode, 0o770);
+        assert_eq!(f.message_rate, 2500);
+        assert_eq!(f.message_wait, i32::MAX);
+        assert_eq!(f.stats_format, "json");
+        assert_eq!(f.connections_max, 100);
+        assert!(!f.stats_connection_send);
+        assert_eq!(f.stats_connection_ttl, 30);
+        assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
+    }
+
+    #[test]
     fn ipc_file_mode_octal() {
         let s = load_conf("mode", &format!("{GLOBAL}[handler]\nipc_file_mode=777\n")).unwrap();
         assert_eq!(s.ipc_file_mode, Some(0o777));
