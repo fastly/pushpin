@@ -106,7 +106,6 @@ test-log = "0.2"
 
 [build-dependencies]
 pkg-config = "0.3"
-time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
 cbindgen = "0.27"
 
 [[bench]]
