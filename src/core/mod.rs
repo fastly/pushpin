@@ -35,6 +35,7 @@ pub mod net;
 pub mod prometheus;
 pub mod reactor;
 pub mod select;
+pub mod settings;
 pub mod shuffle;
 pub mod simplehttpserver;
 pub mod statsmanager;
