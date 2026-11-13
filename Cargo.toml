@@ -35,6 +35,7 @@ preserve-symlinks = true
 maintainer-scripts = "packaging/debian/debian"
 systemd-units = {}
 depends = "$auto, adduser, lsb-base (>= 3.0-6), ucf"
+recommends = "ca-certificates"
 extended-description = """\
 Pushpin is a reverse proxy server that makes it easy to implement
 WebSocket, HTTP streaming, and HTTP long-polling services. It communicates
