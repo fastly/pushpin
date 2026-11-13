@@ -33,7 +33,7 @@ LABEL org.opencontainers.image.maintainer="Fastly OSS <oss@fastly.com>"
 
 RUN \
   apt-get update && \
-  apt-get install -y --no-install-recommends libqt6core6 libqt6network6 libzmq5 && \
+  apt-get install -y --no-install-recommends libqt6core6 libqt6network6 libzmq5 ca-certificates && \
   apt-get -y autoremove && \
   apt-get -y clean && \
   rm -rf /var/lib/apt/lists/*
