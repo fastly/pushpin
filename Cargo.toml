@@ -73,6 +73,7 @@ arrayvec = "0.7"
 base64 = "0.13"
 clap = { version = "4.6", features = ["cargo", "string", "wrap_help", "derive"] }
 config = { version = "=0.15.25", default-features = false, features = ["ini"] }
+cxx = "=1.0.198"
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "9"
@@ -108,6 +109,7 @@ test-log = "0.2"
 [build-dependencies]
 pkg-config = "0.3"
 cbindgen = "0.27"
+cxx-build = "=1.0.198"
 
 [[bench]]
 name = "memorypool"
