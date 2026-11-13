@@ -1,0 +1,66 @@
+name: Docker test
+
+# Builds the Docker image and runs the smoke test against it on any PR that
+# touches the image.
+#
+# The image is built from the released tarball for the version in
+# docker/compose.yaml, not from the PR's source. That's on purpose: this is
+# testing the packaging, and the release process bumps compose.yaml in a PR
+# before publishing, so each new version gets tested here first.
+
+on:
+  pull_request:
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-test.yml'
+      - '.github/workflows/docker-publish.yml'
+
+jobs:
+  smoke-test:
+    # Native runners for each platform, same as the publish workflow, so we
+    # test both architectures without emulation.
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    name: Smoke test ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from compose.yaml
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^ *VERSION: *//p' docker/compose.yaml)"
+
+          if [ -z "$VERSION" ]; then
+            echo "could not find VERSION in docker/compose.yaml" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.platform }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          tags: pushpin-smoke-test:ci
+
+      - name: Smoke test
+        run: ./docker/test/smoke.sh pushpin-smoke-test:ci

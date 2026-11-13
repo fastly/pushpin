@@ -78,7 +78,29 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & push ${{ matrix.platform }}
+      # Build and load the image locally first so we can smoke test it before
+      # anything gets pushed. A broken image never makes it to the registry.
+      - name: Build ${{ matrix.platform }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          build-args: |
+            VERSION=${{ env.BUILD_VERSION }}
+          tags: ${{ steps.archtags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Smoke test ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          IMAGE="$(printf '%s\n' "${{ steps.archtags.outputs.tags }}" | head -n 1)"
+          ./docker/test/smoke.sh "$IMAGE"
+
+      # Same inputs as the build step, so every layer comes from the builder's
+      # cache and this pushes what we just tested instead of building again.
+      - name: Push ${{ matrix.platform }}
         uses: docker/build-push-action@v6
         with:
           context: ./docker
