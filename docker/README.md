@@ -5,7 +5,7 @@ This repository contains **Dockerfile** of [Pushpin](http://pushpin.org/) for [D
 
 ## Base Docker Image
 
-* [ubuntu:24.10](https://hub.docker.com/_/ubuntu/)
+* [ubuntu:26.04](https://hub.docker.com/_/ubuntu/)
 
 ## Installation
 
@@ -24,6 +24,16 @@ Or you can build with `docker` and manually specify the versions:
 ```sh
 docker build --build-arg VERSION={SOURCE_VERSION} -t fanout/pushpin:{IMAGE_VERSION} .
 ```
+
+### Testing an image
+
+`test/smoke.sh` runs a few quick checks against any image: that Pushpin starts, that a published message reaches an open GRIP stream, and that Pushpin can proxy to an HTTPS backend with certificate verification on. The last check needs internet access.
+
+```sh
+./test/smoke.sh fanout/pushpin:{IMAGE_VERSION}
+```
+
+CI runs this on every PR that touches `docker/`, and the publish workflow runs it before pushing an image.
 
 ## Usage
 
