@@ -96,9 +96,9 @@ public:
         initSock->setShutdownWaitTime(0);
 
         foreach (const QString &spec, initSpecs) {
-            QString errorMessage;
+            CowString errorMessage;
             if (!ZUtil::setupSocket(initSock.get(), spec, true, ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage));
+                log_error("%s", qPrintable(errorMessage.asQString()));
                 return false;
             }
         }
@@ -117,9 +117,9 @@ public:
         streamSock->setShutdownWaitTime(0);
 
         foreach (const QString &spec, streamSpecs) {
-            QString errorMessage;
+            CowString errorMessage;
             if (!ZUtil::setupSocket(streamSock.get(), spec, true, ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage));
+                log_error("%s", qPrintable(errorMessage.asQString()));
                 return false;
             }
         }

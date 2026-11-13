@@ -28,14 +28,15 @@
 
 namespace ZUtil {
 
-bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage) {
-    if (!sock->bind(spec)) {
+bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString *errorMessage) {
+    const QString &qspec = spec.asQString();
+    if (!sock->bind(qspec)) {
         if (errorMessage)
-            *errorMessage = QString("unable to bind to %1").arg(spec);
+            *errorMessage = QString("unable to bind to %1").arg(qspec);
         return false;
     }
 
-    if (spec.startsWith("ipc://") && ipcFileMode != -1) {
+    if (qspec.startsWith("ipc://") && ipcFileMode != -1) {
         QFile::Permissions perms;
         if (ipcFileMode & 0400)
             perms |= QFile::ReadUser;
@@ -55,21 +56,21 @@ bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *er
             perms |= QFile::WriteOther;
         if (ipcFileMode & 0001)
             perms |= QFile::ExeOther;
-        if (!QFile::setPermissions(spec.mid(6), perms)) {
+        if (!QFile::setPermissions(qspec.mid(6), perms)) {
             if (errorMessage)
-                *errorMessage = QString("unable to set permissions on %1").arg(spec);
+                *errorMessage = QString("unable to set permissions on %1").arg(qspec);
             return false;
         }
     }
 
     if (errorMessage)
-        *errorMessage = QString();
+        *errorMessage = CowString();
 
     return true;
 }
 
 bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode,
-                 QString *errorMessage) {
+                 CowString *errorMessage) {
     if (bind) {
         if (!bindSpec(sock, specs[0], ipcFileMode, errorMessage))
             return false;
@@ -79,14 +80,14 @@ bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFi
     }
 
     if (errorMessage)
-        *errorMessage = QString();
+        *errorMessage = CowString();
 
     return true;
 }
 
-bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode,
-                 QString *errorMessage) {
-    return setupSocket(sock, QStringList() << spec, bind, ipcFileMode, errorMessage);
+bool setupSocket(ZmqSocket *sock, const CowString &spec, bool bind, int ipcFileMode,
+                 CowString *errorMessage) {
+    return setupSocket(sock, QStringList() << spec.asQString(), bind, ipcFileMode, errorMessage);
 }
 
 } // namespace ZUtil

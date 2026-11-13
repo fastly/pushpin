@@ -398,9 +398,9 @@ public:
         sock->setWriteQueueEnabled(false);
         sock->setShutdownWaitTime(0);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(sock.get(), spec, true, ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 

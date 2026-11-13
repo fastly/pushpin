@@ -1044,7 +1044,7 @@ private:
     }
 
     void requestNextLink() {
-        log_debug("httpsession: next: %s", qPrintable(nextUri.toString()));
+        log_debug("httpsession: next: %s", qPrintable(nextUri.toString().asQString()));
 
         if (!outZhttp) {
             errorMessage = "Instruct contained link, but handler not configured for "

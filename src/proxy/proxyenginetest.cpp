@@ -350,10 +350,10 @@ private:
         zresp.code = 200;
         zresp.reason = "OK";
 
-        QByteArray encPath = zreq.uri.path(CowUrl::FullyEncoded).toUtf8();
+        QByteArray encPath = zreq.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         UrlQuery query(zreq.uri.query());
-        QString hold = query.queryItemValue("hold");
+        QString hold = query.queryItemValue("hold").asQString();
         bool bodyInstruct = (query.queryItemValue("body-instruct") == "true");
         bool large = (query.queryItemValue("large") == "true");
 

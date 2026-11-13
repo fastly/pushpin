@@ -201,7 +201,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
     }
 
     if (useXForwardedProto || useXForwardedProtocol) {
-        QString scheme = requestData->uri.scheme();
+        QString scheme = requestData->uri.scheme().asQString();
         if (scheme == "https" || scheme == "wss") {
             QByteArray schemeVal = scheme.toUtf8();
 
@@ -242,7 +242,7 @@ void applyHost(CowUrl *url, const QString &host) {
 }
 
 void applyHostHeader(HttpHeaders *headers, const CowUrl &uri) {
-    QByteArray hostHeader = uri.host().toUtf8();
+    QByteArray hostHeader = uri.host().toUtf8().asQByteArray();
     if (uri.port() != -1)
         hostHeader += ':' + QByteArray::number(uri.port());
 

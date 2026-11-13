@@ -208,8 +208,8 @@ public:
                 // Determine session info
 
                 auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(
-                    stateClient, requestData.uri.host().toUtf8(),
-                    requestData.uri.path(CowUrl::FullyEncoded).toUtf8()));
+                    stateClient, requestData.uri.host().toUtf8().asQByteArray(),
+                    requestData.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray()));
 
                 // Safe to not track, since d can't outlive this
                 d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished,
@@ -288,7 +288,9 @@ private:
 
                 if (!rule.jsonParam.isEmpty()) {
                     UrlQuery tmp(QString::fromUtf8(requestData.body.asQByteArray()));
-                    jsonData = tmp.queryItemValue(rule.jsonParam, CowUrl::FullyDecoded).toUtf8();
+                    jsonData = tmp.queryItemValue(rule.jsonParam, CowUrl::FullyDecoded)
+                                   .toUtf8()
+                                   .asQByteArray();
                 } else {
                     jsonData = requestData.body.asQByteArray();
                 }
@@ -676,7 +678,7 @@ public:
         foreach (const HttpHeaderParameters &params, ruleHeaders) {
             if (params.contains("path-prefix") && params.contains("sid-ptr")) {
                 DetectRule rule;
-                rule.domain = requestData.uri.host();
+                rule.domain = requestData.uri.host().asQString();
                 rule.pathPrefix = params.get("path-prefix").asQByteArray();
                 rule.sidPtr = QString::fromUtf8(params.get("sid-ptr").asQByteArray());
                 if (params.contains("json-param"))
@@ -1264,10 +1266,10 @@ public:
             inPullSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
             inPullSock->setHwm(DEFAULT_HWM);
 
-            QString errorMessage;
+            CowString errorMessage;
             if (!ZUtil::setupSocket(inPullSock.get(), config.pushInSpec, true, config.ipcFileMode,
                                     &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage));
+                log_error("%s", qPrintable(errorMessage.asQString()));
                 return false;
             }
 
@@ -1283,10 +1285,10 @@ public:
             inSubSock->setSendHwm(SUB_SNDHWM);
             inSubSock->setShutdownWaitTime(0);
 
-            QString errorMessage;
+            CowString errorMessage;
             if (!ZUtil::setupSocket(inSubSock.get(), config.pushInSubSpecs,
                                     !config.pushInSubConnect, config.ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage));
+                log_error("%s", qPrintable(errorMessage.asQString()));
                 return false;
             }
 
@@ -1311,10 +1313,10 @@ public:
             retrySock->setRouterMandatoryEnabled(true);
 
             foreach (const QString &spec, config.retryOutSpecs) {
-                QString errorMessage;
+                CowString errorMessage;
                 if (!ZUtil::setupSocket(retrySock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage));
+                    log_error("%s", qPrintable(errorMessage.asQString()));
                     return false;
                 }
             }
@@ -1327,10 +1329,10 @@ public:
             wsControlInitSock->setHwm(DEFAULT_HWM);
 
             foreach (const QString &spec, config.wsControlInitSpecs) {
-                QString errorMessage;
+                CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlInitSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage));
+                    log_error("%s", qPrintable(errorMessage.asQString()));
                     return false;
                 }
             }
@@ -1348,10 +1350,10 @@ public:
             wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
             foreach (const QString &spec, config.wsControlStreamSpecs) {
-                QString errorMessage;
+                CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlStreamSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage));
+                    log_error("%s", qPrintable(errorMessage.asQString()));
                     return false;
                 }
             }
@@ -1415,10 +1417,10 @@ public:
             proxyStatsSock->subscribe("");
 
             foreach (const QString &spec, config.proxyStatsSpecs) {
-                QString errorMessage;
+                CowString errorMessage;
                 if (!ZUtil::setupSocket(proxyStatsSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage));
+                    log_error("%s", qPrintable(errorMessage.asQString()));
                     return false;
                 }
             }
@@ -2434,7 +2436,8 @@ private:
                         addSub(channel);
 
                         log_info("subscribe %s channel=%s",
-                                 qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
+                                 qPrintable(
+                                     s->requestData.uri.toString(CowUrl::FullyEncoded).asQString()),
                                  qPrintable(channel));
                     } else {
                         auto routeInfo = LogUtil::RouteInfo(s->route, s->logLevel);
@@ -2564,7 +2567,7 @@ private:
                 addSub(channel);
 
                 log_info("subscribe %s channel=%s",
-                         qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
+                         qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded).asQString()),
                          qPrintable(channel));
             } else if (item.type == WsControlPacket::Item::Ack) {
                 int reqId = item.requestId.asQByteArray().toInt();
@@ -2820,8 +2823,9 @@ private:
         stats->addSubscription(modeStr, channel, sessionsByChannel->value(channel).count());
         addSub(channel);
 
-        QString msg = QString("subscribe %1 channel=%2")
-                          .arg(hs->requestUri().toString(CowUrl::FullyEncoded), channel);
+        QString msg =
+            QString("subscribe %1 channel=%2")
+                .arg(hs->requestUri().toString(CowUrl::FullyEncoded).asQString(), channel);
         if (hs->isRetry())
             msg += " retry";
 

@@ -336,7 +336,8 @@ public:
                             continue;
 
                         if (CowUrl::fromPercentEncoding(kv.mid(0, at)) == "d") {
-                            param = CowUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
+                            param =
+                                CowUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8().asQByteArray();
                             break;
                         }
                     }
@@ -344,7 +345,7 @@ public:
             } else // GET
             {
                 UrlQuery query(_req->requestUri());
-                param = query.queryItemValue("d").toUtf8();
+                param = query.queryItemValue("d").toUtf8().asQByteArray();
             }
 
             Variant doc = Json::fromString(param);

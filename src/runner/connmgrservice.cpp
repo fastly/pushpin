@@ -72,7 +72,7 @@ ConnmgrService::ConnmgrService(const QString &name, const QString &binFile, cons
                 CowUrl url("http://" + (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0")));
                 url.setPort(p.port);
 
-                QString arg = "--listen=" + url.authority() + ",stream";
+                QString arg = "--listen=" + url.authority().asQString() + ",stream";
 
                 if (p.ssl) {
                     usingSsl = true;

@@ -153,10 +153,10 @@ public:
         client_out_sock->setHwm(OUT_HWM);
         client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(client_out_sock.get(), client_out_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -183,10 +183,10 @@ public:
         if (doProbe)
             client_out_stream_sock->setProbeRouterEnabled(true);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(client_out_stream_sock.get(), client_out_stream_specs, doBind,
                                 ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -211,10 +211,10 @@ public:
         client_in_sock->setShutdownWaitTime(0);
         client_in_sock->subscribe(instanceId + ' ');
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(client_in_sock.get(), client_in_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -241,10 +241,10 @@ public:
         client_req_sock->setHwm(OUT_HWM);
         client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(client_req_sock.get(), client_req_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -259,10 +259,10 @@ public:
 
         server_in_sock->setHwm(IN_HWM);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(server_in_sock.get(), server_in_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -284,10 +284,10 @@ public:
         server_in_stream_sock->setIdentity(instanceId);
         server_in_stream_sock->setHwm(DEFAULT_HWM);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(server_in_stream_sock.get(), server_in_stream_specs, doBind,
                                 ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -312,10 +312,10 @@ public:
         server_out_sock->setHwm(DEFAULT_HWM);
         server_out_sock->setShutdownWaitTime(SERVER_WAIT_TIME);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(server_out_sock.get(), server_out_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -753,7 +753,7 @@ public:
             q->requestReady();
         } else {
             log_debug("zhttp/zws server: rejecting unsupported scheme: %s",
-                      qPrintable(p.uri.scheme()));
+                      qPrintable(p.uri.scheme().asQString()));
             tryRespondCancel(UnknownSession, id.id, p);
             return;
         }
@@ -1181,14 +1181,14 @@ void ZhttpManager::registerKeepAlive(ZWebSocket *sock) {
 
 void ZhttpManager::unregisterKeepAlive(ZWebSocket *sock) { d->unregisterKeepAlive(sock); }
 
-int ZhttpManager::estimateRequestHeaderBytes(const QString &method, const CowUrl &uri,
+int ZhttpManager::estimateRequestHeaderBytes(const CowString &method, const CowUrl &uri,
                                              const HttpHeaders &headers) {
-    int total = method.toUtf8().length();
+    int total = method.toUtf8().size();
 
-    total += uri.path(CowUrl::FullyEncoded).length();
+    total += uri.path(CowUrl::FullyEncoded).toUtf8().size();
 
     if (uri.hasQuery())
-        total += uri.query(CowUrl::FullyEncoded).length() + 1; // +1 for question mark
+        total += uri.query(CowUrl::FullyEncoded).toUtf8().size() + 1; // +1 for question mark
 
     foreach (const HttpHeader &h, headers) {
         total += h.first.length();

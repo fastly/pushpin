@@ -366,7 +366,7 @@ public:
         logicalClientAddress = ProxyUtil::getLogicalAddress(
             requestData.headers, trustedClient ? xffTrustedRule : xffRule, inSock->peerAddress());
 
-        QString host = requestData.uri.host();
+        QString host = requestData.uri.host().asQString();
 
         route = entry;
 
@@ -384,7 +384,7 @@ public:
         if (!route.asHost.isEmpty())
             ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
-        QByteArray path = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
+        QByteArray path = requestData.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         if (route.pathRemove > 0)
             path = path.mid(route.pathRemove);
@@ -483,7 +483,7 @@ public:
                     --pathRemove;
 
                 if (pathRemove > 0)
-                    uri.setPath(uri.path(CowUrl::FullyEncoded).mid(pathRemove));
+                    uri.setPath(uri.path(CowUrl::FullyEncoded).asQString().mid(pathRemove));
             }
 
             outSock = std::make_unique<TestWebSocket>();

@@ -248,7 +248,7 @@ public:
         zresp.code = 200;
         zresp.reason = "OK";
 
-        QByteArray encPath = zreq.uri.path(CowUrl::FullyEncoded).toUtf8();
+        QByteArray encPath = zreq.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         zresp.headers += HttpHeader("Content-Type", "text/plain");
 
