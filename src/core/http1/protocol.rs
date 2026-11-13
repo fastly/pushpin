@@ -1181,9 +1181,7 @@ impl<'buf, 'headers> ServerProtocol {
         let mut close = false;
         let mut expect_100 = false;
 
-        for i in 0..req.headers.len() {
-            let h = req.headers[i];
-
+        for h in req.headers.iter() {
             if h.name.eq_ignore_ascii_case("Content-Length") {
                 let len = parse_as_int(h.value);
                 let len = match len {
@@ -1599,9 +1597,7 @@ impl ClientResponse {
         let mut keep_alive = false;
         let mut close = false;
 
-        for i in 0..resp.headers.len() {
-            let h = resp.headers[i];
-
+        for h in resp.headers.iter() {
             if h.name.eq_ignore_ascii_case("Content-Length") {
                 let len = parse_as_int(h.value);
                 let len = match len {
