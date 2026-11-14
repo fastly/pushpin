@@ -86,7 +86,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(clientSock.get(), clientSpecs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -112,7 +112,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(serverSock.get(), serverSpecs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 

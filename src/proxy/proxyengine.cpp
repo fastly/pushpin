@@ -250,7 +250,7 @@ public:
             CowString errorMessage;
             if (!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true,
                                     config.ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage.asQString()));
+                log_error("%s", cowPrintable(errorMessage));
                 return false;
             }
 
@@ -801,7 +801,7 @@ private:
             return;
         }
 
-        log_debug("IN (retry) %s %s", qPrintable(p.requestData.method.asQString()),
+        log_debug("IN (retry) %s %s", cowPrintable(p.requestData.method),
                   p.requestData.uri.toEncoded().data());
 
         InspectData idata;

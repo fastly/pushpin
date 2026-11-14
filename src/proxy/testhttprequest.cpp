@@ -66,7 +66,7 @@ public:
             return;
         }
 
-        log_debug("processing test request: %s", qPrintable(request.uri.path().asQString()));
+        log_debug("processing test request: %s", cowPrintable(request.uri.path()));
 
         QString path = request.uri.path().asQString();
         if (path.length() >= 2 && path.endsWith('/'))

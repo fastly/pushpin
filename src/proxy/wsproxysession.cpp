@@ -483,7 +483,7 @@ public:
                     --pathRemove;
 
                 if (pathRemove > 0)
-                    uri.setPath(uri.path(CowUrl::FullyEncoded).asQString().mid(pathRemove));
+                    uri.setPath(uri.path(CowUrl::FullyEncoded).mid(pathRemove));
             }
 
             outSock = std::make_unique<TestWebSocket>();
