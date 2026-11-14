@@ -37,6 +37,20 @@ public:
 
     void clear() { inner_.clear(); }
 
+    bool startsWith(const char *str) const { return inner_.startsWith(str); }
+    bool contains(const char *str) const { return inner_.contains(str); }
+    CowString mid(int position, int n = -1) const { return inner_.mid(position, n); }
+
+    CowString arg(const CowString &a) const { return inner_.arg(a.inner_); }
+    CowString arg(const CowString &a1, const CowString &a2) const {
+        return inner_.arg(a1.inner_, a2.inner_);
+    }
+
+    static CowString number(int n, int base = 10) { return QString::number(n, base); }
+    static CowString number(double n, char format = 'g', int precision = 6) {
+        return QString::number(n, format, precision);
+    }
+
     CowByteArray toUtf8() const { return inner_.toUtf8(); }
 
     static CowString fromUtf8(const CowByteArray &ba) {
@@ -49,6 +63,7 @@ public:
     friend bool operator==(const CowString &lhs, const CowString &rhs);
     friend bool operator==(const CowString &lhs, const char *const &rhs);
     friend bool operator==(const char *const &lhs, const CowString &rhs);
+    friend CowString operator+(const CowString &lhs, const CowString &rhs);
 
 private:
     QString inner_;
@@ -62,5 +77,10 @@ inline bool operator==(const char *const &lhs, const CowString &rhs) { return lh
 inline bool operator!=(const CowString &lhs, const CowString &rhs) { return !(lhs == rhs); }
 inline bool operator!=(const CowString &lhs, const char *const &rhs) { return !(lhs == rhs); }
 inline bool operator!=(const char *const &lhs, const CowString &rhs) { return !(lhs == rhs); }
+inline CowString operator+(const CowString &lhs, const CowString &rhs) {
+    return lhs.inner_ + rhs.inner_;
+}
+
+#define cowPrintable(s) (s).toUtf8().constData()
 
 #endif

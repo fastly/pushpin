@@ -56,8 +56,10 @@ static QString makeLastIdsStr(const HttpHeaders &headers) {
     foreach (const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last")) {
         if (!first)
             out += ' ';
-        out += QString("#%1=%2").arg(CowString::fromUtf8(params[0].first).asQString(),
-                                     CowString::fromUtf8(params.get("last-id")).asQString());
+        out += CowString("#%1=%2")
+                   .arg(CowString::fromUtf8(params[0].first),
+                        CowString::fromUtf8(params.get("last-id")))
+                   .asQString();
         first = false;
     }
 
@@ -142,11 +144,12 @@ void logVariantWithContent(int level, const Variant &data, const CowString &cont
 
 void logRequest(int level, const RequestData &data, const Config &config) {
     QString msg =
-        QString("%1 %2").arg(data.requestData.method.asQString(),
-                             data.requestData.uri.toString(CowUrl::FullyEncoded).asQString());
+        CowString("%1 %2")
+            .arg(data.requestData.method, data.requestData.uri.toString(CowUrl::FullyEncoded))
+            .asQString();
 
     if (!data.targetStr.isEmpty())
-        msg += QString(" -> %1").arg(data.targetStr.asQString());
+        msg += CowString(" -> %1").arg(data.targetStr).asQString();
 
     if (data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" &&
         data.targetOverHttp)
@@ -157,10 +160,10 @@ void logRequest(int level, const RequestData &data, const Config &config) {
 
     CowUrl ref = CowUrl(CowString::fromUtf8(data.requestData.headers.get("Referer")).asQString());
     if (!ref.isEmpty())
-        msg += QString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded).asQString());
+        msg += CowString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded)).asQString();
 
     if (!data.routeId.isEmpty())
-        msg += QString(" route=%1").arg(data.routeId.asQString());
+        msg += CowString(" route=%1").arg(data.routeId).asQString();
 
     if (data.status == LogUtil::Response) {
         msg += QString(" code=%1 %2")
@@ -197,7 +200,7 @@ void logForRoute(int level, const RouteInfo &routeInfo, const char *fmt, ...) {
     va_start(ap, fmt);
     QString msg = QString::vasprintf(fmt, ap);
     if (!routeInfo.id.isEmpty())
-        msg += QString(" route=%1").arg(routeInfo.id.asQString());
+        msg += CowString(" route=%1").arg(routeInfo.id).asQString();
     logPacketWithOutputLevel(routeInfo.logLevel, level, msg);
     va_end(ap);
 }
