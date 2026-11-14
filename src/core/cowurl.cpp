@@ -20,12 +20,12 @@
 #include "urlquery.h"
 #include <assert.h>
 
-static QString dataToString(ffi::CowUrlData data) {
+static CowString dataToString(ffi::CowUrlData data) {
     assert(data.data);
 
     CowByteArray ba(data.data, data.len);
     ffi::cow_url_data_destroy(data);
-    return CowString::fromUtf8(ba).asQString();
+    return CowString::fromUtf8(ba);
 }
 
 static CowByteArray dataToByteArray(ffi::CowUrlData data) {
@@ -38,12 +38,12 @@ static CowByteArray dataToByteArray(ffi::CowUrlData data) {
 
 CowUrl::CowUrl() : inner_(nullptr) {}
 
-CowUrl::CowUrl(const QString &url) {
+CowUrl::CowUrl(const CowString &url) {
     CowByteArray utf8 = url.toUtf8();
     inner_ = ffi::cow_url_from_string(utf8.constData());
 }
 
-CowUrl::CowUrl(const QString &url, [[maybe_unused]] ParsingMode mode) {
+CowUrl::CowUrl(const CowString &url, [[maybe_unused]] ParsingMode mode) {
     CowByteArray utf8 = url.toUtf8();
     inner_ = ffi::cow_url_from_string(utf8.constData());
 }
@@ -71,15 +71,15 @@ CowUrl CowUrl::fromEncoded(const CowByteArray &input, [[maybe_unused]] ParsingMo
     return url;
 }
 
-QString CowUrl::fromPercentEncoding(const CowByteArray &input) {
-    return CowString::fromUtf8(CowByteArray::fromPercentEncoding(input)).asQString();
+CowString CowUrl::fromPercentEncoding(const CowByteArray &input) {
+    return CowString::fromUtf8(CowByteArray::fromPercentEncoding(input));
 }
 
-CowByteArray CowUrl::toPercentEncoding(const QString &input) {
-    return input.toUtf8().toPercentEncoding();
+CowByteArray CowUrl::toPercentEncoding(const CowString &input) {
+    return input.toUtf8().asQByteArray().toPercentEncoding();
 }
 
-bool CowUrl::isValidRelativeUrl(const QString &relativeUrl) {
+bool CowUrl::isValidRelativeUrl(const CowString &relativeUrl) {
     CowUrl dummyBase("http://example.com/");
     CowUrl resolved = dummyBase.resolved(relativeUrl);
     return resolved.isValid();
@@ -94,7 +94,7 @@ void CowUrl::clear() {
     inner_ = nullptr;
 }
 
-void CowUrl::setScheme(const QString &scheme) {
+void CowUrl::setScheme(const CowString &scheme) {
     if (!inner_) {
         return;
     }
@@ -103,30 +103,30 @@ void CowUrl::setScheme(const QString &scheme) {
     ffi::cow_url_set_scheme(&inner_, schemeBytes.constData());
 }
 
-QString CowUrl::scheme() const {
+CowString CowUrl::scheme() const {
     if (!inner_) {
-        return QString();
+        return CowString();
     }
 
     return dataToString(ffi::cow_url_scheme(inner_));
 }
 
-QString CowUrl::path([[maybe_unused]] ComponentFormattingOptions options) const {
+CowString CowUrl::path([[maybe_unused]] ComponentFormattingOptions options) const {
     if (!inner_) {
-        return QString();
+        return CowString();
     }
 
     return dataToString(ffi::cow_url_path(inner_));
 }
 
-QString CowUrl::query([[maybe_unused]] ComponentFormattingOptions options) const {
+CowString CowUrl::query([[maybe_unused]] ComponentFormattingOptions options) const {
     if (!inner_) {
-        return QString();
+        return CowString();
     }
 
     ffi::CowUrlData data = ffi::cow_url_query(inner_);
     if (data.data == nullptr) {
-        return QString();
+        return CowString();
     }
 
     return dataToString(data);
@@ -134,9 +134,9 @@ QString CowUrl::query([[maybe_unused]] ComponentFormattingOptions options) const
 
 bool CowUrl::hasQuery() const { return inner_ && ffi::cow_url_has_query(inner_); }
 
-QString CowUrl::toString([[maybe_unused]] ComponentFormattingOptions options) const {
+CowString CowUrl::toString([[maybe_unused]] ComponentFormattingOptions options) const {
     if (!inner_) {
-        return QString();
+        return CowString();
     }
 
     return dataToString(ffi::cow_url_to_string(inner_));
@@ -150,14 +150,14 @@ CowByteArray CowUrl::toEncoded() const {
     return dataToByteArray(ffi::cow_url_to_string(inner_));
 }
 
-QString CowUrl::host() const {
+CowString CowUrl::host() const {
     if (!inner_) {
-        return QString();
+        return CowString();
     }
 
     ffi::CowUrlData data = ffi::cow_url_host(inner_);
     if (data.data == nullptr) {
-        return QString();
+        return CowString();
     }
 
     return dataToString(data);
@@ -170,21 +170,21 @@ int CowUrl::port(int defaultPort) const {
     return (p < 0) ? defaultPort : p;
 }
 
-QString CowUrl::authority() const {
-    QString h = host();
+CowString CowUrl::authority() const {
+    CowString h = host();
     if (h.isEmpty()) {
-        return QString();
+        return CowString();
     }
 
     int p = port();
     if (p >= 0) {
-        return h + ':' + QString::number(p);
+        return CowString(h.asQString() + ':' + QString::number(p));
     }
 
     return h;
 }
 
-void CowUrl::setHost(const QString &host) {
+void CowUrl::setHost(const CowString &host) {
     if (!inner_) {
         return;
     }
@@ -201,7 +201,7 @@ void CowUrl::setPort(int port) {
     ffi::cow_url_set_port(&inner_, port);
 }
 
-void CowUrl::setPath(const QString &path, [[maybe_unused]] ParsingMode mode) {
+void CowUrl::setPath(const CowString &path, [[maybe_unused]] ParsingMode mode) {
     if (!inner_) {
         return;
     }
@@ -210,7 +210,7 @@ void CowUrl::setPath(const QString &path, [[maybe_unused]] ParsingMode mode) {
     ffi::cow_url_set_path(&inner_, pathBytes.constData());
 }
 
-void CowUrl::setQuery(const QString &query) {
+void CowUrl::setQuery(const CowString &query) {
     if (!inner_) {
         return;
     }
@@ -243,7 +243,7 @@ bool CowUrl::operator<(const CowUrl &other) const {
     return ffi::cow_url_cmp(inner_, other.inner_) < 0;
 }
 
-CowUrl CowUrl::resolved(const QString &relative) const {
+CowUrl CowUrl::resolved(const CowString &relative) const {
     if (!isValid() || relative.isEmpty()) {
         return CowUrl();
     }

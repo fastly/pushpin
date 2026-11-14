@@ -69,7 +69,7 @@ public:
     // For server mode, jump directly to responding state
     ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
-    static int estimateRequestHeaderBytes(const QString &method, const CowUrl &uri,
+    static int estimateRequestHeaderBytes(const CowString &method, const CowUrl &uri,
                                           const HttpHeaders &headers);
     static int estimateResponseHeaderBytes(int code, const CowByteArray &reason,
                                            const HttpHeaders &headers);

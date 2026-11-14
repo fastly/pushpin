@@ -141,8 +141,9 @@ void logVariantWithContent(int level, const Variant &data, const CowString &cont
 }
 
 void logRequest(int level, const RequestData &data, const Config &config) {
-    QString msg = QString("%1 %2").arg(data.requestData.method.asQString(),
-                                       data.requestData.uri.toString(CowUrl::FullyEncoded));
+    QString msg =
+        QString("%1 %2").arg(data.requestData.method.asQString(),
+                             data.requestData.uri.toString(CowUrl::FullyEncoded).asQString());
 
     if (!data.targetStr.isEmpty())
         msg += QString(" -> %1").arg(data.targetStr.asQString());
@@ -156,7 +157,7 @@ void logRequest(int level, const RequestData &data, const Config &config) {
 
     CowUrl ref = CowUrl(CowString::fromUtf8(data.requestData.headers.get("Referer")).asQString());
     if (!ref.isEmpty())
-        msg += QString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded));
+        msg += QString(" ref=%1").arg(ref.toString(CowUrl::FullyEncoded).asQString());
 
     if (!data.routeId.isEmpty())
         msg += QString(" route=%1").arg(data.routeId.asQString());

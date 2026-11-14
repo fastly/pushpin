@@ -267,8 +267,8 @@ public:
                   qPrintable(requestData.method.asQString()), requestData.uri.toEncoded().data());
 
         bool isHttps = (requestData.uri.scheme() == "https");
-        QString host = requestData.uri.host();
-        QByteArray encPath = requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
+        QString host = requestData.uri.host().asQString();
+        QByteArray encPath = requestData.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         // Before we do anything else, see if this is a sockjs request
         if (!route.isNull() && !route.sockJsPath.isEmpty() &&
@@ -587,7 +587,7 @@ public:
         QByteArray callback;
         if (query.hasQueryItem(callbackParam)) {
             callback = parsePercentEncoding(
-                query.queryItemValue(callbackParam, CowUrl::FullyEncoded).toUtf8());
+                query.queryItemValue(callbackParam, CowUrl::FullyEncoded).toUtf8().asQByteArray());
             if (callback.isEmpty()) {
                 log_debug("requestsession: id=%s invalid callback parameter, rejecting",
                           rid.second.data());
@@ -603,7 +603,7 @@ public:
         QString method;
         if (query.hasQueryItem("_method")) {
             method = QString::fromLatin1(parsePercentEncoding(
-                query.queryItemValue("_method", CowUrl::FullyEncoded).toUtf8()));
+                query.queryItemValue("_method", CowUrl::FullyEncoded).toUtf8().asQByteArray()));
             if (!validMethod(method)) {
                 log_debug("requestsession: id=%s invalid _method parameter, rejecting",
                           rid.second.data());
@@ -618,7 +618,7 @@ public:
         HttpHeaders headers;
         if (query.hasQueryItem("_headers")) {
             Variant doc = Json::fromString(parsePercentEncoding(
-                query.queryItemValue("_headers", CowUrl::FullyEncoded).toUtf8()));
+                query.queryItemValue("_headers", CowUrl::FullyEncoded).toUtf8().asQByteArray()));
             if (!doc.isValid() || typeId(doc) != VariantType::Map) {
                 log_debug("requestsession: id=%s invalid _headers parameter, rejecting",
                           rid.second.data());
@@ -656,7 +656,7 @@ public:
         if (!bodyParam.isEmpty()) {
             if (query.hasQueryItem(bodyParam)) {
                 body = parsePercentEncoding(
-                    query.queryItemValue(bodyParam, CowUrl::FullyEncoded).toUtf8());
+                    query.queryItemValue(bodyParam, CowUrl::FullyEncoded).toUtf8().asQByteArray());
                 if (body.isNull()) {
                     log_debug("requestsession: id=%s invalid body parameter, rejecting",
                               rid.second.data());
@@ -672,7 +672,7 @@ public:
             }
         } else {
             if (query.hasQueryItem("_body")) {
-                body = parsePercentEncoding(query.queryItemValue("_body").toUtf8());
+                body = parsePercentEncoding(query.queryItemValue("_body").toUtf8().asQByteArray());
                 if (body.isNull()) {
                     log_debug("requestsession: id=%s invalid _body parameter, rejecting",
                               rid.second.data());
@@ -703,7 +703,7 @@ public:
 
         requestData.uri = uri;
 
-        QByteArray hostHeader = uri.host().toUtf8();
+        QByteArray hostHeader = uri.host().toUtf8().asQByteArray();
         if (uri.port() != -1)
             hostHeader += ':' + QByteArray::number(uri.port());
         headers += HttpHeader("Host", hostHeader);

@@ -83,10 +83,10 @@ public:
         clientSock->setSendHwm(OUT_HWM);
         clientSock->setShutdownWaitTime(REQ_WAIT_TIME);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(clientSock.get(), clientSpecs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 
@@ -109,10 +109,10 @@ public:
         serverSock->setReceiveHwm(IN_HWM);
         serverSock->setShutdownWaitTime(REP_WAIT_TIME);
 
-        QString errorMessage;
+        CowString errorMessage;
         if (!ZUtil::setupSocket(serverSock.get(), serverSpecs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage));
+            log_error("%s", qPrintable(errorMessage.asQString()));
             return false;
         }
 

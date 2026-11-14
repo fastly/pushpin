@@ -18,10 +18,10 @@
 #define COWURL_H
 
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include "rust/bindings.h"
 #include <QByteArrayView>
 #include <QHash>
-#include <QString>
 #include <QUrl>
 
 class UrlQuery;
@@ -37,8 +37,8 @@ public:
     };
 
     CowUrl();
-    CowUrl(const QString &url);
-    CowUrl(const QString &url, ParsingMode mode);
+    CowUrl(const CowString &url);
+    CowUrl(const CowString &url, ParsingMode mode);
     CowUrl(const char *url);
     CowUrl(const CowUrl &other);
     ~CowUrl();
@@ -50,36 +50,36 @@ public:
     bool operator<(const CowUrl &other) const;
 
     static CowUrl fromEncoded(const CowByteArray &input, ParsingMode mode = StrictMode);
-    static QString fromPercentEncoding(const CowByteArray &input);
-    static CowByteArray toPercentEncoding(const QString &input);
+    static CowString fromPercentEncoding(const CowByteArray &input);
+    static CowByteArray toPercentEncoding(const CowString &input);
 
     // Validates that a potentially relative URL string is syntactically valid
     // by attempting to resolve it against a dummy base URL
-    static bool isValidRelativeUrl(const QString &relativeUrl);
+    static bool isValidRelativeUrl(const CowString &relativeUrl);
 
     bool isEmpty() const;
     bool isValid() const;
     void clear();
 
-    void setScheme(const QString &scheme);
-    QString scheme() const;
-    QString path(ComponentFormattingOptions options = FullyEncoded) const;
-    QString query(ComponentFormattingOptions options = FullyEncoded) const;
+    void setScheme(const CowString &scheme);
+    CowString scheme() const;
+    CowString path(ComponentFormattingOptions options = FullyEncoded) const;
+    CowString query(ComponentFormattingOptions options = FullyEncoded) const;
     bool hasQuery() const;
 
-    QString host() const;
+    CowString host() const;
     int port() const;
     int port(int defaultPort) const;
-    QString authority() const;
-    void setHost(const QString &host);
+    CowString authority() const;
+    void setHost(const CowString &host);
     void setPort(int port);
-    void setPath(const QString &path, ParsingMode mode = StrictMode);
-    void setQuery(const QString &query);
+    void setPath(const CowString &path, ParsingMode mode = StrictMode);
+    void setQuery(const CowString &query);
     void setQuery(const UrlQuery &query);
 
-    CowUrl resolved(const QString &relativeString) const;
+    CowUrl resolved(const CowString &relativeString) const;
 
-    QString toString(ComponentFormattingOptions options = FullyEncoded) const;
+    CowString toString(ComponentFormattingOptions options = FullyEncoded) const;
     CowByteArray toEncoded() const;
 
 private:

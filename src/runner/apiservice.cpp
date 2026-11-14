@@ -58,7 +58,7 @@ ApiService::ApiService(const QString &binFile, const QString &runDir, const QStr
             CowUrl url("http://" + (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0")));
             url.setPort(p.port);
 
-            QString arg = "--listen=" + url.authority();
+            QString arg = "--listen=" + url.authority().asQString();
 
             args_ += arg;
         }

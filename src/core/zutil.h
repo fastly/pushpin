@@ -23,20 +23,20 @@
 #ifndef ZUTIL_H
 #define ZUTIL_H
 
-#include <QString>
+#include "cowstring.h"
 #include <QStringList>
 
 class ZmqSocket;
 
 namespace ZUtil {
 
-bool bindSpec(ZmqSocket *sock, const QString &spec, int ipcFileMode, QString *errorMessage = 0);
+bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString *errorMessage = 0);
 
 bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode,
-                 QString *errorMessage = 0);
+                 CowString *errorMessage = 0);
 
-bool setupSocket(ZmqSocket *sock, const QString &spec, bool bind, int ipcFileMode,
-                 QString *errorMessage = 0);
+bool setupSocket(ZmqSocket *sock, const CowString &spec, bool bind, int ipcFileMode,
+                 CowString *errorMessage = 0);
 
 } // namespace ZUtil
 

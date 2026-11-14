@@ -247,10 +247,10 @@ public:
             handler_retry_in_sock->setIdentity(config.clientId);
             handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
-            QString errorMessage;
+            CowString errorMessage;
             if (!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true,
                                     config.ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage));
+                log_error("%s", qPrintable(errorMessage.asQString()));
                 return false;
             }
 
@@ -500,8 +500,8 @@ public:
 
         CowUrl uri = req->requestUri();
         bool isSecure = (uri.scheme() == "https");
-        QString host = uri.host();
-        QByteArray encPath = uri.path(CowUrl::FullyEncoded).toUtf8();
+        QString host = uri.host().asQString();
+        QByteArray encPath = uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         DomainMap::Entry route;
 
@@ -599,8 +599,8 @@ public:
                   requestUri.toEncoded().data());
 
         bool isSecure = (requestUri.scheme() == "wss");
-        QString host = requestUri.host();
-        QByteArray encPath = requestUri.path(CowUrl::FullyEncoded).toUtf8();
+        QString host = requestUri.host().asQString();
+        QByteArray encPath = requestUri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
         QString routeId;
 
@@ -841,8 +841,9 @@ private:
             rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
             bool isSecure = req.https;
-            QString host = p.requestData.uri.host();
-            QByteArray encPath = p.requestData.uri.path(CowUrl::FullyEncoded).toUtf8();
+            QString host = p.requestData.uri.host().asQString();
+            QByteArray encPath =
+                p.requestData.uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
 
             QString routeId = QString::fromUtf8(p.route.asQByteArray());
 

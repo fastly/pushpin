@@ -78,7 +78,7 @@ static QPair<QHostAddress, int> parsePort(const QString &s) {
     // Parse with CowUrl in order to support bracketed IPv6 notation
     CowUrl url("http://" + s);
 
-    return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
+    return QPair<QHostAddress, int>(QHostAddress(url.host().asQString()), url.port());
 }
 
 QMap<QString, int> parseLogLevel(const QStringList &parts, QString *errorMessage) {
@@ -503,7 +503,7 @@ public:
 
                 int mode = -1;
                 if (query.hasQueryItem("mode")) {
-                    QString modeStr = query.queryItemValue("mode");
+                    QString modeStr = query.queryItemValue("mode").asQString();
                     bool ok = false;
                     mode = modeStr.toInt(&ok, 8);
                     if (!ok) {
@@ -513,10 +513,11 @@ public:
                     }
                 }
 
-                QString user = query.queryItemValue("user");
-                QString group = query.queryItemValue("group");
+                QString user = query.queryItemValue("user").asQString();
+                QString group = query.queryItemValue("group").asQString();
 
-                ports += ListenPort(QHostAddress(), 0, true, path.path(), mode, user, group);
+                ports +=
+                    ListenPort(QHostAddress(), 0, true, path.path().asQString(), mode, user, group);
             }
         }
 

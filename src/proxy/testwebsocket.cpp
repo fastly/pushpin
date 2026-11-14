@@ -52,7 +52,7 @@ public:
         : q(_q), state(Idle), gripEnabled(false), peerCloseCode(-1), errorCondition(ErrorGeneric) {}
 
     void handleConnect() {
-        QString path = request.uri.path();
+        QString path = request.uri.path().asQString();
         if (path.length() >= 2 && path.endsWith('/'))
             path.truncate(path.length() - 1);
 

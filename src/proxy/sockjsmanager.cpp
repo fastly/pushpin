@@ -200,7 +200,7 @@ public:
 
         CowUrl uri = req->requestUri();
 
-        QByteArray encPath = uri.path(CowUrl::FullyEncoded).toUtf8();
+        QByteArray encPath = uri.path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
         s->path = encPath.mid(basePathStart);
 
         UrlQuery query(uri);
@@ -208,10 +208,10 @@ public:
         QList<QByteArray> parts = s->path.split('/');
         if (!parts.isEmpty() && parts.last().startsWith("jsonp")) {
             if (query.hasQueryItem("callback")) {
-                s->jsonpCallback = query.queryItemValue("callback").toUtf8();
+                s->jsonpCallback = query.queryItemValue("callback").toUtf8().asQByteArray();
                 query.removeAllQueryItems("callback");
             } else if (query.hasQueryItem("c")) {
-                s->jsonpCallback = query.queryItemValue("c").toUtf8();
+                s->jsonpCallback = query.queryItemValue("c").toUtf8().asQByteArray();
                 query.removeAllQueryItems("c");
             }
         }
@@ -242,7 +242,7 @@ public:
         Session *s = new Session(this);
         s->sock = sock;
 
-        QByteArray encPath = sock->requestUri().path(CowUrl::FullyEncoded).toUtf8();
+        QByteArray encPath = sock->requestUri().path(CowUrl::FullyEncoded).toUtf8().asQByteArray();
         s->path = encPath.mid(basePathStart);
         s->asUri = sock->requestUri();
         if (!asPath.isEmpty())
