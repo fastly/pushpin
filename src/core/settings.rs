@@ -53,8 +53,8 @@ pub enum SettingsError {
 
 pub struct Settings {
     values: HashMap<String, String>,
-    libdir: String,
-    rundir: String,
+    libdir: PathBuf,
+    rundir: PathBuf,
     ipc_prefix: String,
     port_offset: i32,
     config_dir: PathBuf,
@@ -109,22 +109,19 @@ impl Settings {
 
         let get = |key: &str| values.get(key).filter(|v| !v.is_empty()).cloned();
 
-        let libdir = get("global/libdir").unwrap_or_else(|| {
+        let libdir = get("global/libdir").map(PathBuf::from).unwrap_or_else(|| {
             if Path::new("src/bin/pushpin.rs").exists() {
                 // Running in tree
-                env::current_dir()
-                    .unwrap_or_default()
-                    .join("src")
-                    .to_string_lossy()
-                    .into_owned()
+                env::current_dir().unwrap_or_default().join("src")
             } else {
                 // Use compiled value
-                env!("LIB_DIR").to_string()
+                PathBuf::from(env!("LIB_DIR"))
             }
         });
 
         let rundir = get("global/rundir")
             .or_else(|| get("runner/rundir")) // Fallback to runner section (deprecated)
+            .map(PathBuf::from)
             .unwrap_or_default();
 
         let ipc_prefix = values
@@ -263,8 +260,8 @@ impl Settings {
 
     fn resolve_vars(&self, s: &str) -> Result<String, SettingsError> {
         let mut out = s
-            .replace("{libdir}", &self.libdir)
-            .replace("{rundir}", &self.rundir)
+            .replace("{libdir}", &self.libdir.to_string_lossy())
+            .replace("{rundir}", &self.rundir.to_string_lossy())
             .replace("{ipc_prefix}", &self.ipc_prefix);
 
         // Adjust tcp ports
@@ -367,12 +364,8 @@ mod tests {
         Settings::load(&write_conf(test, "pushpin.conf", contents))
     }
 
-    fn in_tree_libdir() -> String {
-        env::current_dir()
-            .unwrap()
-            .join("src")
-            .to_string_lossy()
-            .into_owned()
+    fn in_tree_libdir() -> PathBuf {
+        env::current_dir().unwrap().join("src")
     }
 
     // Parsing
@@ -574,7 +567,7 @@ mod tests {
     #[test]
     fn libdir_from_config() {
         let settings = load_conf("libdir_config", "[global]\nlibdir=/usr/lib/pushpin\n").unwrap();
-        assert_eq!(settings.libdir, "/usr/lib/pushpin");
+        assert_eq!(settings.libdir, Path::new("/usr/lib/pushpin"));
     }
 
     #[test]
@@ -592,13 +585,13 @@ mod tests {
     #[test]
     fn rundir_from_global() {
         let settings = load_conf("rundir_global", "[global]\nrundir=/var/run/pushpin\n").unwrap();
-        assert_eq!(settings.rundir, "/var/run/pushpin");
+        assert_eq!(settings.rundir, Path::new("/var/run/pushpin"));
     }
 
     #[test]
     fn rundir_from_runner() {
         let settings = load_conf("rundir_runner", "[runner]\nrundir=/var/run/pushpin\n").unwrap();
-        assert_eq!(settings.rundir, "/var/run/pushpin");
+        assert_eq!(settings.rundir, Path::new("/var/run/pushpin"));
     }
 
     #[test]
@@ -608,13 +601,13 @@ mod tests {
             "[global]\nrundir=/var/run/global\n[runner]\nrundir=/var/run/runner\n",
         )
         .unwrap();
-        assert_eq!(settings.rundir, "/var/run/global");
+        assert_eq!(settings.rundir, Path::new("/var/run/global"));
     }
 
     #[test]
     fn rundir_unset() {
         let settings = load_conf("rundir_unset", "[global]\nipc_prefix=pushpin-\n").unwrap();
-        assert_eq!(settings.rundir, "");
+        assert_eq!(settings.rundir, Path::new(""));
     }
 
     #[test]
