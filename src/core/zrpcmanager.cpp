@@ -135,7 +135,8 @@ public:
         CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
+            log_debug("zrpc client: OUT %s",
+                      cowPrintable(TnetString::variantToString(vpacket, -1)));
 
         CowByteArrayList msg;
         msg += CowByteArray();
@@ -150,7 +151,8 @@ public:
         CowByteArray buf = TnetString::fromVariant(vpacket);
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
+            log_debug("zrpc server: OUT %s",
+                      cowPrintable(TnetString::variantToString(vpacket, -1)));
 
         CowByteArrayList message;
         message += headers;
@@ -178,7 +180,7 @@ public:
         }
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("zrpc client: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+            log_debug("zrpc client: IN %s", cowPrintable(TnetString::variantToString(data, -1)));
 
         ZrpcResponsePacket p;
         if (!p.fromVariant(data)) {
@@ -212,7 +214,7 @@ public:
         }
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("zrpc server: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+            log_debug("zrpc server: IN %s", cowPrintable(TnetString::variantToString(data, -1)));
 
         ZrpcRequestPacket p;
         if (!p.fromVariant(data)) {

@@ -73,13 +73,13 @@ static void logPacketWithOutputLevel(int outputLevel, int level, const QString &
     QString out = message;
 
     if (data.isValid()) {
-        out += ' ' + trim(TnetString::variantToString(data, -1), dataMax);
+        out += ' ' + trim(TnetString::variantToString(data, -1).asQString(), dataMax);
     }
 
     if (!content.isNull()) {
         out += ' ' + QString::number(content.size()) + ' ';
         CowByteArray buf = trim(content, contentMax);
-        out += TnetString::variantToString(Variant(buf.asQByteArray()), -1);
+        out += TnetString::variantToString(Variant(buf.asQByteArray()), -1).asQString();
     }
 
     logWithOutputLevel(outputLevel, level, "%s", qPrintable(out));

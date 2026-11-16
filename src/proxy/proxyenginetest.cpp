@@ -432,7 +432,7 @@ private:
     void handlerInspect_readyRead(const CowByteArrayList &_message) {
         ZmqReqMessage message(_message);
         Variant v = TnetString::toVariant(message.content()[0]);
-        log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
+        log_debug("inspect: %s", cowPrintable(TnetString::variantToString(v, -1)));
 
         inspected = true;
 
@@ -447,7 +447,7 @@ private:
             vresp["id"] = vreq["id"];
             vresp["success"] = true;
             vresp["value"] = respValue;
-            log_debug("inspect response: %s", qPrintable(TnetString::variantToString(vresp, -1)));
+            log_debug("inspect response: %s", cowPrintable(TnetString::variantToString(vresp, -1)));
             handlerInspectSock->write(
                 message
                     .createReply(QList<QByteArray>()
@@ -459,7 +459,7 @@ private:
     void handlerAccept_readyRead(const CowByteArrayList &_message) {
         ZmqReqMessage message(_message);
         Variant v = TnetString::toVariant(message.content()[0]);
-        log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
+        log_debug("accept: %s", cowPrintable(TnetString::variantToString(v, -1)));
 
         VariantHash vreq = v.toHash();
 
@@ -527,7 +527,7 @@ private:
                 vretry["requests"] = vaccept["requests"];
                 vretry["request-data"] = vaccept["request-data"];
                 CowByteArray buf = TnetString::fromVariant(vretry);
-                log_debug("retrying: %s", qPrintable(TnetString::variantToString(vretry, -1)));
+                log_debug("retrying: %s", cowPrintable(TnetString::variantToString(vretry, -1)));
 
                 QList<QByteArray> msg;
                 msg.append("proxy");

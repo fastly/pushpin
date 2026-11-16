@@ -24,6 +24,7 @@
 #ifndef STATSMANAGER_H
 #define STATSMANAGER_H
 
+#include "cowstring.h"
 #include "packet/statspacket.h"
 #include "rust/bindings.h"
 #include "stats.h"
@@ -54,7 +55,7 @@ public:
         CommonMetrics(const CommonMetrics &) = delete;
         CommonMetrics &operator=(const CommonMetrics &) = delete;
 
-        static std::unique_ptr<CommonMetrics> create(const QString &prefix);
+        static std::unique_ptr<CommonMetrics> create(const CowString &prefix);
 
         const ffi::PrometheusRegistry *registry() const;
         size_t registerInstance();
@@ -74,7 +75,7 @@ public:
 
     void setInstanceId(const CowByteArray &instanceId);
     void setIpcFileMode(int mode);
-    bool setSpec(const QString &spec);
+    bool setSpec(const CowString &spec);
     void setConnectionSendEnabled(bool enabled);
     void setConnectionsMaxSendEnabled(bool enabled);
     void setConnectionTtl(int secs);
@@ -88,7 +89,7 @@ public:
     // RouteId may be empty for non-identified route
 
     void addActivity(const CowByteArray &routeId, uint32_t count = 1);
-    void addMessage(const QString &channel, const QString &itemId, const QString &transport,
+    void addMessage(const CowString &channel, const CowString &itemId, const CowString &transport,
                     uint32_t count = 1, int blocks = -1);
 
     void addConnection(const CowByteArray &id, const CowByteArray &routeId, ConnectionType type,
@@ -101,14 +102,14 @@ public:
     // linger
     void refreshConnection(const CowByteArray &id);
 
-    void addSubscription(const QString &mode, const QString &channel, uint32_t subscriberCount);
+    void addSubscription(const CowString &mode, const CowString &channel, uint32_t subscriberCount);
 
     // NOTE: may emit unsubscribed immediately (not DOR-DS)
-    void removeSubscription(const QString &mode, const QString &channel, bool linger);
+    void removeSubscription(const CowString &mode, const CowString &channel, bool linger);
 
     // For reporting and combined
     void addMessageReceived(const CowByteArray &routeId, int blocks = -1);
-    void addMessageSent(const CowByteArray &routeId, const QString &transport, int blocks = -1);
+    void addMessageSent(const CowByteArray &routeId, const CowString &transport, int blocks = -1);
     void incCounter(const CowByteArray &routeId, Stats::Counter c, uint32_t count = 1);
 
     // For combined only
@@ -131,7 +132,7 @@ public:
     void setRetrySeq(const CowByteArray &routeId, int value);
 
     boost::signals2::signal<void(const CowByteArrayList &)> connectionsRefreshed;
-    boost::signals2::signal<void(const QString &, const QString &)> unsubscribed;
+    boost::signals2::signal<void(const CowString &, const CowString &)> unsubscribed;
     boost::signals2::signal<void(const QList<StatsPacket> &)> reported;
     boost::signals2::signal<void(const StatsPacket &)> connMax;
 

@@ -705,7 +705,7 @@ public:
         if (!buf.isEmpty()) {
             if (log_outputLevel() >= LOG_LEVEL_DEBUG)
                 log_debug("stats: OUT %s %s", prefix.data(),
-                          qPrintable(TnetString::variantToString(vpacket, -1)));
+                          cowPrintable(TnetString::variantToString(vpacket, -1)));
 
             CowByteArrayList msg;
             msg += buf;
@@ -1310,7 +1310,7 @@ StatsManager::CommonMetrics::~CommonMetrics() { ffi::statsmanager_commonmetrics_
 
 // static
 std::unique_ptr<StatsManager::CommonMetrics>
-StatsManager::CommonMetrics::create(const QString &prefix) {
+StatsManager::CommonMetrics::create(const CowString &prefix) {
     ffi::CommonMetrics *handle = ffi::statsmanager_commonmetrics_create(prefix.toUtf8().data());
     if (!handle)
         return nullptr;
@@ -1346,8 +1346,8 @@ void StatsManager::setInstanceId(const CowByteArray &instanceId) { d->instanceId
 
 void StatsManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
 
-bool StatsManager::setSpec(const QString &spec) {
-    d->spec = spec;
+bool StatsManager::setSpec(const CowString &spec) {
+    d->spec = spec.asQString();
     return d->setupSock();
 }
 
@@ -1392,9 +1392,9 @@ void StatsManager::addActivity(const CowByteArray &routeId, uint32_t count) {
         d->activityTimer->start(ACTIVITY_TIMEOUT);
 }
 
-void StatsManager::addMessage(const QString &channel, const QString &itemId,
-                              const QString &transport, uint32_t count, int blocks) {
-    d->sendMessage(channel, itemId, transport, count, blocks);
+void StatsManager::addMessage(const CowString &channel, const CowString &itemId,
+                              const CowString &transport, uint32_t count, int blocks) {
+    d->sendMessage(channel.asQString(), itemId.asQString(), transport.asQString(), count, blocks);
 }
 
 void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &routeId,
@@ -1529,9 +1529,9 @@ void StatsManager::refreshConnection(const CowByteArray &id) {
     d->sendConnected(c);
 }
 
-void StatsManager::addSubscription(const QString &mode, const QString &channel,
+void StatsManager::addSubscription(const CowString &mode, const CowString &channel,
                                    uint32_t subscriberCount) {
-    Private::SubscriptionKey subKey(mode, channel);
+    Private::SubscriptionKey subKey(mode.asQString(), channel.asQString());
     Private::Subscription *s = d->subscriptionsByKey.value(subKey);
     if (!s) {
         int64_t now = DateTime::currentMSecsSinceEpoch();
@@ -1539,8 +1539,8 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel,
         // Add the subscription if we didn't have it
         s = new Private::Subscription;
         s->timerType = Private::TimerBase::Type::Subscription;
-        s->mode = mode;
-        s->channel = channel;
+        s->mode = mode.asQString();
+        s->channel = channel.asQString();
         s->subscriberCount = subscriberCount;
         s->lastRefresh = now;
         d->insertSubscription(s);
@@ -1571,8 +1571,9 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel,
     }
 }
 
-void StatsManager::removeSubscription(const QString &mode, const QString &channel, bool linger) {
-    Private::SubscriptionKey subKey(mode, channel);
+void StatsManager::removeSubscription(const CowString &mode, const CowString &channel,
+                                      bool linger) {
+    Private::SubscriptionKey subKey(mode.asQString(), channel.asQString());
     Private::Subscription *s = d->subscriptionsByKey.value(subKey);
     if (!s)
         return;
@@ -1612,7 +1613,7 @@ void StatsManager::addMessageReceived(const CowByteArray &routeId, int blocks) {
     d->combinedReportChanged();
 }
 
-void StatsManager::addMessageSent(const CowByteArray &routeId, const QString &transport,
+void StatsManager::addMessageSent(const CowByteArray &routeId, const CowString &transport,
                                   int blocks) {
     if (d->reportInterval <= 0)
         return;
@@ -1621,8 +1622,8 @@ void StatsManager::addMessageSent(const CowByteArray &routeId, const QString &tr
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
-    report->addMessageSent(transport, blocks, now);
-    d->combinedReport.addMessageSent(transport, blocks, now);
+    report->addMessageSent(transport.asQString(), blocks, now);
+    d->combinedReport.addMessageSent(transport.asQString(), blocks, now);
     d->combinedReportChanged();
 }
 

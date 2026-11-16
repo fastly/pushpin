@@ -25,6 +25,7 @@
 #define ZRPCREQUEST_H
 
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include "variant.h"
 #include <boost/signals2.hpp>
 
@@ -43,14 +44,14 @@ public:
 
     CowByteArray from() const;
     CowByteArray id() const;
-    QString method() const;
+    CowString method() const;
     VariantHash args() const;
     bool success() const;
     Variant result() const;
     ErrorCondition errorCondition() const;
     CowByteArray errorConditionString() const;
 
-    void start(const QString &method, const VariantHash &args = VariantHash());
+    void start(const CowString &method, const VariantHash &args = VariantHash());
     void respond(const Variant &result = Variant());
     void respondError(const CowByteArray &condition, const Variant &result = Variant());
 

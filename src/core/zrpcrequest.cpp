@@ -166,7 +166,7 @@ CowByteArray ZrpcRequest::from() const { return d->from; }
 
 CowByteArray ZrpcRequest::id() const { return d->id; }
 
-QString ZrpcRequest::method() const { return d->method; }
+CowString ZrpcRequest::method() const { return d->method; }
 
 VariantHash ZrpcRequest::args() const { return d->args; }
 
@@ -178,8 +178,8 @@ ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const { return d->cond
 
 CowByteArray ZrpcRequest::errorConditionString() const { return d->conditionString; }
 
-void ZrpcRequest::start(const QString &method, const VariantHash &args) {
-    d->method = method;
+void ZrpcRequest::start(const CowString &method, const VariantHash &args) {
+    d->method = method.asQString();
     d->args = args;
     d->deferCall.defer([=] { d->doStart(); });
 }
