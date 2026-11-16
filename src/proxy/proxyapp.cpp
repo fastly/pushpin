@@ -513,17 +513,17 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     if (!prometheusPort.isEmpty()) {
         commonMetrics = StatsManager::CommonMetrics::create(prometheusPrefix);
 
-        QString promError;
+        CowString promError;
         prometheusServer =
             PrometheusServer::create(prometheusPort, commonMetrics->registry(), &promError);
         if (!prometheusServer) {
-            log_error("unable to bind to prometheus port: %s", qPrintable(promError));
+            log_error("unable to bind to prometheus port: %s", cowPrintable(promError));
             return 1;
         }
     }
 
     Engine::Configuration config;
-    config.appVersion = Config::get().version;
+    config.appVersion = Config::get().version.asQString();
     config.clientId = "proxy_" + QByteArray::number(getpid());
     if (!services.contains("mongrel2") &&
         (!connmgr_in_specs.isEmpty() || !connmgr_in_stream_specs.isEmpty() ||

@@ -250,7 +250,7 @@ public:
 
     void start() {
         QCoreApplication::setApplicationName("pushpin");
-        QCoreApplication::setApplicationVersion(Config::get().version);
+        QCoreApplication::setApplicationVersion(Config::get().version.asQString());
 
         QCommandLineParser parser;
         parser.setApplicationDescription("Reverse proxy for realtime web services.");
@@ -294,7 +294,7 @@ public:
             configFileList += QDir("examples/config").absoluteFilePath("pushpin.conf");
 
             // Default
-            configFileList += QDir(Config::get().configDir).filePath("pushpin.conf");
+            configFileList += QDir(Config::get().configDir.asQString()).filePath("pushpin.conf");
         }
 
         QString configFile;
@@ -346,7 +346,7 @@ public:
                 libDir = QFileInfo("src/runner").absoluteFilePath();
             } else {
                 // Use compiled value
-                libDir = QDir(Config::get().libDir).absoluteFilePath("runner");
+                libDir = QDir(Config::get().libDir.asQString()).absoluteFilePath("runner");
             }
         }
 

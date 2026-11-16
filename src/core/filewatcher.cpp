@@ -16,7 +16,6 @@
 
 #include "filewatcher.h"
 
-#include <QString>
 #include <assert.h>
 
 FileWatcher::FileWatcher() : inner_(nullptr) {}
@@ -28,7 +27,7 @@ FileWatcher::~FileWatcher() {
         ffi::file_watcher_destroy(inner_);
 }
 
-bool FileWatcher::start(const QString &filePath) {
+bool FileWatcher::start(const CowString &filePath) {
     assert(!inner_);
 
     inner_ = ffi::file_watcher_create(filePath.toUtf8().data());

@@ -22,7 +22,7 @@ UnixListener::UnixListener() : inner_(nullptr) {}
 
 UnixListener::~UnixListener() { reset(); }
 
-bool UnixListener::bind(const QString &path) {
+bool UnixListener::bind(const CowString &path) {
     reset();
 
     CowByteArray p = path.toUtf8();

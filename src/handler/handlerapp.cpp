@@ -295,7 +295,7 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     }
 
     HandlerEngine::Configuration config;
-    config.appVersion = Config::get().version;
+    config.appVersion = Config::get().version.asQString();
     config.instanceId = "handler_" + QByteArray::number(getpid());
     if (!services.contains("mongrel2") &&
         (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty())) {

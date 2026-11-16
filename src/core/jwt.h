@@ -30,7 +30,7 @@
 #include <QDir>
 #include <QSharedData>
 
-class QString;
+#include "cowstring.h"
 
 namespace Jwt {
 
@@ -67,8 +67,8 @@ public:
 
     static EncodingKey fromSecret(const CowByteArray &key);
     static EncodingKey fromPem(const CowByteArray &key);
-    static EncodingKey fromFile(const QString &fileName);
-    static EncodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
+    static EncodingKey fromFile(const CowString &fileName);
+    static EncodingKey fromConfigString(const CowString &s, const QDir &baseDir = QDir());
 
 private:
     class Private : public QSharedData {
@@ -105,8 +105,8 @@ public:
 
     static DecodingKey fromSecret(const CowByteArray &key);
     static DecodingKey fromPem(const CowByteArray &key);
-    static DecodingKey fromFile(const QString &fileName);
-    static DecodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
+    static DecodingKey fromFile(const CowString &fileName);
+    static DecodingKey fromConfigString(const CowString &s, const QDir &baseDir = QDir());
 
 private:
     class Private : public QSharedData {

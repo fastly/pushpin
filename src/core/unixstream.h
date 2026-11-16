@@ -17,6 +17,7 @@
 #ifndef UNIXSTREAM_H
 #define UNIXSTREAM_H
 
+#include "cowstring.h"
 #include "readwrite.h"
 #include "rust/bindings.h"
 #include <boost/signals2.hpp>
@@ -35,7 +36,7 @@ public:
     UnixStream &operator=(const UnixStream &) = delete;
 
     // Returns true if connection starting, false on error
-    bool connect(const QString &path);
+    bool connect(const CowString &path);
 
     // Returns true if connected, false on error. If errorCondition() returns ENOTCONN, then it is
     // not fatal and the socket is still connecting

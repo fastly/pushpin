@@ -23,15 +23,15 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <QString>
+#include "cowstring.h"
 
 namespace Config {
 
 class Config {
 public:
-    QString version;
-    QString configDir;
-    QString libDir;
+    CowString version;
+    CowString configDir;
+    CowString libDir;
 };
 
 // Value is thread local

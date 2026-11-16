@@ -382,7 +382,7 @@ SimpleHttpRequest::SimpleHttpRequest(int headersSizeMax, int bodySizeMax) {
 
 SimpleHttpRequest::~SimpleHttpRequest() { delete d; }
 
-QString SimpleHttpRequest::requestMethod() const { return d->method; }
+CowString SimpleHttpRequest::requestMethod() const { return d->method; }
 
 CowByteArray SimpleHttpRequest::requestUri() const { return d->uri; }
 
@@ -395,8 +395,8 @@ void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const Http
     d->respond(code, reason, headers, body);
 }
 
-void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const QString &body) {
-    d->respond(code, reason, body);
+void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const CowString &body) {
+    d->respond(code, reason, body.asQString());
 }
 
 class SimpleHttpServerPrivate {
@@ -547,7 +547,9 @@ SimpleHttpServer::~SimpleHttpServer() { delete d; }
 
 bool SimpleHttpServer::listen(const QHostAddress &addr, int port) { return d->listen(addr, port); }
 
-bool SimpleHttpServer::listenLocal(const QString &name) { return d->listenLocal(name); }
+bool SimpleHttpServer::listenLocal(const CowString &name) {
+    return d->listenLocal(name.asQString());
+}
 
 SimpleHttpRequest *SimpleHttpServer::takeNext() {
     if (!d->pending.isEmpty()) {

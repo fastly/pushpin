@@ -17,8 +17,8 @@
 #ifndef PROMETHEUS_H
 #define PROMETHEUS_H
 
+#include "cowstring.h"
 #include "rust/bindings.h"
-#include <QString>
 #include <memory>
 
 /// RAII wrapper around the Rust-backed prometheus HTTP server. Destroying this object blocks
@@ -33,8 +33,9 @@ public:
     /// Create and start a prometheus HTTP server listening on `addr`. The registry is cloned
     /// internally so the server is independent of the registry's lifetime. On failure returns
     /// nullptr and writes a description to `*error` if `error` is non-null.
-    static std::unique_ptr<PrometheusServer>
-    create(const QString &addr, const ffi::PrometheusRegistry *registry, QString *error = nullptr);
+    static std::unique_ptr<PrometheusServer> create(const CowString &addr,
+                                                    const ffi::PrometheusRegistry *registry,
+                                                    CowString *error = nullptr);
 
 private:
     explicit PrometheusServer(ffi::PrometheusServer *handle);
