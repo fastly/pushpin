@@ -81,7 +81,7 @@ fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
             continue;
         };
 
-        let section = section.to_lowercase();
+        let section = section.to_string();
 
         if !sections.insert(section.clone()) {
             return Err(SettingsError::RepeatedSection(section));
@@ -95,7 +95,7 @@ fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
                 return Err(SettingsError::MissingEquals(section, line.to_string()));
             }
 
-            let key = format!("{section}/{}", key.to_lowercase());
+            let key = format!("{section}/{key}");
 
             if values.insert(key.clone(), value.to_string()).is_some() {
                 return Err(SettingsError::DuplicateKey(key));
@@ -171,7 +171,7 @@ impl Settings {
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.values.get(&key.to_lowercase()).map(String::as_str)
+        self.values.get(key).map(String::as_str)
     }
 
     pub fn config_dir(&self) -> &Path {
@@ -376,7 +376,8 @@ mod tests {
     #[test]
     fn uppercase_section_and_key() {
         let settings = load_conf("uppercase", "[Proxy]\nSig_Iss=pushpin\n").unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), Some("pushpin"));
+        assert_eq!(settings.get("proxy/sig_iss"), None);
+        assert_eq!(settings.get("Proxy/Sig_Iss"), Some("pushpin"));
     }
 
     #[test]
