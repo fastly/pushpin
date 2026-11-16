@@ -88,6 +88,9 @@ fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
         }
 
         for (key, value) in props.iter() {
+            // rust-ini reads a key until it finds '=' or ':', not until the end of the line, so a
+            // line missing its '=' gets merged with the next line into one key containing a
+            // newline (e.g. "foo\nbar=3" gives key "foo\nbar" with value "3")
             if let Some((line, _)) = key.split_once('\n') {
                 return Err(SettingsError::MissingEquals(section, line.to_string()));
             }
