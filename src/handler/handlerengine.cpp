@@ -1269,7 +1269,7 @@ public:
             CowString errorMessage;
             if (!ZUtil::setupSocket(inPullSock.get(), config.pushInSpec, true, config.ipcFileMode,
                                     &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage.asQString()));
+                log_error("%s", cowPrintable(errorMessage));
                 return false;
             }
 
@@ -1288,7 +1288,7 @@ public:
             CowString errorMessage;
             if (!ZUtil::setupSocket(inSubSock.get(), config.pushInSubSpecs,
                                     !config.pushInSubConnect, config.ipcFileMode, &errorMessage)) {
-                log_error("%s", qPrintable(errorMessage.asQString()));
+                log_error("%s", cowPrintable(errorMessage));
                 return false;
             }
 
@@ -1316,7 +1316,7 @@ public:
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(retrySock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage.asQString()));
+                    log_error("%s", cowPrintable(errorMessage));
                     return false;
                 }
             }
@@ -1332,7 +1332,7 @@ public:
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlInitSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage.asQString()));
+                    log_error("%s", cowPrintable(errorMessage));
                     return false;
                 }
             }
@@ -1353,7 +1353,7 @@ public:
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlStreamSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage.asQString()));
+                    log_error("%s", cowPrintable(errorMessage));
                     return false;
                 }
             }
@@ -1420,7 +1420,7 @@ public:
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(proxyStatsSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
-                    log_error("%s", qPrintable(errorMessage.asQString()));
+                    log_error("%s", cowPrintable(errorMessage));
                     return false;
                 }
             }
@@ -2567,7 +2567,7 @@ private:
                 addSub(channel);
 
                 log_info("subscribe %s channel=%s",
-                         qPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded).asQString()),
+                         cowPrintable(s->requestData.uri.toString(CowUrl::FullyEncoded)),
                          qPrintable(channel));
             } else if (item.type == WsControlPacket::Item::Ack) {
                 int reqId = item.requestId.asQByteArray().toInt();

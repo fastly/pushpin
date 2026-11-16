@@ -156,7 +156,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(client_out_sock.get(), client_out_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -186,7 +186,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(client_out_stream_sock.get(), client_out_stream_specs, doBind,
                                 ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -214,7 +214,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(client_in_sock.get(), client_in_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -244,7 +244,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(client_req_sock.get(), client_req_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -262,7 +262,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(server_in_sock.get(), server_in_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -287,7 +287,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(server_in_stream_sock.get(), server_in_stream_specs, doBind,
                                 ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -315,7 +315,7 @@ public:
         CowString errorMessage;
         if (!ZUtil::setupSocket(server_out_sock.get(), server_out_specs, doBind, ipcFileMode,
                                 &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 
@@ -753,7 +753,7 @@ public:
             q->requestReady();
         } else {
             log_debug("zhttp/zws server: rejecting unsupported scheme: %s",
-                      qPrintable(p.uri.scheme().asQString()));
+                      cowPrintable(p.uri.scheme()));
             tryRespondCancel(UnknownSession, id.id, p);
             return;
         }

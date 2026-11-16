@@ -123,11 +123,11 @@ static void urlResolution() {
     // Test relative URLs are properly resolved
     CowUrl relativeResult1 = base.resolved(QString("/absolute-path"));
     TEST_ASSERT_EQ(relativeResult1.host(), QString("example.com"));
-    TEST_ASSERT(relativeResult1.path().asQString().startsWith("/absolute-path"));
+    TEST_ASSERT(relativeResult1.path().startsWith("/absolute-path"));
 
     CowUrl relativeResult2 = base.resolved(QString("relative-file"));
     TEST_ASSERT_EQ(relativeResult2.host(), QString("example.com"));
-    TEST_ASSERT(relativeResult2.toString().asQString().contains("relative-file"));
+    TEST_ASSERT(relativeResult2.toString().contains("relative-file"));
 
     // Test query-only relative URLs
     CowUrl queryResult = base.resolved(QString("?newquery=value"));

@@ -400,7 +400,7 @@ public:
 
         CowString errorMessage;
         if (!ZUtil::setupSocket(sock.get(), spec, true, ipcFileMode, &errorMessage)) {
-            log_error("%s", qPrintable(errorMessage.asQString()));
+            log_error("%s", cowPrintable(errorMessage));
             return false;
         }
 

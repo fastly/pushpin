@@ -178,7 +178,7 @@ CowString CowUrl::authority() const {
 
     int p = port();
     if (p >= 0) {
-        return CowString(h.asQString() + ':' + QString::number(p));
+        return h + ":" + CowString::number(p);
     }
 
     return h;

@@ -29,14 +29,13 @@
 namespace ZUtil {
 
 bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString *errorMessage) {
-    const QString &qspec = spec.asQString();
-    if (!sock->bind(qspec)) {
+    if (!sock->bind(spec.asQString())) {
         if (errorMessage)
-            *errorMessage = QString("unable to bind to %1").arg(qspec);
+            *errorMessage = CowString("unable to bind to %1").arg(spec);
         return false;
     }
 
-    if (qspec.startsWith("ipc://") && ipcFileMode != -1) {
+    if (spec.startsWith("ipc://") && ipcFileMode != -1) {
         QFile::Permissions perms;
         if (ipcFileMode & 0400)
             perms |= QFile::ReadUser;
@@ -56,9 +55,9 @@ bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString
             perms |= QFile::WriteOther;
         if (ipcFileMode & 0001)
             perms |= QFile::ExeOther;
-        if (!QFile::setPermissions(qspec.mid(6), perms)) {
+        if (!QFile::setPermissions(spec.mid(6).asQString(), perms)) {
             if (errorMessage)
-                *errorMessage = QString("unable to set permissions on %1").arg(qspec);
+                *errorMessage = CowString("unable to set permissions on %1").arg(spec);
             return false;
         }
     }

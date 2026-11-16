@@ -264,7 +264,7 @@ public:
             requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
         log_debug("worker %d: IN id=%s, %s %s", workerId, rid.second.data(),
-                  qPrintable(requestData.method.asQString()), requestData.uri.toEncoded().data());
+                  cowPrintable(requestData.method), requestData.uri.toEncoded().data());
 
         bool isHttps = (requestData.uri.scheme() == "https");
         QString host = requestData.uri.host().asQString();
