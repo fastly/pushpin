@@ -792,7 +792,7 @@ private:
         }
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("retry: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+            log_debug("retry: IN %s", cowPrintable(TnetString::variantToString(data, -1)));
 
         RetryRequestPacket p;
         if (!p.fromVariant(data)) {

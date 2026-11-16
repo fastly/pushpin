@@ -324,7 +324,7 @@ VariantList toList(const CowByteArray &in, [[maybe_unused]] int offset, int data
     return out;
 }
 
-QString byteArrayToEscapedString(const CowByteArray &in) {
+CowString byteArrayToEscapedString(const CowByteArray &in) {
     QString out;
     for (int n = 0; n < in.size(); ++n) {
         char c = in[n];
@@ -339,10 +339,10 @@ QString byteArrayToEscapedString(const CowByteArray &in) {
         else
             out += QString::asprintf("\\x%02x", (unsigned char)c);
     }
-    return out;
+    return CowString(out);
 }
 
-QString variantToString(const Variant &in, int indent) {
+CowString variantToString(const Variant &in, int indent) {
     QString out;
 
     VariantType::Type type = typeId(in);
@@ -359,8 +359,8 @@ QString variantToString(const Variant &in, int indent) {
             if (indent >= 0)
                 out += QString(indent + 2, ' ');
 
-            out += '\"' + byteArrayToEscapedString(it.key().toUtf8()) +
-                   "\": " + variantToString(it.value(), indent >= 0 ? indent + 2 : -1);
+            out += '\"' + byteArrayToEscapedString(it.key().toUtf8()).asQString() +
+                   "\": " + variantToString(it.value(), indent >= 0 ? indent + 2 : -1).asQString();
             auto next_it = it;
             ++next_it;
             if (next_it != hash.constEnd())
@@ -388,7 +388,7 @@ QString variantToString(const Variant &in, int indent) {
             if (indent >= 0)
                 out += QString(indent + 2, ' ');
 
-            out += variantToString(list[n], indent >= 0 ? indent + 2 : -1);
+            out += variantToString(list[n], indent >= 0 ? indent + 2 : -1).asQString();
             if (n + 1 < list.count())
                 out += ',';
 
@@ -403,7 +403,7 @@ QString variantToString(const Variant &in, int indent) {
         out += ']';
     } else if (type == VariantType::ByteArray) {
         CowByteArray val = in.toByteArray();
-        out += '\"' + byteArrayToEscapedString(val) + '\"';
+        out += '\"' + byteArrayToEscapedString(val).asQString() + '\"';
     } else if (type == VariantType::Double)
         out += QString::number(in.toDouble());
     else if (type == VariantType::Bool)
@@ -415,7 +415,7 @@ QString variantToString(const Variant &in, int indent) {
     else
         out += QString("<unknown: %1>").arg((int)type);
 
-    return out;
+    return CowString(out);
 }
 
 } // namespace TnetString

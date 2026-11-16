@@ -22,6 +22,7 @@
 #define TNETSTRING_H
 
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include "variant.h"
 
 namespace TnetString {
@@ -50,10 +51,10 @@ Variant toVariant(const CowByteArray &in, int offset, Type type, int dataOffset,
                   bool *ok = 0);
 Variant toVariant(const CowByteArray &in, int offset = 0, bool *ok = 0);
 
-QString byteArrayToEscapedString(const CowByteArray &in);
+CowString byteArrayToEscapedString(const CowByteArray &in);
 
 // Pass >= 0 for pretty print, -1 for compact
-QString variantToString(const Variant &in, int indent = 0);
+CowString variantToString(const Variant &in, int indent = 0);
 
 } // namespace TnetString
 

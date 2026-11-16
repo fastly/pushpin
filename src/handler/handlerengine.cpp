@@ -1499,7 +1499,7 @@ private:
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("OUT retry: to=%s %s", instanceAddress.data(),
-                      qPrintable(TnetString::variantToString(vout, -1)));
+                      cowPrintable(TnetString::variantToString(vout, -1)));
 
         QList<QByteArray> msg;
         msg += instanceAddress;
@@ -1523,7 +1523,7 @@ private:
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("OUT wscontrol: to=%s %s", instanceAddress.data(),
-                      qPrintable(TnetString::variantToString(vout, -1)));
+                      cowPrintable(TnetString::variantToString(vout, -1)));
 
         QList<QByteArray> msg;
         msg += instanceAddress;
@@ -1790,8 +1790,8 @@ private:
             return;
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("IN command: %s args=%s", qPrintable(req->method()),
-                      qPrintable(TnetString::variantToString(req->args(), -1)));
+            log_debug("IN command: %s args=%s", cowPrintable(req->method()),
+                      cowPrintable(TnetString::variantToString(req->args(), -1)));
 
         if (req->method() == "conncheck") {
             auto d = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats.get());
@@ -2172,14 +2172,14 @@ private:
         }
     }
 
-    void stats_unsubscribed([[maybe_unused]] const QString &mode, const QString &channel) {
+    void stats_unsubscribed([[maybe_unused]] const CowString &mode, const CowString &channel) {
         // NOTE: this callback may be invoked while looping over certain structures, so be careful
         // what you touch
 
-        if (!cs.responseSessionsByChannel.contains(channel) &&
-            !cs.streamSessionsByChannel.contains(channel) &&
-            !cs.wsSessionsByChannel.contains(channel))
-            removeSub(channel);
+        if (!cs.responseSessionsByChannel.contains(channel.asQString()) &&
+            !cs.streamSessionsByChannel.contains(channel.asQString()) &&
+            !cs.wsSessionsByChannel.contains(channel.asQString()))
+            removeSub(channel.asQString());
     }
 
     Variant parseJsonOrTnetstring(const CowByteArray &message, bool *ok = 0,
@@ -2243,7 +2243,7 @@ private:
         }
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
+            log_debug("IN pull: %s", cowPrintable(TnetString::variantToString(data, -1)));
 
         PublishItem item = PublishItem::fromVariant(data, QString(), &ok, &errorMessage);
         if (!ok) {
@@ -2273,7 +2273,7 @@ private:
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("IN sub: channel=%s %s", qPrintable(channel),
-                      qPrintable(TnetString::variantToString(data, -1)));
+                      cowPrintable(TnetString::variantToString(data, -1)));
 
         PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
         if (!ok) {
@@ -2315,7 +2315,7 @@ private:
         }
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
-            log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
+            log_debug("IN wscontrol: %s", cowPrintable(TnetString::variantToString(data, -1)));
 
         WsControlPacket packet;
         if (!packet.fromVariant(data)) {
@@ -2632,7 +2632,7 @@ private:
 
         if (log_outputLevel() >= LOG_LEVEL_DEBUG)
             log_debug("IN proxy stats: %s %s", type.data(),
-                      qPrintable(TnetString::variantToString(data, -1)));
+                      cowPrintable(TnetString::variantToString(data, -1)));
 
         StatsPacket p;
         if (!p.fromVariant(type, data)) {
