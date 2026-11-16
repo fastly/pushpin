@@ -22,14 +22,14 @@
 #include "socketnotifier.h"
 #include <boost/signals2.hpp>
 
-class QString;
+#include "cowstring.h"
 
 class FileWatcher {
 public:
     FileWatcher();
     ~FileWatcher();
 
-    bool start(const QString &filePath);
+    bool start(const CowString &filePath);
 
     boost::signals2::signal<void()> fileChanged;
 

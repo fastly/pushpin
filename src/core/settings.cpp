@@ -31,8 +31,8 @@
 #include <QFileInfo>
 #include <QSettings>
 
-Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
-    main_ = new QSettings(fileName, QSettings::IniFormat);
+Settings::Settings(const CowString &fileName) : include_(0), portOffset_(0) {
+    main_ = new QSettings(fileName.asQString(), QSettings::IniFormat);
 
     libdir_ = valueRaw("global/libdir").toString();
     if (libdir_.isEmpty()) {
@@ -41,7 +41,7 @@ Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
             libdir_ = QFileInfo("src").absoluteFilePath();
         } else {
             // Use compiled value
-            libdir_ = Config::get().libDir;
+            libdir_ = Config::get().libDir.asQString();
         }
     }
 
@@ -67,7 +67,8 @@ Settings::Settings(const QString &fileName) : include_(0), portOffset_(0) {
         // If include is a relative path, then use it relative to the config file location
         QFileInfo fi(includeFile);
         if (fi.isRelative())
-            includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
+            includeFile =
+                QFileInfo(QFileInfo(fileName.asQString()).absoluteDir(), includeFile).filePath();
 
         include_ = new QSettings(includeFile, QSettings::IniFormat);
     }
@@ -116,27 +117,27 @@ QString Settings::resolveVars(const QString &in) const {
     return out;
 }
 
-bool Settings::contains(const QString &key) const {
-    if (main_->contains(key))
+bool Settings::contains(const CowString &key) const {
+    if (main_->contains(key.asQString()))
         return true;
 
     if (include_)
-        return include_->contains(key);
+        return include_->contains(key.asQString());
 
     return false;
 }
 
-Variant Settings::valueRaw(const QString &key, const Variant &defaultValue) const {
+Variant Settings::valueRaw(const CowString &key, const Variant &defaultValue) const {
     if (include_) {
-        if (main_->contains(key))
-            return main_->value(key);
+        if (main_->contains(key.asQString()))
+            return main_->value(key.asQString());
         else
-            return include_->value(key, defaultValue);
+            return include_->value(key.asQString(), defaultValue);
     } else
-        return main_->value(key, defaultValue);
+        return main_->value(key.asQString(), defaultValue);
 }
 
-Variant Settings::value(const QString &key, const Variant &defaultValue) const {
+Variant Settings::value(const CowString &key, const Variant &defaultValue) const {
     Variant v = valueRaw(key, defaultValue);
     if (v.isValid()) {
         if (typeId(v) == VariantType::String) {
@@ -153,17 +154,17 @@ Variant Settings::value(const QString &key, const Variant &defaultValue) const {
     return v;
 }
 
-int Settings::adjustedPort(const QString &key, int defaultValue) const {
+int Settings::adjustedPort(const CowString &key, int defaultValue) const {
     int x = value(key, Variant(defaultValue)).toInt();
     if (x > 0)
         x += portOffset_;
     return x;
 }
 
-QString Settings::ipcPrefix() const { return ipcPrefix_; }
+CowString Settings::ipcPrefix() const { return ipcPrefix_; }
 
 int Settings::portOffset() const { return portOffset_; }
 
-void Settings::setIpcPrefix(const QString &s) { ipcPrefix_ = s; }
+void Settings::setIpcPrefix(const CowString &s) { ipcPrefix_ = s.asQString(); }
 
 void Settings::setPortOffset(int x) { portOffset_ = x; }

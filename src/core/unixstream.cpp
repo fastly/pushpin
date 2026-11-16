@@ -31,7 +31,7 @@ UnixStream::UnixStream(ffi::UnixStream *inner)
 
 UnixStream::~UnixStream() { reset(); }
 
-bool UnixStream::connect(const QString &path) {
+bool UnixStream::connect(const CowString &path) {
     reset();
 
     CowByteArray p = path.toUtf8();

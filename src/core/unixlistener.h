@@ -17,9 +17,9 @@
 #ifndef UNIXLISTENER_H
 #define UNIXLISTENER_H
 
+#include "cowstring.h"
 #include "rust/bindings.h"
 #include "unixstream.h"
-#include <QHostAddress>
 #include <boost/signals2.hpp>
 #include <memory>
 
@@ -34,7 +34,7 @@ public:
     UnixListener(const UnixListener &) = delete;
     UnixListener &operator=(const UnixListener &) = delete;
 
-    bool bind(const QString &path);
+    bool bind(const CowString &path);
     std::unique_ptr<UnixStream> accept();
     int errorCondition() const { return errorCondition_; }
 

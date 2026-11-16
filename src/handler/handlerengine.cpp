@@ -1399,11 +1399,11 @@ public:
         if (!config.prometheusPort.isEmpty()) {
             commonMetrics = StatsManager::CommonMetrics::create(config.prometheusPrefix);
 
-            QString promError;
+            CowString promError;
             prometheusServer = PrometheusServer::create(config.prometheusPort,
                                                         commonMetrics->registry(), &promError);
             if (!prometheusServer) {
-                log_error("unable to bind to prometheus port: %s", qPrintable(promError));
+                log_error("unable to bind to prometheus port: %s", cowPrintable(promError));
                 return false;
             }
 
@@ -1585,10 +1585,10 @@ private:
         req->respond(code, reason, outHeaders, body.toUtf8());
         req->finished.connect([=] { DeferCall::deleteLater(req); });
 
-        QString msg =
-            QString("control: %1 %2 code=%3 %4")
-                .arg(req->requestMethod(), QString::fromUtf8(req->requestUri().asQByteArray()),
-                     QString::number(code), QString::number(body.size()));
+        QString msg = QString("control: %1 %2 code=%3 %4")
+                          .arg(req->requestMethod().asQString(),
+                               QString::fromUtf8(req->requestUri().asQByteArray()),
+                               QString::number(code), QString::number(body.size()));
         if (items > -1)
             msg += QString(" items=%1").arg(items);
 
@@ -2764,7 +2764,8 @@ private:
                 HttpHeaders headers;
                 headers += HttpHeader("Allow", "POST");
                 httpControlRespond(req, 405, "Method Not Allowed",
-                                   "Method not allowed: " + req->requestMethod() + ".\n",
+                                   "Method not allowed: " + req->requestMethod().asQString() +
+                                       ".\n",
                                    QByteArray(), headers);
             }
         } else if (path == "/recover") {
@@ -2787,7 +2788,8 @@ private:
                 HttpHeaders headers;
                 headers += HttpHeader("Allow", "POST");
                 httpControlRespond(req, 405, "Method Not Allowed",
-                                   "Method not allowed: " + req->requestMethod() + ".\n",
+                                   "Method not allowed: " + req->requestMethod().asQString() +
+                                       ".\n",
                                    QByteArray(), headers);
             }
         } else {

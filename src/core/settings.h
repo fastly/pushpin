@@ -23,6 +23,7 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
+#include "cowstring.h"
 #include "variant.h"
 #include <QString>
 
@@ -31,17 +32,17 @@ class QSettings;
 /// Stores the application settings loaded from the command line arguments and the config file
 class Settings {
 public:
-    Settings(const QString &fileName);
+    Settings(const CowString &fileName);
     ~Settings();
 
-    bool contains(const QString &key) const;
-    Variant valueRaw(const QString &key, const Variant &defaultValue = Variant()) const;
-    Variant value(const QString &key, const Variant &defaultValue = Variant()) const;
-    int adjustedPort(const QString &key, int defaultValue = -1) const;
+    bool contains(const CowString &key) const;
+    Variant valueRaw(const CowString &key, const Variant &defaultValue = Variant()) const;
+    Variant value(const CowString &key, const Variant &defaultValue = Variant()) const;
+    int adjustedPort(const CowString &key, int defaultValue = -1) const;
 
-    QString ipcPrefix() const;
+    CowString ipcPrefix() const;
     int portOffset() const;
-    void setIpcPrefix(const QString &s);
+    void setIpcPrefix(const CowString &s);
     void setPortOffset(int x);
 
 private:

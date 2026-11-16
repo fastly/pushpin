@@ -49,8 +49,8 @@ EncodingKey EncodingKey::fromPem(const CowByteArray &key) {
     return k;
 }
 
-EncodingKey EncodingKey::fromFile(const QString &fileName) {
-    QFile f(fileName);
+EncodingKey EncodingKey::fromFile(const CowString &fileName) {
+    QFile f(fileName.asQString());
     if (!f.open(QFile::ReadOnly)) {
         return EncodingKey();
     }
@@ -63,9 +63,9 @@ EncodingKey EncodingKey::fromFile(const QString &fileName) {
         return fromSecret(CowByteArray::fromHex(data.trimmed()));
 }
 
-EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir) {
+EncodingKey EncodingKey::fromConfigString(const CowString &s, const QDir &baseDir) {
     if (s.startsWith("file:")) {
-        QString keyFile = s.mid(5);
+        QString keyFile = s.mid(5).asQString();
         QFileInfo fi(keyFile);
         if (fi.isRelative())
             keyFile = QFileInfo(baseDir, keyFile).filePath();
@@ -103,8 +103,8 @@ DecodingKey DecodingKey::fromPem(const CowByteArray &key) {
     return k;
 }
 
-DecodingKey DecodingKey::fromFile(const QString &fileName) {
-    QFile f(fileName);
+DecodingKey DecodingKey::fromFile(const CowString &fileName) {
+    QFile f(fileName.asQString());
     if (!f.open(QFile::ReadOnly)) {
         return DecodingKey();
     }
@@ -117,9 +117,9 @@ DecodingKey DecodingKey::fromFile(const QString &fileName) {
         return fromSecret(CowByteArray::fromHex(data.trimmed()));
 }
 
-DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir) {
+DecodingKey DecodingKey::fromConfigString(const CowString &s, const QDir &baseDir) {
     if (s.startsWith("file:")) {
-        QString keyFile = s.mid(5);
+        QString keyFile = s.mid(5).asQString();
         QFileInfo fi(keyFile);
         if (fi.isRelative())
             keyFile = QFileInfo(baseDir, keyFile).filePath();

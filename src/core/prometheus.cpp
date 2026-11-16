@@ -21,15 +21,15 @@ PrometheusServer::PrometheusServer(ffi::PrometheusServer *handle) : inner_(handl
 PrometheusServer::~PrometheusServer() { ffi::prometheus_server_destroy(inner_); }
 
 // static
-std::unique_ptr<PrometheusServer> PrometheusServer::create(const QString &addr,
+std::unique_ptr<PrometheusServer> PrometheusServer::create(const CowString &addr,
                                                            const ffi::PrometheusRegistry *registry,
-                                                           QString *error) {
+                                                           CowString *error) {
     const char *errStr = nullptr;
     ffi::PrometheusServer *handle =
         ffi::prometheus_server_create(addr.toUtf8().data(), registry, &errStr);
     if (!handle) {
         if (error && errStr)
-            *error = QString::fromUtf8(errStr);
+            *error = CowString::fromUtf8(errStr);
         ffi::prometheus_server_error_destroy(errStr);
         return nullptr;
     }

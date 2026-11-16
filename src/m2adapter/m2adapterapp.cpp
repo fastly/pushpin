@@ -433,7 +433,7 @@ public:
 
     void start() {
         QCoreApplication::setApplicationName("m2adapter");
-        QCoreApplication::setApplicationVersion(Config::get().version);
+        QCoreApplication::setApplicationVersion(Config::get().version.asQString());
 
         QCommandLineParser parser;
         parser.setApplicationDescription("Mongrel2 <-> ZHTTP adapter.");
@@ -489,7 +489,7 @@ public:
 
         QString configFile = args.configFile;
         if (configFile.isEmpty())
-            configFile = QDir(Config::get().configDir).filePath("m2adapter.conf");
+            configFile = QDir(Config::get().configDir.asQString()).filePath("m2adapter.conf");
 
         // QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
         {
