@@ -24,9 +24,9 @@
 
 #include "cowbytearray.h"
 #include <QList>
-#include <QPair>
+#include <utility>
 
-typedef QPair<CowByteArray, CowByteArray> HttpHeaderParameter;
+typedef std::pair<CowByteArray, CowByteArray> HttpHeaderParameter;
 
 class HttpHeaderParameters : public QList<HttpHeaderParameter> {
 public:
@@ -34,7 +34,7 @@ public:
     CowByteArray get(const CowByteArray &key) const;
 };
 
-typedef QPair<CowByteArray, CowByteArray> HttpHeader;
+typedef std::pair<CowByteArray, CowByteArray> HttpHeader;
 
 class HttpHeaders : public QList<HttpHeader> {
 public:

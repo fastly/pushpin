@@ -27,12 +27,13 @@
 #include "cowstring.h"
 #include "cowurl.h"
 #include "httprequest.h"
+#include <utility>
 
 /// HTTP request instance for testing that simulates HTTP behavior
 class TestHttpRequest : public HttpRequest {
 public:
     // Pair of sender + request id
-    typedef QPair<CowByteArray, CowByteArray> Rid;
+    typedef std::pair<CowByteArray, CowByteArray> Rid;
 
     TestHttpRequest();
     ~TestHttpRequest();

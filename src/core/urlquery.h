@@ -22,6 +22,7 @@
 #include <QStringList>
 #include <QUrl>
 #include <QUrlQuery>
+#include <utility>
 
 class UrlQuery {
 public:
@@ -75,7 +76,7 @@ public:
         return inner_.allQueryItemValues(key.asQString(),
                                          static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
-    QList<QPair<QString, QString>>
+    QList<std::pair<QString, QString>>
     queryItems(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.queryItems(static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }

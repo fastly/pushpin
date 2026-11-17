@@ -29,6 +29,7 @@
 #include "publishitem.h"
 #include "publishlastids.h"
 #include "timer.h"
+#include <utility>
 
 #define CHANNEL_PENDING_MAX 100
 #define DEFAULT_PENDING_EXPIRE 5000
@@ -59,12 +60,12 @@ public:
     Sequencer *q;
     PublishLastIds *lastIds;
     QHash<QString, ChannelPendingItems> pendingItemsByChannel;
-    QMap<QPair<int64_t, PendingItem *>, PendingItem *> pendingItemsByTime;
+    QMap<std::pair<int64_t, PendingItem *>, PendingItem *> pendingItemsByTime;
     std::unique_ptr<Timer> expireTimer;
     int pendingExpireMSecs;
     int idCacheTtl;
-    QHash<QPair<QString, QString>, CachedId *> idCacheById;
-    QMap<QPair<int64_t, CachedId *>, CachedId *> idCacheByExpireTime;
+    QHash<std::pair<QString, QString>, CachedId *> idCacheById;
+    QMap<std::pair<int64_t, CachedId *>, CachedId *> idCacheByExpireTime;
 
     Private(Sequencer *_q, PublishLastIds *_publishLastIds)
         : q(_q),
@@ -81,19 +82,20 @@ public:
         int64_t now = DateTime::currentMSecsSinceEpoch();
 
         while (!idCacheByExpireTime.isEmpty()) {
-            QMap<QPair<int64_t, CachedId *>, CachedId *>::iterator it = idCacheByExpireTime.begin();
+            QMap<std::pair<int64_t, CachedId *>, CachedId *>::iterator it =
+                idCacheByExpireTime.begin();
             CachedId *i = it.value();
 
             if (i->expireTime > now)
                 break;
 
-            idCacheById.remove(QPair<QString, QString>(i->channel, i->id));
+            idCacheById.remove(std::pair<QString, QString>(i->channel, i->id));
             idCacheByExpireTime.erase(it);
             delete i;
         }
 
         if (!item.id.isNull() && idCacheTtl > 0) {
-            QPair<QString, QString> idKey(item.channel, item.id);
+            std::pair<QString, QString> idKey(item.channel, item.id);
             if (idCacheById.contains(idKey)) {
                 // We've seen this ID recently, drop the message
                 return;
@@ -104,7 +106,7 @@ public:
             i->channel = item.channel;
             i->id = item.id;
             idCacheById.insert(idKey, i);
-            idCacheByExpireTime.insert(QPair<int64_t, CachedId *>(i->expireTime, i), i);
+            idCacheByExpireTime.insert(std::pair<int64_t, CachedId *>(i->expireTime, i), i);
         }
 
         if (!seq) {
@@ -135,7 +137,7 @@ public:
             i->item = item;
 
             channelPendingItems.itemsByPrevId.insert(item.prevId, i);
-            pendingItemsByTime.insert(QPair<int64_t, PendingItem *>(i->time, i), i);
+            pendingItemsByTime.insert(std::pair<int64_t, PendingItem *>(i->time, i), i);
 
             if (!expireTimer->isActive())
                 expireTimer->start(EXPIRE_INTERVAL);
@@ -155,7 +157,7 @@ public:
             it.next();
             PendingItem *i = it.value();
 
-            pendingItemsByTime.remove(QPair<int64_t, PendingItem *>(i->time, i));
+            pendingItemsByTime.remove(std::pair<int64_t, PendingItem *>(i->time, i));
         }
 
         pendingItemsByChannel.remove(channel);
@@ -180,7 +182,7 @@ public:
 
                 PublishItem pitem = i->item;
                 channelPendingItems.itemsByPrevId.remove(i->item.prevId);
-                pendingItemsByTime.remove(QPair<int64_t, PendingItem *>(i->time, i));
+                pendingItemsByTime.remove(std::pair<int64_t, PendingItem *>(i->time, i));
                 delete i;
 
                 if (!pitem.id.isNull())
@@ -207,7 +209,7 @@ public:
         int64_t threshold = now - pendingExpireMSecs;
 
         while (!pendingItemsByTime.isEmpty()) {
-            QMap<QPair<int64_t, PendingItem *>, PendingItem *>::iterator it =
+            QMap<std::pair<int64_t, PendingItem *>, PendingItem *>::iterator it =
                 pendingItemsByTime.begin();
             PendingItem *i = it.value();
 

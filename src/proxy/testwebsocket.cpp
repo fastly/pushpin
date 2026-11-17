@@ -30,6 +30,7 @@
 #include "statusreasons.h"
 #include "urlquery.h"
 #include <assert.h>
+#include <utility>
 
 #define BUFFER_SIZE 200000
 
@@ -59,7 +60,7 @@ public:
         QSet<QString> channels;
 
         UrlQuery query(request.uri);
-        QList<QPair<QString, QString>> queryItems = query.queryItems();
+        QList<std::pair<QString, QString>> queryItems = query.queryItems();
         for (int n = 0; n < queryItems.count(); ++n) {
             if (queryItems[n].first == "channel")
                 channels += queryItems[n].second;

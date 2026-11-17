@@ -46,10 +46,10 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QHash>
-#include <QPair>
 #include <QSettings>
 #include <QTimer>
 #include <assert.h>
+#include <utility>
 
 #define DEFAULT_HWM 101000
 #define STATUS_INTERVAL 250
@@ -232,7 +232,7 @@ public:
     };
 
     // Can be used for either m2 or zhttp
-    typedef QPair<QByteArray, QByteArray> Rid;
+    typedef std::pair<QByteArray, QByteArray> Rid;
 
     class Session;
 
@@ -375,13 +375,13 @@ public:
     QHash<Rid, Session *> sessionsByM2Rid;
     QHash<Rid, Session *> sessionsByZhttpRid;
     QHash<Rid, Session *> sessionsByZwsRid;
-    QMap<QPair<qint64, M2Connection *>, M2Connection *> m2ConnectionsByLastRefresh;
+    QMap<std::pair<qint64, M2Connection *>, M2Connection *> m2ConnectionsByLastRefresh;
     QSet<M2Connection *> m2ConnectionRefreshBuckets[M2_REFRESH_BUCKETS];
     int currentM2RefreshBucket;
-    QMap<QPair<qint64, Session *>, Session *> sessionsByLastRefresh;
+    QMap<std::pair<qint64, Session *>, Session *> sessionsByLastRefresh;
     QSet<Session *> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
     int currentSessionRefreshBucket;
-    QMap<QPair<qint64, Session *>, Session *> sessionsByLastActive;
+    QMap<std::pair<qint64, Session *>, Session *> sessionsByLastActive;
     int zhttpCancelMeter;
     QSet<Session *> sessionsToCancel;
     int m2_client_buffer;
@@ -732,7 +732,8 @@ public:
 
     void removeConnection(M2Connection *conn) {
         m2ConnectionRefreshBuckets[conn->refreshBucket].remove(conn);
-        m2ConnectionsByLastRefresh.remove(QPair<qint64, M2Connection *>(conn->lastRefresh, conn));
+        m2ConnectionsByLastRefresh.remove(
+            std::pair<qint64, M2Connection *>(conn->lastRefresh, conn));
         m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
     }
 
@@ -780,14 +781,14 @@ public:
         sessionsToCancel -= s;
 
         if (s->lastRefresh >= 0) {
-            QPair<qint64, Session *> k(s->lastRefresh, s);
+            std::pair<qint64, Session *> k(s->lastRefresh, s);
             if (sessionsByLastRefresh.contains(k)) {
                 sessionRefreshBuckets[s->refreshBucket].remove(s);
                 sessionsByLastRefresh.remove(k);
             }
         }
 
-        sessionsByLastActive.remove(QPair<qint64, Session *>(s->lastActive, s));
+        sessionsByLastActive.remove(std::pair<qint64, Session *>(s->lastActive, s));
 
         if (s->mode == Http)
             sessionsByZhttpRid.remove(Rid(zhttpInstanceId, s->id));
@@ -1216,9 +1217,9 @@ public:
 
             // Update lastActive
             qint64 now = DateTime::currentMSecsSinceEpoch();
-            sessionsByLastActive.remove(QPair<qint64, Session *>(s->lastActive, s));
+            sessionsByLastActive.remove(std::pair<qint64, Session *>(s->lastActive, s));
             s->lastActive = now;
-            sessionsByLastActive.insert(QPair<qint64, Session *>(s->lastActive, s), s);
+            sessionsByLastActive.insert(std::pair<qint64, Session *>(s->lastActive, s), s);
 
             handleSessionBodyWritten(s, bodyWritten, giveCredits);
         }
@@ -1414,16 +1415,16 @@ public:
             // Once we have the peer's address, set up refresh
 
             s->lastRefresh = now;
-            sessionsByLastRefresh.insert(QPair<qint64, Session *>(s->lastRefresh, s), s);
+            sessionsByLastRefresh.insert(std::pair<qint64, Session *>(s->lastRefresh, s), s);
 
             s->refreshBucket = smallestSessionRefreshBucket();
             sessionRefreshBuckets[s->refreshBucket] += s;
         }
 
         // Update lastActive
-        sessionsByLastActive.remove(QPair<qint64, Session *>(s->lastActive, s));
+        sessionsByLastActive.remove(std::pair<qint64, Session *>(s->lastActive, s));
         s->lastActive = now;
-        sessionsByLastActive.insert(QPair<qint64, Session *>(s->lastActive, s), s);
+        sessionsByLastActive.insert(std::pair<qint64, Session *>(s->lastActive, s), s);
 
         if (s->pendingCancel)
             return;
@@ -1460,7 +1461,7 @@ public:
             // Refresh would have already been set up once if we are here
             assert(s->lastRefresh >= 0);
 
-            sessionsByLastRefresh.insert(QPair<qint64, Session *>(s->lastRefresh, s), s);
+            sessionsByLastRefresh.insert(std::pair<qint64, Session *>(s->lastRefresh, s), s);
             s->refreshBucket = smallestSessionRefreshBucket();
             sessionRefreshBuckets[s->refreshBucket] += s;
 
@@ -1736,7 +1737,7 @@ public:
             s->inHandoff = true;
 
             sessionRefreshBuckets[s->refreshBucket].remove(s);
-            sessionsByLastRefresh.remove(QPair<qint64, Session *>(s->lastRefresh, s));
+            sessionsByLastRefresh.remove(std::pair<qint64, Session *>(s->lastRefresh, s));
 
             // Whoever picks up after handoff can turn this on
             s->multi = false;
@@ -1788,11 +1789,11 @@ public:
         const QSet<M2Connection *> &bucket = m2ConnectionRefreshBuckets[currentM2RefreshBucket];
         foreach (M2Connection *conn, bucket) {
             // Move to the end
-            QPair<qint64, M2Connection *> k(conn->lastRefresh, conn);
+            std::pair<qint64, M2Connection *> k(conn->lastRefresh, conn);
             m2ConnectionsByLastRefresh.remove(k);
             conn->lastRefresh = now;
             m2ConnectionsByLastRefresh.insert(
-                QPair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
+                std::pair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
 
             if (!connIdListBySender.contains(conn->identIndex))
                 connIdListBySender.insert(conn->identIndex, QList<QByteArray>());
@@ -1814,7 +1815,7 @@ public:
         // Process any others
         qint64 threshold = now - M2_CONNECTION_MUST_PROCESS;
         while (!m2ConnectionsByLastRefresh.isEmpty()) {
-            QMap<QPair<qint64, M2Connection *>, M2Connection *>::iterator it =
+            QMap<std::pair<qint64, M2Connection *>, M2Connection *>::iterator it =
                 m2ConnectionsByLastRefresh.begin();
             M2Connection *conn = it.value();
 
@@ -1825,7 +1826,7 @@ public:
             m2ConnectionsByLastRefresh.erase(it);
             conn->lastRefresh = now;
             m2ConnectionsByLastRefresh.insert(
-                QPair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
+                std::pair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
 
             if (!connIdListBySender.contains(conn->identIndex))
                 connIdListBySender.insert(conn->identIndex, QList<QByteArray>());
@@ -1872,10 +1873,10 @@ public:
             assert(!s->inHandoff && !s->zhttpAddress.isEmpty());
 
             // Move to the end
-            QPair<qint64, Session *> k(s->lastRefresh, s);
+            std::pair<qint64, Session *> k(s->lastRefresh, s);
             sessionsByLastRefresh.remove(k);
             s->lastRefresh = now;
-            sessionsByLastRefresh.insert(QPair<qint64, Session *>(s->lastRefresh, s), s);
+            sessionsByLastRefresh.insert(std::pair<qint64, Session *>(s->lastRefresh, s), s);
 
             if (s->multi) {
                 if (!sessionListBySender[s->mode].contains(s->zhttpAddress))
@@ -1909,7 +1910,8 @@ public:
         // Process any others
         qint64 threshold = now - ZHTTP_MUST_PROCESS;
         while (!sessionsByLastRefresh.isEmpty()) {
-            QMap<QPair<qint64, Session *>, Session *>::iterator it = sessionsByLastRefresh.begin();
+            QMap<std::pair<qint64, Session *>, Session *>::iterator it =
+                sessionsByLastRefresh.begin();
             Session *s = it.value();
 
             if (s->lastRefresh > threshold)
@@ -1920,7 +1922,7 @@ public:
             // Move to the end
             sessionsByLastRefresh.erase(it);
             s->lastRefresh = now;
-            sessionsByLastRefresh.insert(QPair<qint64, Session *>(s->lastRefresh, s), s);
+            sessionsByLastRefresh.insert(std::pair<qint64, Session *>(s->lastRefresh, s), s);
 
             if (s->multi) {
                 if (!sessionListBySender[s->mode].contains(s->zhttpAddress))
@@ -1980,7 +1982,8 @@ public:
     void expireSessions(qint64 now) {
         qint64 threshold = now - ZHTTP_EXPIRE;
         while (!sessionsByLastActive.isEmpty()) {
-            QMap<QPair<qint64, Session *>, Session *>::iterator it = sessionsByLastActive.begin();
+            QMap<std::pair<qint64, Session *>, Session *>::iterator it =
+                sessionsByLastActive.begin();
             Session *s = it.value();
 
             if (s->lastActive > threshold)
@@ -2174,7 +2177,7 @@ public:
 
             conn->lastRefresh = now;
             m2ConnectionsByLastRefresh.insert(
-                QPair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
+                std::pair<qint64, M2Connection *>(conn->lastRefresh, conn), conn);
 
             conn->refreshBucket = smallestM2RefreshBucket();
             m2ConnectionRefreshBuckets[conn->refreshBucket] += conn;
@@ -2300,7 +2303,7 @@ public:
             qint64 now = DateTime::currentMSecsSinceEpoch();
 
             s->lastActive = now;
-            sessionsByLastActive.insert(QPair<qint64, Session *>(s->lastActive, s), s);
+            sessionsByLastActive.insert(std::pair<qint64, Session *>(s->lastActive, s), s);
 
             if (mreq.type == M2RequestPacket::HttpRequest)
                 sessionsByZhttpRid.insert(Rid(zhttpInstanceId, s->id), s);

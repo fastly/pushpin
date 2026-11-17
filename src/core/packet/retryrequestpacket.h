@@ -27,10 +27,11 @@
 #include "httprequestdata.h"
 #include "variant.h"
 #include <QHostAddress>
+#include <utility>
 
 class RetryRequestPacket {
 public:
-    typedef QPair<CowByteArray, CowByteArray> Rid;
+    typedef std::pair<CowByteArray, CowByteArray> Rid;
 
     class Request {
     public:

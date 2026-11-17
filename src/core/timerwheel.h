@@ -23,7 +23,8 @@
 #ifndef TIMERWHEEL_H
 #define TIMERWHEEL_H
 
-#include <QPair>
+#include <cstddef>
+#include <cstdint>
 
 namespace ffi {
 struct TimerWheel;
