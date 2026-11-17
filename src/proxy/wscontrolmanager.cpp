@@ -97,7 +97,7 @@ public:
         initSock->setHwm(DEFAULT_HWM);
         initSock->setShutdownWaitTime(0);
 
-        foreach (const QString &spec, initSpecs) {
+        for (const QString &spec : std::as_const(initSpecs)) {
             CowString errorMessage;
             if (!ZUtil::setupSocket(initSock.get(), spec, true, ipcFileMode, &errorMessage)) {
                 log_error("%s", cowPrintable(errorMessage));
@@ -118,7 +118,7 @@ public:
         streamSock->setHwm(DEFAULT_HWM);
         streamSock->setShutdownWaitTime(0);
 
-        foreach (const QString &spec, streamSpecs) {
+        for (const QString &spec : std::as_const(streamSpecs)) {
             CowString errorMessage;
             if (!ZUtil::setupSocket(streamSock.get(), spec, true, ipcFileMode, &errorMessage)) {
                 log_error("%s", cowPrintable(errorMessage));

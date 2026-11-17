@@ -46,6 +46,7 @@
 #include "zhttprequest.h"
 #include <QRandomGenerator>
 #include <assert.h>
+#include <utility>
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
@@ -240,7 +241,7 @@ public:
 
         // Set up implicit channels
         std::weak_ptr<Private> self = q->d;
-        foreach (const QString &name, adata.implicitChannels) {
+        for (const QString &name : std::as_const(adata.implicitChannels)) {
             if (!channels.contains(name)) {
                 Instruct::Channel c;
                 c.name = name;
@@ -282,7 +283,7 @@ public:
                 // Apply ResponseContent filters of all channels
                 QStringList allFilters;
                 foreach (const Instruct::Channel &c, instruct.channels) {
-                    foreach (const QString &filter, c.filters) {
+                    for (const QString &filter : std::as_const(c.filters)) {
                         if ((Filter::targets(filter) & Filter::ResponseContent) &&
                             !allFilters.contains(filter))
                             allFilters += filter;
@@ -561,14 +562,14 @@ private:
 
         std::weak_ptr<Private> self = q->d;
 
-        foreach (const QString &channel, channelsRemoved) {
+        for (const QString &channel : std::as_const(channelsRemoved)) {
             unsubscribeCallback.call({q, channel});
 
             assert(!self.expired()); // Deleting here would leak
                                      // subscriptions/connections
         }
 
-        foreach (const QString &channel, channelsAdded) {
+        for (const QString &channel : std::as_const(channelsAdded)) {
             subscribeCallback.call({q, channel});
 
             assert(!self.expired()); // Deleting here would leak
@@ -686,7 +687,7 @@ private:
             if (f.haveContentFilters) {
                 // Ensure content filters match
                 QStringList contentFilters;
-                foreach (const QString &f, channels[item.channel].filters) {
+                for (const QString &f : std::as_const(channels[item.channel].filters)) {
                     if (Filter::targets(f) & Filter::MessageContent)
                         contentFilters += f;
                 }
@@ -1400,7 +1401,7 @@ private:
                 // Apply ResponseContent filters of all channels
                 QStringList allFilters;
                 foreach (const Instruct::Channel &c, instruct.channels) {
-                    foreach (const QString &filter, c.filters) {
+                    for (const QString &filter : std::as_const(c.filters)) {
                         if ((Filter::targets(filter) & Filter::ResponseContent) &&
                             !allFilters.contains(filter))
                             allFilters += filter;

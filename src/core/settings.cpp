@@ -145,7 +145,7 @@ Variant Settings::value(const CowString &key, const Variant &defaultValue) const
         } else if (typeId(v) == VariantType::StringList) {
             QStringList oldList = v.toStringList();
             QStringList newList;
-            foreach (QString s, oldList)
+            for (QString s : oldList)
                 newList += resolveVars(s);
             v = newList;
         }

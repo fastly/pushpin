@@ -86,7 +86,7 @@ public:
             if (gripEnabled) {
                 response.headers += HttpHeader("Sec-WebSocket-Extensions", "grip");
 
-                foreach (const QString &channel, channels) {
+                for (const QString &channel : std::as_const(channels)) {
                     VariantMap obj;
                     obj["type"] = QString("subscribe");
                     obj["channel"] = channel;

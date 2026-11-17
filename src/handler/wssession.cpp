@@ -30,6 +30,7 @@
 #include "publishformat.h"
 #include "publishitem.h"
 #include "timer.h"
+#include <utility>
 
 #define WSCONTROL_REQUEST_TIMEOUT 8000
 
@@ -103,7 +104,7 @@ void WsSession::processPublishQueue() {
         if (f.haveContentFilters) {
             // Ensure content filters match
             QStringList contentFilters;
-            foreach (const QString &f, channels[item.channel].filters) {
+            for (const QString &f : std::as_const(channels[item.channel].filters)) {
                 if (Filter::targets(f) & Filter::MessageContent)
                     contentFilters += f;
             }

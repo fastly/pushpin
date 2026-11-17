@@ -39,6 +39,7 @@
 #include <QTextStream>
 #include <QWaitCondition>
 #include <assert.h>
+#include <utility>
 
 #define WORKER_THREAD_TIMERS 10
 #define WORKER_THREAD_SOCKETNOTIFIERS 1
@@ -485,7 +486,8 @@ private:
             r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
 
         if (props.contains("header")) {
-            foreach (const QString &s, props.values("header")) {
+            const auto headerValues = props.values("header");
+            for (const QString &s : headerValues) {
                 int at = s.indexOf(':');
                 if (at < 1) {
                     log_warning("%s:%d: header must use format 'name:value'", qPrintable(fileName),
@@ -590,7 +592,8 @@ private:
                 target.host = props.value("host");
 
             if (props.contains("sub")) {
-                foreach (const QString &s, props.values("sub")) {
+                const auto subValues = props.values("sub");
+                for (const QString &s : subValues) {
                     if (!s.isEmpty())
                         target.subscriptions += s;
                 }

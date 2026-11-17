@@ -30,6 +30,7 @@
 #include "variant.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
+#include <utility>
 
 #define REQUEST_TIMEOUT_SECS 10
 
@@ -75,7 +76,8 @@ public:
         QString user = context().subscriptionMeta.value("user");
 
         QStringList skip_users;
-        foreach (const QString &part, context().publishMeta.value("skip_users").split(',')) {
+        const auto skipUserParts = context().publishMeta.value("skip_users").split(',');
+        for (const QString &part : skipUserParts) {
             QString s = part.trimmed();
             if (!s.isEmpty())
                 skip_users += s;
@@ -644,7 +646,7 @@ Filter::Targets Filter::targets(const QString &name) {
 Filter::MessageFilterStack::MessageFilterStack(const QStringList &filterNames) {
     assert(filterNames.count() <= MESSAGEFILTERSTACK_SIZE_MAX);
 
-    foreach (const QString &name, filterNames) {
+    for (const QString &name : std::as_const(filterNames)) {
         MessageFilter *f = createMessageFilter(name);
         if (f)
             filters_.emplace_back(std::unique_ptr<MessageFilter>(f));

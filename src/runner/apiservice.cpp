@@ -21,6 +21,7 @@
 #include "template.h"
 #include <QDir>
 #include <QProcess>
+#include <utility>
 
 ApiService::ApiService(const QString &binFile, const QString &runDir, const QString &logDir,
                        const QString &filePrefix, int logLevel, int bufferSize, int bodyBufferSize,
@@ -64,7 +65,7 @@ ApiService::ApiService(const QString &binFile, const QString &runDir, const QStr
         }
     }
 
-    foreach (const QString &spec, itemOutSpecs) {
+    for (const QString &spec : std::as_const(itemOutSpecs)) {
         args_ += "--item-out=" + spec;
     }
 

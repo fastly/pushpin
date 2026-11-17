@@ -85,7 +85,7 @@ static std::pair<QHostAddress, int> parsePort(const QString &s) {
 QMap<QString, int> parseLogLevel(const QStringList &parts, QString *errorMessage) {
     QMap<QString, int> levels;
 
-    foreach (const QString &part, parts) {
+    for (const QString &part : std::as_const(parts)) {
         if (part.isEmpty()) {
             *errorMessage = "log level component cannot be empty";
             return QMap<QString, int>();
@@ -225,7 +225,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, Runne
     }
 
     if (parser->isSet(routeOption)) {
-        foreach (const QString &r, parser->values(routeOption))
+        const auto routeValues = parser->values(routeOption);
+        for (const QString &r : routeValues)
             args->routeLines += r;
     }
 
@@ -300,7 +301,7 @@ public:
 
         QString configFile;
 
-        foreach (const QString &f, configFileList) {
+        for (const QString &f : std::as_const(configFileList)) {
             if (QFileInfo(f).isFile()) {
                 configFile = f;
                 break;
@@ -470,7 +471,7 @@ public:
             // If port specified then instantiate a single http server
             ports += ListenPort(args.port.first, args.port.second, false);
         } else {
-            foreach (const QString &httpPortStr, httpPortStrs) {
+            for (const QString &httpPortStr : std::as_const(httpPortStrs)) {
                 std::pair<QHostAddress, int> p = parsePort(httpPortStr);
                 if (p.second < 0) {
                     log_error("invalid http port: %s", qPrintable(httpPortStr));
@@ -481,7 +482,7 @@ public:
                 ports += ListenPort(p.first, p.second, false);
             }
 
-            foreach (const QString &httpsPortStr, httpsPortStrs) {
+            for (const QString &httpsPortStr : std::as_const(httpsPortStrs)) {
                 std::pair<QHostAddress, int> p = parsePort(httpsPortStr);
                 if (p.second < 1) {
                     log_error("invalid https port: %s", qPrintable(httpsPortStr));
@@ -492,7 +493,7 @@ public:
                 ports += ListenPort(p.first, p.second, true);
             }
 
-            foreach (const QString &localPortStr, localPortStrs) {
+            for (const QString &localPortStr : std::as_const(localPortStrs)) {
                 CowUrl path = CowUrl::fromEncoded(localPortStr.toUtf8());
                 if (!path.isValid()) {
                     log_error("invalid local port: %s", qPrintable(localPortStr));
