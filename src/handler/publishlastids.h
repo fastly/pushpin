@@ -27,6 +27,7 @@
 #include <QHash>
 #include <QMap>
 #include <QString>
+#include <utility>
 
 // Cache with LRU expiration
 class PublishLastIds {
@@ -38,7 +39,7 @@ public:
     QString value(const QString &channel);
 
 private:
-    typedef QPair<DateTime, QString> TimeStringPair;
+    typedef std::pair<DateTime, QString> TimeStringPair;
 
     class Item {
     public:

@@ -47,6 +47,7 @@
 #include <QRandomGenerator>
 #include <assert.h>
 #include <optional>
+#include <utility>
 
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
@@ -190,7 +191,7 @@ class WsProxySession::Private {
 public:
     enum State { Idle, Connecting, Connected, Closing };
 
-    typedef QPair<WebSocket::Frame, bool> QueuedFrame;
+    typedef std::pair<WebSocket::Frame, bool> QueuedFrame;
 
     struct WSConnections {
         Connection connectedConnection;

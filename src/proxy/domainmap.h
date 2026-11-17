@@ -27,7 +27,6 @@
 #include "httpheaders.h"
 #include "jwt.h"
 #include "log.h"
-#include <QPair>
 #include <QString>
 #include <QStringList>
 #include <boost/signals2.hpp>

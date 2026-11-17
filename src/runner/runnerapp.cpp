@@ -43,6 +43,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStringList>
+#include <utility>
 
 struct ServiceConnections {
     Connection startedConnection;
@@ -68,17 +69,17 @@ static bool ensureDir(const QString &path) {
     return QDir().mkpath(dir.absolutePath());
 }
 
-static QPair<QHostAddress, int> parsePort(const QString &s) {
+static std::pair<QHostAddress, int> parsePort(const QString &s) {
     // If the string doesn't contain a colon character, assume it's a port number by itself
     if (!s.contains(':'))
-        return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
+        return std::pair<QHostAddress, int>(QHostAddress(), s.toInt());
 
     // Otherwise, assume it's an address:port combination
 
     // Parse with CowUrl in order to support bracketed IPv6 notation
     CowUrl url("http://" + s);
 
-    return QPair<QHostAddress, int>(QHostAddress(url.host().asQString()), url.port());
+    return std::pair<QHostAddress, int>(QHostAddress(url.host().asQString()), url.port());
 }
 
 QMap<QString, int> parseLogLevel(const QStringList &parts, QString *errorMessage) {
@@ -137,7 +138,7 @@ public:
     QString logFile;
     QMap<QString, int> logLevels;
     bool mergeOutput;
-    QPair<QHostAddress, int> port;
+    std::pair<QHostAddress, int> port;
     int id;
     QStringList routeLines;
 
@@ -470,7 +471,7 @@ public:
             ports += ListenPort(args.port.first, args.port.second, false);
         } else {
             foreach (const QString &httpPortStr, httpPortStrs) {
-                QPair<QHostAddress, int> p = parsePort(httpPortStr);
+                std::pair<QHostAddress, int> p = parsePort(httpPortStr);
                 if (p.second < 0) {
                     log_error("invalid http port: %s", qPrintable(httpPortStr));
                     q->quit(1);
@@ -481,7 +482,7 @@ public:
             }
 
             foreach (const QString &httpsPortStr, httpsPortStrs) {
-                QPair<QHostAddress, int> p = parsePort(httpsPortStr);
+                std::pair<QHostAddress, int> p = parsePort(httpsPortStr);
                 if (p.second < 1) {
                     log_error("invalid https port: %s", qPrintable(httpsPortStr));
                     q->quit(1);

@@ -30,6 +30,7 @@
 #include "httprequest.h"
 #include "variant.h"
 #include <boost/signals2.hpp>
+#include <utility>
 
 #define TIMERS_PER_ZHTTPREQUEST 3
 
@@ -42,7 +43,7 @@ class ZhttpManager;
 class ZhttpRequest : public HttpRequest {
 public:
     // Pair of sender + request id
-    typedef QPair<CowByteArray, CowByteArray> Rid;
+    typedef std::pair<CowByteArray, CowByteArray> Rid;
 
     class ServerState {
     public:

@@ -25,6 +25,7 @@
 
 #include <QList>
 #include <assert.h>
+#include <utility>
 
 template <typename T> class Callback {
 public:
@@ -96,7 +97,7 @@ public:
     }
 
 private:
-    typedef QPair<CallbackFunc, void *> Target;
+    typedef std::pair<CallbackFunc, void *> Target;
     QList<Target> targets_;
     bool activeCalls_;
     bool *destroyed_;

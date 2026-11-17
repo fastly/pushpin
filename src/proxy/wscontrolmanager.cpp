@@ -36,6 +36,7 @@
 #include "zutil.h"
 #include <assert.h>
 #include <boost/signals2.hpp>
+#include <utility>
 
 #define DEFAULT_HWM 101000
 
@@ -70,7 +71,8 @@ public:
     QHash<QByteArray, WsControlSession *> sessionsByCid;
     std::unique_ptr<Timer> refreshTimer;
     QHash<WsControlSession *, KeepAliveRegistration *> keepAliveRegistrations;
-    QMap<QPair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *> sessionsByLastRefresh;
+    QMap<std::pair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *>
+        sessionsByLastRefresh;
     QSet<KeepAliveRegistration *> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
     int currentSessionRefreshBucket;
     Connection streamValveConnection;
@@ -201,7 +203,8 @@ public:
         keepAliveRegistrations.insert(s, r);
 
         r->lastRefresh = now;
-        sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r), r);
+        sessionsByLastRefresh.insert(std::pair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r),
+                                     r);
 
         r->refreshBucket = smallestSessionRefreshBucket();
         sessionRefreshBuckets[r->refreshBucket] += r;
@@ -215,7 +218,8 @@ public:
             return;
 
         sessionRefreshBuckets[r->refreshBucket].remove(r);
-        sessionsByLastRefresh.remove(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r));
+        sessionsByLastRefresh.remove(
+            std::pair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r));
         keepAliveRegistrations.remove(s);
         delete r;
 
@@ -296,11 +300,11 @@ private:
             sessionRefreshBuckets[currentSessionRefreshBucket];
         foreach (KeepAliveRegistration *r, bucket) {
             // Move to the end
-            QPair<int64_t, KeepAliveRegistration *> k(r->lastRefresh, r);
+            std::pair<int64_t, KeepAliveRegistration *> k(r->lastRefresh, r);
             sessionsByLastRefresh.remove(k);
             r->lastRefresh = now;
-            sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r),
-                                         r);
+            sessionsByLastRefresh.insert(
+                std::pair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r), r);
 
             QByteArray peer = r->s->peer();
             if (peer.isEmpty())
@@ -330,8 +334,8 @@ private:
         // Process any others
         int64_t threshold = now - SESSION_MUST_PROCESS;
         while (!sessionsByLastRefresh.isEmpty()) {
-            QMap<QPair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *>::iterator it =
-                sessionsByLastRefresh.begin();
+            QMap<std::pair<int64_t, KeepAliveRegistration *>, KeepAliveRegistration *>::iterator
+                it = sessionsByLastRefresh.begin();
             KeepAliveRegistration *r = it.value();
 
             if (r->lastRefresh > threshold)
@@ -340,8 +344,8 @@ private:
             // Move to the end
             sessionsByLastRefresh.erase(it);
             r->lastRefresh = now;
-            sessionsByLastRefresh.insert(QPair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r),
-                                         r);
+            sessionsByLastRefresh.insert(
+                std::pair<int64_t, KeepAliveRegistration *>(r->lastRefresh, r), r);
 
             QByteArray peer = r->s->peer();
             if (peer.isEmpty())

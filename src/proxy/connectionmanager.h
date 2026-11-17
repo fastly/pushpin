@@ -24,7 +24,6 @@
 #define CONNECTIONMANAGER_H
 
 #include <QByteArray>
-#include <QPair>
 
 class WebSocket;
 class WsProxySession;

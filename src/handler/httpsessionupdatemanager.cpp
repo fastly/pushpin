@@ -27,19 +27,20 @@
 #include "defercall.h"
 #include "httpsession.h"
 #include "timer.h"
+#include <utility>
 
 class HttpSessionUpdateManager::Private {
 public:
     class Bucket {
     public:
-        QPair<int, CowUrl> key;
+        std::pair<int, CowUrl> key;
         QSet<HttpSession *> sessions;
         QSet<HttpSession *> deferredSessions;
         std::unique_ptr<Timer> timer;
     };
 
     HttpSessionUpdateManager *q;
-    QHash<QPair<int, CowUrl>, Bucket *> buckets;
+    QHash<std::pair<int, CowUrl>, Bucket *> buckets;
     QHash<Timer *, Bucket *> bucketsByTimer;
     QHash<HttpSession *, Bucket *> bucketsBySession;
 
@@ -59,7 +60,7 @@ public:
     void registerSession(HttpSession *hs, int timeout, const CowUrl &uri, bool resetTimeout) {
         CowUrl tmp = uri;
         tmp.setQuery(QString()); // Remove the query part
-        QPair<int, CowUrl> key(timeout, tmp);
+        std::pair<int, CowUrl> key(timeout, tmp);
 
         Bucket *bucket = buckets.value(key);
         if (bucket) {

@@ -34,6 +34,7 @@
 #include "zmqsocket.h"
 #include "zutil.h"
 #include <assert.h>
+#include <utility>
 
 // Make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -283,7 +284,7 @@ public:
         bool isEmpty() { return (requestsReceived == 0); }
     };
 
-    typedef QPair<QString, QString> SubscriptionKey;
+    typedef std::pair<QString, QString> SubscriptionKey;
 
     StatsManager *q;
     int connectionsMax;

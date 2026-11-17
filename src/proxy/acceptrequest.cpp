@@ -26,6 +26,7 @@
 #include "acceptdata.h"
 #include "qtcompat.h"
 #include "variant.h"
+#include <utility>
 
 static Variant acceptDataToVariant(const AcceptData &adata) {
     VariantHash obj;
@@ -279,7 +280,7 @@ static AcceptRequest::ResponseData convertResult(const Variant &in, bool *ok) {
                 }
 
                 out.response.headers +=
-                    QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
+                    std::pair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
             }
         }
 

@@ -25,12 +25,13 @@
 #include "uuidutil.h"
 #include <QHash>
 #include <assert.h>
+#include <utility>
 
 class ConnectionManager::Private {
 public:
     class Item {
     public:
-        QPair<QByteArray, QByteArray> rid;
+        std::pair<QByteArray, QByteArray> rid;
         WebSocket *sock;
         QByteArray cid;
         WsProxySession *proxy;

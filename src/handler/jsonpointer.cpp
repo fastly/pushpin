@@ -27,6 +27,7 @@
 #include "variant.h"
 #include <QStringList>
 #include <assert.h>
+#include <utility>
 
 JsonPointer::JsonPointer() : isNull_(true) {}
 
@@ -294,7 +295,7 @@ Variant JsonPointer::take() {
 }
 
 static bool setValueFunc(Variant *v, const JsonPointer::Ref &ref, void *_data) {
-    QPair<Variant, Variant> &data = *((QPair<Variant, Variant> *)_data);
+    std::pair<Variant, Variant> &data = *((std::pair<Variant, Variant> *)_data);
 
     if (ref.type == JsonPointer::Ref::Self) {
         *v = data.first;
@@ -335,7 +336,7 @@ static bool setValueFunc(Variant *v, const JsonPointer::Ref &ref, void *_data) {
 }
 
 bool JsonPointer::setValue(const Variant &value) {
-    QPair<Variant, Variant> data;
+    std::pair<Variant, Variant> data;
     data.first = value;
     if (execute(setValueFunc, &data))
         return data.second.toBool();

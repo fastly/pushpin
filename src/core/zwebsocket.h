@@ -27,6 +27,7 @@
 #include "cowurl.h"
 #include "websocket.h"
 #include <boost/signals2.hpp>
+#include <utility>
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -37,7 +38,7 @@ class ZhttpManager;
 class ZWebSocket : public WebSocket {
 public:
     // Pair of sender + request id
-    typedef QPair<CowByteArray, CowByteArray> Rid;
+    typedef std::pair<CowByteArray, CowByteArray> Rid;
 
     ~ZWebSocket();
 
