@@ -49,6 +49,9 @@ pub enum SettingsError {
 
     #[error("invalid tcp address: {0}")]
     InvalidTcpAddress(String),
+
+    #[error("invalid libdir: {0}")]
+    InvalidLibdir(String),
 }
 
 pub struct Settings {
@@ -263,8 +266,16 @@ impl Settings {
 
     fn resolve_vars(&self, s: &str) -> Result<String, SettingsError> {
         let mut out = s
-            .replace("{libdir}", &self.libdir.to_string_lossy())
-            .replace("{rundir}", &self.rundir.to_string_lossy())
+            .replace(
+                "{libdir}",
+                &self.libdir.to_str().ok_or_else(|| {
+                    SettingsError::InvalidLibdir(self.libdir.display().to_string())
+                })?,
+            )
+            .replace(
+                "{rundir}",
+                &self.rundir.to_str().expect("rundir must be utf-8"),
+            )
             .replace("{ipc_prefix}", &self.ipc_prefix);
 
         // Adjust tcp ports
