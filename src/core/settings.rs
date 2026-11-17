@@ -72,10 +72,14 @@ fn invalid_value(key: &str, value: &str, expected: &'static str) -> SettingsErro
 }
 
 fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
+    read_ini(&Ini::load_from_file(path)?)
+}
+
+fn read_ini(ini: &Ini) -> Result<HashMap<String, String>, SettingsError> {
     let mut values = HashMap::new();
     let mut sections = HashSet::new();
 
-    for (section, props) in Ini::load_from_file(path)?.iter() {
+    for (section, props) in ini.iter() {
         let Some(section) = section else {
             if let Some((key, _)) = props.iter().next() {
                 return Err(SettingsError::KeyOutsideSection(key.to_string()));
@@ -111,8 +115,15 @@ fn read_file(path: &Path) -> Result<HashMap<String, String>, SettingsError> {
 
 impl Settings {
     pub fn load(path: &Path) -> Result<Self, SettingsError> {
-        let values = read_file(path)?;
+        let config_dir = path.parent().unwrap_or(Path::new("")).to_path_buf();
 
+        Self::from_values(read_file(path)?, config_dir)
+    }
+
+    fn from_values(
+        values: HashMap<String, String>,
+        config_dir: PathBuf,
+    ) -> Result<Self, SettingsError> {
         let get = |key: &str| values.get(key).filter(|v| !v.is_empty()).cloned();
 
         let libdir = get("global/libdir").map(PathBuf::from).unwrap_or_else(|| {
@@ -148,7 +159,7 @@ impl Settings {
             rundir,
             ipc_prefix,
             port_offset,
-            config_dir: path.parent().unwrap_or(Path::new("")).to_path_buf(),
+            config_dir,
         };
 
         let include = match settings.values.get("global/include").map(String::as_str) {
@@ -320,14 +331,48 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_dir;
-    use std::fmt::Debug;
-    use std::fs;
-    use std::io;
-    use std::path::PathBuf;
+
+    mod helpers {
+        use super::*;
+        use crate::core::test_dir;
+        use std::fs;
+        use std::path::PathBuf;
+
+        pub(super) fn parse(text: &str) -> Result<Settings, SettingsError> {
+            let ini = Ini::load_from_str(text).map_err(ini::Error::Parse)?;
+            Settings::from_values(read_ini(&ini)?, PathBuf::new())
+        }
+
+        pub(super) fn read_value<T>(
+            key: &str,
+            value: Option<&str>,
+            read: impl Fn(&Settings, &str) -> Result<T, SettingsError>,
+        ) -> Result<T, String> {
+            let (section, name) = key.split_once('/').unwrap();
+            let conf = match value {
+                Some(v) => format!("[{}]\n{}={}\n", section, name, v),
+                None => String::new(),
+            };
+
+            let mut settings = parse(&conf).unwrap();
+            settings.set_port_offset(1);
+
+            read(&settings, key).map_err(|e| e.to_string())
+        }
+
+        pub(super) fn write_conf(test: &str, file: &str, contents: &str) -> PathBuf {
+            let dir = test_dir().join("settings").join(test);
+            fs::create_dir_all(&dir).unwrap();
+
+            let path = dir.join(file);
+            fs::write(&path, contents).unwrap();
+
+            path
+        }
+    }
 
     #[test]
-    fn load_example_config() {
+    fn example_config_loads() {
         let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
 
         assert_eq!(settings.get("global/rundir"), Some("run"));
@@ -337,738 +382,389 @@ mod tests {
         );
         assert_eq!(settings.get("proxy/cdn_loop"), Some(""));
         assert_eq!(settings.get("proxy/nonexistent"), None);
-    }
 
-    #[test]
-    fn resolve_vars() {
-        let mut settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
-
-        let include = settings.get("global/include").unwrap();
-        let libdir = env::current_dir().unwrap().join("src");
-        assert_eq!(
-            settings.resolve_vars(include).unwrap(),
-            format!("{}/internal.conf", libdir.display())
-        );
-
-        let stats_spec = settings.get("handler/stats_spec").unwrap();
-        assert_eq!(
-            settings.resolve_vars(stats_spec).unwrap(),
-            "ipc://run/pushpin-stats"
-        );
-
-        settings.port_offset = 1;
-        let push_in_spec = settings.get("handler/push_in_spec").unwrap();
-        assert_eq!(
-            settings.resolve_vars(push_in_spec).unwrap(),
-            "tcp://127.0.0.1:5561"
-        );
-    }
-
-    fn write_conf(test: &str, file: &str, contents: &str) -> PathBuf {
-        let dir = test_dir().join("settings").join(test);
-        fs::create_dir_all(&dir).unwrap();
-
-        let path = dir.join(file);
-        fs::write(&path, contents).unwrap();
-
-        path
-    }
-
-    fn load_conf(test: &str, contents: &str) -> Result<Settings, SettingsError> {
-        Settings::load(&write_conf(test, "pushpin.conf", contents))
-    }
-
-    fn in_tree_libdir() -> PathBuf {
-        env::current_dir().unwrap().join("src")
-    }
-
-    // Parsing
-
-    #[test]
-    fn uppercase_section_and_key() {
-        let settings = load_conf("uppercase", "[Proxy]\nSig_Iss=pushpin\n").unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), None);
-        assert_eq!(settings.get("Proxy/Sig_Iss"), Some("pushpin"));
-    }
-
-    #[test]
-    fn duplicate_key_errors() {
-        let r = load_conf("dup_key", "[proxy]\nworkers=2\nworkers=4\n");
-        assert!(matches!(r, Err(SettingsError::DuplicateKey(k)) if k == "proxy/workers"));
-    }
-
-    #[test]
-    fn repeated_section_errors() {
-        let r = load_conf(
-            "dup_section",
-            "[proxy]\nworkers=2\n[handler]\n[proxy]\ndebug=true\n",
-        );
-        assert!(matches!(r, Err(SettingsError::RepeatedSection(s)) if s == "proxy"));
-    }
-
-    #[test]
-    fn comment_lines_ignored() {
-        let settings = load_conf(
-            "comments",
-            "[runner]\n# a comment\n#http_port=7999\n; another comment\nlogdir=log\n",
-        )
-        .unwrap();
-        assert_eq!(settings.get("runner/#http_port"), None);
-        assert_eq!(settings.get("runner/logdir"), Some("log"));
-    }
-
-    #[test]
-    fn empty_value() {
-        let settings = load_conf("empty_value", "[proxy]\nupstream_key=\n").unwrap();
-        assert_eq!(settings.get("proxy/upstream_key"), Some(""));
-    }
-
-    #[test]
-    fn whitespace_trimmed() {
-        let settings = load_conf("whitespace", "[proxy]\n  sig_iss  =  pushpin  \n").unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), Some("pushpin"));
-    }
-
-    #[test]
-    fn value_containing_equals() {
-        let settings = load_conf("equals", "[proxy]\nupstream_key=base64:YWJjZA==\n").unwrap();
-        assert_eq!(settings.get("proxy/upstream_key"), Some("base64:YWJjZA=="));
-    }
-
-    #[test]
-    fn value_containing_colons() {
-        let settings = load_conf(
-            "colons",
-            "[handler]\nmessage_keys=prod-a:file:/etc/pushpin/private/message-key-a\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.get("handler/message_keys"),
-            Some("prod-a:file:/etc/pushpin/private/message-key-a")
-        );
-    }
-
-    #[test]
-    fn quoted_value() {
-        let settings = load_conf("quoted", "[proxy]\nsig_key=\"changeme\"\n").unwrap();
-        assert_eq!(settings.get("proxy/sig_key"), Some("changeme"));
-    }
-
-    #[test]
-    fn line_without_equals_errors() {
-        let r = load_conf("no_equals", "[proxy]\nworkers 4\nsig_iss=pushpin\n");
-        assert!(matches!(
-            r,
-            Err(SettingsError::MissingEquals(s, line)) if s == "proxy" && line == "workers 4"
-        ));
-    }
-
-    #[test]
-    fn unclosed_section_errors() {
-        let r = load_conf("unclosed_section", "[proxy\nworkers=4\n");
-        assert!(matches!(r, Err(SettingsError::Ini(ini::Error::Parse(_)))));
-    }
-
-    #[test]
-    fn key_outside_section_errors() {
-        let r = load_conf("no_section", "workers=4\n[proxy]\nsig_iss=pushpin\n");
-        assert!(matches!(r, Err(SettingsError::KeyOutsideSection(k)) if k == "workers"));
-    }
-
-    #[test]
-    fn empty_file() {
-        let settings = load_conf("empty_file", "").unwrap();
-        assert_eq!(settings.get("proxy/workers"), None);
-    }
-
-    #[test]
-    fn missing_file_errors() {
-        let path = test_dir().join("settings").join("does-not-exist.conf");
-        assert!(matches!(
-            Settings::load(&path),
-            Err(SettingsError::Ini(ini::Error::Io(e))) if e.kind() == io::ErrorKind::NotFound
-        ));
-    }
-
-    #[test]
-    fn crlf_line_endings() {
-        let settings = load_conf("crlf", "[proxy]\r\nworkers=4\r\nsig_iss=pushpin\r\n").unwrap();
-        assert_eq!(settings.get("proxy/workers"), Some("4"));
-        assert_eq!(settings.get("proxy/sig_iss"), Some("pushpin"));
-    }
-
-    // Include
-
-    #[test]
-    fn example_config_loads_internal_conf() {
-        let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
+        // From internal.conf, through the include
         assert_eq!(
             settings.get("proxy/connmgr_in_specs"),
             Some("ipc://{rundir}/{ipc_prefix}connmgr-out")
         );
     }
 
-    #[test]
-    fn include_internal_conf_shorthand() {
-        let settings = load_conf("include_shorthand", "[global]\ninclude=internal.conf\n").unwrap();
-        assert_eq!(
-            settings.get("proxy/connmgr_in_specs"),
-            Some("ipc://{rundir}/{ipc_prefix}connmgr-out")
-        );
+    mod syntax {
+        use super::helpers::*;
+
+        #[test]
+        fn values_read_as_written() {
+            let cases = [
+                (
+                    "[Proxy]\nSig_Iss=pushpin\n",
+                    "Proxy/Sig_Iss",
+                    Some("pushpin"),
+                ),
+                ("[Proxy]\nSig_Iss=pushpin\n", "proxy/sig_iss", None),
+                (
+                    "[proxy]\n  sig_iss  =  pushpin  \n",
+                    "proxy/sig_iss",
+                    Some("pushpin"),
+                ),
+                (
+                    "[proxy]\nupstream_key=base64:YWJjZA==\n",
+                    "proxy/upstream_key",
+                    Some("base64:YWJjZA=="),
+                ),
+            ];
+
+            for (conf, key, expected) in cases {
+                assert_eq!(parse(conf).unwrap().get(key), expected, "{}", conf);
+            }
+        }
+
+        #[test]
+        fn malformed_config_fails() {
+            let cases = [
+                (
+                    "[proxy]\nworkers=2\nworkers=4\n",
+                    "duplicate key proxy/workers",
+                ),
+                (
+                    "[proxy]\nworkers=2\n[handler]\n[proxy]\ndebug=true\n",
+                    "repeated section [proxy]",
+                ),
+                (
+                    "[proxy]\nworkers 4\nsig_iss=pushpin\n",
+                    "line without '=' in [proxy]: workers 4",
+                ),
+                (
+                    "workers=4\n[proxy]\nsig_iss=pushpin\n",
+                    "key outside of a section: workers",
+                ),
+                (
+                    "[global]\nport_offset=one\n",
+                    "global/port_offset must be a number: one",
+                ),
+            ];
+
+            for (conf, expected) in cases {
+                let err = parse(conf).err().map(|e| e.to_string());
+                assert_eq!(err.as_deref(), Some(expected), "{}", conf);
+            }
+        }
     }
 
-    #[test]
-    fn include_relative_to_config_dir() {
-        write_conf("include_relative", "extra.conf", "[proxy]\nsig_iss=extra\n");
-        let settings = load_conf("include_relative", "[global]\ninclude=extra.conf\n").unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), Some("extra"));
+    mod includes {
+        use super::helpers::*;
+        use super::*;
+        use std::io;
+
+        #[test]
+        fn internal_conf_found_in_libdir() {
+            let settings = parse("[global]\ninclude=internal.conf\n").unwrap();
+            assert_eq!(
+                settings.get("proxy/connmgr_in_specs"),
+                Some("ipc://{rundir}/{ipc_prefix}connmgr-out")
+            );
+        }
+
+        #[test]
+        fn relative_to_config() {
+            write_conf("include_relative", "extra.conf", "[proxy]\nsig_iss=extra\n");
+            let main = write_conf(
+                "include_relative",
+                "pushpin.conf",
+                "[global]\ninclude=extra.conf\n",
+            );
+
+            let settings = Settings::load(&main).unwrap();
+            assert_eq!(settings.get("proxy/sig_iss"), Some("extra"));
+        }
+
+        #[test]
+        fn main_overrides_include() {
+            write_conf(
+                "include_override",
+                "extra.conf",
+                "[proxy]\nsig_iss=extra\nworkers=2\n",
+            );
+            let main = write_conf(
+                "include_override",
+                "pushpin.conf",
+                "[global]\ninclude=extra.conf\n[proxy]\nsig_iss=main\n",
+            );
+
+            let settings = Settings::load(&main).unwrap();
+            assert_eq!(settings.get("proxy/sig_iss"), Some("main"));
+            assert_eq!(settings.get("proxy/workers"), Some("2"));
+        }
+
+        #[test]
+        fn not_nested() {
+            write_conf("include_nested", "second.conf", "[proxy]\nsig_iss=second\n");
+            write_conf(
+                "include_nested",
+                "first.conf",
+                "[global]\ninclude=second.conf\n[proxy]\nworkers=2\n",
+            );
+            let main = write_conf(
+                "include_nested",
+                "pushpin.conf",
+                "[global]\ninclude=first.conf\n",
+            );
+
+            let settings = Settings::load(&main).unwrap();
+            assert_eq!(settings.get("proxy/workers"), Some("2"));
+            assert_eq!(settings.get("proxy/sig_iss"), None);
+        }
+
+        #[test]
+        fn empty_ignored() {
+            let settings = parse("[global]\ninclude=\n[proxy]\nworkers=2\n").unwrap();
+            assert_eq!(settings.get("proxy/workers"), Some("2"));
+        }
+
+        #[test]
+        fn missing_file_fails() {
+            let r = parse("[global]\ninclude=nope.conf\n");
+            assert!(matches!(
+                r,
+                Err(SettingsError::Ini(ini::Error::Io(e))) if e.kind() == io::ErrorKind::NotFound
+            ));
+        }
     }
 
-    #[test]
-    fn include_absolute_path() {
-        let extra = write_conf("include_absolute", "extra.conf", "[proxy]\nsig_iss=extra\n");
-        let main = format!("[global]\ninclude={}\n", extra.display());
-        let settings = load_conf("include_absolute", &main).unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), Some("extra"));
+    mod variables {
+        use super::helpers::*;
+        use super::*;
+
+        #[test]
+        fn libdir_falls_back_to_source() {
+            let in_tree = env::current_dir().unwrap().join("src");
+            let libdir = |conf: &str| parse(conf).unwrap().libdir;
+
+            assert_eq!(
+                libdir("[global]\nlibdir=/usr/lib/pushpin\n"),
+                Path::new("/usr/lib/pushpin")
+            );
+            assert_eq!(libdir(""), in_tree);
+            assert_eq!(libdir("[global]\nlibdir=\n"), in_tree);
+        }
+
+        #[test]
+        fn rundir_prefers_global() {
+            let rundir = |conf: &str| parse(conf).unwrap().rundir;
+
+            assert_eq!(
+                rundir("[runner]\nrundir=/var/run/pushpin\n"),
+                Path::new("/var/run/pushpin")
+            );
+            assert_eq!(
+                rundir("[global]\nrundir=/var/run/global\n[runner]\nrundir=/var/run/runner\n"),
+                Path::new("/var/run/global")
+            );
+        }
+
+        #[test]
+        fn defaults_when_unset() {
+            let unset = parse("").unwrap();
+            assert_eq!(unset.ipc_prefix, "pushpin-");
+            assert_eq!(unset.port_offset, 0);
+
+            let empty = parse("[global]\nipc_prefix=\nport_offset=\n").unwrap();
+            assert_eq!(empty.ipc_prefix, "");
+            assert_eq!(empty.port_offset, 0);
+        }
     }
 
-    #[test]
-    fn main_wins_over_include() {
-        write_conf(
-            "include_override",
-            "extra.conf",
-            "[proxy]\nsig_iss=extra\nworkers=2\n",
-        );
-        let settings = load_conf(
-            "include_override",
-            "[global]\ninclude=extra.conf\n[proxy]\nsig_iss=main\n",
-        )
-        .unwrap();
-        assert_eq!(settings.get("proxy/sig_iss"), Some("main"));
-        assert_eq!(settings.get("proxy/workers"), Some("2"));
+    mod ports {
+        use super::helpers::*;
+
+        #[test]
+        fn tcp_shifted_by_offset() {
+            let mut settings = parse("").unwrap();
+            settings.set_port_offset(1);
+
+            let cases = [
+                (
+                    "tcp://host:5560/abcdefghijklmnop",
+                    Ok("tcp://host:5561/abcdefghijklmnop"),
+                ),
+                ("tcp://[::1]:5560", Ok("tcp://[::1]:5561")),
+                ("ipc://run/pushpin-5560", Ok("ipc://run/pushpin-5560")),
+                (
+                    "tcp://127.0.0.1",
+                    Err("invalid tcp address: tcp://127.0.0.1"),
+                ),
+                (
+                    "tcp://127.0.0.1:",
+                    Err("invalid tcp address: tcp://127.0.0.1:"),
+                ),
+                (
+                    "tcp://[::1:5560",
+                    Err("invalid tcp address: tcp://[::1:5560"),
+                ),
+            ];
+
+            for (addr, expected) in cases {
+                let got = settings.resolve_vars(addr).map_err(|e| e.to_string());
+                assert_eq!(got.as_deref().map_err(String::as_str), expected, "{}", addr);
+            }
+        }
+
+        #[test]
+        fn offset_from_config() {
+            let settings =
+                parse("[global]\nport_offset=1\n[handler]\npush_in_spec=tcp://127.0.0.1:5560\n")
+                    .unwrap();
+            assert_eq!(
+                settings.string("handler/push_in_spec").unwrap(),
+                Some("tcp://127.0.0.1:5561".to_string())
+            );
+        }
     }
 
-    #[test]
-    fn missing_include_errors() {
-        let r = load_conf("include_missing", "[global]\ninclude=nope.conf\n");
-        assert!(matches!(
-            r,
-            Err(SettingsError::Ini(ini::Error::Io(e))) if e.kind() == io::ErrorKind::NotFound
-        ));
-    }
+    mod getters {
+        use super::helpers::*;
+        use super::*;
 
-    #[test]
-    fn empty_include() {
-        let settings =
-            load_conf("include_empty", "[global]\ninclude=\n[proxy]\nworkers=2\n").unwrap();
-        assert_eq!(settings.get("proxy/workers"), Some("2"));
-    }
+        #[test]
+        fn string_is_single_value() {
+            let read = |v| read_value("proxy/sig_iss", v, Settings::string);
 
-    #[test]
-    fn nested_include_not_followed() {
-        write_conf("include_nested", "second.conf", "[proxy]\nsig_iss=second\n");
-        write_conf(
-            "include_nested",
-            "first.conf",
-            "[global]\ninclude=second.conf\n[proxy]\nworkers=2\n",
-        );
-        let settings = load_conf("include_nested", "[global]\ninclude=first.conf\n").unwrap();
-        assert_eq!(settings.get("proxy/workers"), Some("2"));
-        assert_eq!(settings.get("proxy/sig_iss"), None);
-    }
+            assert_eq!(read(None), Ok(None));
+            assert_eq!(read(Some("")), Ok(Some(String::new())));
+            assert_eq!(read(Some("pushpin")), Ok(Some("pushpin".to_string())));
+            assert_eq!(
+                read(Some("a,b")),
+                Err("proxy/sig_iss must be a single value: a,b".to_string())
+            );
+        }
 
-    // Variables
+        #[test]
+        fn list_split_and_trimmed() {
+            let read = |v| read_value("runner/services", v, Settings::list).unwrap();
 
-    #[test]
-    fn libdir_from_config() {
-        let settings = load_conf("libdir_config", "[global]\nlibdir=/usr/lib/pushpin\n").unwrap();
-        assert_eq!(settings.libdir, Path::new("/usr/lib/pushpin"));
-    }
+            assert!(read(None).is_empty());
+            assert!(read(Some("")).is_empty());
+            assert_eq!(
+                read(Some("connmgr, proxy ,,handler")),
+                vec!["connmgr", "proxy", "handler"]
+            );
+        }
 
-    #[test]
-    fn libdir_unset_in_tree() {
-        let settings = load_conf("libdir_unset", "[global]\nrundir=run\n").unwrap();
-        assert_eq!(settings.libdir, in_tree_libdir());
-    }
+        #[test]
+        fn list_items_substituted() {
+            let settings = parse(
+                "[global]\nrundir=run\n[proxy]\nm2a_in_specs=ipc://{rundir}/{ipc_prefix}m2zhttp-out,ipc://{rundir}/{ipc_prefix}m2zws-out\n",
+            )
+            .unwrap();
+            assert_eq!(
+                settings.list("proxy/m2a_in_specs").unwrap(),
+                vec![
+                    "ipc://run/pushpin-m2zhttp-out",
+                    "ipc://run/pushpin-m2zws-out"
+                ]
+            );
+        }
 
-    #[test]
-    fn libdir_empty_in_tree() {
-        let settings = load_conf("libdir_empty", "[global]\nlibdir=\n").unwrap();
-        assert_eq!(settings.libdir, in_tree_libdir());
-    }
+        #[test]
+        fn number_minus_one_is_unset() {
+            let read = |v| read_value("proxy/workers", v, Settings::number::<u32>);
 
-    #[test]
-    fn rundir_from_global() {
-        let settings = load_conf("rundir_global", "[global]\nrundir=/var/run/pushpin\n").unwrap();
-        assert_eq!(settings.rundir, Path::new("/var/run/pushpin"));
-    }
+            assert_eq!(read(None), Ok(None));
+            assert_eq!(read(Some("-1")), Ok(None));
+            assert_eq!(read(Some("")), Ok(Some(0)));
+            assert_eq!(read(Some("4")), Ok(Some(4)));
+            assert_eq!(
+                read(Some("4x")),
+                Err("proxy/workers must be a number: 4x".to_string())
+            );
+            assert_eq!(
+                read(Some("1,2")),
+                Err("proxy/workers must be a number: 1,2".to_string())
+            );
+        }
 
-    #[test]
-    fn rundir_from_runner() {
-        let settings = load_conf("rundir_runner", "[runner]\nrundir=/var/run/pushpin\n").unwrap();
-        assert_eq!(settings.rundir, Path::new("/var/run/pushpin"));
-    }
+        #[test]
+        fn bool_accepted_values() {
+            let read = |v| read_value("proxy/debug", v, Settings::bool);
 
-    #[test]
-    fn rundir_global_wins_over_runner() {
-        let settings = load_conf(
-            "rundir_both",
-            "[global]\nrundir=/var/run/global\n[runner]\nrundir=/var/run/runner\n",
-        )
-        .unwrap();
-        assert_eq!(settings.rundir, Path::new("/var/run/global"));
-    }
+            assert_eq!(read(None), Ok(None));
+            assert_eq!(read(Some("true")), Ok(Some(true)));
+            assert_eq!(read(Some("TRUE")), Ok(Some(true)));
+            assert_eq!(read(Some("1")), Ok(Some(true)));
+            assert_eq!(read(Some("false")), Ok(Some(false)));
+            assert_eq!(read(Some("0")), Ok(Some(false)));
+            assert_eq!(read(Some("")), Ok(Some(false)));
+            assert_eq!(
+                read(Some("yes")),
+                Err("proxy/debug must be true or false: yes".to_string())
+            );
+            assert_eq!(
+                read(Some("2")),
+                Err("proxy/debug must be true or false: 2".to_string())
+            );
+        }
 
-    #[test]
-    fn rundir_unset() {
-        let settings = load_conf("rundir_unset", "[global]\nipc_prefix=pushpin-\n").unwrap();
-        assert_eq!(settings.rundir, Path::new(""));
-    }
+        #[test]
+        fn octal_rejects_invalid() {
+            let read = |v| read_value("handler/ipc_file_mode", v, Settings::octal);
 
-    #[test]
-    fn ipc_prefix_default() {
-        let settings = load_conf("ipc_prefix_default", "[global]\nrundir=run\n").unwrap();
-        assert_eq!(settings.ipc_prefix, "pushpin-");
-    }
+            assert_eq!(read(None), Ok(None));
+            assert_eq!(read(Some("-1")), Ok(None));
+            assert_eq!(read(Some("777")), Ok(Some(0o777)));
+            assert_eq!(
+                read(Some("")),
+                Err("handler/ipc_file_mode must be an octal number: ".to_string())
+            );
+            assert_eq!(
+                read(Some("abc")),
+                Err("handler/ipc_file_mode must be an octal number: abc".to_string())
+            );
+            assert_eq!(
+                read(Some("789")),
+                Err("handler/ipc_file_mode must be an octal number: 789".to_string())
+            );
+        }
 
-    #[test]
-    fn ipc_prefix_set() {
-        let settings = load_conf("ipc_prefix_set", "[global]\nipc_prefix=pushpin2-\n").unwrap();
-        assert_eq!(settings.ipc_prefix, "pushpin2-");
-    }
+        #[test]
+        fn port_shifted_except_zero() {
+            // read_value applies a port offset of 1
+            let read = |v| read_value("handler/push_in_http_port", v, Settings::port);
 
-    #[test]
-    fn ipc_prefix_empty() {
-        let settings = load_conf("ipc_prefix_empty", "[global]\nipc_prefix=\n").unwrap();
-        assert_eq!(settings.ipc_prefix, "");
-    }
+            assert_eq!(read(None), Ok(None));
+            assert_eq!(read(Some("-1")), Ok(None));
+            assert_eq!(read(Some("")), Ok(Some(0)));
+            assert_eq!(read(Some("0")), Ok(Some(0)));
+            assert_eq!(read(Some("5561")), Ok(Some(5562)));
+            assert_eq!(
+                read(Some("70000")),
+                Err("handler/push_in_http_port must be a port: 70000".to_string())
+            );
+            assert_eq!(
+                read(Some("65535")),
+                Err("handler/push_in_http_port must be a port: 65535".to_string())
+            );
+        }
 
-    #[test]
-    fn port_offset_default() {
-        let settings = load_conf("port_offset_default", "[global]\nrundir=run\n").unwrap();
-        assert_eq!(settings.port_offset, 0);
-    }
-
-    #[test]
-    fn port_offset_set() {
-        let settings = load_conf("port_offset_set", "[global]\nport_offset=10\n").unwrap();
-        assert_eq!(settings.port_offset, 10);
-    }
-
-    #[test]
-    fn port_offset_empty() {
-        let settings = load_conf("port_offset_empty", "[global]\nport_offset=\n").unwrap();
-        assert_eq!(settings.port_offset, 0);
-    }
-
-    #[test]
-    fn port_offset_not_a_number_errors() {
-        let r = load_conf("port_offset_nan", "[global]\nport_offset=one\n");
-        assert!(matches!(
-            r,
-            Err(SettingsError::InvalidValue { key, value, .. })
-                if key == "global/port_offset" && value == "one"
-        ));
-    }
-
-    // Substitution
-
-    fn example_settings() -> Settings {
-        Settings::load(Path::new("examples/config/pushpin.conf")).unwrap()
-    }
-
-    #[test]
-    fn substitute_two_vars() {
-        let settings = example_settings();
-        assert_eq!(
-            settings
-                .resolve_vars("ipc://{rundir}/{ipc_prefix}connmgr-out")
-                .unwrap(),
-            "ipc://run/pushpin-connmgr-out"
-        );
-    }
-
-    #[test]
-    fn substitute_var_twice() {
-        let settings = example_settings();
-        assert_eq!(
-            settings.resolve_vars("{rundir}/a,{rundir}/b").unwrap(),
-            "run/a,run/b"
-        );
-    }
-
-    // Port shift
-
-    fn offset_settings(port_offset: i32) -> Settings {
-        let mut settings = example_settings();
-        settings.port_offset = port_offset;
-        settings
-    }
-
-    #[test]
-    fn port_shift_wildcard() {
-        let settings = offset_settings(1);
-        assert_eq!(
-            settings.resolve_vars("tcp://*:5560").unwrap(),
-            "tcp://*:5561"
-        );
-    }
-
-    #[test]
-    fn port_shift_hostname() {
-        let settings = offset_settings(1);
-        assert_eq!(
-            settings.resolve_vars("tcp://localhost:5560").unwrap(),
-            "tcp://localhost:5561"
-        );
-    }
-
-    #[test]
-    fn port_shift_with_path() {
-        let settings = offset_settings(1);
-        assert_eq!(
-            settings
-                .resolve_vars("tcp://host:5560/abcdefghijklmnop")
-                .unwrap(),
-            "tcp://host:5561/abcdefghijklmnop"
-        );
-    }
-
-    #[test]
-    fn port_shift_ipv6() {
-        let settings = offset_settings(1);
-        assert_eq!(
-            settings.resolve_vars("tcp://[::1]:5560").unwrap(),
-            "tcp://[::1]:5561"
-        );
-    }
-
-    #[test]
-    fn tcp_missing_port_errors() {
-        let settings = offset_settings(1);
-        let r = settings.resolve_vars("tcp://127.0.0.1");
-        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(v)) if v == "tcp://127.0.0.1"));
-    }
-
-    #[test]
-    fn tcp_empty_port_errors() {
-        let settings = offset_settings(1);
-        let r = settings.resolve_vars("tcp://127.0.0.1:");
-        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
-    }
-
-    #[test]
-    fn tcp_unclosed_ipv6_errors() {
-        let settings = offset_settings(1);
-        let r = settings.resolve_vars("tcp://[::1:5560");
-        assert!(matches!(r, Err(SettingsError::InvalidTcpAddress(_))));
-    }
-
-    #[test]
-    fn ipc_not_shifted() {
-        let settings = offset_settings(1);
-        assert_eq!(
-            settings.resolve_vars("ipc://run/pushpin-5560").unwrap(),
-            "ipc://run/pushpin-5560"
-        );
-    }
-
-    #[test]
-    fn port_offset_from_config_file() {
-        let settings = load_conf(
-            "port_offset_file",
-            "[global]\nport_offset=1\n[handler]\npush_in_spec=tcp://127.0.0.1:5560\n",
-        )
-        .unwrap();
-        let spec = settings.get("handler/push_in_spec").unwrap();
-        assert_eq!(settings.resolve_vars(spec).unwrap(), "tcp://127.0.0.1:5561");
-    }
-
-    // Typed values
-
-    fn is_invalid(r: Result<impl Debug, SettingsError>, k: &str, v: &str) -> bool {
-        matches!(r, Err(SettingsError::InvalidValue { key, value, .. }) if key == k && value == v)
-    }
-
-    #[test]
-    fn string_substitutes_vars() {
-        let settings = load_conf(
-            "string_vars",
-            "[global]\nrundir=run\n[handler]\nstats_spec=ipc://{rundir}/{ipc_prefix}stats\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.string("handler/stats_spec").unwrap(),
-            Some("ipc://run/pushpin-stats".to_string())
-        );
-    }
-
-    #[test]
-    fn string_missing_or_empty() {
-        let settings = load_conf("string_empty", "[proxy]\nupstream_key=\n").unwrap();
-        assert_eq!(
-            settings.string("proxy/upstream_key").unwrap(),
-            Some(String::new())
-        );
-        assert_eq!(settings.string("proxy/sig_key").unwrap(), None);
-    }
-
-    #[test]
-    fn string_given_list_errors() {
-        let settings = load_conf("string_list", "[proxy]\nsig_iss=a,b\n").unwrap();
-        assert!(is_invalid(
-            settings.string("proxy/sig_iss"),
-            "proxy/sig_iss",
-            "a,b"
-        ));
-    }
-
-    #[test]
-    fn list_splits_and_trims() {
-        let settings = load_conf(
-            "list_split",
-            "[runner]\nservices=connmgr, proxy ,,handler\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.list("runner/services").unwrap(),
-            vec!["connmgr", "proxy", "handler"]
-        );
-    }
-
-    #[test]
-    fn list_substitutes_each_item() {
-        let settings = example_settings();
-        assert_eq!(
-            settings.list("proxy/m2a_in_specs").unwrap(),
-            vec![
-                "ipc://run/pushpin-m2zhttp-out",
-                "ipc://run/pushpin-m2zws-out"
-            ]
-        );
-    }
-
-    #[test]
-    fn list_missing_or_empty() {
-        let settings = load_conf("list_empty", "[proxy]\nx_forwarded_for=\n").unwrap();
-        assert!(settings.list("proxy/x_forwarded_for").unwrap().is_empty());
-        assert!(settings
-            .list("proxy/x_forwarded_for_trusted")
-            .unwrap()
-            .is_empty());
-    }
-
-    #[test]
-    fn number_parses() {
-        let settings = load_conf("number", "[proxy]\nworkers=4\n").unwrap();
-        assert_eq!(settings.number::<u32>("proxy/workers").unwrap(), Some(4));
-        assert_eq!(
-            settings.number::<u32>("proxy/max_open_requests").unwrap(),
-            None
-        );
-    }
-
-    #[test]
-    fn number_invalid_errors() {
-        let settings =
-            load_conf("number_bad", "[proxy]\nworkers=4x\nmax_open_requests=1,2\n").unwrap();
-        assert!(is_invalid(
-            settings.number::<u32>("proxy/workers"),
-            "proxy/workers",
-            "4x"
-        ));
-        assert!(is_invalid(
-            settings.number::<u32>("proxy/max_open_requests"),
-            "proxy/max_open_requests",
-            "1,2"
-        ));
-    }
-
-    #[test]
-    fn number_negative_for_unsigned_errors() {
-        let settings = load_conf("number_negative", "[handler]\nmessage_wait=-5\n").unwrap();
-        assert!(is_invalid(
-            settings.number::<u32>("handler/message_wait"),
-            "handler/message_wait",
-            "-5"
-        ));
-    }
-
-    #[test]
-    fn bool_parses() {
-        let settings = load_conf(
-            "bool",
-            "[proxy]\ndebug=true\nlog_from=false\nauto_cross_origin=TRUE\n",
-        )
-        .unwrap();
-        assert_eq!(settings.bool("proxy/debug").unwrap(), Some(true));
-        assert_eq!(settings.bool("proxy/log_from").unwrap(), Some(false));
-        assert_eq!(
-            settings.bool("proxy/auto_cross_origin").unwrap(),
-            Some(true)
-        );
-        assert_eq!(settings.bool("proxy/log_user_agent").unwrap(), None);
-    }
-
-    #[test]
-    fn bool_invalid_errors() {
-        let settings = load_conf("bool_bad", "[proxy]\ndebug=yes\nlog_from=2\n").unwrap();
-        assert!(is_invalid(
-            settings.bool("proxy/debug"),
-            "proxy/debug",
-            "yes"
-        ));
-        assert!(is_invalid(
-            settings.bool("proxy/log_from"),
-            "proxy/log_from",
-            "2"
-        ));
-    }
-
-    #[test]
-    fn bool_one_zero_and_empty() {
-        let settings = load_conf(
-            "bool_one_zero",
-            "[proxy]\ndebug=1\nlog_from=0\nauto_cross_origin=\n",
-        )
-        .unwrap();
-        assert_eq!(settings.bool("proxy/debug").unwrap(), Some(true));
-        assert_eq!(settings.bool("proxy/log_from").unwrap(), Some(false));
-        assert_eq!(
-            settings.bool("proxy/auto_cross_origin").unwrap(),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn minus_one_is_unset() {
-        let settings = load_conf(
-            "minus_one",
-            "[handler]\nmessage_rate=-1\nipc_file_mode=-1\npush_in_http_port=-1\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.number::<u32>("handler/message_rate").unwrap(),
-            None
-        );
-        assert_eq!(settings.octal("handler/ipc_file_mode").unwrap(), None);
-        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), None);
-    }
-
-    #[test]
-    fn empty_number_and_port_are_zero() {
-        let settings = load_conf(
-            "empty_zero",
-            "[global]\nport_offset=1\n[handler]\nmessage_wait=\npush_in_http_port=\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.number::<u32>("handler/message_wait").unwrap(),
-            Some(0)
-        );
-        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), Some(0));
-    }
-
-    #[test]
-    fn octal_parses() {
-        let settings = load_conf("octal", "[handler]\nipc_file_mode=777\n").unwrap();
-        assert_eq!(
-            settings.octal("handler/ipc_file_mode").unwrap(),
-            Some(0o777)
-        );
-    }
-
-    #[test]
-    fn octal_empty_errors() {
-        let settings = load_conf("octal_empty", "[handler]\nipc_file_mode=\n").unwrap();
-        assert!(is_invalid(
-            settings.octal("handler/ipc_file_mode"),
-            "handler/ipc_file_mode",
-            ""
-        ));
-    }
-
-    #[test]
-    fn octal_invalid_errors() {
-        let settings = load_conf(
-            "octal_bad",
-            "[handler]\nipc_file_mode=abc\n[proxy]\nipc_file_mode=789\n",
-        )
-        .unwrap();
-        assert!(is_invalid(
-            settings.octal("handler/ipc_file_mode"),
-            "handler/ipc_file_mode",
-            "abc"
-        ));
-        assert!(is_invalid(
-            settings.octal("proxy/ipc_file_mode"),
-            "proxy/ipc_file_mode",
-            "789"
-        ));
-    }
-
-    #[test]
-    fn port_shifted_by_offset() {
-        let settings = load_conf(
-            "port_shift",
-            "[global]\nport_offset=1\n[handler]\npush_in_http_port=5561\n",
-        )
-        .unwrap();
-        assert_eq!(
-            settings.port("handler/push_in_http_port").unwrap(),
-            Some(5562)
-        );
-    }
-
-    #[test]
-    fn port_zero_not_shifted() {
-        let settings = load_conf(
-            "port_zero",
-            "[global]\nport_offset=1\n[handler]\npush_in_http_port=0\n",
-        )
-        .unwrap();
-        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), Some(0));
-    }
-
-    #[test]
-    fn port_invalid_errors() {
-        let settings = load_conf(
-            "port_bad",
-            "[global]\nport_offset=1\n[handler]\npush_in_http_port=70000\n[runner]\nhttp_port=65535\n",
-        )
-        .unwrap();
-        assert!(is_invalid(
-            settings.port("handler/push_in_http_port"),
-            "handler/push_in_http_port",
-            "70000"
-        ));
-        assert!(is_invalid(
-            settings.port("runner/http_port"),
-            "runner/http_port",
-            "65535"
-        ));
-    }
-
-    #[test]
-    fn overrides_apply() {
-        let mut settings = load_conf(
-            "overrides",
-            "[global]\nrundir=run\n[handler]\nstats_spec=ipc://{rundir}/{ipc_prefix}stats\npush_in_spec=tcp://127.0.0.1:5560\npush_in_http_port=5561\n",
-        )
-        .unwrap();
-        settings.set_ipc_prefix("p1-");
-        settings.set_port_offset(10);
-        assert_eq!(
-            settings.string("handler/stats_spec").unwrap(),
-            Some("ipc://run/p1-stats".to_string())
-        );
-        assert_eq!(
-            settings.string("handler/push_in_spec").unwrap(),
-            Some("tcp://127.0.0.1:5570".to_string())
-        );
-        assert_eq!(
-            settings.port("handler/push_in_http_port").unwrap(),
-            Some(5571)
-        );
+        #[test]
+        fn overrides_apply() {
+            let mut settings = parse(
+                "[global]\nrundir=run\n[handler]\nstats_spec=ipc://{rundir}/{ipc_prefix}stats\npush_in_spec=tcp://127.0.0.1:5560\npush_in_http_port=5561\n",
+            )
+            .unwrap();
+            settings.set_ipc_prefix("p1-");
+            settings.set_port_offset(10);
+            assert_eq!(
+                settings.string("handler/stats_spec").unwrap(),
+                Some("ipc://run/p1-stats".to_string())
+            );
+            assert_eq!(
+                settings.string("handler/push_in_spec").unwrap(),
+                Some("tcp://127.0.0.1:5570".to_string())
+            );
+            assert_eq!(
+                settings.port("handler/push_in_http_port").unwrap(),
+                Some(5571)
+            );
+        }
     }
 }
