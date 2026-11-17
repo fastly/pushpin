@@ -279,13 +279,13 @@ impl Settings {
         let mut out = s
             .replace(
                 "{libdir}",
-                &self.libdir.to_str().ok_or_else(|| {
+                self.libdir.to_str().ok_or_else(|| {
                     SettingsError::InvalidLibdir(self.libdir.display().to_string())
                 })?,
             )
             .replace(
                 "{rundir}",
-                &self.rundir.to_str().expect("rundir must be utf-8"),
+                self.rundir.to_str().expect("rundir must be utf-8"),
             )
             .replace("{ipc_prefix}", &self.ipc_prefix);
 
