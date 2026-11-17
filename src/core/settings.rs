@@ -537,7 +537,7 @@ mod tests {
 
         #[test]
         fn libdir_falls_back_to_source() {
-            let in_tree = env::current_dir().unwrap().join("src");
+            let in_tree = env::current_dir().unwrap_or_default().join("src");
             let libdir = |conf: &str| parse(conf).unwrap().libdir;
 
             assert_eq!(
