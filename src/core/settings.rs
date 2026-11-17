@@ -247,7 +247,7 @@ impl Settings {
         }
     }
 
-    pub fn adjust_port(&self, key: &str) -> Result<Option<u16>, SettingsError> {
+    pub fn port(&self, key: &str) -> Result<Option<u16>, SettingsError> {
         match self.get(key) {
             None | Some("-1") => Ok(None),
             Some("") => Ok(Some(0)),
@@ -941,10 +941,7 @@ mod tests {
             None
         );
         assert_eq!(settings.octal("handler/ipc_file_mode").unwrap(), None);
-        assert_eq!(
-            settings.adjust_port("handler/push_in_http_port").unwrap(),
-            None
-        );
+        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), None);
     }
 
     #[test]
@@ -958,10 +955,7 @@ mod tests {
             settings.number::<u32>("handler/message_wait").unwrap(),
             Some(0)
         );
-        assert_eq!(
-            settings.adjust_port("handler/push_in_http_port").unwrap(),
-            Some(0)
-        );
+        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), Some(0));
     }
 
     #[test]
@@ -1010,7 +1004,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            settings.port("handler/push_in_http_port").unwrap(),
             Some(5562)
         );
     }
@@ -1022,10 +1016,7 @@ mod tests {
             "[global]\nport_offset=1\n[handler]\npush_in_http_port=0\n",
         )
         .unwrap();
-        assert_eq!(
-            settings.adjust_port("handler/push_in_http_port").unwrap(),
-            Some(0)
-        );
+        assert_eq!(settings.port("handler/push_in_http_port").unwrap(), Some(0));
     }
 
     #[test]
@@ -1036,12 +1027,12 @@ mod tests {
         )
         .unwrap();
         assert!(is_invalid(
-            settings.adjust_port("handler/push_in_http_port"),
+            settings.port("handler/push_in_http_port"),
             "handler/push_in_http_port",
             "70000"
         ));
         assert!(is_invalid(
-            settings.adjust_port("runner/http_port"),
+            settings.port("runner/http_port"),
             "runner/http_port",
             "65535"
         ));
@@ -1065,7 +1056,7 @@ mod tests {
             Some("tcp://127.0.0.1:5570".to_string())
         );
         assert_eq!(
-            settings.adjust_port("handler/push_in_http_port").unwrap(),
+            settings.port("handler/push_in_http_port").unwrap(),
             Some(5571)
         );
     }
