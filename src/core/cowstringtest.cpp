@@ -126,11 +126,169 @@ static void conversions() {
     TEST_ASSERT_EQ(a, "hello");
 }
 
+static void refConstructors() {
+    // CowStringConstRef from const QString&
+    QString qs("hello");
+    CowStringConstRef constRef(qs);
+    TEST_ASSERT(!constRef.isEmpty());
+    TEST_ASSERT_EQ(constRef.asQString(), qs);
+
+    // CowString from CowStringConstRef
+    CowString a(constRef);
+    TEST_ASSERT_EQ(a, "hello");
+
+    // CowStringRef from QString&
+    CowStringRef ref(qs);
+    TEST_ASSERT(!ref.isEmpty());
+    TEST_ASSERT_EQ(ref.asQString(), qs);
+
+    // CowString from CowStringRef
+    CowString b(ref);
+    TEST_ASSERT_EQ(b, "hello");
+}
+
+static void refMethods() {
+    QString qs("hello world");
+    CowStringConstRef constRef(qs);
+
+    // isEmpty
+    QString qsEmpty;
+    CowStringConstRef emptyRef(qsEmpty);
+    TEST_ASSERT(emptyRef.isEmpty());
+    TEST_ASSERT(!constRef.isEmpty());
+
+    // startsWith
+    TEST_ASSERT(constRef.startsWith("hello"));
+    TEST_ASSERT(!constRef.startsWith("world"));
+
+    // contains
+    TEST_ASSERT(constRef.contains("lo wo"));
+    TEST_ASSERT(!constRef.contains("xyz"));
+
+    // mid (const ref)
+    CowString m1 = constRef.mid(6);
+    TEST_ASSERT_EQ(m1, "world");
+    CowString m2 = constRef.mid(6, 3);
+    TEST_ASSERT_EQ(m2, "wor");
+
+    // CowStringRef operator= writes through to the underlying QString
+    CowStringRef ref(qs);
+    ref = CowString("goodbye");
+    TEST_ASSERT_EQ(qs, "goodbye");
+
+    // mid (mutable ref)
+    QString qs2("hello world");
+    CowStringRef ref2(qs2);
+    CowString m3 = ref2.mid(6);
+    TEST_ASSERT_EQ(m3, "world");
+}
+
+static void listConstructors() {
+    // Default
+    CowStringList a;
+    TEST_ASSERT(a.isEmpty());
+
+    // QStringList
+    QStringList ql;
+    ql += "hello";
+    ql += "world";
+    CowStringList b(ql);
+    TEST_ASSERT_EQ(b.count(), 2);
+    TEST_ASSERT_EQ(b[0].asQString(), "hello");
+    TEST_ASSERT_EQ(b[1].asQString(), "world");
+}
+
+static void listMethods() {
+    // isEmpty
+    CowStringList a;
+    TEST_ASSERT(a.isEmpty());
+
+    // count
+    a += CowString("hello");
+    a += CowString("world");
+    TEST_ASSERT_EQ(a.count(), 2);
+
+    // contains
+    TEST_ASSERT(a.contains("world"));
+    TEST_ASSERT(!a.contains("foo"));
+
+    // begin/end (const)
+    CowStringList::const_iterator cit = std::as_const(a).begin();
+    TEST_ASSERT_EQ((*cit).asQString(), "hello");
+
+    ++cit;
+    TEST_ASSERT_EQ((*cit).asQString(), "world");
+
+    ++cit;
+    TEST_ASSERT_EQ(cit, std::as_const(a).end());
+
+    // begin/end (non-const), write through ref
+    CowStringList::iterator it = a.begin();
+    TEST_ASSERT_EQ((*it).asQString(), "hello");
+
+    *it = CowString("hallo");
+    TEST_ASSERT_EQ(a[0].asQString(), "hallo");
+
+    // join
+    CowStringList b;
+    b += CowString("foo");
+    b += CowString("bar");
+    b += CowString("baz");
+    TEST_ASSERT_EQ(b.join(", "), "foo, bar, baz");
+}
+
+static void listOperators() {
+    CowStringList a;
+
+    CowStringList b;
+    b += "apple";
+    b += "banana";
+
+    a += b;
+    a += CowString("cherry");
+    a += QString("date");
+    a += "elderberry";
+
+    const CowStringList &ac = a;
+    TEST_ASSERT_EQ(ac.count(), 5);
+    TEST_ASSERT_EQ(ac[0].asQString(), "apple");
+    TEST_ASSERT_EQ(ac[1].asQString(), "banana");
+    TEST_ASSERT_EQ(ac[2].asQString(), "cherry");
+    TEST_ASSERT_EQ(ac[3].asQString(), "date");
+    TEST_ASSERT_EQ(ac[4].asQString(), "elderberry");
+
+    // mutable operator[] writes through
+    a[2] = CowString("cantaloupe");
+    TEST_ASSERT_EQ(a[2].asQString(), "cantaloupe");
+}
+
+static void listConversions() {
+    CowStringList a;
+    a += "hello";
+    a += "world";
+
+    const QStringList &qlc = std::as_const(a).asQStringList();
+    TEST_ASSERT_EQ(qlc.count(), 2);
+    TEST_ASSERT_EQ(qlc[0], "hello");
+    TEST_ASSERT_EQ(qlc[1], "world");
+
+    QStringList &ql = a.asQStringList();
+    ql += "foo";
+    TEST_ASSERT_EQ(a.count(), 3);
+    TEST_ASSERT_EQ(a[2].asQString(), "foo");
+}
+
 extern "C" int cowstring_test(ffi::TestException *out_ex) {
     TEST_CATCH(constructors());
     TEST_CATCH(methods());
     TEST_CATCH(operators());
     TEST_CATCH(conversions());
+    TEST_CATCH(refConstructors());
+    TEST_CATCH(refMethods());
+    TEST_CATCH(listConstructors());
+    TEST_CATCH(listMethods());
+    TEST_CATCH(listOperators());
+    TEST_CATCH(listConversions());
 
     return 0;
 }
