@@ -50,8 +50,8 @@ pub enum SettingsError {
     #[error("invalid tcp address: {0}")]
     InvalidTcpAddress(String),
 
-    #[error("invalid libdir: {0}")]
-    InvalidLibdir(String),
+    #[error("invalid libdir: {}", .0.display())]
+    InvalidLibdir(PathBuf),
 }
 
 pub struct Settings {
@@ -279,9 +279,9 @@ impl Settings {
         let mut out = s
             .replace(
                 "{libdir}",
-                self.libdir.to_str().ok_or_else(|| {
-                    SettingsError::InvalidLibdir(self.libdir.display().to_string())
-                })?,
+                self.libdir
+                    .to_str()
+                    .ok_or_else(|| SettingsError::InvalidLibdir(self.libdir.clone()))?,
             )
             .replace(
                 "{rundir}",
