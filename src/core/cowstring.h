@@ -20,6 +20,7 @@
 #include "cowbytearray.h"
 #include <QString>
 #include <QStringList>
+#include <stdarg.h>
 
 class CowString;
 
@@ -69,8 +70,22 @@ public:
     CowString(CowStringRef ref) : inner_(ref.inner_) {}
     CowString(const char *str) : inner_(str) {}
     CowString(const QString &other) : inner_(other) {}
+    CowString(int count, char ch) : inner_(count, QLatin1Char(ch)) {}
     CowString &operator=(const CowString &other) {
         inner_ = other.inner_;
+        return *this;
+    }
+
+    CowString &operator+=(const CowString &other) {
+        inner_ += other.inner_;
+        return *this;
+    }
+    CowString &operator+=(const char *str) {
+        inner_ += str;
+        return *this;
+    }
+    CowString &operator+=(char ch) {
+        inner_ += QLatin1Char(ch);
         return *this;
     }
 
@@ -88,6 +103,7 @@ public:
     }
 
     static CowString number(int n, int base = 10) { return QString::number(n, base); }
+    static CowString number(long long n, int base = 10) { return QString::number(n, base); }
     static CowString number(double n, char format = 'g', int precision = 6) {
         return QString::number(n, format, precision);
     }
@@ -98,6 +114,30 @@ public:
         return QString::fromUtf8(ba.asQByteArray());
     }
 
+    int size() const { return inner_.size(); }
+    int length() const { return inner_.length(); }
+    CowString trimmed() const { return inner_.trimmed(); }
+    CowString toLower() const { return inner_.toLower(); }
+    CowString toUpper() const { return inner_.toUpper(); }
+    CowString left(int n) const { return inner_.left(n); }
+    CowString right(int n) const { return inner_.right(n); }
+    CowString &append(const CowString &s) {
+        inner_.append(s.inner_);
+        return *this;
+    }
+    int indexOf(const char *str, int from = 0) const { return inner_.indexOf(str, from); }
+    int indexOf(char ch, int from = 0) const { return inner_.indexOf(ch, from); }
+    bool endsWith(const char *str) const { return inner_.endsWith(str); }
+    int toInt(bool *ok = nullptr, int base = 10) const { return inner_.toInt(ok, base); }
+    static CowString vasprintf(const char *fmt, va_list ap) { return QString::vasprintf(fmt, ap); }
+    static CowString asprintf(const char *fmt, ...) {
+        va_list ap;
+        va_start(ap, fmt);
+        CowString result = QString::vasprintf(fmt, ap);
+        va_end(ap);
+        return result;
+    }
+
     const QString &asQString() const { return inner_; }
     QString &asQString() { return inner_; }
 
@@ -105,6 +145,7 @@ public:
     friend bool operator==(const CowString &lhs, const char *const &rhs);
     friend bool operator==(const char *const &lhs, const CowString &rhs);
     friend CowString operator+(const CowString &lhs, const CowString &rhs);
+    friend bool operator<(const CowString &lhs, const CowString &rhs);
 
 private:
     friend class CowStringRef;
@@ -122,6 +163,12 @@ inline bool operator!=(const CowString &lhs, const char *const &rhs) { return !(
 inline bool operator!=(const char *const &lhs, const CowString &rhs) { return !(lhs == rhs); }
 inline CowString operator+(const CowString &lhs, const CowString &rhs) {
     return lhs.inner_ + rhs.inner_;
+}
+inline bool operator<(const CowString &lhs, const CowString &rhs) {
+    return lhs.inner_ < rhs.inner_;
+}
+inline size_t qHash(const CowString &key, size_t seed = 0) noexcept {
+    return qHash(key.asQString(), seed);
 }
 
 inline CowString CowStringConstRef::mid(int position, int n) const {
