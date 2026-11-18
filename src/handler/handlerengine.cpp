@@ -1240,7 +1240,7 @@ public:
             stateClient->setIpcFileMode(config.ipcFileMode);
             stateClient->setTimeout(STATE_RPC_TIMEOUT);
 
-            if (!stateClient->setClientSpecs(QStringList() << config.stateSpec)) {
+            if (!stateClient->setClientSpecs({config.stateSpec})) {
                 // Zrpcmanager logs error
                 return false;
             }
@@ -1255,7 +1255,7 @@ public:
             controlReqReadyConnection = controlServer->requestReady.connect(
                 boost::bind(&Private::controlServer_requestReady, this));
 
-            if (!controlServer->setServerSpecs(QStringList() << config.commandSpec)) {
+            if (!controlServer->setServerSpecs({config.commandSpec})) {
                 // Zrpcmanager logs error
                 return false;
             }
@@ -1438,7 +1438,7 @@ public:
             proxyControlClient->setIpcFileMode(config.ipcFileMode);
             proxyControlClient->setTimeout(PROXY_RPC_TIMEOUT);
 
-            if (!proxyControlClient->setClientSpecs(QStringList() << config.proxyCommandSpec)) {
+            if (!proxyControlClient->setClientSpecs({config.proxyCommandSpec})) {
                 // Zrpcmanager logs error
                 return false;
             }

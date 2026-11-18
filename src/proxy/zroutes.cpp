@@ -121,12 +121,12 @@ public:
             manager->setBind(true);
 
             if (route.req) {
-                manager->setClientReqSpecs(QStringList() << route.baseSpec);
+                manager->setClientReqSpecs({route.baseSpec});
             } else {
                 QStringList specs = baseSpecToSpecs(route.baseSpec);
-                manager->setClientOutSpecs(QStringList() << specs[0]);
-                manager->setClientOutStreamSpecs(QStringList() << specs[1]);
-                manager->setClientInSpecs(QStringList() << specs[2]);
+                manager->setClientOutSpecs({specs[0]});
+                manager->setClientOutStreamSpecs({specs[1]});
+                manager->setClientInSpecs({specs[2]});
             }
 
             i = new Item(route.baseSpec, std::move(manager));

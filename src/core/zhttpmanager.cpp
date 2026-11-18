@@ -35,7 +35,6 @@
 #include "zmqvalve.h"
 #include "zutil.h"
 #include <QHash>
-#include <QStringList>
 #include <assert.h>
 
 #define OUT_HWM 100
@@ -71,13 +70,13 @@ public:
     };
 
     ZhttpManager *q;
-    QStringList client_out_specs;
-    QStringList client_out_stream_specs;
-    QStringList client_in_specs;
-    QStringList client_req_specs;
-    QStringList server_in_specs;
-    QStringList server_in_stream_specs;
-    QStringList server_out_specs;
+    CowStringList client_out_specs;
+    CowStringList client_out_stream_specs;
+    CowStringList client_in_specs;
+    CowStringList client_req_specs;
+    CowStringList server_in_specs;
+    CowStringList server_in_stream_specs;
+    CowStringList server_out_specs;
     std::unique_ptr<ZmqSocket> client_out_sock;
     std::unique_ptr<ZmqSocket> client_out_stream_sock;
     std::unique_ptr<ZmqSocket> client_in_sock;
@@ -1005,37 +1004,37 @@ void ZhttpManager::setBind(bool enable) { d->doBind = enable; }
 
 void ZhttpManager::setProbe(bool enable) { d->doProbe = enable; }
 
-bool ZhttpManager::setClientOutSpecs(const QStringList &specs) {
+bool ZhttpManager::setClientOutSpecs(const CowStringList &specs) {
     d->client_out_specs = specs;
     return d->setupClientOut();
 }
 
-bool ZhttpManager::setClientOutStreamSpecs(const QStringList &specs) {
+bool ZhttpManager::setClientOutStreamSpecs(const CowStringList &specs) {
     d->client_out_stream_specs = specs;
     return d->setupClientOutStream();
 }
 
-bool ZhttpManager::setClientInSpecs(const QStringList &specs) {
+bool ZhttpManager::setClientInSpecs(const CowStringList &specs) {
     d->client_in_specs = specs;
     return d->setupClientIn();
 }
 
-bool ZhttpManager::setClientReqSpecs(const QStringList &specs) {
+bool ZhttpManager::setClientReqSpecs(const CowStringList &specs) {
     d->client_req_specs = specs;
     return d->setupClientReq();
 }
 
-bool ZhttpManager::setServerInSpecs(const QStringList &specs) {
+bool ZhttpManager::setServerInSpecs(const CowStringList &specs) {
     d->server_in_specs = specs;
     return d->setupServerIn();
 }
 
-bool ZhttpManager::setServerInStreamSpecs(const QStringList &specs) {
+bool ZhttpManager::setServerInStreamSpecs(const CowStringList &specs) {
     d->server_in_stream_specs = specs;
     return d->setupServerInStream();
 }
 
-bool ZhttpManager::setServerOutSpecs(const QStringList &specs) {
+bool ZhttpManager::setServerOutSpecs(const CowStringList &specs) {
     d->server_out_specs = specs;
     return d->setupServerOut();
 }

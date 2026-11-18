@@ -41,12 +41,10 @@ public:
         zhttpIn = std::make_unique<ZhttpManager>();
         zhttpIn->setInstanceId("filter-test-server");
         zhttpIn->setBind(true);
-        zhttpIn->setServerInSpecs(QStringList()
-                                  << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
+        zhttpIn->setServerInSpecs({QString("ipc://%1").arg(workDir.filePath("filter-test-in"))});
         zhttpIn->setServerInStreamSpecs(
-            QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
-        zhttpIn->setServerOutSpecs(QStringList()
-                                   << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
+            {QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream"))});
+        zhttpIn->setServerOutSpecs({QString("ipc://%1").arg(workDir.filePath("filter-test-out"))});
         zhttpIn->requestReady.connect(boost::bind(&HttpFilterServer::zhttpIn_requestReady, this));
     }
 
@@ -170,12 +168,10 @@ public:
 
         zhttpOut->setInstanceId("filter-test-client");
         zhttpOut->setProbe(true);
-        zhttpOut->setClientOutSpecs(QStringList()
-                                    << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
+        zhttpOut->setClientOutSpecs({QString("ipc://%1").arg(workDir.filePath("filter-test-in"))});
         zhttpOut->setClientOutStreamSpecs(
-            QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
-        zhttpOut->setClientInSpecs(QStringList()
-                                   << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
+            {QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream"))});
+        zhttpOut->setClientInSpecs({QString("ipc://%1").arg(workDir.filePath("filter-test-out"))});
 
         while (!connected)
             loop_wait(10);

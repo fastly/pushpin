@@ -216,7 +216,7 @@ public:
             inspect = std::make_unique<ZrpcManager>();
             inspect->setBind(true);
             inspect->setIpcFileMode(config.ipcFileMode);
-            if (!inspect->setClientSpecs(QStringList() << config.inspectSpec)) {
+            if (!inspect->setClientSpecs({config.inspectSpec})) {
                 // ZrpcManager logs error
                 return false;
             }
@@ -232,7 +232,7 @@ public:
             accept->setInstanceId(config.clientId);
             accept->setBind(true);
             accept->setIpcFileMode(config.ipcFileMode);
-            if (!accept->setClientSpecs(QStringList() << config.acceptSpec)) {
+            if (!accept->setClientSpecs({config.acceptSpec})) {
                 // ZrpcManager logs error
                 return false;
             }
@@ -314,7 +314,7 @@ public:
             cmdReqReadyConnection =
                 command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
 
-            if (!command->setServerSpecs(QStringList() << config.commandSpec)) {
+            if (!command->setServerSpecs({config.commandSpec})) {
                 // ZrpcManager logs error
                 return false;
             }

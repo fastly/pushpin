@@ -34,7 +34,6 @@
 #include "zrpcrequest.h"
 #include "zutil.h"
 #include <QFile>
-#include <QStringList>
 #include <assert.h>
 
 #define OUT_HWM 100
@@ -58,8 +57,8 @@ public:
     int ipcFileMode;
     bool doBind;
     int timeout;
-    QStringList clientSpecs;
-    QStringList serverSpecs;
+    CowStringList clientSpecs;
+    CowStringList serverSpecs;
     std::unique_ptr<ZmqSocket> clientSock;
     std::unique_ptr<ZmqSocket> serverSock;
     std::unique_ptr<ZmqValve> clientValve;
@@ -249,12 +248,12 @@ void ZrpcManager::setBind(bool enable) { d->doBind = enable; }
 
 void ZrpcManager::setTimeout(int ms) { d->timeout = ms; }
 
-bool ZrpcManager::setClientSpecs(const QStringList &specs) {
+bool ZrpcManager::setClientSpecs(const CowStringList &specs) {
     d->clientSpecs = specs;
     return d->setupClient();
 }
 
-bool ZrpcManager::setServerSpecs(const QStringList &specs) {
+bool ZrpcManager::setServerSpecs(const CowStringList &specs) {
     d->serverSpecs = specs;
     return d->setupServer();
 }

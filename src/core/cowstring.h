@@ -202,6 +202,10 @@ public:
 
     CowStringList() = default;
     CowStringList(const QStringList &other) : inner_(other) {}
+    CowStringList(std::initializer_list<CowString> list) {
+        for (const CowString &s : list)
+            inner_ += s.asQString();
+    }
 
     bool isEmpty() const { return inner_.isEmpty(); }
     ssize_t count() const { return inner_.count(); }

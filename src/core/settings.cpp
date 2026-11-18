@@ -143,11 +143,11 @@ Variant Settings::value(const CowString &key, const Variant &defaultValue) const
         if (typeId(v) == VariantType::String) {
             v = resolveVars(v.toString());
         } else if (typeId(v) == VariantType::StringList) {
-            QStringList oldList = v.toStringList();
-            QStringList newList;
-            for (QString s : oldList)
-                newList += resolveVars(s);
-            v = newList;
+            CowStringList oldList(v.toStringList());
+            CowStringList newList;
+            for (const CowStringConstRef s : std::as_const(oldList))
+                newList += resolveVars(s.asQString());
+            v = newList.asQStringList();
         }
     }
 

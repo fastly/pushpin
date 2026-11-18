@@ -24,6 +24,7 @@
 #ifndef ZHTTPMANAGER_H
 #define ZHTTPMANAGER_H
 
+#include "cowstring.h"
 #include "cowurl.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
@@ -50,15 +51,15 @@ public:
     void setBind(bool enable);
     void setProbe(bool enable);
 
-    bool setClientOutSpecs(const QStringList &specs);
-    bool setClientOutStreamSpecs(const QStringList &specs);
-    bool setClientInSpecs(const QStringList &specs);
+    bool setClientOutSpecs(const CowStringList &specs);
+    bool setClientOutStreamSpecs(const CowStringList &specs);
+    bool setClientInSpecs(const CowStringList &specs);
 
-    bool setClientReqSpecs(const QStringList &specs);
+    bool setClientReqSpecs(const CowStringList &specs);
 
-    bool setServerInSpecs(const QStringList &specs);
-    bool setServerInStreamSpecs(const QStringList &specs);
-    bool setServerOutSpecs(const QStringList &specs);
+    bool setServerInSpecs(const CowStringList &specs);
+    bool setServerInStreamSpecs(const CowStringList &specs);
+    bool setServerOutSpecs(const CowStringList &specs);
 
     ZhttpRequest *createRequest();
     ZhttpRequest *takeNextRequest();
