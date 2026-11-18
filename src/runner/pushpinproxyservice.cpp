@@ -24,6 +24,7 @@
 
 #include <QDir>
 #include <QProcess>
+#include <utility>
 
 PushpinProxyService::PushpinProxyService(const QString &binFile, const QString &configFile,
                                          const QString &runDir, const QString &logDir,
@@ -43,7 +44,7 @@ PushpinProxyService::PushpinProxyService(const QString &binFile, const QString &
     if (logLevel >= 0)
         args_ += "--loglevel=" + QString::number(logLevel);
 
-    foreach (const QString &route, routeLines)
+    for (const QString &route : std::as_const(routeLines))
         args_ += "--route=" + route;
 
     setName("proxy");

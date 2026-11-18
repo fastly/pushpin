@@ -28,6 +28,7 @@
 #include "statsmanager.h"
 #include "variant.h"
 #include "zrpcrequest.h"
+#include <utility>
 
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient,
                                  StatsManager *stats)
@@ -73,7 +74,7 @@ void ConnCheckWorker::respondError(const QByteArray &condition) {
 }
 
 void ConnCheckWorker::doFinish() {
-    foreach (const QString &cid, missing_)
+    for (const QString &cid : std::as_const(missing_))
         cids_.remove(cid);
 
     VariantList result;
@@ -88,7 +89,7 @@ void ConnCheckWorker::proxyConnCheck_finished(const DeferredResult &result) {
     if (result.success) {
         CidSet found = result.value.value<CidSet>();
 
-        foreach (const QString &cid, found)
+        for (const QString &cid : std::as_const(found))
             missing_.remove(cid);
 
         doFinish();

@@ -71,6 +71,7 @@
 #include "zutil.h"
 #include <algorithm>
 #include <assert.h>
+#include <utility>
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // Infinite
@@ -822,7 +823,7 @@ private:
                 // Apply ResponseContent filters of all channels
                 QStringList allFilters;
                 foreach (const Instruct::Channel &c, instruct.channels) {
-                    foreach (const QString &filter, c.filters) {
+                    for (const QString &filter : std::as_const(c.filters)) {
                         if ((Filter::targets(filter) & Filter::ResponseContent) &&
                             !allFilters.contains(filter))
                             allFilters += filter;
@@ -988,7 +989,7 @@ private:
             ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
             QSet<QString> implicitChannelsSet;
-            foreach (const QString &channel, implicitChannels)
+            for (const QString &channel : std::as_const(implicitChannels))
                 implicitChannelsSet += channel;
 
             HttpSession::AcceptData adata;
@@ -1312,7 +1313,7 @@ public:
             retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
             retrySock->setRouterMandatoryEnabled(true);
 
-            foreach (const QString &spec, config.retryOutSpecs) {
+            for (const QString &spec : std::as_const(config.retryOutSpecs)) {
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(retrySock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
@@ -1328,7 +1329,7 @@ public:
             wsControlInitSock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
             wsControlInitSock->setHwm(DEFAULT_HWM);
 
-            foreach (const QString &spec, config.wsControlInitSpecs) {
+            for (const QString &spec : std::as_const(config.wsControlInitSpecs)) {
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlInitSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
@@ -1349,7 +1350,7 @@ public:
             wsControlStreamSock->setHwm(DEFAULT_HWM);
             wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
-            foreach (const QString &spec, config.wsControlStreamSpecs) {
+            for (const QString &spec : std::as_const(config.wsControlStreamSpecs)) {
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(wsControlStreamSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
@@ -1416,7 +1417,7 @@ public:
             proxyStatsSock->setShutdownWaitTime(0);
             proxyStatsSock->subscribe("");
 
-            foreach (const QString &spec, config.proxyStatsSpecs) {
+            for (const QString &spec : std::as_const(config.proxyStatsSpecs)) {
                 CowString errorMessage;
                 if (!ZUtil::setupSocket(proxyStatsSock.get(), spec, false, config.ipcFileMode,
                                         &errorMessage)) {
@@ -2065,7 +2066,7 @@ private:
         if (!item.id.isNull() && !sids.isEmpty() && stateClient) {
             // Update sessions' last-id
             QHash<QString, LastIds> sidLastIds;
-            foreach (const QString &sid, sids) {
+            for (const QString &sid : std::as_const(sids)) {
                 LastIds lastIds;
                 lastIds[item.channel] = item.id;
                 sidLastIds[sid] = lastIds;
@@ -2579,7 +2580,7 @@ private:
             writeWsControlItems(packet.from.asQByteArray(), outItems);
 
         if (stateClient) {
-            foreach (const QString &sid, createOrUpdateSids) {
+            for (const QString &sid : std::as_const(createOrUpdateSids)) {
                 auto d = std::unique_ptr<Deferred>(
                     SessionRequest::createOrUpdate(stateClient.get(), sid, LastIds()));
 

@@ -46,6 +46,7 @@
 #include <boost/algorithm/string.hpp>
 #include <string>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 static void trimlist(QStringList *list) {
@@ -59,7 +60,7 @@ static void trimlist(QStringList *list) {
 
 static XffRule parse_xffRule(const QStringList &in) {
     XffRule out;
-    foreach (const QString &s, in) {
+    for (const QString &s : std::as_const(in)) {
         if (s.startsWith("truncate:")) {
             bool ok;
             int x = s.mid(9).toInt(&ok);
@@ -258,7 +259,7 @@ static int runLoop(const QString &logFile, const Engine::Configuration &config,
     deferCall.defer([&] {
         if (!routeLines.isEmpty()) {
             domainMap = std::make_unique<DomainMap>();
-            foreach (const QString &line, routeLines)
+            for (const QString &line : std::as_const(routeLines))
                 domainMap->addRouteLine(line);
         } else
             domainMap = std::make_unique<DomainMap>(routesFile);
@@ -474,7 +475,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     QString prometheusPrefix = settings.value("proxy/prometheus_prefix", "proxy").toString();
 
     QList<QByteArray> origHeadersNeedMark;
-    foreach (const QString &s, origHeadersNeedMarkStr)
+    for (const QString &s : std::as_const(origHeadersNeedMarkStr))
         origHeadersNeedMark += s.toUtf8();
 
     // If routesFile is a relative path, then use it relative to the config file location

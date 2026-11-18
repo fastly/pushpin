@@ -25,6 +25,7 @@
 #include "cowstring.h"
 #include "zmqsocket.h"
 #include <QFile>
+#include <utility>
 
 namespace ZUtil {
 
@@ -74,7 +75,7 @@ bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFi
         if (!bindSpec(sock, specs[0], ipcFileMode, errorMessage))
             return false;
     } else {
-        foreach (const QString &spec, specs)
+        for (const QString &spec : std::as_const(specs))
             sock->connectToAddress(spec);
     }
 

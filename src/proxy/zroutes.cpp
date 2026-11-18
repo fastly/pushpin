@@ -29,6 +29,7 @@
 #include <QStringList>
 #include <assert.h>
 #include <boost/signals2.hpp>
+#include <utility>
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -208,7 +209,7 @@ void ZRoutes::setup(const QList<DomainMap::ZhttpRoute> &routes) {
             toRemove += spec;
     }
 
-    foreach (const QString &spec, toRemove) {
+    for (const QString &spec : std::as_const(toRemove)) {
         Private::Item *i = d->itemsBySpec.value(spec);
         assert(i);
 

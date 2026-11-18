@@ -22,8 +22,10 @@
 
 #include "filterstack.h"
 
+#include <utility>
+
 FilterStack::FilterStack(const Filter::Context &context, const QStringList &filters) {
-    foreach (const QString &name, filters) {
+    for (const QString &name : std::as_const(filters)) {
         Filter *f = Filter::create(name);
         if (f) {
             f->setContext(context);

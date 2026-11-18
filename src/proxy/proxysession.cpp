@@ -47,6 +47,7 @@
 #include <QHostAddress>
 #include <QSet>
 #include <assert.h>
+#include <utility>
 
 using std::map;
 
@@ -1190,7 +1191,7 @@ public:
             adata.separateStats = route.separateStats;
             adata.channelPrefix = route.prefix;
             adata.logLevel = route.logLevel;
-            foreach (const QString &s, target.subscriptions)
+            for (const QString &s : std::as_const(target.subscriptions))
                 adata.channels += s.toUtf8();
             adata.trusted = target.trusted;
             adata.useSession = route.session;

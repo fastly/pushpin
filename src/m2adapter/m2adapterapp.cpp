@@ -538,7 +538,7 @@ public:
         maxSessions = settings.value("max_open_requests", -1).toInt();
 
         m2_send_idents.clear();
-        foreach (const QString &s, str_m2_send_idents)
+        for (const QString &s : std::as_const(str_m2_send_idents))
             m2_send_idents += s.toUtf8();
 
         if (m2_in_specs.isEmpty() || m2_out_specs.isEmpty() || m2_control_specs.isEmpty()) {
@@ -579,7 +579,7 @@ public:
 
         m2_in_sock = std::make_unique<ZmqSocket>(ZmqSocket::Pull);
         m2_in_sock->setHwm(DEFAULT_HWM);
-        foreach (const QString &spec, m2_in_specs) {
+        for (const QString &spec : std::as_const(m2_in_specs)) {
             log_info("m2_in connect %s", qPrintable(spec));
             m2_in_sock->connectToAddress(spec);
         }
@@ -592,7 +592,7 @@ public:
         m2_out_sock->setShutdownWaitTime(0);
         m2_out_sock->setHwm(DEFAULT_HWM);
         m2_out_sock->setWriteQueueEnabled(false);
-        foreach (const QString &spec, m2_out_specs) {
+        for (const QString &spec : std::as_const(m2_out_specs)) {
             log_info("m2_out connect %s", qPrintable(spec));
             m2_out_sock->connectToAddress(spec);
         }
@@ -621,7 +621,7 @@ public:
             zhttp_in_sock->setShutdownWaitTime(0);
             zhttp_in_sock->subscribe(zhttpInstanceId + ' ');
             if (zhttp_connect) {
-                foreach (const QString &spec, zhttp_in_specs) {
+                for (const QString &spec : std::as_const(zhttp_in_specs)) {
                     log_info("zhttp_in connect %s", qPrintable(spec));
                     zhttp_in_sock->connectToAddress(spec);
                 }
@@ -641,7 +641,7 @@ public:
             zhttp_out_sock->setShutdownWaitTime(0);
             zhttp_out_sock->setHwm(DEFAULT_HWM);
             if (zhttp_connect) {
-                foreach (const QString &spec, zhttp_out_specs) {
+                for (const QString &spec : std::as_const(zhttp_out_specs)) {
                     log_info("zhttp_out connect %s", qPrintable(spec));
                     zhttp_out_sock->connectToAddress(spec);
                 }
@@ -658,7 +658,7 @@ public:
             zhttp_out_stream_sock->setShutdownWaitTime(0);
             zhttp_out_stream_sock->setHwm(DEFAULT_HWM);
             if (zhttp_connect) {
-                foreach (const QString &spec, zhttp_out_stream_specs) {
+                for (const QString &spec : std::as_const(zhttp_out_stream_specs)) {
                     log_info("zhttp_out_stream connect %s", qPrintable(spec));
                     zhttp_out_stream_sock->connectToAddress(spec);
                 }
@@ -677,7 +677,7 @@ public:
             zws_in_sock->setHwm(DEFAULT_HWM);
             zws_in_sock->subscribe(zwsInstanceId + ' ');
             if (zws_connect) {
-                foreach (const QString &spec, zws_in_specs) {
+                for (const QString &spec : std::as_const(zws_in_specs)) {
                     log_info("zws_in connect %s", qPrintable(spec));
                     zws_in_sock->connectToAddress(spec);
                 }
@@ -697,7 +697,7 @@ public:
             zws_out_sock->setShutdownWaitTime(0);
             zws_out_sock->setHwm(DEFAULT_HWM);
             if (zws_connect) {
-                foreach (const QString &spec, zws_out_specs) {
+                for (const QString &spec : std::as_const(zws_out_specs)) {
                     log_info("zws_out connect %s", qPrintable(spec));
                     zws_out_sock->connectToAddress(spec);
                 }
@@ -713,7 +713,7 @@ public:
             zws_out_stream_sock->setShutdownWaitTime(0);
             zws_out_stream_sock->setHwm(DEFAULT_HWM);
             if (zws_connect) {
-                foreach (const QString &spec, zws_out_stream_specs) {
+                for (const QString &spec : std::as_const(zws_out_stream_specs)) {
                     log_info("zws_out_stream connect %s", qPrintable(spec));
                     zws_out_stream_sock->connectToAddress(spec);
                 }

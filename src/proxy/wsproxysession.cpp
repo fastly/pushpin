@@ -861,7 +861,7 @@ public:
                 wsControl->start(route.debug, route.id, route.separateStats, channelPrefix,
                                  route.logLevel, inSock->requestUri(), target.trusted);
 
-                foreach (const QString &subChannel, target.subscriptions) {
+                for (const QString &subChannel : std::as_const(target.subscriptions)) {
                     log_debug("wsproxysession: %p implicit subscription to [%s]", q,
                               qPrintable(subChannel));
 

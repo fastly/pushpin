@@ -379,7 +379,7 @@ JsonPointer JsonPointer::resolve(Variant *data, const QString &pointerStr, QStri
 
     Variant i = *ptr.root_;
     QStringList parts = pointerStr.split('/').mid(1);
-    foreach (const QString &part, parts) {
+    for (const QString &part : std::as_const(parts)) {
         if (part.isEmpty()) {
             if (errorMessage)
                 *errorMessage = "reference cannot be empty";
