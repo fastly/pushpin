@@ -632,7 +632,9 @@ impl Log for DebugLogger {
 
 pub mod ffi {
     use super::*;
-    use std::ffi::{c_char, c_int, CStr};
+    use crate::core::config::UnixListenConfig;
+    use crate::core::net::bind_unix_config;
+    use std::ffi::{c_char, c_int, c_uint, CStr, CString};
     use std::fs::OpenOptions;
 
     pub const LOG_LEVEL_ERROR: c_int = 0;
@@ -836,5 +838,87 @@ pub mod ffi {
 
         // Write raw message directly to output (assuming it's already formatted)
         writeln!(&mut output, "{}", message).expect("failed to write log output");
+    }
+
+    /// Create a debug logger that listens on the Unix socket described by `spec`. The spec format
+    /// is `path[,mode=OCTAL][,user=NAME][,group=NAME]`.
+    /// Returns an opaque handle on success, or null on failure. On failure, writes a
+    /// heap-allocated error string to `*error`; call `debug_logger_error_destroy` to release it.
+    /// On success, `*error` is set to null.
+    /// Call `debug_logger_destroy` when done with the handle.
+    ///
+    /// # Safety
+    ///
+    /// `spec` must be a valid null-terminated C string. `error` must be a valid non-null pointer
+    /// to a `*const c_char`.
+    #[no_mangle]
+    pub unsafe extern "C" fn debug_logger_create(
+        spec: *const c_char,
+        queue_max: c_uint,
+        error: *mut *const c_char,
+    ) -> *mut DebugLogger {
+        assert!(!spec.is_null());
+        assert!(!error.is_null());
+
+        let spec = unsafe { CStr::from_ptr(spec) };
+
+        let spec = match spec.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                unsafe {
+                    *error = CString::new(format!("invalid spec: {e}"))
+                        .unwrap_or_default()
+                        .into_raw();
+                }
+                return std::ptr::null_mut();
+            }
+        };
+
+        let config: UnixListenConfig = match spec.parse() {
+            Ok(c) => c,
+            Err(e) => {
+                unsafe {
+                    *error = CString::new(e).unwrap_or_default().into_raw();
+                }
+                return std::ptr::null_mut();
+            }
+        };
+
+        let listener = match bind_unix_config(&config) {
+            Ok(l) => l,
+            Err(e) => {
+                unsafe {
+                    *error = CString::new(e).unwrap_or_default().into_raw();
+                }
+                return std::ptr::null_mut();
+            }
+        };
+
+        unsafe { *error = std::ptr::null() };
+        Box::into_raw(Box::new(DebugLogger::new(listener, queue_max as usize)))
+    }
+
+    /// Destroy an error string returned by `debug_logger_create`.
+    ///
+    /// # Safety
+    ///
+    /// `error` must be a pointer previously written by `debug_logger_create`, or null.
+    #[no_mangle]
+    pub unsafe extern "C" fn debug_logger_error_destroy(error: *const c_char) {
+        if !error.is_null() {
+            drop(unsafe { CString::from_raw(error as *mut c_char) });
+        }
+    }
+
+    /// Destroy a debug logger handle returned by `debug_logger_create`.
+    ///
+    /// # Safety
+    ///
+    /// `logger` must be a valid pointer returned by `debug_logger_create`, or null.
+    #[no_mangle]
+    pub unsafe extern "C" fn debug_logger_destroy(logger: *mut DebugLogger) {
+        if !logger.is_null() {
+            drop(unsafe { Box::from_raw(logger) });
+        }
     }
 }

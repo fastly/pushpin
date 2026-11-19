@@ -95,3 +95,21 @@ void logWithOutputLevel(int outputLevel, int level, const char *fmt, ...) {
 }
 
 void log_raw(const char *s) { ffi::log_log_raw(s); }
+
+DebugLogger::DebugLogger(ffi::DebugLogger *inner) : inner_(inner) {}
+
+DebugLogger::~DebugLogger() { ffi::debug_logger_destroy(inner_); }
+
+// static
+std::unique_ptr<DebugLogger> DebugLogger::create(const CowString &spec, unsigned int queueMax,
+                                                 CowString *error) {
+    const char *errStr = nullptr;
+    ffi::DebugLogger *handle = ffi::debug_logger_create(spec.toUtf8().data(), queueMax, &errStr);
+    if (!handle) {
+        if (error && errStr)
+            *error = CowString::fromUtf8(errStr);
+        ffi::debug_logger_error_destroy(errStr);
+        return nullptr;
+    }
+    return std::unique_ptr<DebugLogger>(new DebugLogger(handle));
+}
