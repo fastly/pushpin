@@ -24,6 +24,7 @@
 
 #include "cowstring.h"
 #include "rust/bindings.h"
+#include <memory>
 
 enum LogLevel {
     LOG_LEVEL_ERROR = ffi::LOG_LEVEL_ERROR,
@@ -51,5 +52,22 @@ void logWithOutputLevel(int outputLevel, int level, const char *fmt, ...);
 
 /// Log without prefixing or anything. Useful for forwarding log data
 void log_raw(const char *line);
+
+class DebugLogger {
+public:
+    ~DebugLogger();
+
+    DebugLogger(const DebugLogger &) = delete;
+    DebugLogger &operator=(const DebugLogger &) = delete;
+
+    /// Create a debug logger listening on the Unix socket at `path`. On failure returns nullptr
+    /// and writes a description to `*error` if `error` is non-null.
+    static std::unique_ptr<DebugLogger> create(const CowString &spec, unsigned int queueMax,
+                                               CowString *error = nullptr);
+
+private:
+    explicit DebugLogger(ffi::DebugLogger *inner);
+    ffi::DebugLogger *inner_;
+};
 
 #endif
