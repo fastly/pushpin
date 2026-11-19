@@ -21,8 +21,9 @@ pub mod server;
 
 use self::distributor::{MessageDistributor, ZmqDistributor};
 use self::server::Server;
-use crate::core::config::NetListenConfig;
-use crate::core::net::NetListener;
+use crate::core::config::{NetListenConfig, UnixListenConfig};
+use crate::core::log::DebugLogger;
+use crate::core::net::{bind_unix_config, NetListener};
 use crate::core::prometheus::{try_register_process_collector, PrometheusServer};
 use crate::core::zmq::SpecInfo;
 use log::{debug, info};
@@ -60,12 +61,14 @@ pub struct Config {
     pub item_out: Vec<String>,
     pub item_out_bind: bool,
     pub ipc_file_mode: u32,
+    pub debug_socket: Option<UnixListenConfig>,
     pub prometheus: Option<PrometheusConfig>,
 }
 
 pub struct App {
     _server: Server,
     _zmq_context: zmq::Context,
+    _debug_logger: Option<DebugLogger>,
     _prometheus: Option<PrometheusServer>,
 }
 
@@ -80,6 +83,13 @@ impl App {
         }
 
         let zmq_context = zmq::Context::new();
+
+        let mut debug_logger = None;
+
+        if let Some(spec) = &config.debug_socket {
+            let l = bind_unix_config(spec).map_err(|e| format!("debug socket: {}", e))?;
+            debug_logger = Some(DebugLogger::new(l, 1000));
+        }
 
         let mut prometheus = None;
 
@@ -133,6 +143,7 @@ impl App {
         Ok(Self {
             _server: server,
             _zmq_context: zmq_context,
+            _debug_logger: debug_logger,
             _prometheus: prometheus,
         })
     }
