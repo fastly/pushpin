@@ -25,6 +25,7 @@
 #define ZRPCMANAGER_H
 
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include <QList>
 #include <boost/signals2.hpp>
 
@@ -48,8 +49,8 @@ public:
     void setTimeout(int ms);
     void setUnavailableOnTimeout(bool enable);
 
-    bool setClientSpecs(const QStringList &specs);
-    bool setServerSpecs(const QStringList &specs);
+    bool setClientSpecs(const CowStringList &specs);
+    bool setServerSpecs(const CowStringList &specs);
 
     ZrpcRequest *takeNext();
 

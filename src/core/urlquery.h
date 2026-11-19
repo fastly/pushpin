@@ -17,9 +17,9 @@
 #ifndef URLQUERY_H
 #define URLQUERY_H
 
+#include "cowstring.h"
 #include "cowurl.h"
 #include <QString>
-#include <QStringList>
 #include <QUrl>
 #include <QUrlQuery>
 #include <utility>
@@ -70,7 +70,7 @@ public:
         return inner_.queryItemValue(key.asQString(),
                                      static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
-    QStringList
+    CowStringList
     allQueryItemValues(const CowString &key,
                        CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
         return inner_.allQueryItemValues(key.asQString(),

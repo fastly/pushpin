@@ -69,13 +69,13 @@ bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString
     return true;
 }
 
-bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFileMode,
+bool setupSocket(ZmqSocket *sock, const CowStringList &specs, bool bind, int ipcFileMode,
                  CowString *errorMessage) {
     if (bind) {
         if (!bindSpec(sock, specs[0], ipcFileMode, errorMessage))
             return false;
     } else {
-        for (const QString &spec : std::as_const(specs))
+        for (const CowStringConstRef spec : std::as_const(specs))
             sock->connectToAddress(spec);
     }
 
@@ -87,7 +87,7 @@ bool setupSocket(ZmqSocket *sock, const QStringList &specs, bool bind, int ipcFi
 
 bool setupSocket(ZmqSocket *sock, const CowString &spec, bool bind, int ipcFileMode,
                  CowString *errorMessage) {
-    return setupSocket(sock, QStringList() << spec.asQString(), bind, ipcFileMode, errorMessage);
+    return setupSocket(sock, CowStringList{spec}, bind, ipcFileMode, errorMessage);
 }
 
 } // namespace ZUtil
