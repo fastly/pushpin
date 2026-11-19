@@ -17,7 +17,7 @@
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::api::{run, Config, ListenSpec, PrometheusConfig};
-use pushpin::core::config::NetListenConfig;
+use pushpin::core::config::{NetListenConfig, UnixListenConfig};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::core::version;
 use std::error::Error;
@@ -35,6 +35,7 @@ struct Args {
     item_out_specs: Vec<String>,
     item_out_bind: bool,
     ipc_file_mode: u32,
+    debug_socket: Option<String>,
     prometheus: Option<String>,
 }
 
@@ -52,6 +53,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         item_out: args.item_out_specs,
         item_out_bind: args.item_out_bind,
         ipc_file_mode: args.ipc_file_mode,
+        debug_socket: None,
         prometheus: None,
     };
 
@@ -83,6 +85,18 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         };
 
         config.listen.push(spec);
+    }
+
+    if let Some(v) = &args.debug_socket {
+        let spec: UnixListenConfig = v
+            .parse()
+            .map_err(|e| format!("failed to parse debug-socket: {}", e))?;
+
+        if let Some(k) = spec.params.keys().next() {
+            return Err(format!("failed to parse debug-socket: invalid param: {}", k).into());
+        }
+
+        config.debug_socket = Some(spec);
     }
 
     if let Some(v) = &args.prometheus {
@@ -186,6 +200,13 @@ fn main() {
                 .num_args(1)
                 .value_name("octal")
                 .help("Permissions for ZeroMQ IPC binds"),
+        )
+        .arg(
+            Arg::new("debug-socket")
+                .long("debug-socket")
+                .num_args(1)
+                .value_name("path")
+                .help("Unix socket for serving debug logs"),
         )
         .arg(
             Arg::new("prometheus")
@@ -298,6 +319,8 @@ fn main() {
         listen.push("0.0.0.0:5561".to_string());
     }
 
+    let debug_socket = matches.get_one::<String>("debug-socket").cloned();
+
     let prometheus = matches.get_one::<String>("prometheus").cloned();
 
     let args = Args {
@@ -309,6 +332,7 @@ fn main() {
         item_out_specs,
         item_out_bind,
         ipc_file_mode,
+        debug_socket,
         prometheus,
     };
 
