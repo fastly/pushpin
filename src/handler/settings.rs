@@ -281,17 +281,25 @@ fn expand_specs(specs: Vec<String>, workers: u32) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::settings::parse;
     use std::path::Path;
 
-    fn load_conf(text: &str) -> Result<ffi::HandlerSettings, SettingsError> {
-        ffi::HandlerSettings::from_settings(&parse(text)?)
+    mod helpers {
+        use super::*;
+        use crate::core::settings::parse;
+
+        // Pulls in the shipped internal.conf, which has the socket specs the handler requires,
+        // and puts the sockets under run/
+        pub(super) const BASE_CONF: &str = "[global]\ninclude=internal.conf\nrundir=run\n";
+
+        pub(super) fn load_conf(text: &str) -> Result<ffi::HandlerSettings, SettingsError> {
+            ffi::HandlerSettings::from_settings(&parse(text)?)
+        }
     }
 
-    const GLOBAL: &str = "[global]\ninclude=internal.conf\nrundir=run\n";
+    use self::helpers::*;
 
     #[test]
-    fn example_config() {
+    fn example_config_loads() {
         let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
         let s = ffi::HandlerSettings::from_settings(&settings).unwrap();
 
@@ -326,108 +334,6 @@ mod tests {
     }
 
     #[test]
-    fn defaults_when_unset() {
-        let s = load_conf(GLOBAL).unwrap();
-
-        assert_eq!(s.connections_max, 50000);
-        assert!(s.stats_connection_send);
-        assert_eq!(s.stats_connection_ttl, 120);
-        assert_eq!(s.push_in_http_port, -1);
-        assert_eq!(s.push_in_http_max_headers_size, 10000);
-        assert_eq!(s.push_in_http_max_body_size, 1000000);
-        assert_eq!(s.message_rate, -1);
-        assert_eq!(s.message_wait, 5000);
-        assert_eq!(s.id_cache_ttl, 0);
-        assert!(s.update_on_first_subscription);
-        assert_eq!(s.connection_subscription_max, 20);
-        assert_eq!(s.subscription_linger, 60);
-        assert_eq!(s.stats_subscription_ttl, 60);
-        assert_eq!(s.stats_report_interval, 10);
-    }
-
-    #[test]
-    fn specs_expanded_per_proxy_worker() {
-        let s = load_conf(&format!("{GLOBAL}[proxy]\nworkers=3\n")).unwrap();
-
-        assert_eq!(
-            s.inspect_specs,
-            vec![
-                "ipc://run/pushpin-inspect-0",
-                "ipc://run/pushpin-inspect-1",
-                "ipc://run/pushpin-inspect-2"
-            ]
-        );
-        assert_eq!(s.client_out_specs.len(), 3);
-        assert_eq!(s.ws_control_init_specs.len(), 3);
-        assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command-0");
-        assert_eq!(
-            s.server_in_stream_specs,
-            vec!["ipc://run/pushpin-connmgr-out-stream"]
-        );
-    }
-
-    #[test]
-    fn condure_specs_merged() {
-        let s = load_conf(&format!(
-            "{GLOBAL}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"
-        ))
-        .unwrap();
-
-        assert_eq!(
-            s.server_in_stream_specs,
-            vec![
-                "ipc://run/pushpin-connmgr-out-stream",
-                "ipc://run/condure-out-stream"
-            ]
-        );
-    }
-
-    #[test]
-    fn single_spec_appended() {
-        let s = load_conf(&format!(
-            "{GLOBAL}[handler]\nproxy_inspect_spec=ipc://run/extra-inspect\n"
-        ))
-        .unwrap();
-
-        assert_eq!(
-            s.inspect_specs,
-            vec!["ipc://run/pushpin-inspect", "ipc://run/extra-inspect"]
-        );
-    }
-
-    #[test]
-    fn mongrel2_uses_m2a_specs() {
-        let s = load_conf(&format!(
-            "{GLOBAL}[runner]\nservices=mongrel2,m2adapter,proxy,handler\n"
-        ))
-        .unwrap();
-
-        assert_eq!(
-            s.server_in_stream_specs,
-            vec![
-                "ipc://run/pushpin-m2zhttp-out-stream",
-                "ipc://run/pushpin-m2zws-out-stream"
-            ]
-        );
-        assert_eq!(
-            s.server_out_specs,
-            vec!["ipc://run/pushpin-m2zhttp-in", "ipc://run/pushpin-m2zws-in"]
-        );
-    }
-
-    #[test]
-    fn api_service_disables_push_http() {
-        let s = load_conf(&format!(
-                "{GLOBAL}[runner]\nservices=connmgr,proxy,handler,api\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\n"
-            ),
-        )
-        .unwrap();
-
-        assert_eq!(s.push_in_http_addr, "");
-        assert_eq!(s.push_in_http_port, -1);
-    }
-
-    #[test]
     fn invalid_config_fails() {
         let cases = [
             (
@@ -439,11 +345,11 @@ mod tests {
                 "must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs",
             ),
             (
-                format!("{GLOBAL}[handler]\npush_in_http_addr=127.0.0.l\n"),
+                format!("{BASE_CONF}[handler]\npush_in_http_addr=127.0.0.l\n"),
                 "handler/push_in_http_addr must be an IP address: 127.0.0.l",
             ),
             (
-                format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"),
+                format!("{BASE_CONF}[handler]\nmessage_wait=3000000000\n"),
                 "handler/message_wait must be at most 2147483647: 3000000000",
             ),
         ];
@@ -454,38 +360,152 @@ mod tests {
         }
     }
 
-    #[test]
-    fn to_ffi_unset_values() {
-        let f = load_conf(GLOBAL).unwrap();
+    mod values {
+        use super::helpers::*;
 
-        assert_eq!(f.push_in_http_addr, "");
-        assert_eq!(f.push_in_http_port, -1);
-        assert_eq!(f.ipc_file_mode, -1);
-        assert_eq!(f.message_rate, -1);
-        assert_eq!(f.message_hwm, -1);
-        assert_eq!(f.message_block_size, -1);
-        assert_eq!(f.state_spec, "");
-        assert_eq!(f.stats_format, "");
-        assert_eq!(f.debug_socket, "");
+        #[test]
+        fn defaults_when_unset() {
+            let s = load_conf(BASE_CONF).unwrap();
+
+            assert_eq!(s.connections_max, 50000);
+            assert!(s.stats_connection_send);
+            assert_eq!(s.stats_connection_ttl, 120);
+            assert_eq!(s.push_in_http_port, -1);
+            assert_eq!(s.push_in_http_max_headers_size, 10000);
+            assert_eq!(s.push_in_http_max_body_size, 1000000);
+            assert_eq!(s.message_rate, -1);
+            assert_eq!(s.message_wait, 5000);
+            assert_eq!(s.id_cache_ttl, 0);
+            assert!(s.update_on_first_subscription);
+            assert_eq!(s.connection_subscription_max, 20);
+            assert_eq!(s.subscription_linger, 60);
+            assert_eq!(s.stats_subscription_ttl, 60);
+            assert_eq!(s.stats_report_interval, 10);
+        }
+
+        #[test]
+        fn unset_is_minus_one_or_empty() {
+            let f = load_conf(BASE_CONF).unwrap();
+
+            assert_eq!(f.push_in_http_addr, "");
+            assert_eq!(f.push_in_http_port, -1);
+            assert_eq!(f.ipc_file_mode, -1);
+            assert_eq!(f.message_rate, -1);
+            assert_eq!(f.message_hwm, -1);
+            assert_eq!(f.message_block_size, -1);
+            assert_eq!(f.state_spec, "");
+            assert_eq!(f.stats_format, "");
+            assert_eq!(f.debug_socket, "");
+        }
+
+        #[test]
+        fn read_as_written() {
+            let f = load_conf(&format!(
+                    "{BASE_CONF}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
+                ),
+            )
+            .unwrap();
+
+            assert_eq!(f.push_in_http_addr, "127.0.0.1");
+            assert_eq!(f.push_in_http_port, 5561);
+            assert_eq!(f.ipc_file_mode, 0o770);
+            assert_eq!(f.message_rate, 2500);
+            assert_eq!(f.stats_format, "json");
+            assert_eq!(f.debug_socket, "run/pushpin-handler-debug");
+            assert_eq!(f.connections_max, 100);
+            assert!(!f.stats_connection_send);
+            assert_eq!(f.stats_connection_ttl, 30);
+            assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
+        }
     }
 
-    #[test]
-    fn to_ffi_set_values() {
-        let f = load_conf(&format!(
-                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
-            ),
-        )
-        .unwrap();
+    mod specs {
+        use super::helpers::*;
 
-        assert_eq!(f.push_in_http_addr, "127.0.0.1");
-        assert_eq!(f.push_in_http_port, 5561);
-        assert_eq!(f.ipc_file_mode, 0o770);
-        assert_eq!(f.message_rate, 2500);
-        assert_eq!(f.stats_format, "json");
-        assert_eq!(f.debug_socket, "run/pushpin-handler-debug");
-        assert_eq!(f.connections_max, 100);
-        assert!(!f.stats_connection_send);
-        assert_eq!(f.stats_connection_ttl, 30);
-        assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
+        #[test]
+        fn expanded_per_proxy_worker() {
+            let s = load_conf(&format!("{BASE_CONF}[proxy]\nworkers=3\n")).unwrap();
+
+            assert_eq!(
+                s.inspect_specs,
+                vec![
+                    "ipc://run/pushpin-inspect-0",
+                    "ipc://run/pushpin-inspect-1",
+                    "ipc://run/pushpin-inspect-2"
+                ]
+            );
+            assert_eq!(s.client_out_specs.len(), 3);
+            assert_eq!(s.ws_control_init_specs.len(), 3);
+            assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command-0");
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec!["ipc://run/pushpin-connmgr-out-stream"]
+            );
+        }
+
+        #[test]
+        fn condure_merged_into_connmgr() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec![
+                    "ipc://run/pushpin-connmgr-out-stream",
+                    "ipc://run/condure-out-stream"
+                ]
+            );
+        }
+
+        #[test]
+        fn single_spec_appended_to_list() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[handler]\nproxy_inspect_spec=ipc://run/extra-inspect\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.inspect_specs,
+                vec!["ipc://run/pushpin-inspect", "ipc://run/extra-inspect"]
+            );
+        }
+    }
+
+    mod services {
+        use super::helpers::*;
+
+        #[test]
+        fn mongrel2_uses_m2a_specs() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[runner]\nservices=mongrel2,m2adapter,proxy,handler\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec![
+                    "ipc://run/pushpin-m2zhttp-out-stream",
+                    "ipc://run/pushpin-m2zws-out-stream"
+                ]
+            );
+            assert_eq!(
+                s.server_out_specs,
+                vec!["ipc://run/pushpin-m2zhttp-in", "ipc://run/pushpin-m2zws-in"]
+            );
+        }
+
+        #[test]
+        fn api_disables_push_http() {
+            let s = load_conf(&format!(
+                    "{BASE_CONF}[runner]\nservices=connmgr,proxy,handler,api\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\n"
+                ),
+            )
+            .unwrap();
+
+            assert_eq!(s.push_in_http_addr, "");
+            assert_eq!(s.push_in_http_port, -1);
+        }
     }
 }
