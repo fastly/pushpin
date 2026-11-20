@@ -17,8 +17,9 @@
 use crate::core::settings::{CommonSettings, Settings, SettingsError};
 use std::convert::TryFrom;
 
-const DEFAULT_HTTP_MAX_HEADERS_SIZE: u32 = 10000;
-const DEFAULT_HTTP_MAX_BODY_SIZE: u32 = 1000000;
+const DEFAULT_HTTP_MAX_HEADERS_SIZE: i32 = 10000;
+const DEFAULT_HTTP_MAX_BODY_SIZE: i32 = 1000000;
+const UNSET: i32 = -1;
 
 /// cbindgen:ignore
 #[allow(clippy::missing_safety_doc)]
@@ -80,9 +81,6 @@ pub mod ffi {
 
 impl ffi::HandlerSettings {
     pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
-        let int = |x: u32| i32::try_from(x).unwrap_or(i32::MAX);
-        let opt = |x: Option<u32>| x.map_or(-1, int);
-
         let common = CommonSettings::from_settings(settings)?;
         let workers = common.proxy_workers;
         let has_service = |name: &str| common.services.iter().any(|s| s == name);
@@ -196,38 +194,40 @@ impl ffi::HandlerSettings {
                 .bool("handler/push_in_sub_connect")?
                 .unwrap_or(false),
             push_in_http_addr: push_in_http_addr.map_or_else(String::new, |a| a.to_string()),
-            push_in_http_port: push_in_http_port.map_or(-1, i32::from),
-            push_in_http_max_headers_size: int(settings
-                .number("handler/push_in_http_max_headers_size")?
-                .unwrap_or(DEFAULT_HTTP_MAX_HEADERS_SIZE)),
-            push_in_http_max_body_size: int(settings
-                .number("handler/push_in_http_max_body_size")?
-                .unwrap_or(DEFAULT_HTTP_MAX_BODY_SIZE)),
-            ipc_file_mode: opt(settings.octal("handler/ipc_file_mode")?),
+            push_in_http_port: push_in_http_port.map_or(UNSET, i32::from),
+            push_in_http_max_headers_size: int_or(
+                settings,
+                "handler/push_in_http_max_headers_size",
+                DEFAULT_HTTP_MAX_HEADERS_SIZE,
+            )?,
+            push_in_http_max_body_size: int_or(
+                settings,
+                "handler/push_in_http_max_body_size",
+                DEFAULT_HTTP_MAX_BODY_SIZE,
+            )?,
+            ipc_file_mode: settings
+                .octal("handler/ipc_file_mode")?
+                .map_or(Ok(UNSET), |mode| int("handler/ipc_file_mode", mode))?,
             share_all: settings.bool("handler/share_all")?.unwrap_or(false),
-            message_rate: opt(settings.number("handler/message_rate")?),
-            message_hwm: opt(settings.number("handler/message_hwm")?),
-            message_block_size: opt(settings.number("handler/message_block_size")?),
-            message_wait: int(settings.number("handler/message_wait")?.unwrap_or(5000)),
-            id_cache_ttl: int(settings.number("handler/id_cache_ttl")?.unwrap_or(0)),
+            message_rate: int_or(settings, "handler/message_rate", UNSET)?,
+            message_hwm: int_or(settings, "handler/message_hwm", UNSET)?,
+            message_block_size: int_or(settings, "handler/message_block_size", UNSET)?,
+            message_wait: int_or(settings, "handler/message_wait", 5000)?,
+            id_cache_ttl: int_or(settings, "handler/id_cache_ttl", 0)?,
             update_on_first_subscription: settings
                 .bool("handler/update_on_first_subscription")?
                 .unwrap_or(true),
-            connections_max: int(common.client_maxconn),
-            connection_subscription_max: int(settings
-                .number("handler/connection_subscription_max")?
-                .unwrap_or(20)),
-            subscription_linger: int(settings
-                .number("handler/subscription_linger")?
-                .unwrap_or(60)),
+            connections_max: int("runner/client_maxconn", common.client_maxconn)?,
+            connection_subscription_max: int_or(
+                settings,
+                "handler/connection_subscription_max",
+                20,
+            )?,
+            subscription_linger: int_or(settings, "handler/subscription_linger", 60)?,
             stats_connection_send: common.stats_connection_send,
-            stats_connection_ttl: int(common.stats_connection_ttl),
-            stats_subscription_ttl: int(settings
-                .number("handler/stats_subscription_ttl")?
-                .unwrap_or(60)),
-            stats_report_interval: int(settings
-                .number("handler/stats_report_interval")?
-                .unwrap_or(10)),
+            stats_connection_ttl: int("global/stats_connection_ttl", common.stats_connection_ttl)?,
+            stats_subscription_ttl: int_or(settings, "handler/stats_subscription_ttl", 60)?,
+            stats_report_interval: int_or(settings, "handler/stats_report_interval", 10)?,
             stats_format: string(settings, "handler/stats_format")?,
             debug_socket: string(settings, "handler/debug_socket")?,
             prometheus_port: string(settings, "handler/prometheus_port")?,
@@ -236,7 +236,24 @@ impl ffi::HandlerSettings {
     }
 }
 
-// Unset strings are empty on the C++ side
+/// Converts a number to C++'s int, erroring if it doesn't fit.
+fn int(key: &str, value: u32) -> Result<i32, SettingsError> {
+    i32::try_from(value).map_err(|_| SettingsError::InvalidValue {
+        key: key.to_string(),
+        value: value.to_string(),
+        expected: "at most 2147483647",
+    })
+}
+
+/// Reads the number at `key` as a C++ int, or returns `default` if it's unset.
+fn int_or(settings: &Settings, key: &str, default: i32) -> Result<i32, SettingsError> {
+    match settings.number(key)? {
+        Some(value) => int(key, value),
+        None => Ok(default),
+    }
+}
+
+/// Reads the string at `key`, or an empty one if it's unset.
 fn string(settings: &Settings, key: &str) -> Result<String, SettingsError> {
     Ok(settings.string(key)?.unwrap_or_default())
 }
@@ -500,7 +517,7 @@ mod tests {
         let f = load_conf(
             "ffi_set",
             &format!(
-                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nmessage_wait=3000000000\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
+                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
             ),
         )
         .unwrap();
@@ -509,13 +526,24 @@ mod tests {
         assert_eq!(f.push_in_http_port, 5561);
         assert_eq!(f.ipc_file_mode, 0o770);
         assert_eq!(f.message_rate, 2500);
-        assert_eq!(f.message_wait, i32::MAX);
         assert_eq!(f.stats_format, "json");
         assert_eq!(f.debug_socket, "run/pushpin-handler-debug");
         assert_eq!(f.connections_max, 100);
         assert!(!f.stats_connection_send);
         assert_eq!(f.stats_connection_ttl, 30);
         assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
+    }
+
+    #[test]
+    fn number_too_big_for_int_errors() {
+        let r = load_conf(
+            "too_big",
+            &format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"),
+        );
+        assert_eq!(
+            r.err().unwrap().to_string(),
+            "handler/message_wait must be at most 2147483647: 3000000000"
+        );
     }
 
     #[test]

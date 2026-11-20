@@ -20,6 +20,7 @@ use pushpin::core::log::ffi::{log_init, log_set_level};
 use pushpin::core::settings::{Settings, SettingsError};
 use pushpin::handler::cliargs::{destroy_handler_cli_args, CliArgs};
 use pushpin::handler::settings::ffi;
+use std::convert::TryFrom;
 use std::ffi::CString;
 use std::path::Path;
 use std::process::ExitCode;
@@ -33,7 +34,13 @@ fn load_settings(args: &CliArgs, config_file: &str) -> Result<ffi::HandlerSettin
     }
 
     if let Some(port_offset) = args.port_offset {
-        settings.set_port_offset(port_offset as i32);
+        let port_offset = i32::try_from(port_offset).map_err(|_| SettingsError::InvalidValue {
+            key: "port-offset".to_string(),
+            value: port_offset.to_string(),
+            expected: "at most 2147483647",
+        })?;
+
+        settings.set_port_offset(port_offset);
     }
 
     ffi::HandlerSettings::from_settings(&settings)
