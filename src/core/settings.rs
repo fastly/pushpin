@@ -355,20 +355,24 @@ impl CommonSettings {
     }
 }
 
+/// Replicates Settings::load with string input instead of file
+/// Crate-public because other modules' tests use it
+#[cfg(test)]
+pub(crate) fn parse(text: &str) -> Result<Settings, SettingsError> {
+    let ini = Ini::load_from_str(text).map_err(ini::Error::Parse)?;
+    Settings::from_values(read_ini(&ini)?, PathBuf::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     mod helpers {
         use super::*;
+        pub(super) use crate::core::settings::parse;
         use crate::core::test_dir;
         use std::fs;
         use std::path::PathBuf;
-
-        pub(super) fn parse(text: &str) -> Result<Settings, SettingsError> {
-            let ini = Ini::load_from_str(text).map_err(ini::Error::Parse)?;
-            Settings::from_values(read_ini(&ini)?, PathBuf::new())
-        }
 
         pub(super) fn read_value<T>(
             key: &str,

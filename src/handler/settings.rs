@@ -281,18 +281,11 @@ fn expand_specs(specs: Vec<String>, workers: u32) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::test_dir;
-    use std::fs;
+    use crate::core::settings::parse;
     use std::path::Path;
 
-    fn load_conf(test: &str, contents: &str) -> Result<ffi::HandlerSettings, SettingsError> {
-        let dir = test_dir().join("handler-settings").join(test);
-        fs::create_dir_all(&dir).unwrap();
-
-        let path = dir.join("pushpin.conf");
-        fs::write(&path, contents).unwrap();
-
-        ffi::HandlerSettings::from_settings(&Settings::load(&path)?)
+    fn load_conf(text: &str) -> Result<ffi::HandlerSettings, SettingsError> {
+        ffi::HandlerSettings::from_settings(&parse(text)?)
     }
 
     const GLOBAL: &str = "[global]\ninclude=internal.conf\nrundir=run\n";
@@ -334,7 +327,7 @@ mod tests {
 
     #[test]
     fn defaults_when_unset() {
-        let s = load_conf("defaults", GLOBAL).unwrap();
+        let s = load_conf(GLOBAL).unwrap();
 
         assert_eq!(s.connections_max, 50000);
         assert!(s.stats_connection_send);
@@ -354,7 +347,7 @@ mod tests {
 
     #[test]
     fn specs_expanded_per_proxy_worker() {
-        let s = load_conf("workers", &format!("{GLOBAL}[proxy]\nworkers=3\n")).unwrap();
+        let s = load_conf(&format!("{GLOBAL}[proxy]\nworkers=3\n")).unwrap();
 
         assert_eq!(
             s.inspect_specs,
@@ -375,10 +368,9 @@ mod tests {
 
     #[test]
     fn condure_specs_merged() {
-        let s = load_conf(
-            "condure",
-            &format!("{GLOBAL}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"),
-        )
+        let s = load_conf(&format!(
+            "{GLOBAL}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"
+        ))
         .unwrap();
 
         assert_eq!(
@@ -392,10 +384,9 @@ mod tests {
 
     #[test]
     fn single_spec_appended() {
-        let s = load_conf(
-            "single_spec",
-            &format!("{GLOBAL}[handler]\nproxy_inspect_spec=ipc://run/extra-inspect\n"),
-        )
+        let s = load_conf(&format!(
+            "{GLOBAL}[handler]\nproxy_inspect_spec=ipc://run/extra-inspect\n"
+        ))
         .unwrap();
 
         assert_eq!(
@@ -406,10 +397,9 @@ mod tests {
 
     #[test]
     fn mongrel2_uses_m2a_specs() {
-        let s = load_conf(
-            "mongrel2",
-            &format!("{GLOBAL}[runner]\nservices=mongrel2,m2adapter,proxy,handler\n"),
-        )
+        let s = load_conf(&format!(
+            "{GLOBAL}[runner]\nservices=mongrel2,m2adapter,proxy,handler\n"
+        ))
         .unwrap();
 
         assert_eq!(
@@ -427,9 +417,7 @@ mod tests {
 
     #[test]
     fn api_service_disables_push_http() {
-        let s = load_conf(
-            "api",
-            &format!(
+        let s = load_conf(&format!(
                 "{GLOBAL}[runner]\nservices=connmgr,proxy,handler,api\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\n"
             ),
         )
@@ -441,7 +429,7 @@ mod tests {
 
     #[test]
     fn missing_m2a_specs_errors() {
-        let r = load_conf("missing_m2a", "[global]\nrundir=run\n");
+        let r = load_conf("[global]\nrundir=run\n");
         assert!(
             matches!(r, Err(SettingsError::Missing(m)) if m.starts_with("m2a_in_stream_specs"))
         );
@@ -449,9 +437,7 @@ mod tests {
 
     #[test]
     fn missing_proxy_specs_errors() {
-        let r = load_conf(
-            "missing_proxy",
-            "[global]\nrundir=run\n[handler]\nm2a_in_stream_specs=ipc://run/a\nm2a_out_specs=ipc://run/b\n",
+        let r = load_conf("[global]\nrundir=run\n[handler]\nm2a_in_stream_specs=ipc://run/a\nm2a_out_specs=ipc://run/b\n",
         );
         assert!(
             matches!(r, Err(SettingsError::Missing(m)) if m.starts_with("proxy_inspect_specs"))
@@ -460,10 +446,7 @@ mod tests {
 
     #[test]
     fn invalid_push_in_http_addr_errors() {
-        let r = load_conf(
-            "bad_addr",
-            &format!("{GLOBAL}[handler]\npush_in_http_addr=127.0.0.l\n"),
-        );
+        let r = load_conf(&format!("{GLOBAL}[handler]\npush_in_http_addr=127.0.0.l\n"));
         assert!(matches!(
             r,
             Err(SettingsError::InvalidValue { key, .. }) if key == "handler/push_in_http_addr"
@@ -472,10 +455,7 @@ mod tests {
 
     #[test]
     fn invalid_ipc_file_mode_errors() {
-        let r = load_conf(
-            "bad_mode",
-            &format!("{GLOBAL}[handler]\nipc_file_mode=abc\n"),
-        );
+        let r = load_conf(&format!("{GLOBAL}[handler]\nipc_file_mode=abc\n"));
         assert!(matches!(
             r,
             Err(SettingsError::InvalidValue { key, .. }) if key == "handler/ipc_file_mode"
@@ -484,9 +464,7 @@ mod tests {
 
     #[test]
     fn common_settings_read_from_config() {
-        let s = load_conf(
-            "common",
-            &format!(
+        let s = load_conf(&format!(
                 "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n"
             ),
         )
@@ -499,7 +477,7 @@ mod tests {
 
     #[test]
     fn to_ffi_unset_values() {
-        let f = load_conf("ffi_unset", GLOBAL).unwrap();
+        let f = load_conf(GLOBAL).unwrap();
 
         assert_eq!(f.push_in_http_addr, "");
         assert_eq!(f.push_in_http_port, -1);
@@ -514,9 +492,7 @@ mod tests {
 
     #[test]
     fn to_ffi_set_values() {
-        let f = load_conf(
-            "ffi_set",
-            &format!(
+        let f = load_conf(&format!(
                 "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
             ),
         )
@@ -536,10 +512,7 @@ mod tests {
 
     #[test]
     fn number_too_big_for_int_errors() {
-        let r = load_conf(
-            "too_big",
-            &format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"),
-        );
+        let r = load_conf(&format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"));
         assert_eq!(
             r.err().unwrap().to_string(),
             "handler/message_wait must be at most 2147483647: 3000000000"
@@ -548,7 +521,7 @@ mod tests {
 
     #[test]
     fn ipc_file_mode_octal() {
-        let s = load_conf("mode", &format!("{GLOBAL}[handler]\nipc_file_mode=777\n")).unwrap();
+        let s = load_conf(&format!("{GLOBAL}[handler]\nipc_file_mode=777\n")).unwrap();
         assert_eq!(s.ipc_file_mode, 0o777);
     }
 }
