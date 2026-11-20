@@ -19,13 +19,13 @@ use log::{debug, error};
 use pushpin::core::log::ffi::{log_init, log_set_level};
 use pushpin::core::settings::{Settings, SettingsError};
 use pushpin::handler::cliargs::{destroy_handler_cli_args, CliArgs};
-use pushpin::handler::settings::{ffi, HandlerSettings};
+use pushpin::handler::settings::ffi;
 use std::ffi::CString;
 use std::path::Path;
 use std::process::ExitCode;
 use std::ptr;
 
-fn load_settings(args: &CliArgs, config_file: &str) -> Result<HandlerSettings, SettingsError> {
+fn load_settings(args: &CliArgs, config_file: &str) -> Result<ffi::HandlerSettings, SettingsError> {
     let mut settings = Settings::load(Path::new(config_file))?;
 
     if let Some(ipc_prefix) = args.ipc_prefix.as_deref().filter(|p| !p.is_empty()) {
@@ -36,7 +36,7 @@ fn load_settings(args: &CliArgs, config_file: &str) -> Result<HandlerSettings, S
         settings.set_port_offset(port_offset as i32);
     }
 
-    HandlerSettings::from_settings(&settings)
+    ffi::HandlerSettings::from_settings(&settings)
 }
 
 fn main() -> ExitCode {
@@ -63,7 +63,7 @@ fn main() -> ExitCode {
         .expect("verify sets the config file");
 
     let settings = match load_settings(&cli_args, &config_file) {
-        Ok(settings) => settings.to_ffi(),
+        Ok(settings) => settings,
         Err(e) => {
             error!("failed to load config file {config_file}: {e}");
             return ExitCode::from(1);

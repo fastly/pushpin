@@ -16,7 +16,6 @@
 
 use crate::core::settings::{CommonSettings, Settings, SettingsError};
 use std::convert::TryFrom;
-use std::net::IpAddr;
 
 const DEFAULT_HTTP_MAX_HEADERS_SIZE: u32 = 10000;
 const DEFAULT_HTTP_MAX_BODY_SIZE: u32 = 1000000;
@@ -79,50 +78,11 @@ pub mod ffi {
     }
 }
 
-pub struct HandlerSettings {
-    pub common: CommonSettings,
-    pub server_in_stream_specs: Vec<String>,
-    pub server_out_specs: Vec<String>,
-    pub client_out_specs: Vec<String>,
-    pub client_out_stream_specs: Vec<String>,
-    pub client_in_specs: Vec<String>,
-    pub inspect_specs: Vec<String>,
-    pub accept_specs: Vec<String>,
-    pub retry_out_specs: Vec<String>,
-    pub ws_control_init_specs: Vec<String>,
-    pub ws_control_stream_specs: Vec<String>,
-    pub stats_spec: Option<String>,
-    pub command_spec: Option<String>,
-    pub state_spec: Option<String>,
-    pub proxy_stats_specs: Vec<String>,
-    pub proxy_command_spec: Option<String>,
-    pub push_in_spec: Option<String>,
-    pub push_in_sub_specs: Vec<String>,
-    pub push_in_sub_connect: bool,
-    pub push_in_http_addr: Option<IpAddr>,
-    pub push_in_http_port: Option<u16>,
-    pub push_in_http_max_headers_size: u32,
-    pub push_in_http_max_body_size: u32,
-    pub ipc_file_mode: Option<u32>,
-    pub share_all: bool,
-    pub message_rate: Option<u32>,
-    pub message_hwm: Option<u32>,
-    pub message_block_size: Option<u32>,
-    pub message_wait: u32,
-    pub id_cache_ttl: u32,
-    pub update_on_first_subscription: bool,
-    pub connection_subscription_max: u32,
-    pub subscription_linger: u32,
-    pub stats_subscription_ttl: u32,
-    pub stats_report_interval: u32,
-    pub stats_format: Option<String>,
-    pub debug_socket: Option<String>,
-    pub prometheus_port: Option<String>,
-    pub prometheus_prefix: Option<String>,
-}
-
-impl HandlerSettings {
+impl ffi::HandlerSettings {
     pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
+        let int = |x: u32| i32::try_from(x).unwrap_or(i32::MAX);
+        let opt = |x: Option<u32>| x.map_or(-1, int);
+
         let common = CommonSettings::from_settings(settings)?;
         let workers = common.proxy_workers;
         let has_service = |name: &str| common.services.iter().any(|s| s == name);
@@ -205,9 +165,9 @@ impl HandlerSettings {
                 settings.list("handler/proxy_ws_control_stream_specs")?,
                 workers,
             ),
-            stats_spec: settings.string("handler/stats_spec")?,
-            command_spec: settings.string("handler/command_spec")?,
-            state_spec: settings.string("handler/state_spec")?,
+            stats_spec: string(settings, "handler/stats_spec")?,
+            command_spec: string(settings, "handler/command_spec")?,
+            state_spec: string(settings, "handler/state_spec")?,
             proxy_stats_specs: expand_specs(
                 combined_specs(
                     settings,
@@ -216,14 +176,17 @@ impl HandlerSettings {
                 )?,
                 workers,
             ),
-            proxy_command_spec: settings.string("handler/proxy_command_spec")?.map(|spec| {
-                if spec.starts_with("ipc:") && workers > 1 {
-                    format!("{spec}-0")
-                } else {
-                    spec
-                }
-            }),
-            push_in_spec: settings.string("handler/push_in_spec")?,
+            proxy_command_spec: settings
+                .string("handler/proxy_command_spec")?
+                .map(|spec| {
+                    if spec.starts_with("ipc:") && workers > 1 {
+                        format!("{spec}-0")
+                    } else {
+                        spec
+                    }
+                })
+                .unwrap_or_default(),
+            push_in_spec: string(settings, "handler/push_in_spec")?,
             push_in_sub_specs: combined_specs(
                 settings,
                 "handler/push_in_sub_specs",
@@ -232,97 +195,50 @@ impl HandlerSettings {
             push_in_sub_connect: settings
                 .bool("handler/push_in_sub_connect")?
                 .unwrap_or(false),
-            push_in_http_addr,
-            push_in_http_port,
-            push_in_http_max_headers_size: settings
+            push_in_http_addr: push_in_http_addr.map_or_else(String::new, |a| a.to_string()),
+            push_in_http_port: push_in_http_port.map_or(-1, i32::from),
+            push_in_http_max_headers_size: int(settings
                 .number("handler/push_in_http_max_headers_size")?
-                .unwrap_or(DEFAULT_HTTP_MAX_HEADERS_SIZE),
-            push_in_http_max_body_size: settings
+                .unwrap_or(DEFAULT_HTTP_MAX_HEADERS_SIZE)),
+            push_in_http_max_body_size: int(settings
                 .number("handler/push_in_http_max_body_size")?
-                .unwrap_or(DEFAULT_HTTP_MAX_BODY_SIZE),
-            ipc_file_mode: settings.octal("handler/ipc_file_mode")?,
+                .unwrap_or(DEFAULT_HTTP_MAX_BODY_SIZE)),
+            ipc_file_mode: opt(settings.octal("handler/ipc_file_mode")?),
             share_all: settings.bool("handler/share_all")?.unwrap_or(false),
-            message_rate: settings.number("handler/message_rate")?,
-            message_hwm: settings.number("handler/message_hwm")?,
-            message_block_size: settings.number("handler/message_block_size")?,
-            message_wait: settings.number("handler/message_wait")?.unwrap_or(5000),
-            id_cache_ttl: settings.number("handler/id_cache_ttl")?.unwrap_or(0),
+            message_rate: opt(settings.number("handler/message_rate")?),
+            message_hwm: opt(settings.number("handler/message_hwm")?),
+            message_block_size: opt(settings.number("handler/message_block_size")?),
+            message_wait: int(settings.number("handler/message_wait")?.unwrap_or(5000)),
+            id_cache_ttl: int(settings.number("handler/id_cache_ttl")?.unwrap_or(0)),
             update_on_first_subscription: settings
                 .bool("handler/update_on_first_subscription")?
                 .unwrap_or(true),
-            connection_subscription_max: settings
+            connections_max: int(common.client_maxconn),
+            connection_subscription_max: int(settings
                 .number("handler/connection_subscription_max")?
-                .unwrap_or(20),
-            subscription_linger: settings
+                .unwrap_or(20)),
+            subscription_linger: int(settings
                 .number("handler/subscription_linger")?
-                .unwrap_or(60),
-            stats_subscription_ttl: settings
+                .unwrap_or(60)),
+            stats_connection_send: common.stats_connection_send,
+            stats_connection_ttl: int(common.stats_connection_ttl),
+            stats_subscription_ttl: int(settings
                 .number("handler/stats_subscription_ttl")?
-                .unwrap_or(60),
-            stats_report_interval: settings
+                .unwrap_or(60)),
+            stats_report_interval: int(settings
                 .number("handler/stats_report_interval")?
-                .unwrap_or(10),
-            stats_format: settings.string("handler/stats_format")?,
-            debug_socket: settings.string("handler/debug_socket")?,
-            prometheus_port: settings.string("handler/prometheus_port")?,
-            prometheus_prefix: settings.string("handler/prometheus_prefix")?,
-            common,
+                .unwrap_or(10)),
+            stats_format: string(settings, "handler/stats_format")?,
+            debug_socket: string(settings, "handler/debug_socket")?,
+            prometheus_port: string(settings, "handler/prometheus_port")?,
+            prometheus_prefix: string(settings, "handler/prometheus_prefix")?,
         })
     }
 }
 
-impl HandlerSettings {
-    pub fn to_ffi(&self) -> ffi::HandlerSettings {
-        let int = |x: u32| i32::try_from(x).unwrap_or(i32::MAX);
-        let opt = |x: Option<u32>| x.map_or(-1, int);
-        let string = |s: &Option<String>| s.clone().unwrap_or_default();
-
-        ffi::HandlerSettings {
-            server_in_stream_specs: self.server_in_stream_specs.clone(),
-            server_out_specs: self.server_out_specs.clone(),
-            client_out_specs: self.client_out_specs.clone(),
-            client_out_stream_specs: self.client_out_stream_specs.clone(),
-            client_in_specs: self.client_in_specs.clone(),
-            inspect_specs: self.inspect_specs.clone(),
-            accept_specs: self.accept_specs.clone(),
-            retry_out_specs: self.retry_out_specs.clone(),
-            ws_control_init_specs: self.ws_control_init_specs.clone(),
-            ws_control_stream_specs: self.ws_control_stream_specs.clone(),
-            stats_spec: string(&self.stats_spec),
-            command_spec: string(&self.command_spec),
-            state_spec: string(&self.state_spec),
-            proxy_stats_specs: self.proxy_stats_specs.clone(),
-            proxy_command_spec: string(&self.proxy_command_spec),
-            push_in_spec: string(&self.push_in_spec),
-            push_in_sub_specs: self.push_in_sub_specs.clone(),
-            push_in_sub_connect: self.push_in_sub_connect,
-            push_in_http_addr: self
-                .push_in_http_addr
-                .map_or_else(String::new, |a| a.to_string()),
-            push_in_http_port: self.push_in_http_port.map_or(-1, i32::from),
-            push_in_http_max_headers_size: int(self.push_in_http_max_headers_size),
-            push_in_http_max_body_size: int(self.push_in_http_max_body_size),
-            ipc_file_mode: opt(self.ipc_file_mode),
-            share_all: self.share_all,
-            message_rate: opt(self.message_rate),
-            message_hwm: opt(self.message_hwm),
-            message_block_size: opt(self.message_block_size),
-            message_wait: int(self.message_wait),
-            id_cache_ttl: int(self.id_cache_ttl),
-            update_on_first_subscription: self.update_on_first_subscription,
-            connections_max: int(self.common.client_maxconn),
-            connection_subscription_max: int(self.connection_subscription_max),
-            subscription_linger: int(self.subscription_linger),
-            stats_connection_send: self.common.stats_connection_send,
-            stats_connection_ttl: int(self.common.stats_connection_ttl),
-            stats_subscription_ttl: int(self.stats_subscription_ttl),
-            stats_report_interval: int(self.stats_report_interval),
-            stats_format: string(&self.stats_format),
-            debug_socket: string(&self.debug_socket),
-            prometheus_port: string(&self.prometheus_port),
-            prometheus_prefix: string(&self.prometheus_prefix),
-        }
-    }
+// Unset strings are empty on the C++ side
+fn string(settings: &Settings, key: &str) -> Result<String, SettingsError> {
+    Ok(settings.string(key)?.unwrap_or_default())
 }
 
 fn combined_specs(
@@ -350,17 +266,16 @@ mod tests {
     use super::*;
     use crate::core::test_dir;
     use std::fs;
-    use std::net::Ipv4Addr;
     use std::path::Path;
 
-    fn load_conf(test: &str, contents: &str) -> Result<HandlerSettings, SettingsError> {
+    fn load_conf(test: &str, contents: &str) -> Result<ffi::HandlerSettings, SettingsError> {
         let dir = test_dir().join("handler-settings").join(test);
         fs::create_dir_all(&dir).unwrap();
 
         let path = dir.join("pushpin.conf");
         fs::write(&path, contents).unwrap();
 
-        HandlerSettings::from_settings(&Settings::load(&path)?)
+        ffi::HandlerSettings::from_settings(&Settings::load(&path)?)
     }
 
     const GLOBAL: &str = "[global]\ninclude=internal.conf\nrundir=run\n";
@@ -368,7 +283,7 @@ mod tests {
     #[test]
     fn example_config() {
         let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
-        let s = HandlerSettings::from_settings(&settings).unwrap();
+        let s = ffi::HandlerSettings::from_settings(&settings).unwrap();
 
         assert_eq!(
             s.server_in_stream_specs,
@@ -380,45 +295,37 @@ mod tests {
         assert_eq!(s.accept_specs, vec!["ipc://run/pushpin-accept"]);
         assert_eq!(s.retry_out_specs, vec!["ipc://run/pushpin-retry"]);
         assert_eq!(s.proxy_stats_specs, vec!["ipc://run/pushpin-proxy-stats"]);
-        assert_eq!(
-            s.proxy_command_spec.as_deref(),
-            Some("ipc://run/pushpin-proxy-command")
-        );
-        assert_eq!(s.stats_spec.as_deref(), Some("ipc://run/pushpin-stats"));
-        assert_eq!(s.command_spec.as_deref(), Some("tcp://127.0.0.1:5563"));
-        assert_eq!(s.state_spec, None);
-        assert_eq!(s.push_in_spec.as_deref(), Some("tcp://127.0.0.1:5560"));
+        assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command");
+        assert_eq!(s.stats_spec, "ipc://run/pushpin-stats");
+        assert_eq!(s.command_spec, "tcp://127.0.0.1:5563");
+        assert_eq!(s.state_spec, "");
+        assert_eq!(s.push_in_spec, "tcp://127.0.0.1:5560");
         assert_eq!(s.push_in_sub_specs, vec!["tcp://127.0.0.1:5562"]);
         assert!(!s.push_in_sub_connect);
-        assert_eq!(
-            s.push_in_http_addr,
-            Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
-        );
-        assert_eq!(s.push_in_http_port, Some(5561));
-        assert_eq!(s.ipc_file_mode, None);
-        assert_eq!(s.message_rate, Some(2500));
-        assert_eq!(s.message_hwm, Some(25000));
-        assert_eq!(s.message_block_size, None);
+        assert_eq!(s.push_in_http_addr, "127.0.0.1");
+        assert_eq!(s.push_in_http_port, 5561);
+        assert_eq!(s.ipc_file_mode, -1);
+        assert_eq!(s.message_rate, 2500);
+        assert_eq!(s.message_hwm, 25000);
+        assert_eq!(s.message_block_size, -1);
         assert_eq!(s.id_cache_ttl, 60);
-        assert_eq!(s.stats_format.as_deref(), Some("tnetstring"));
-        assert_eq!(s.debug_socket, None);
-        assert_eq!(s.common.services, vec!["connmgr", "proxy", "handler"]);
-        assert_eq!(s.common.client_maxconn, 50000);
-        assert_eq!(s.common.stats_connection_ttl, 120);
+        assert_eq!(s.stats_format, "tnetstring");
+        assert_eq!(s.debug_socket, "");
+        assert_eq!(s.connections_max, 50000);
+        assert_eq!(s.stats_connection_ttl, 120);
     }
 
     #[test]
     fn defaults_when_unset() {
         let s = load_conf("defaults", GLOBAL).unwrap();
 
-        assert_eq!(s.common.proxy_workers, 1);
-        assert_eq!(s.common.client_maxconn, 50000);
-        assert!(s.common.stats_connection_send);
-        assert_eq!(s.common.stats_connection_ttl, 120);
-        assert_eq!(s.push_in_http_port, None);
+        assert_eq!(s.connections_max, 50000);
+        assert!(s.stats_connection_send);
+        assert_eq!(s.stats_connection_ttl, 120);
+        assert_eq!(s.push_in_http_port, -1);
         assert_eq!(s.push_in_http_max_headers_size, 10000);
         assert_eq!(s.push_in_http_max_body_size, 1000000);
-        assert_eq!(s.message_rate, None);
+        assert_eq!(s.message_rate, -1);
         assert_eq!(s.message_wait, 5000);
         assert_eq!(s.id_cache_ttl, 0);
         assert!(s.update_on_first_subscription);
@@ -442,10 +349,7 @@ mod tests {
         );
         assert_eq!(s.client_out_specs.len(), 3);
         assert_eq!(s.ws_control_init_specs.len(), 3);
-        assert_eq!(
-            s.proxy_command_spec.as_deref(),
-            Some("ipc://run/pushpin-proxy-command-0")
-        );
+        assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command-0");
         assert_eq!(
             s.server_in_stream_specs,
             vec!["ipc://run/pushpin-connmgr-out-stream"]
@@ -514,8 +418,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(s.push_in_http_addr, None);
-        assert_eq!(s.push_in_http_port, None);
+        assert_eq!(s.push_in_http_addr, "");
+        assert_eq!(s.push_in_http_port, -1);
     }
 
     #[test]
@@ -571,14 +475,14 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(s.common.client_maxconn, 100);
-        assert!(!s.common.stats_connection_send);
-        assert_eq!(s.common.stats_connection_ttl, 30);
+        assert_eq!(s.connections_max, 100);
+        assert!(!s.stats_connection_send);
+        assert_eq!(s.stats_connection_ttl, 30);
     }
 
     #[test]
     fn to_ffi_unset_values() {
-        let f = load_conf("ffi_unset", GLOBAL).unwrap().to_ffi();
+        let f = load_conf("ffi_unset", GLOBAL).unwrap();
 
         assert_eq!(f.push_in_http_addr, "");
         assert_eq!(f.push_in_http_port, -1);
@@ -599,8 +503,7 @@ mod tests {
                 "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nmessage_wait=3000000000\nstats_format=json\ndebug_socket=run/pushpin-handler-debug\n"
             ),
         )
-        .unwrap()
-        .to_ffi();
+        .unwrap();
 
         assert_eq!(f.push_in_http_addr, "127.0.0.1");
         assert_eq!(f.push_in_http_port, 5561);
@@ -618,6 +521,6 @@ mod tests {
     #[test]
     fn ipc_file_mode_octal() {
         let s = load_conf("mode", &format!("{GLOBAL}[handler]\nipc_file_mode=777\n")).unwrap();
-        assert_eq!(s.ipc_file_mode, Some(0o777));
+        assert_eq!(s.ipc_file_mode, 0o777);
     }
 }
