@@ -34,8 +34,8 @@ static void runAccept(std::function<void()> loop_wait) {
     // Remove existing pipe file
     QDir outDir(qgetenv("OUT_DIR"));
     QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-    QString path = workDir.filePath("test-cpp-unixstream");
-    QFile::remove(path);
+    CowString path = workDir.filePath("test-cpp-unixstream");
+    QFile::remove(path.asQString());
 
     UnixListener l;
     TEST_ASSERT(l.bind(path));
@@ -77,8 +77,8 @@ static void runIo(std::function<void()> loop_wait) {
     // Remove existing pipe file
     QDir outDir(qgetenv("OUT_DIR"));
     QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
-    QString path = workDir.filePath("test-cpp-unixstream");
-    QFile::remove(path);
+    CowString path = workDir.filePath("test-cpp-unixstream");
+    QFile::remove(path.asQString());
 
     UnixListener l;
     TEST_ASSERT(l.bind(path));

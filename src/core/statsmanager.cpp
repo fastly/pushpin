@@ -98,8 +98,8 @@ public:
 
     class Subscription : public TimerBase {
     public:
-        QString mode;
-        QString channel;
+        CowString mode;
+        CowString channel;
         uint32_t subscriberCount;
         int64_t lastRefresh;
         int refreshBucket;
@@ -240,7 +240,7 @@ public:
             lastUpdate = now;
         }
 
-        void addMessageSent(const QString &transport, int blocks, int64_t now) {
+        void addMessageSent(const CowString &transport, int blocks, int64_t now) {
             ++messagesSent;
 
             if (transport == "http-response")
@@ -284,14 +284,14 @@ public:
         bool isEmpty() { return (requestsReceived == 0); }
     };
 
-    typedef std::pair<QString, QString> SubscriptionKey;
+    typedef std::pair<CowString, CowString> SubscriptionKey;
 
     StatsManager *q;
     int connectionsMax;
     int subscriptionsMax;
     CowByteArray instanceId;
     int ipcFileMode;
-    QString spec;
+    CowString spec;
     Format outputFormat;
     bool connectionSend;
     bool connectionsMaxSend;
@@ -726,7 +726,7 @@ public:
         write(p);
     }
 
-    void sendMessage(const QString &channel, const QString &itemId, const QString &transport,
+    void sendMessage(const CowString &channel, const CowString &itemId, const CowString &transport,
                      uint32_t count, int blocks) {
         if (!sock)
             return;
@@ -944,8 +944,8 @@ public:
                     subscriptionRefreshBuckets[s->refreshBucket].remove(s);
                     s->lastRefresh = -1;
 
-                    QString mode = s->mode;
-                    QString channel = s->channel;
+                    CowString mode = s->mode;
+                    CowString channel = s->channel;
 
                     sendUnsubscribed(s);
                     removeSubscription(s);
@@ -1348,7 +1348,7 @@ void StatsManager::setInstanceId(const CowByteArray &instanceId) { d->instanceId
 void StatsManager::setIpcFileMode(int mode) { d->ipcFileMode = mode; }
 
 bool StatsManager::setSpec(const CowString &spec) {
-    d->spec = spec.asQString();
+    d->spec = spec;
     return d->setupSock();
 }
 
@@ -1395,7 +1395,7 @@ void StatsManager::addActivity(const CowByteArray &routeId, uint32_t count) {
 
 void StatsManager::addMessage(const CowString &channel, const CowString &itemId,
                               const CowString &transport, uint32_t count, int blocks) {
-    d->sendMessage(channel.asQString(), itemId.asQString(), transport.asQString(), count, blocks);
+    d->sendMessage(channel, itemId, transport, count, blocks);
 }
 
 void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &routeId,
@@ -1532,7 +1532,7 @@ void StatsManager::refreshConnection(const CowByteArray &id) {
 
 void StatsManager::addSubscription(const CowString &mode, const CowString &channel,
                                    uint32_t subscriberCount) {
-    Private::SubscriptionKey subKey(mode.asQString(), channel.asQString());
+    Private::SubscriptionKey subKey(mode, channel);
     Private::Subscription *s = d->subscriptionsByKey.value(subKey);
     if (!s) {
         int64_t now = DateTime::currentMSecsSinceEpoch();
@@ -1540,8 +1540,8 @@ void StatsManager::addSubscription(const CowString &mode, const CowString &chann
         // Add the subscription if we didn't have it
         s = new Private::Subscription;
         s->timerType = Private::TimerBase::Type::Subscription;
-        s->mode = mode.asQString();
-        s->channel = channel.asQString();
+        s->mode = mode;
+        s->channel = channel;
         s->subscriberCount = subscriberCount;
         s->lastRefresh = now;
         d->insertSubscription(s);
@@ -1574,7 +1574,7 @@ void StatsManager::addSubscription(const CowString &mode, const CowString &chann
 
 void StatsManager::removeSubscription(const CowString &mode, const CowString &channel,
                                       bool linger) {
-    Private::SubscriptionKey subKey(mode.asQString(), channel.asQString());
+    Private::SubscriptionKey subKey(mode, channel);
     Private::Subscription *s = d->subscriptionsByKey.value(subKey);
     if (!s)
         return;
@@ -1623,8 +1623,8 @@ void StatsManager::addMessageSent(const CowByteArray &routeId, const CowString &
 
     int64_t now = DateTime::currentMSecsSinceEpoch();
 
-    report->addMessageSent(transport.asQString(), blocks, now);
-    d->combinedReport.addMessageSent(transport.asQString(), blocks, now);
+    report->addMessageSent(transport, blocks, now);
+    d->combinedReport.addMessageSent(transport, blocks, now);
     d->combinedReportChanged();
 }
 

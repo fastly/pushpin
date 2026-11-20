@@ -51,7 +51,7 @@ public:
     CowByteArray inBuf;
     CowByteArray outBuf;
     bool version1dot0;
-    QString method;
+    CowString method;
     CowByteArray uri;
     HttpHeaders reqHeaders;
     CowByteArray reqBody;
@@ -112,7 +112,7 @@ public:
         deferCall.defer([&] { process(); });
     }
 
-    void respond(int code, const CowByteArray &reason, const QString &body) {
+    void respond(int code, const CowByteArray &reason, const CowString &body) {
         HttpHeaders headers;
         headers += HttpHeader("Content-Type", "text/plain");
 
@@ -122,14 +122,16 @@ public:
     Signal ready;
 
 private:
-    void respondError(int code, const CowByteArray &reason, const QString &body) {
+    void respondError(int code, const CowByteArray &reason, const CowString &body) {
         state = WriteBody;
         respond(code, reason, body + '\n');
     }
 
-    void respondBadRequest(const QString &body) { respondError(400, "Bad Request", body); }
+    void respondBadRequest(const CowString &body) { respondError(400, "Bad Request", body); }
 
-    void respondLengthRequired(const QString &body) { respondError(411, "Length Required", body); }
+    void respondLengthRequired(const CowString &body) {
+        respondError(411, "Length Required", body);
+    }
 
     bool processHeaderData(const CowByteArray &headerData) {
         QList<CowByteArray> lines;
@@ -154,7 +156,7 @@ private:
         if (at == -1)
             return false;
 
-        method = CowString::fromUtf8(requestLine.mid(0, at)).asQString();
+        method = CowString::fromUtf8(requestLine.mid(0, at));
         if (method.isEmpty())
             return false;
 
@@ -186,13 +188,13 @@ private:
             reqHeaders += HttpHeader(name, val);
         }
 
-        log_debug("httpserver: IN %s %s", qPrintable(method), uri.data());
+        log_debug("httpserver: IN %s %s", cowPrintable(method), uri.data());
 
         return true;
     }
 
-    void error(const QString &msg) {
-        log_debug("httpserver error: %s", qPrintable(msg));
+    void error(const CowString &msg) {
+        log_debug("httpserver error: %s", cowPrintable(msg));
 
         doFinish();
     }
@@ -212,7 +214,7 @@ private:
                 if (e == EAGAIN)
                     return false;
 
-                error(QString("read error: %1").arg(e));
+                error(CowString("read error: %1").arg(CowString::number(e)));
                 return true;
             }
 
@@ -301,7 +303,7 @@ private:
                     if (e == EAGAIN)
                         return false;
 
-                    error(QString("write error: %1").arg(e));
+                    error(CowString("write error: %1").arg(CowString::number(e)));
                     return true;
                 }
 
@@ -317,7 +319,7 @@ private:
                     if (e == EAGAIN)
                         return false;
 
-                    error(QString("read error: %1").arg(e));
+                    error(CowString("read error: %1").arg(CowString::number(e)));
                     return true;
                 }
 
@@ -351,7 +353,7 @@ private:
                 if (e == EAGAIN)
                     return false;
 
-                error(QString("write error: %1").arg(e));
+                error(CowString("write error: %1").arg(CowString::number(e)));
                 return true;
             }
 
@@ -396,7 +398,7 @@ void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const Http
 }
 
 void SimpleHttpRequest::respond(int code, const CowByteArray &reason, const CowString &body) {
-    d->respond(code, reason, body.asQString());
+    d->respond(code, reason, body);
 }
 
 class SimpleHttpServerPrivate {
@@ -458,13 +460,13 @@ public:
         return true;
     }
 
-    bool listenLocal(const QString &name) {
+    bool listenLocal(const CowString &name) {
         assert(!listener);
 
-        QFileInfo fi(name);
-        QString filePath = fi.absoluteFilePath();
+        QFileInfo fi(name.asQString());
+        CowString filePath = fi.absoluteFilePath();
 
-        QFile::remove(filePath);
+        QFile::remove(filePath.asQString());
 
         UnixListener *l = new UnixListener;
         l->streamsReady.connect(boost::bind(&SimpleHttpServerPrivate::listener_streamsReady, this));
@@ -547,9 +549,7 @@ SimpleHttpServer::~SimpleHttpServer() { delete d; }
 
 bool SimpleHttpServer::listen(const QHostAddress &addr, int port) { return d->listen(addr, port); }
 
-bool SimpleHttpServer::listenLocal(const CowString &name) {
-    return d->listenLocal(name.asQString());
-}
+bool SimpleHttpServer::listenLocal(const CowString &name) { return d->listenLocal(name); }
 
 SimpleHttpRequest *SimpleHttpServer::takeNext() {
     if (!d->pending.isEmpty()) {

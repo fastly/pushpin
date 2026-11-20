@@ -22,13 +22,13 @@ static void basicUrlOperations() {
     CowUrl url("https://example.com/path?query=value");
     TEST_ASSERT(url.isValid());
     TEST_ASSERT(!url.isEmpty());
-    TEST_ASSERT_EQ(url.scheme(), QString("https"));
-    TEST_ASSERT_EQ(url.path(), QString("/path"));
-    TEST_ASSERT_EQ(url.query(), QString("query=value"));
+    TEST_ASSERT_EQ(url.scheme(), "https");
+    TEST_ASSERT_EQ(url.path(), "/path");
+    TEST_ASSERT_EQ(url.query(), "query=value");
     TEST_ASSERT(url.hasQuery());
 
     // Test toString
-    QString urlString = url.toString().asQString();
+    CowString urlString = url.toString();
     TEST_ASSERT(urlString.startsWith("https://example.com"));
 
     // Test toEncoded
@@ -40,22 +40,22 @@ static void invalidUrl() {
     CowUrl url("not a url");
     TEST_ASSERT(!url.isValid());
     TEST_ASSERT(url.isEmpty());
-    TEST_ASSERT_EQ(url.scheme(), QString());
+    TEST_ASSERT_EQ(url.scheme(), "");
 }
 
 static void emptyUrl() {
     CowUrl url;
     TEST_ASSERT(!url.isValid());
     TEST_ASSERT(url.isEmpty());
-    TEST_ASSERT_EQ(url.scheme(), QString());
+    TEST_ASSERT_EQ(url.scheme(), "");
 }
 
 static void fromEncoded() {
     // Valid URL with percent-encoded characters in the path
     CowUrl url = CowUrl::fromEncoded("https://example.com/path%20with%20spaces?q=1");
     TEST_ASSERT(url.isValid());
-    TEST_ASSERT_EQ(url.scheme(), QString("https"));
-    TEST_ASSERT_EQ(url.host(), QString("example.com"));
+    TEST_ASSERT_EQ(url.scheme(), "https");
+    TEST_ASSERT_EQ(url.host(), "example.com");
 
     // Invalid input
     CowUrl invalid = CowUrl::fromEncoded("not a url");
@@ -65,10 +65,10 @@ static void fromEncoded() {
 
 static void schemeOperations() {
     CowUrl url("http://example.com/path");
-    TEST_ASSERT_EQ(url.scheme(), QString("http"));
+    TEST_ASSERT_EQ(url.scheme(), "http");
 
     url.setScheme("https");
-    TEST_ASSERT_EQ(url.scheme(), QString("https"));
+    TEST_ASSERT_EQ(url.scheme(), "https");
 }
 
 static void clearUrl() {
@@ -114,24 +114,24 @@ static void urlResolution() {
     CowUrl base("http://example.com/path/current");
 
     // Test that absolute URLs are returned as-is (not modified by base)
-    CowUrl absoluteResult1 = base.resolved(QString("http://other.com/different"));
-    TEST_ASSERT_EQ(absoluteResult1.toString(), QString("http://other.com/different"));
+    CowUrl absoluteResult1 = base.resolved("http://other.com/different");
+    TEST_ASSERT_EQ(absoluteResult1.toString(), "http://other.com/different");
 
-    CowUrl absoluteResult2 = base.resolved(QString("https://secure.com/path"));
-    TEST_ASSERT_EQ(absoluteResult2.toString(), QString("https://secure.com/path"));
+    CowUrl absoluteResult2 = base.resolved("https://secure.com/path");
+    TEST_ASSERT_EQ(absoluteResult2.toString(), "https://secure.com/path");
 
     // Test relative URLs are properly resolved
-    CowUrl relativeResult1 = base.resolved(QString("/absolute-path"));
-    TEST_ASSERT_EQ(relativeResult1.host(), QString("example.com"));
+    CowUrl relativeResult1 = base.resolved("/absolute-path");
+    TEST_ASSERT_EQ(relativeResult1.host(), "example.com");
     TEST_ASSERT(relativeResult1.path().startsWith("/absolute-path"));
 
-    CowUrl relativeResult2 = base.resolved(QString("relative-file"));
-    TEST_ASSERT_EQ(relativeResult2.host(), QString("example.com"));
+    CowUrl relativeResult2 = base.resolved("relative-file");
+    TEST_ASSERT_EQ(relativeResult2.host(), "example.com");
     TEST_ASSERT(relativeResult2.toString().contains("relative-file"));
 
     // Test query-only relative URLs
-    CowUrl queryResult = base.resolved(QString("?newquery=value"));
-    TEST_ASSERT_EQ(queryResult.host(), QString("example.com"));
+    CowUrl queryResult = base.resolved("?newquery=value");
+    TEST_ASSERT_EQ(queryResult.host(), "example.com");
     TEST_ASSERT(queryResult.hasQuery());
 
     // Test that our validation method works correctly for both cases
@@ -139,23 +139,23 @@ static void urlResolution() {
     TEST_ASSERT(CowUrl::isValidRelativeUrl("/relative/path"));           // Relative
 
     // Test other schemes (now supported via url crate's join method)
-    CowUrl ftpResult = base.resolved(QString("ftp://ftp.example.com/file"));
-    TEST_ASSERT_EQ(ftpResult.toString(), QString("ftp://ftp.example.com/file"));
+    CowUrl ftpResult = base.resolved("ftp://ftp.example.com/file");
+    TEST_ASSERT_EQ(ftpResult.toString(), "ftp://ftp.example.com/file");
 
     // Test WebSocket URLs
-    CowUrl wsResult = base.resolved(QString("ws://websocket.example.com/socket"));
-    TEST_ASSERT_EQ(wsResult.toString(), QString("ws://websocket.example.com/socket"));
+    CowUrl wsResult = base.resolved("ws://websocket.example.com/socket");
+    TEST_ASSERT_EQ(wsResult.toString(), "ws://websocket.example.com/socket");
 
-    CowUrl wssResult = base.resolved(QString("wss://secure-websocket.example.com/socket"));
-    TEST_ASSERT_EQ(wssResult.toString(), QString("wss://secure-websocket.example.com/socket"));
+    CowUrl wssResult = base.resolved("wss://secure-websocket.example.com/socket");
+    TEST_ASSERT_EQ(wssResult.toString(), "wss://secure-websocket.example.com/socket");
 
     // Test empty relative URL
-    CowUrl emptyResult = base.resolved(QString(""));
+    CowUrl emptyResult = base.resolved("");
     TEST_ASSERT(!emptyResult.isValid()); // Should return invalid URL
 
     // Verify that absolute URLs resolve to themselves (unchanged)
-    QString absoluteUrl1 = "http://different.com/path";
-    QString absoluteUrl2 = "https://secure.example.org/api";
+    CowString absoluteUrl1 = "http://different.com/path";
+    CowString absoluteUrl2 = "https://secure.example.org/api";
 
     TEST_ASSERT_EQ(base.resolved(absoluteUrl1).toString(), absoluteUrl1);
     TEST_ASSERT_EQ(base.resolved(absoluteUrl2).toString(), absoluteUrl2);

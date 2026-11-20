@@ -65,10 +65,10 @@ EncodingKey EncodingKey::fromFile(const CowString &fileName) {
 
 EncodingKey EncodingKey::fromConfigString(const CowString &s, const QDir &baseDir) {
     if (s.startsWith("file:")) {
-        QString keyFile = s.mid(5).asQString();
-        QFileInfo fi(keyFile);
+        CowString keyFile = s.mid(5);
+        QFileInfo fi(keyFile.asQString());
         if (fi.isRelative())
-            keyFile = QFileInfo(baseDir, keyFile).filePath();
+            keyFile = QFileInfo(baseDir, keyFile.asQString()).filePath();
 
         return fromFile(keyFile);
     } else if (!s.isEmpty()) {
@@ -119,10 +119,10 @@ DecodingKey DecodingKey::fromFile(const CowString &fileName) {
 
 DecodingKey DecodingKey::fromConfigString(const CowString &s, const QDir &baseDir) {
     if (s.startsWith("file:")) {
-        QString keyFile = s.mid(5).asQString();
-        QFileInfo fi(keyFile);
+        CowString keyFile = s.mid(5);
+        QFileInfo fi(keyFile.asQString());
         if (fi.isRelative())
-            keyFile = QFileInfo(baseDir, keyFile).filePath();
+            keyFile = QFileInfo(baseDir, keyFile.asQString()).filePath();
 
         return fromFile(keyFile);
     } else if (!s.isEmpty()) {

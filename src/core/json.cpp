@@ -17,6 +17,7 @@
 #include "json.h"
 
 #include "cowbytearray.h"
+#include "cowstring.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -39,7 +40,7 @@ static QJsonValue variantToJsonValue(const Variant &v) {
     case VariantType::String:
         return QJsonValue(v.toString());
     case VariantType::ByteArray:
-        return QJsonValue(QString::fromUtf8(v.toByteArray()));
+        return QJsonValue(CowString::fromUtf8(v.toByteArray()).asQString());
     case VariantType::List:
         return QJsonArray::fromVariantList(v.toList());
     case VariantType::Map:

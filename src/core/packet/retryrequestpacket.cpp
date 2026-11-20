@@ -253,7 +253,7 @@ bool RetryRequestPacket::fromVariant(const Variant &in) {
     if (!vrequestData.contains("method") ||
         typeId(vrequestData["method"]) != VariantType::ByteArray)
         return false;
-    requestData.method = QString::fromLatin1(vrequestData["method"].toByteArray());
+    requestData.method = CowString::fromUtf8(vrequestData["method"].toByteArray());
 
     if (!vrequestData.contains("uri") || typeId(vrequestData["uri"]) != VariantType::ByteArray)
         return false;

@@ -30,7 +30,7 @@
 namespace ZUtil {
 
 bool bindSpec(ZmqSocket *sock, const CowString &spec, int ipcFileMode, CowString *errorMessage) {
-    if (!sock->bind(spec.asQString())) {
+    if (!sock->bind(spec)) {
         if (errorMessage)
             *errorMessage = CowString("unable to bind to %1").arg(spec);
         return false;
