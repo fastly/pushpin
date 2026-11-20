@@ -21,6 +21,7 @@
 #include <QString>
 #include <QStringList>
 #include <stdarg.h>
+#include <type_traits>
 
 class CowString;
 
@@ -129,6 +130,15 @@ public:
     int indexOf(char ch, int from = 0) const { return inner_.indexOf(ch, from); }
     bool endsWith(const char *str) const { return inner_.endsWith(str); }
     int toInt(bool *ok = nullptr, int base = 10) const { return inner_.toInt(ok, base); }
+    CowString &replace(const CowString &before, const CowString &after) {
+        inner_.replace(before.inner_, after.inner_);
+        return *this;
+    }
+    CowString &replace(int pos, int n, const CowString &after) {
+        inner_.replace(pos, n, after.inner_);
+        return *this;
+    }
+    bool isDigitAt(int i) const { return inner_[i].isDigit(); }
     static CowString vasprintf(const char *fmt, va_list ap) { return QString::vasprintf(fmt, ap); }
     static CowString asprintf(const char *fmt, ...) {
         va_list ap;
@@ -163,6 +173,14 @@ inline bool operator!=(const CowString &lhs, const char *const &rhs) { return !(
 inline bool operator!=(const char *const &lhs, const CowString &rhs) { return !(lhs == rhs); }
 inline CowString operator+(const CowString &lhs, const CowString &rhs) {
     return lhs.inner_ + rhs.inner_;
+}
+template <typename T, std::enable_if_t<std::is_same_v<T, CowString>, int> = 0>
+inline CowString operator+(const T &lhs, char rhs) {
+    return lhs.asQString() + QLatin1Char(rhs);
+}
+template <typename T, std::enable_if_t<std::is_same_v<T, CowString>, int> = 0>
+inline CowString operator+(char lhs, const T &rhs) {
+    return QLatin1Char(lhs) + rhs.asQString();
 }
 inline bool operator<(const CowString &lhs, const CowString &rhs) {
     return lhs.inner_ < rhs.inner_;
