@@ -274,6 +274,7 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
     int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
     QString statsFormat = settings.value("handler/stats_format").toString();
+    QString debugSocket = settings.value("handler/debug_socket").toString();
     QString prometheusPort = settings.value("handler/prometheus_port").toString();
     QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
 
@@ -292,6 +293,17 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     if (!push_in_http_addr.isEmpty() && QHostAddress(push_in_http_addr).isNull()) {
         log_error("invalid push_in_http_addr: %s", qPrintable(push_in_http_addr));
         return 1;
+    }
+
+    std::unique_ptr<DebugLogger> debugLogger;
+
+    if (!debugSocket.isEmpty()) {
+        CowString debugError;
+        debugLogger = DebugLogger::create(debugSocket, 1000, &debugError);
+        if (!debugLogger) {
+            log_error("failed to bind debug socket: %s", cowPrintable(debugError));
+            return 1;
+        }
     }
 
     HandlerEngine::Configuration config;

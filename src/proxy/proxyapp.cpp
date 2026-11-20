@@ -471,12 +471,25 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
     int statsConnectionsMaxTtl = settings.value("proxy/stats_connections_max_ttl", 60).toInt();
     int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
+    QString debugSocket = settings.value("proxy/debug_socket").toString();
     QString prometheusPort = settings.value("proxy/prometheus_port").toString();
     QString prometheusPrefix = settings.value("proxy/prometheus_prefix", "proxy").toString();
 
     QList<QByteArray> origHeadersNeedMark;
     for (const QString &s : std::as_const(origHeadersNeedMarkStr))
         origHeadersNeedMark += s.toUtf8();
+
+    std::unique_ptr<DebugLogger> debugLogger;
+
+    if (!debugSocket.isEmpty()) {
+        CowString debugError;
+        debugLogger = DebugLogger::create(debugSocket, (unsigned int)(workerCount * 1000) + 1000,
+                                          &debugError);
+        if (!debugLogger) {
+            log_error("failed to bind debug socket: %s", cowPrintable(debugError));
+            return 1;
+        }
+    }
 
     // If routesFile is a relative path, then use it relative to the config file location
     QFileInfo fi(routesFile);
