@@ -79,6 +79,9 @@ static void methods() {
     TEST_ASSERT_EQ(CowString::number(42), "42");
     TEST_ASSERT_EQ(CowString::number(255, 16), "ff");
 
+    // Number (long long)
+    TEST_ASSERT_EQ(CowString::number(10000000000LL), "10000000000");
+
     // Number (double)
     TEST_ASSERT_EQ(CowString::number(1.5, 'f', 1), "1.5");
 
@@ -99,6 +102,54 @@ static void methods() {
     // cowPrintable
     CowString f("test");
     TEST_ASSERT(strcmp(cowPrintable(f), "test") == 0);
+
+    // Size / length
+    CowString g("hello");
+    TEST_ASSERT_EQ(g.size(), 5);
+    TEST_ASSERT_EQ(g.length(), 5);
+
+    // Trimmed
+    CowString h("  hello  ");
+    TEST_ASSERT_EQ(h.trimmed(), "hello");
+
+    // ToLower / toUpper
+    CowString i("Hello World");
+    TEST_ASSERT_EQ(i.toLower(), "hello world");
+    TEST_ASSERT_EQ(i.toUpper(), "HELLO WORLD");
+
+    // Left / right
+    CowString j("hello world");
+    TEST_ASSERT_EQ(j.left(5), "hello");
+    TEST_ASSERT_EQ(j.right(5), "world");
+
+    // EndsWith
+    TEST_ASSERT(j.endsWith("world"));
+    TEST_ASSERT(!j.endsWith("hello"));
+
+    // IndexOf (string)
+    TEST_ASSERT_EQ(j.indexOf("world"), 6);
+    TEST_ASSERT_EQ(j.indexOf("xyz"), -1);
+
+    // IndexOf (char)
+    TEST_ASSERT_EQ(j.indexOf(' '), 5);
+    TEST_ASSERT_EQ(j.indexOf('z'), -1);
+
+    // ToInt
+    bool ok;
+    TEST_ASSERT_EQ(CowString("42").toInt(&ok), 42);
+    TEST_ASSERT(ok);
+    TEST_ASSERT_EQ(CowString("ff").toInt(&ok, 16), 255);
+    TEST_ASSERT(ok);
+    CowString("abc").toInt(&ok);
+    TEST_ASSERT(!ok);
+
+    // Asprintf
+    CowString k = CowString::asprintf("%s=%d", "x", 7);
+    TEST_ASSERT_EQ(k, "x=7");
+
+    // Repeated-char constructor
+    CowString l(3, '*');
+    TEST_ASSERT_EQ(l, "***");
 }
 
 static void operators() {
@@ -119,6 +170,20 @@ static void operators() {
 
     // Operator+
     TEST_ASSERT_EQ(CowString("hello") + " " + "world", "hello world");
+
+    // Operator+=
+    CowString b("hello");
+    b += " world";
+    TEST_ASSERT_EQ(b, "hello world");
+    b += CowString("!");
+    TEST_ASSERT_EQ(b, "hello world!");
+    b += '?';
+    TEST_ASSERT_EQ(b, "hello world!?");
+
+    // Operator< (lexicographic)
+    TEST_ASSERT(CowString("apple") < CowString("banana"));
+    TEST_ASSERT(!(CowString("banana") < CowString("apple")));
+    TEST_ASSERT(!(CowString("hello") < CowString("hello")));
 }
 
 static void conversions() {
