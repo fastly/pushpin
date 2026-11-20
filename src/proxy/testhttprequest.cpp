@@ -76,10 +76,10 @@ public:
         QSet<QString> channels;
 
         UrlQuery query(request.uri);
-        QList<std::pair<QString, QString>> queryItems = query.queryItems();
+        QList<std::pair<CowString, CowString>> queryItems = query.queryItems();
         for (int n = 0; n < queryItems.count(); ++n) {
             if (queryItems[n].first == "channel")
-                channels += queryItems[n].second;
+                channels += queryItems[n].second.asQString();
         }
 
         if (channels.isEmpty())

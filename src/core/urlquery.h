@@ -19,7 +19,6 @@
 
 #include "cowstring.h"
 #include "cowurl.h"
-#include <QString>
 #include <QUrl>
 #include <QUrlQuery>
 #include <utility>
@@ -76,9 +75,13 @@ public:
         return inner_.allQueryItemValues(key.asQString(),
                                          static_cast<QUrl::ComponentFormattingOptions>(encoding));
     }
-    QList<std::pair<QString, QString>>
+    QList<std::pair<CowString, CowString>>
     queryItems(CowUrl::ComponentFormattingOptions encoding = CowUrl::PrettyDecoded) const {
-        return inner_.queryItems(static_cast<QUrl::ComponentFormattingOptions>(encoding));
+        QList<std::pair<CowString, CowString>> result;
+        for (const auto &item :
+             inner_.queryItems(static_cast<QUrl::ComponentFormattingOptions>(encoding)))
+            result += {item.first, item.second};
+        return result;
     }
 
     // String conversion
