@@ -315,11 +315,13 @@ impl Settings {
                 .find(|c: char| !c.is_ascii_digit())
                 .map_or(out.len(), |n| start + n);
 
-            let Ok(port) = out[start..end].parse::<i32>() else {
+            let Ok(port) = out[start..end].parse::<u16>() else {
                 return Err(SettingsError::InvalidTcpAddress(s.to_string()));
             };
 
-            let port = (port + self.port_offset).to_string();
+            let port = u16::try_from(i32::from(port) + self.port_offset)
+                .map_err(|_| SettingsError::InvalidTcpAddress(s.to_string()))?
+                .to_string();
             out.replace_range(start..end, &port);
             at = start + port.len();
         }
