@@ -159,16 +159,6 @@ extern "C" {
 int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     HandlerArgsData args(argsFfi);
 
-    if (!log_init(args.logFile))
-        return 1;
-
-    if (args.logLevel != -1)
-        log_setOutputLevel(args.logLevel);
-    else
-        log_setOutputLevel(LOG_LEVEL_INFO);
-
-    log_debug("starting...");
-
     // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
     {
         QFile file(args.configFile);
