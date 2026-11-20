@@ -173,7 +173,7 @@ impl HandlerSettings {
         };
 
         let push_in_http_addr = settings.ip_addr("handler/push_in_http_addr")?;
-        let push_in_http_port = settings.adjust_port("handler/push_in_http_port")?;
+        let push_in_http_port = settings.port("handler/push_in_http_port")?;
 
         // Only serve the API here if the api component is not enabled
         let (push_in_http_addr, push_in_http_port) = if has_service("api") {
