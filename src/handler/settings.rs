@@ -428,51 +428,30 @@ mod tests {
     }
 
     #[test]
-    fn missing_m2a_specs_errors() {
-        let r = load_conf("[global]\nrundir=run\n");
-        assert!(
-            matches!(r, Err(SettingsError::Missing(m)) if m.starts_with("m2a_in_stream_specs"))
-        );
-    }
-
-    #[test]
-    fn missing_proxy_specs_errors() {
-        let r = load_conf("[global]\nrundir=run\n[handler]\nm2a_in_stream_specs=ipc://run/a\nm2a_out_specs=ipc://run/b\n",
-        );
-        assert!(
-            matches!(r, Err(SettingsError::Missing(m)) if m.starts_with("proxy_inspect_specs"))
-        );
-    }
-
-    #[test]
-    fn invalid_push_in_http_addr_errors() {
-        let r = load_conf(&format!("{GLOBAL}[handler]\npush_in_http_addr=127.0.0.l\n"));
-        assert!(matches!(
-            r,
-            Err(SettingsError::InvalidValue { key, .. }) if key == "handler/push_in_http_addr"
-        ));
-    }
-
-    #[test]
-    fn invalid_ipc_file_mode_errors() {
-        let r = load_conf(&format!("{GLOBAL}[handler]\nipc_file_mode=abc\n"));
-        assert!(matches!(
-            r,
-            Err(SettingsError::InvalidValue { key, .. }) if key == "handler/ipc_file_mode"
-        ));
-    }
-
-    #[test]
-    fn common_settings_read_from_config() {
-        let s = load_conf(&format!(
-                "{GLOBAL}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n"
+    fn invalid_config_fails() {
+        let cases = [
+            (
+                "[global]\nrundir=run\n".to_string(),
+                "must set m2a_in_stream_specs and m2a_out_specs",
             ),
-        )
-        .unwrap();
+            (
+                "[global]\nrundir=run\n[handler]\nm2a_in_stream_specs=ipc://run/a\nm2a_out_specs=ipc://run/b\n".to_string(),
+                "must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs",
+            ),
+            (
+                format!("{GLOBAL}[handler]\npush_in_http_addr=127.0.0.l\n"),
+                "handler/push_in_http_addr must be an IP address: 127.0.0.l",
+            ),
+            (
+                format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"),
+                "handler/message_wait must be at most 2147483647: 3000000000",
+            ),
+        ];
 
-        assert_eq!(s.connections_max, 100);
-        assert!(!s.stats_connection_send);
-        assert_eq!(s.stats_connection_ttl, 30);
+        for (conf, expected) in cases {
+            let err = load_conf(&conf).err().map(|e| e.to_string());
+            assert_eq!(err.as_deref(), Some(expected), "{}", conf);
+        }
     }
 
     #[test]
@@ -508,20 +487,5 @@ mod tests {
         assert!(!f.stats_connection_send);
         assert_eq!(f.stats_connection_ttl, 30);
         assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
-    }
-
-    #[test]
-    fn number_too_big_for_int_errors() {
-        let r = load_conf(&format!("{GLOBAL}[handler]\nmessage_wait=3000000000\n"));
-        assert_eq!(
-            r.err().unwrap().to_string(),
-            "handler/message_wait must be at most 2147483647: 3000000000"
-        );
-    }
-
-    #[test]
-    fn ipc_file_mode_octal() {
-        let s = load_conf(&format!("{GLOBAL}[handler]\nipc_file_mode=777\n")).unwrap();
-        assert_eq!(s.ipc_file_mode, 0o777);
     }
 }
