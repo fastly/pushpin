@@ -150,6 +150,21 @@ static void methods() {
     // Repeated-char constructor
     CowString l(3, '*');
     TEST_ASSERT_EQ(l, "***");
+
+    // Replace (string)
+    CowString m("hello world");
+    m.replace("world", "there");
+    TEST_ASSERT_EQ(m, "hello there");
+
+    // Replace (positional)
+    CowString n("hello world");
+    n.replace(6, 5, "there");
+    TEST_ASSERT_EQ(n, "hello there");
+
+    // IsDigitAt
+    CowString o("ab3c");
+    TEST_ASSERT(!o.isDigitAt(0));
+    TEST_ASSERT(o.isDigitAt(2));
 }
 
 static void operators() {
@@ -170,6 +185,12 @@ static void operators() {
 
     // Operator+
     TEST_ASSERT_EQ(CowString("hello") + " " + "world", "hello world");
+
+    // Operator+ (CowString + char)
+    TEST_ASSERT_EQ(CowString("hello") + '\n', "hello\n");
+
+    // Operator+ (char + CowString)
+    TEST_ASSERT_EQ('>' + CowString(" hello"), "> hello");
 
     // Operator+=
     CowString b("hello");
