@@ -24,12 +24,12 @@
 #include <stdarg.h>
 
 static void log(int level, const char *fmt, va_list ap) {
-    QString str = QString::vasprintf(fmt, ap);
+    CowString str = CowString::vasprintf(fmt, ap);
     ffi::log_log(level, str.toUtf8().data());
 }
 
 static void logWithOutputLevel(int outputLevel, int level, const char *fmt, va_list ap) {
-    QString str = QString::vasprintf(fmt, ap);
+    CowString str = CowString::vasprintf(fmt, ap);
     ffi::log_log_with_max_level(outputLevel, level, str.toUtf8().data());
 }
 

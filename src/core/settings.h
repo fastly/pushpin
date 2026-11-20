@@ -25,7 +25,6 @@
 
 #include "cowstring.h"
 #include "variant.h"
-#include <QString>
 
 class QSettings;
 
@@ -48,12 +47,12 @@ public:
 private:
     QSettings *main_;
     QSettings *include_;
-    QString libdir_;
-    QString rundir_;
-    QString ipcPrefix_;
+    CowString libdir_;
+    CowString rundir_;
+    CowString ipcPrefix_;
     int portOffset_;
 
-    QString resolveVars(const QString &in) const;
+    CowString resolveVars(const CowString &in) const;
 };
 
 #endif

@@ -41,7 +41,7 @@ Settings::Settings(const CowString &fileName) : include_(0), portOffset_(0) {
             libdir_ = QFileInfo("src").absoluteFilePath();
         } else {
             // Use compiled value
-            libdir_ = Config::get().libDir.asQString();
+            libdir_ = Config::get().libDir;
         }
     }
 
@@ -54,7 +54,7 @@ Settings::Settings(const CowString &fileName) : include_(0), portOffset_(0) {
     ipcPrefix_ = valueRaw("global/ipc_prefix", "pushpin-").toString();
     portOffset_ = valueRaw("global/port_offset", 0).toInt();
 
-    QString includeFile = valueRaw("global/include").toString();
+    CowString includeFile = valueRaw("global/include").toString();
 
     // If include is exactly "internal.conf", rewrite relative to libdir.
     // TODO: remove this hack at next major version
@@ -65,12 +65,13 @@ Settings::Settings(const CowString &fileName) : include_(0), portOffset_(0) {
 
     if (!includeFile.isEmpty()) {
         // If include is a relative path, then use it relative to the config file location
-        QFileInfo fi(includeFile);
+        QFileInfo fi(includeFile.asQString());
         if (fi.isRelative())
             includeFile =
-                QFileInfo(QFileInfo(fileName.asQString()).absoluteDir(), includeFile).filePath();
+                QFileInfo(QFileInfo(fileName.asQString()).absoluteDir(), includeFile.asQString())
+                    .filePath();
 
-        include_ = new QSettings(includeFile, QSettings::IniFormat);
+        include_ = new QSettings(includeFile.asQString(), QSettings::IniFormat);
     }
 }
 
@@ -79,8 +80,8 @@ Settings::~Settings() {
     delete main_;
 }
 
-QString Settings::resolveVars(const QString &in) const {
-    QString out = in;
+CowString Settings::resolveVars(const CowString &in) const {
+    CowString out = in;
     out.replace("{libdir}", libdir_);
     out.replace("{rundir}", rundir_);
     out.replace("{ipc_prefix}", ipcPrefix_);
@@ -98,7 +99,7 @@ QString Settings::resolveVars(const QString &in) const {
 
         int start = at + 1;
         for (at = start; at < out.length(); ++at) {
-            if (!out[at].isDigit())
+            if (!out.isDigitAt(at))
                 break;
         }
 
@@ -109,7 +110,7 @@ QString Settings::resolveVars(const QString &in) const {
 
         x += portOffset_;
 
-        QString port = QString::number(x);
+        CowString port = CowString::number(x);
         out.replace(start, at - start, port);
         at = start + port.length();
     }
@@ -141,12 +142,12 @@ Variant Settings::value(const CowString &key, const Variant &defaultValue) const
     Variant v = valueRaw(key, defaultValue);
     if (v.isValid()) {
         if (typeId(v) == VariantType::String) {
-            v = resolveVars(v.toString());
+            v = resolveVars(v.toString()).asQString();
         } else if (typeId(v) == VariantType::StringList) {
             CowStringList oldList(v.toStringList());
             CowStringList newList;
             for (const CowStringConstRef s : std::as_const(oldList))
-                newList += resolveVars(s.asQString());
+                newList += resolveVars(s);
             v = newList.asQStringList();
         }
     }
@@ -165,6 +166,6 @@ CowString Settings::ipcPrefix() const { return ipcPrefix_; }
 
 int Settings::portOffset() const { return portOffset_; }
 
-void Settings::setIpcPrefix(const CowString &s) { ipcPrefix_ = s.asQString(); }
+void Settings::setIpcPrefix(const CowString &s) { ipcPrefix_ = s; }
 
 void Settings::setPortOffset(int x) { portOffset_ = x; }

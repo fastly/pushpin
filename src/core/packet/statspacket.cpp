@@ -27,12 +27,12 @@
 #include "qtcompat.h"
 #include "variant.h"
 
-static bool tryGetInt(const VariantHash &obj, const QString &name, int *result) {
-    if (obj.contains(name)) {
-        if (!canConvert(obj[name], VariantType::Int))
+static bool tryGetInt(const VariantHash &obj, const CowString &name, int *result) {
+    if (obj.contains(name.asQString())) {
+        if (!canConvert(obj[name.asQString()], VariantType::Int))
             return false;
 
-        *result = obj[name].toInt();
+        *result = obj[name.asQString()].toInt();
     }
 
     return true;

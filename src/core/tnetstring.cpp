@@ -325,7 +325,7 @@ VariantList toList(const CowByteArray &in, [[maybe_unused]] int offset, int data
 }
 
 CowString byteArrayToEscapedString(const CowByteArray &in) {
-    QString out;
+    CowString out;
     for (int n = 0; n < in.size(); ++n) {
         char c = in[n];
         if (c == '\\')
@@ -335,15 +335,15 @@ CowString byteArrayToEscapedString(const CowByteArray &in) {
         else if (c == '\n')
             out += "\\n";
         else if (c >= 0x20 && c < 0x7f)
-            out += QChar::fromLatin1(c);
+            out += CowString(1, c);
         else
-            out += QString::asprintf("\\x%02x", (unsigned char)c);
+            out += CowString::asprintf("\\x%02x", (unsigned char)c);
     }
-    return CowString(out);
+    return out;
 }
 
 CowString variantToString(const Variant &in, int indent) {
-    QString out;
+    CowString out;
 
     VariantType::Type type = typeId(in);
     if (type == VariantType::Hash) {
@@ -357,10 +357,10 @@ CowString variantToString(const Variant &in, int indent) {
 
         for (auto it = hash.constBegin(); it != hash.constEnd(); ++it) {
             if (indent >= 0)
-                out += QString(indent + 2, ' ');
+                out += CowString(indent + 2, ' ');
 
-            out += '\"' + byteArrayToEscapedString(it.key().toUtf8()).asQString() +
-                   "\": " + variantToString(it.value(), indent >= 0 ? indent + 2 : -1).asQString();
+            out += '\"' + byteArrayToEscapedString(it.key().toUtf8()) +
+                   "\": " + variantToString(it.value(), indent >= 0 ? indent + 2 : -1);
             auto next_it = it;
             ++next_it;
             if (next_it != hash.constEnd())
@@ -373,7 +373,7 @@ CowString variantToString(const Variant &in, int indent) {
         }
 
         if (indent >= 0)
-            out += QString(indent, ' ');
+            out += CowString(indent, ' ');
         out += '}';
     } else if (type == VariantType::List) {
         VariantList list = in.toList();
@@ -386,9 +386,9 @@ CowString variantToString(const Variant &in, int indent) {
 
         for (int n = 0; n < list.count(); ++n) {
             if (indent >= 0)
-                out += QString(indent + 2, ' ');
+                out += CowString(indent + 2, ' ');
 
-            out += variantToString(list[n], indent >= 0 ? indent + 2 : -1).asQString();
+            out += variantToString(list[n], indent >= 0 ? indent + 2 : -1);
             if (n + 1 < list.count())
                 out += ',';
 
@@ -399,23 +399,23 @@ CowString variantToString(const Variant &in, int indent) {
         }
 
         if (indent >= 0)
-            out += QString(indent, ' ');
+            out += CowString(indent, ' ');
         out += ']';
     } else if (type == VariantType::ByteArray) {
         CowByteArray val = in.toByteArray();
-        out += '\"' + byteArrayToEscapedString(val).asQString() + '\"';
+        out += '\"' + byteArrayToEscapedString(val) + '\"';
     } else if (type == VariantType::Double)
-        out += QString::number(in.toDouble());
+        out += CowString::number(in.toDouble());
     else if (type == VariantType::Bool)
         out += in.toBool() ? "true" : "false";
     else if (type == VariantType::Invalid)
         out += "null";
     else if (canConvert(in, VariantType::LongLong))
-        out += QString::number(in.toLongLong());
+        out += CowString::number(in.toLongLong());
     else
-        out += QString("<unknown: %1>").arg((int)type);
+        out += CowString("<unknown: %1>").arg(CowString::number((int)type));
 
-    return CowString(out);
+    return out;
 }
 
 } // namespace TnetString

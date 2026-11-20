@@ -65,7 +65,7 @@ bool ZrpcRequestPacket::fromVariant(const Variant &in) {
 
     if (!obj.contains("method") || typeId(obj["method"]) != VariantType::ByteArray)
         return false;
-    method = QString::fromUtf8(obj["method"].toByteArray());
+    method = CowString::fromUtf8(obj["method"].toByteArray());
 
     if (obj.contains("args")) {
         if (typeId(obj["args"]) != VariantType::Hash)

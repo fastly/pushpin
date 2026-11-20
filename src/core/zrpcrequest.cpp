@@ -43,7 +43,7 @@ public:
     CowByteArrayList reqHeaders;
     CowByteArray from;
     CowByteArray id;
-    QString method;
+    CowString method;
     VariantHash args;
     bool success;
     Variant result;
@@ -90,7 +90,7 @@ public:
         reqHeaders = headers;
         from = packet.from;
         id = packet.id;
-        method = packet.method.asQString();
+        method = packet.method;
         args = packet.args;
     }
 
@@ -179,7 +179,7 @@ ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const { return d->cond
 CowByteArray ZrpcRequest::errorConditionString() const { return d->conditionString; }
 
 void ZrpcRequest::start(const CowString &method, const VariantHash &args) {
-    d->method = method.asQString();
+    d->method = method;
     d->args = args;
     d->deferCall.defer([=] { d->doStart(); });
 }

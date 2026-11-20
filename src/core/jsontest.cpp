@@ -39,7 +39,7 @@ static void variantMapSerialization() {
     TEST_ASSERT_EQ(doc.isObject(), true);
 
     QJsonObject obj = doc.object();
-    TEST_ASSERT_EQ(obj["string"].toString(), QString("test value"));
+    TEST_ASSERT_EQ(obj["string"].toString(), "test value");
     TEST_ASSERT_EQ(obj["number"].toInt(), 42);
     TEST_ASSERT_EQ(obj["boolean"].toBool(), true);
     TEST_ASSERT_EQ(obj["null"].isNull(), true);
@@ -60,7 +60,7 @@ static void variantListSerialization() {
 
     QJsonArray arr = doc.array();
     TEST_ASSERT_EQ(arr.size(), 4);
-    TEST_ASSERT_EQ(arr[0].toString(), QString("item1"));
+    TEST_ASSERT_EQ(arr[0].toString(), "item1");
     TEST_ASSERT_EQ(arr[1].toInt(), 123);
     TEST_ASSERT_EQ(arr[2].toBool(), false);
     TEST_ASSERT_EQ(arr[3].isNull(), true);
@@ -104,7 +104,7 @@ static void nestedStructure() {
     TEST_ASSERT_EQ(obj["inner"].isObject(), true);
 
     QJsonObject inner = obj["inner"].toObject();
-    TEST_ASSERT_EQ(inner["nested_key"].toString(), QString("nested_value"));
+    TEST_ASSERT_EQ(inner["nested_key"].toString(), "nested_value");
     TEST_ASSERT_EQ(inner["nested_list"].isArray(), true);
 }
 

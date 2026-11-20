@@ -479,7 +479,7 @@ public:
             readableChanged = true;
             update();
         } else if (packet.type == ZhttpRequestPacket::Close) {
-            handlePeerClose(packet.code, CowString::fromUtf8(packet.body).asQString());
+            handlePeerClose(packet.code, CowString::fromUtf8(packet.body));
         } else if (packet.type == ZhttpRequestPacket::Credit) {
             if (packet.credits > 0) {
                 outCredits += packet.credits;
@@ -610,7 +610,7 @@ public:
                 update();
             }
         } else if (packet.type == ZhttpResponsePacket::Close) {
-            handlePeerClose(packet.code, CowString::fromUtf8(packet.body).asQString());
+            handlePeerClose(packet.code, CowString::fromUtf8(packet.body));
         } else if (packet.type == ZhttpResponsePacket::Credit) {
             if (packet.credits > 0) {
                 outCredits += packet.credits;

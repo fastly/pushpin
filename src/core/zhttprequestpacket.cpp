@@ -340,7 +340,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["method"]) != VariantType::ByteArray)
             return false;
 
-        method = QString::fromLatin1(obj["method"].toByteArray());
+        method = CowString::fromUtf8(obj["method"].toByteArray());
     }
 
     uri.clear();
@@ -400,7 +400,8 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["peer-address"]) != VariantType::ByteArray)
             return false;
 
-        peerAddress = QHostAddress(QString::fromUtf8(obj["peer-address"].toByteArray()));
+        peerAddress =
+            QHostAddress(CowString::fromUtf8(obj["peer-address"].toByteArray()).asQString());
     }
 
     peerPort = -1;
@@ -416,7 +417,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["connect-host"]) != VariantType::ByteArray)
             return false;
 
-        connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
+        connectHost = CowString::fromUtf8(obj["connect-host"].toByteArray());
     }
 
     connectPort = -1;
@@ -456,7 +457,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["client-cert"]) != VariantType::ByteArray)
             return false;
 
-        clientCert = QString::fromUtf8(obj["client-cert"].toByteArray());
+        clientCert = CowString::fromUtf8(obj["client-cert"].toByteArray());
     }
 
     clientKey.clear();
@@ -464,7 +465,7 @@ bool ZhttpRequestPacket::fromVariant(const Variant &in) {
         if (typeId(obj["client-key"]) != VariantType::ByteArray)
             return false;
 
-        clientKey = QString::fromUtf8(obj["client-key"].toByteArray());
+        clientKey = CowString::fromUtf8(obj["client-key"].toByteArray());
     }
 
     followRedirects = false;

@@ -1199,7 +1199,7 @@ int ZhttpManager::estimateRequestHeaderBytes(const CowString &method, const CowU
 
 int ZhttpManager::estimateResponseHeaderBytes(int code, const CowByteArray &reason,
                                               const HttpHeaders &headers) {
-    int total = QString::number(code).length();
+    int total = CowString::number(code).length();
     total += reason.length();
 
     foreach (const HttpHeader &h, headers) {

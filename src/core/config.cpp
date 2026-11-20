@@ -33,9 +33,9 @@ Config &get() {
         Config *c = new Config;
 
         ffi::BuildConfig *bc = ffi::build_config_new();
-        c->version = QString(bc->version);
-        c->configDir = QString(bc->config_dir);
-        c->libDir = QString(bc->lib_dir);
+        c->version = CowString(bc->version);
+        c->configDir = CowString(bc->config_dir);
+        c->libDir = CowString(bc->lib_dir);
         ffi::build_config_destroy(bc);
 
         g_config = c;
