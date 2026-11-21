@@ -34,47 +34,12 @@
 #include "pushpin/src/handler/settings.rs.h"
 #include "reactor.h"
 #include "rust/bindings.h"
-#include "settings.h"
 #include "simplehttpserver.h"
 #include "timer.h"
 #include "wssession.h"
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QStringList>
 #include <assert.h>
-#include <iostream>
 #include <unistd.h>
-
-static void trimlist(QStringList *list) {
-    for (int n = 0; n < list->count(); ++n) {
-        if ((*list)[n].isEmpty()) {
-            list->removeAt(n);
-            --n; // Adjust position
-        }
-    }
-}
-
-static QStringList expandSpecs(const QStringList &l, int peerCount) {
-    if (l.count() == 1 && l[0].startsWith("ipc:") && peerCount > 1) {
-        QString base = l[0];
-
-        QStringList out;
-        for (int i = 0; i < peerCount; ++i)
-            out += base + QString("-%1").arg(i);
-
-        return out;
-    }
-
-    return l;
-}
-
-static QString firstSpec(const QString &s, int peerCount) {
-    if (s.startsWith("ipc:") && peerCount > 1)
-        return s + "-0";
-
-    return s;
-}
 
 static QString toQString(const rust::String &s) {
     return QString::fromUtf8(s.data(), (qsizetype)s.size());
@@ -169,65 +134,6 @@ namespace ffi {
 int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     HandlerArgsData args(argsFfi);
 
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
-    {
-        QFile file(args.configFile);
-        if (!file.open(QIODevice::ReadOnly)) {
-            log_error("failed to open config file: %s", qPrintable(args.configFile));
-            return 1;
-        }
-    }
-
-    Settings settings(args.configFile);
-    if (!args.ipcPrefix.isEmpty())
-        settings.setIpcPrefix(args.ipcPrefix);
-    if (args.portOffset != -1)
-        settings.setPortOffset(args.portOffset);
-
-    int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
-    QStringList intreq_out_specs = settings.value("handler/proxy_intreq_out_specs").toStringList();
-    trimlist(&intreq_out_specs);
-    QStringList intreq_out_stream_specs =
-        settings.value("handler/proxy_intreq_out_stream_specs").toStringList();
-    trimlist(&intreq_out_stream_specs);
-    QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
-    trimlist(&intreq_in_specs);
-    QStringList proxy_inspect_specs = settings.value("handler/proxy_inspect_specs").toStringList();
-    trimlist(&proxy_inspect_specs);
-    QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
-    if (!proxy_inspect_spec.isEmpty())
-        proxy_inspect_specs += proxy_inspect_spec;
-    QStringList proxy_accept_specs = settings.value("handler/proxy_accept_specs").toStringList();
-    trimlist(&proxy_accept_specs);
-    QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
-    if (!proxy_accept_spec.isEmpty())
-        proxy_accept_specs += proxy_accept_spec;
-    QStringList proxy_retry_out_specs =
-        settings.value("handler/proxy_retry_out_specs").toStringList();
-    trimlist(&proxy_retry_out_specs);
-    QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
-    if (!proxy_retry_out_spec.isEmpty())
-        proxy_retry_out_specs += proxy_retry_out_spec;
-    QStringList ws_control_init_specs =
-        settings.value("handler/proxy_ws_control_init_specs").toStringList();
-    trimlist(&ws_control_init_specs);
-    QStringList ws_control_stream_specs =
-        settings.value("handler/proxy_ws_control_stream_specs").toStringList();
-    trimlist(&ws_control_stream_specs);
-    QStringList proxy_stats_specs = settings.value("handler/proxy_stats_specs").toStringList();
-    trimlist(&proxy_stats_specs);
-    QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
-    if (!proxy_stats_spec.isEmpty())
-        proxy_stats_specs += proxy_stats_spec;
-    QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
-
-    if (proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() ||
-        proxy_retry_out_specs.isEmpty()) {
-        log_error("must set proxy_inspect_specs, proxy_accept_specs, and "
-                  "proxy_retry_out_specs");
-        return 1;
-    }
-
     std::unique_ptr<::DebugLogger> debugLogger;
 
     if (!s.debug_socket.empty()) {
@@ -244,19 +150,19 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     config.instanceId = "handler_" + QByteArray::number(getpid());
     config.serverInStreamSpecs = toQStringList(s.server_in_stream_specs);
     config.serverOutSpecs = toQStringList(s.server_out_specs);
-    config.clientOutSpecs = expandSpecs(intreq_out_specs, proxyWorkerCount);
-    config.clientOutStreamSpecs = expandSpecs(intreq_out_stream_specs, proxyWorkerCount);
-    config.clientInSpecs = expandSpecs(intreq_in_specs, proxyWorkerCount);
-    config.inspectSpecs = expandSpecs(proxy_inspect_specs, proxyWorkerCount);
-    config.acceptSpecs = expandSpecs(proxy_accept_specs, proxyWorkerCount);
-    config.retryOutSpecs = expandSpecs(proxy_retry_out_specs, proxyWorkerCount);
-    config.wsControlInitSpecs = expandSpecs(ws_control_init_specs, proxyWorkerCount);
-    config.wsControlStreamSpecs = expandSpecs(ws_control_stream_specs, proxyWorkerCount);
+    config.clientOutSpecs = toQStringList(s.client_out_specs);
+    config.clientOutStreamSpecs = toQStringList(s.client_out_stream_specs);
+    config.clientInSpecs = toQStringList(s.client_in_specs);
+    config.inspectSpecs = toQStringList(s.inspect_specs);
+    config.acceptSpecs = toQStringList(s.accept_specs);
+    config.retryOutSpecs = toQStringList(s.retry_out_specs);
+    config.wsControlInitSpecs = toQStringList(s.ws_control_init_specs);
+    config.wsControlStreamSpecs = toQStringList(s.ws_control_stream_specs);
     config.statsSpec = toQString(s.stats_spec);
     config.commandSpec = toQString(s.command_spec);
     config.stateSpec = toQString(s.state_spec);
-    config.proxyStatsSpecs = expandSpecs(proxy_stats_specs, proxyWorkerCount);
-    config.proxyCommandSpec = firstSpec(proxy_command_spec, proxyWorkerCount);
+    config.proxyStatsSpecs = toQStringList(s.proxy_stats_specs);
+    config.proxyCommandSpec = toQString(s.proxy_command_spec);
     config.pushInSpec = toQString(s.push_in_spec);
     config.pushInSubSpecs = toQStringList(s.push_in_sub_specs);
     config.pushInSubConnect = s.push_in_sub_connect;
