@@ -270,7 +270,7 @@ impl Future for YieldToLocalEvents {
 
             // We want to be polled again only after all previously queued
             // events have been processed and after any associated tasks have
-            // been polled. In order to acheive this, we configure the
+            // been polled. In order to achieve this, we configure the
             // current task to ignore wakes and set a special waker on our
             // registration that resumes wakes. This way, if there are any
             // previously queued events associated with the current task that
