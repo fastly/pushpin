@@ -31,7 +31,10 @@ pub mod ffi {
         command_spec: String,
         state_spec: String,
         push_in_spec: String,
+        push_in_sub_specs: Vec<String>,
         push_in_sub_connect: bool,
+        push_in_http_addr: String,
+        push_in_http_port: i32,
         push_in_http_max_headers_size: i32,
         push_in_http_max_body_size: i32,
         ipc_file_mode: i32,
@@ -67,15 +70,33 @@ pub mod ffi {
 impl ffi::HandlerSettings {
     pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
         let common = CommonSettings::from_settings(settings)?;
+        let has_service = |name: &str| common.services.iter().any(|s| s == name);
+
+        let push_in_http_addr = settings.ip_addr("handler/push_in_http_addr")?;
+        let push_in_http_port = settings.port("handler/push_in_http_port")?;
+
+        // Only serve the API here if the api component is not enabled
+        let (push_in_http_addr, push_in_http_port) = if has_service("api") {
+            (None, None)
+        } else {
+            (push_in_http_addr, push_in_http_port)
+        };
 
         Ok(Self {
             stats_spec: string(settings, "handler/stats_spec")?,
             command_spec: string(settings, "handler/command_spec")?,
             state_spec: string(settings, "handler/state_spec")?,
             push_in_spec: string(settings, "handler/push_in_spec")?,
+            push_in_sub_specs: combined_specs(
+                settings,
+                "handler/push_in_sub_specs",
+                "handler/push_in_sub_spec",
+            )?,
             push_in_sub_connect: settings
                 .bool("handler/push_in_sub_connect")?
                 .unwrap_or(false),
+            push_in_http_addr: push_in_http_addr.map_or_else(String::new, |a| a.to_string()),
+            push_in_http_port: push_in_http_port.map_or(UNSET, i32::from),
             push_in_http_max_headers_size: int_or(
                 settings,
                 "handler/push_in_http_max_headers_size",
@@ -140,6 +161,17 @@ fn string(settings: &Settings, key: &str) -> Result<String, SettingsError> {
     Ok(settings.string(key)?.unwrap_or_default())
 }
 
+fn combined_specs(
+    settings: &Settings,
+    list_key: &str,
+    single_key: &str,
+) -> Result<Vec<String>, SettingsError> {
+    let mut specs = settings.list(list_key)?;
+    specs.extend(settings.string(single_key)?.filter(|s| !s.is_empty()));
+
+    Ok(specs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,7 +201,10 @@ mod tests {
         assert_eq!(s.command_spec, "tcp://127.0.0.1:5563");
         assert_eq!(s.state_spec, "");
         assert_eq!(s.push_in_spec, "tcp://127.0.0.1:5560");
+        assert_eq!(s.push_in_sub_specs, vec!["tcp://127.0.0.1:5562"]);
         assert!(!s.push_in_sub_connect);
+        assert_eq!(s.push_in_http_addr, "127.0.0.1");
+        assert_eq!(s.push_in_http_port, 5561);
         assert_eq!(s.ipc_file_mode, -1);
         assert_eq!(s.message_rate, 2500);
         assert_eq!(s.message_hwm, 25000);
@@ -183,10 +218,16 @@ mod tests {
 
     #[test]
     fn invalid_config_fails() {
-        let cases = [(
-            format!("{BASE_CONF}[handler]\nmessage_wait=3000000000\n"),
-            "handler/message_wait must be at most 2147483647: 3000000000",
-        )];
+        let cases = [
+            (
+                format!("{BASE_CONF}[handler]\npush_in_http_addr=127.0.0.l\n"),
+                "handler/push_in_http_addr must be an IP address: 127.0.0.l",
+            ),
+            (
+                format!("{BASE_CONF}[handler]\nmessage_wait=3000000000\n"),
+                "handler/message_wait must be at most 2147483647: 3000000000",
+            ),
+        ];
 
         for (conf, expected) in cases {
             let err = load_conf(&conf).err().map(|e| e.to_string());
@@ -204,6 +245,7 @@ mod tests {
             assert_eq!(s.connections_max, 50000);
             assert!(s.stats_connection_send);
             assert_eq!(s.stats_connection_ttl, 120);
+            assert_eq!(s.push_in_http_port, -1);
             assert_eq!(s.push_in_http_max_headers_size, 10000);
             assert_eq!(s.push_in_http_max_body_size, 1000000);
             assert_eq!(s.message_rate, -1);
@@ -220,6 +262,8 @@ mod tests {
         fn unset_is_minus_one_or_empty() {
             let f = load_conf(BASE_CONF).unwrap();
 
+            assert_eq!(f.push_in_http_addr, "");
+            assert_eq!(f.push_in_http_port, -1);
             assert_eq!(f.ipc_file_mode, -1);
             assert_eq!(f.message_rate, -1);
             assert_eq!(f.message_hwm, -1);
@@ -232,11 +276,13 @@ mod tests {
         #[test]
         fn read_as_written() {
             let f = load_conf(&format!(
-                    "{BASE_CONF}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug,mode=777\n"
+                    "{BASE_CONF}stats_connection_send=false\nstats_connection_ttl=30\n[runner]\nclient_maxconn=100\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\nipc_file_mode=770\nmessage_rate=2500\nstats_format=json\ndebug_socket=run/pushpin-handler-debug,mode=777\n"
                 ),
             )
             .unwrap();
 
+            assert_eq!(f.push_in_http_addr, "127.0.0.1");
+            assert_eq!(f.push_in_http_port, 5561);
             assert_eq!(f.ipc_file_mode, 0o770);
             assert_eq!(f.message_rate, 2500);
             assert_eq!(f.stats_format, "json");
@@ -244,6 +290,36 @@ mod tests {
             assert_eq!(f.connections_max, 100);
             assert!(!f.stats_connection_send);
             assert_eq!(f.stats_connection_ttl, 30);
+        }
+    }
+
+    mod specs {
+        use super::helpers::*;
+
+        #[test]
+        fn empty_single_spec_ignored() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[handler]\npush_in_sub_specs=tcp://127.0.0.1:5562\npush_in_sub_spec=\n"
+            ))
+            .unwrap();
+
+            assert_eq!(s.push_in_sub_specs, vec!["tcp://127.0.0.1:5562"]);
+        }
+    }
+
+    mod services {
+        use super::helpers::*;
+
+        #[test]
+        fn api_disables_push_http() {
+            let s = load_conf(&format!(
+                    "{BASE_CONF}[runner]\nservices=connmgr,proxy,handler,api\n[handler]\npush_in_http_addr=127.0.0.1\npush_in_http_port=5561\n"
+                ),
+            )
+            .unwrap();
+
+            assert_eq!(s.push_in_http_addr, "");
+            assert_eq!(s.push_in_http_port, -1);
         }
     }
 }
