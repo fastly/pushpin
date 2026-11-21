@@ -184,25 +184,7 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     if (args.portOffset != -1)
         settings.setPortOffset(args.portOffset);
 
-    QStringList services = settings.value("runner/services").toStringList();
-
-    QStringList connmgr_in_stream_specs =
-        settings.value("proxy/connmgr_in_stream_specs").toStringList();
-    trimlist(&connmgr_in_stream_specs);
-    QStringList connmgr_out_specs = settings.value("proxy/connmgr_out_specs").toStringList();
-    trimlist(&connmgr_out_specs);
-    QStringList condure_in_stream_specs =
-        settings.value("proxy/condure_in_stream_specs").toStringList();
-    trimlist(&condure_in_stream_specs);
-    connmgr_in_stream_specs += condure_in_stream_specs;
-    QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
-    trimlist(&condure_out_specs);
-    connmgr_out_specs += condure_out_specs;
     int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
-    QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
-    trimlist(&m2a_in_stream_specs);
-    QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
-    trimlist(&m2a_out_specs);
     QStringList intreq_out_specs = settings.value("handler/proxy_intreq_out_specs").toStringList();
     trimlist(&intreq_out_specs);
     QStringList intreq_out_stream_specs =
@@ -239,11 +221,6 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
         proxy_stats_specs += proxy_stats_spec;
     QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
 
-    if (m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty()) {
-        log_error("must set m2a_in_stream_specs and m2a_out_specs");
-        return 1;
-    }
-
     if (proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() ||
         proxy_retry_out_specs.isEmpty()) {
         log_error("must set proxy_inspect_specs, proxy_accept_specs, and "
@@ -265,14 +242,8 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     HandlerEngine::Configuration config;
     config.appVersion = Config::get().version.asQString();
     config.instanceId = "handler_" + QByteArray::number(getpid());
-    if (!services.contains("mongrel2") &&
-        (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty())) {
-        config.serverInStreamSpecs = connmgr_in_stream_specs;
-        config.serverOutSpecs = connmgr_out_specs;
-    } else {
-        config.serverInStreamSpecs = m2a_in_stream_specs;
-        config.serverOutSpecs = m2a_out_specs;
-    }
+    config.serverInStreamSpecs = toQStringList(s.server_in_stream_specs);
+    config.serverOutSpecs = toQStringList(s.server_out_specs);
     config.clientOutSpecs = expandSpecs(intreq_out_specs, proxyWorkerCount);
     config.clientOutStreamSpecs = expandSpecs(intreq_out_stream_specs, proxyWorkerCount);
     config.clientInSpecs = expandSpecs(intreq_in_specs, proxyWorkerCount);
