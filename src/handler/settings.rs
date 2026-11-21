@@ -27,6 +27,8 @@ const UNSET: i32 = -1;
 pub mod ffi {
     // -1 or empty means unset
     struct HandlerSettings {
+        server_in_stream_specs: Vec<String>,
+        server_out_specs: Vec<String>,
         stats_spec: String,
         command_spec: String,
         state_spec: String,
@@ -72,6 +74,29 @@ impl ffi::HandlerSettings {
         let common = CommonSettings::from_settings(settings)?;
         let has_service = |name: &str| common.services.iter().any(|s| s == name);
 
+        let mut connmgr_in_stream_specs = settings.list("proxy/connmgr_in_stream_specs")?;
+        connmgr_in_stream_specs.extend(settings.list("proxy/condure_in_stream_specs")?);
+
+        let mut connmgr_out_specs = settings.list("proxy/connmgr_out_specs")?;
+        connmgr_out_specs.extend(settings.list("proxy/condure_out_specs")?);
+
+        let m2a_in_stream_specs = settings.list("handler/m2a_in_stream_specs")?;
+        let m2a_out_specs = settings.list("handler/m2a_out_specs")?;
+
+        if m2a_in_stream_specs.is_empty() || m2a_out_specs.is_empty() {
+            return Err(SettingsError::Missing(
+                "m2a_in_stream_specs and m2a_out_specs",
+            ));
+        }
+
+        let (server_in_stream_specs, server_out_specs) = if !has_service("mongrel2")
+            && (!connmgr_in_stream_specs.is_empty() || !connmgr_out_specs.is_empty())
+        {
+            (connmgr_in_stream_specs, connmgr_out_specs)
+        } else {
+            (m2a_in_stream_specs, m2a_out_specs)
+        };
+
         let push_in_http_addr = settings.ip_addr("handler/push_in_http_addr")?;
         let push_in_http_port = settings.port("handler/push_in_http_port")?;
 
@@ -83,6 +108,8 @@ impl ffi::HandlerSettings {
         };
 
         Ok(Self {
+            server_in_stream_specs,
+            server_out_specs,
             stats_spec: string(settings, "handler/stats_spec")?,
             command_spec: string(settings, "handler/command_spec")?,
             state_spec: string(settings, "handler/state_spec")?,
@@ -197,6 +224,11 @@ mod tests {
         let settings = Settings::load(Path::new("examples/config/pushpin.conf")).unwrap();
         let s = ffi::HandlerSettings::from_settings(&settings).unwrap();
 
+        assert_eq!(
+            s.server_in_stream_specs,
+            vec!["ipc://run/pushpin-connmgr-out-stream"]
+        );
+        assert_eq!(s.server_out_specs, vec!["ipc://run/pushpin-connmgr-in"]);
         assert_eq!(s.stats_spec, "ipc://run/pushpin-stats");
         assert_eq!(s.command_spec, "tcp://127.0.0.1:5563");
         assert_eq!(s.state_spec, "");
@@ -219,6 +251,10 @@ mod tests {
     #[test]
     fn invalid_config_fails() {
         let cases = [
+            (
+                "[global]\nrundir=run\n".to_string(),
+                "must set m2a_in_stream_specs and m2a_out_specs",
+            ),
             (
                 format!("{BASE_CONF}[handler]\npush_in_http_addr=127.0.0.l\n"),
                 "handler/push_in_http_addr must be an IP address: 127.0.0.l",
@@ -305,10 +341,46 @@ mod tests {
 
             assert_eq!(s.push_in_sub_specs, vec!["tcp://127.0.0.1:5562"]);
         }
+
+        #[test]
+        fn condure_merged_into_connmgr() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec![
+                    "ipc://run/pushpin-connmgr-out-stream",
+                    "ipc://run/condure-out-stream"
+                ]
+            );
+        }
     }
 
     mod services {
         use super::helpers::*;
+
+        #[test]
+        fn mongrel2_uses_m2a_specs() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[runner]\nservices=mongrel2,m2adapter,proxy,handler\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec![
+                    "ipc://run/pushpin-m2zhttp-out-stream",
+                    "ipc://run/pushpin-m2zws-out-stream"
+                ]
+            );
+            assert_eq!(
+                s.server_out_specs,
+                vec!["ipc://run/pushpin-m2zhttp-in", "ipc://run/pushpin-m2zws-in"]
+            );
+        }
 
         #[test]
         fn api_disables_push_http() {

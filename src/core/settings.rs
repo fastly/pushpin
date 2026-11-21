@@ -52,6 +52,9 @@ pub enum SettingsError {
 
     #[error("invalid libdir: {}", .0.display())]
     InvalidLibdir(PathBuf),
+
+    #[error("must set {0}")]
+    Missing(&'static str),
 }
 
 pub struct Settings {
