@@ -34,16 +34,11 @@
 #include "pushpin/src/handler/settings.rs.h"
 #include "reactor.h"
 #include "rust/bindings.h"
-#include "settings.h"
 #include "simplehttpserver.h"
 #include "timer.h"
 #include "wssession.h"
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QStringList>
 #include <assert.h>
-#include <iostream>
 #include <unistd.h>
 
 static QString toQString(const rust::String &s) {
@@ -138,21 +133,6 @@ namespace ffi {
 
 int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     HandlerArgsData args(argsFfi);
-
-    // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
-    {
-        QFile file(args.configFile);
-        if (!file.open(QIODevice::ReadOnly)) {
-            log_error("failed to open config file: %s", qPrintable(args.configFile));
-            return 1;
-        }
-    }
-
-    Settings settings(args.configFile);
-    if (!args.ipcPrefix.isEmpty())
-        settings.setIpcPrefix(args.ipcPrefix);
-    if (args.portOffset != -1)
-        settings.setPortOffset(args.portOffset);
 
     std::unique_ptr<::DebugLogger> debugLogger;
 
