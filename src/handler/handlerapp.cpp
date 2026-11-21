@@ -80,6 +80,14 @@ static QString toQString(const rust::String &s) {
     return QString::fromUtf8(s.data(), (qsizetype)s.size());
 }
 
+static QStringList toQStringList(const rust::Vec<rust::String> &v) {
+    QStringList out;
+    for (const rust::String &s : v)
+        out += toQString(s);
+
+    return out;
+}
+
 static int runLoop(const QString &logFile, const HandlerEngine::Configuration &config) {
     // Includes worst-case subscriptions and update registrations
     int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
@@ -230,13 +238,6 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     if (!proxy_stats_spec.isEmpty())
         proxy_stats_specs += proxy_stats_spec;
     QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
-    QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
-    trimlist(&push_in_sub_specs);
-    QString push_in_sub_spec = settings.value("handler/push_in_sub_spec").toString();
-    if (!push_in_sub_spec.isEmpty())
-        push_in_sub_specs += push_in_sub_spec;
-    QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
-    int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
 
     if (m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty()) {
         log_error("must set m2a_in_stream_specs and m2a_out_specs");
@@ -247,11 +248,6 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
         proxy_retry_out_specs.isEmpty()) {
         log_error("must set proxy_inspect_specs, proxy_accept_specs, and "
                   "proxy_retry_out_specs");
-        return 1;
-    }
-
-    if (!push_in_http_addr.isEmpty() && QHostAddress(push_in_http_addr).isNull()) {
-        log_error("invalid push_in_http_addr: %s", qPrintable(push_in_http_addr));
         return 1;
     }
 
@@ -291,13 +287,10 @@ int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     config.proxyStatsSpecs = expandSpecs(proxy_stats_specs, proxyWorkerCount);
     config.proxyCommandSpec = firstSpec(proxy_command_spec, proxyWorkerCount);
     config.pushInSpec = toQString(s.push_in_spec);
-    config.pushInSubSpecs = push_in_sub_specs;
+    config.pushInSubSpecs = toQStringList(s.push_in_sub_specs);
     config.pushInSubConnect = s.push_in_sub_connect;
-    if (!services.contains("api")) {
-        // Only serve the API here if the api component is not enabled
-        config.pushInHttpAddr = QHostAddress(push_in_http_addr);
-        config.pushInHttpPort = push_in_http_port;
-    }
+    config.pushInHttpAddr = QHostAddress(toQString(s.push_in_http_addr));
+    config.pushInHttpPort = s.push_in_http_port;
     config.pushInHttpMaxHeadersSize = s.push_in_http_max_headers_size;
     config.pushInHttpMaxBodySize = s.push_in_http_max_body_size;
     config.ipcFileMode = s.ipc_file_mode;
