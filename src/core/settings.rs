@@ -328,20 +328,48 @@ impl Settings {
     }
 }
 
+pub struct CommonSettings {
+    pub services: Vec<String>,
+    pub proxy_workers: u32,
+    pub client_maxconn: u32,
+    pub stats_connection_send: bool,
+    pub stats_connection_ttl: u32,
+}
+
+impl CommonSettings {
+    pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
+        Ok(Self {
+            services: settings.list("runner/services")?,
+            proxy_workers: settings.number("proxy/workers")?.unwrap_or(1),
+            client_maxconn: settings.number("runner/client_maxconn")?.unwrap_or(50000),
+            stats_connection_send: settings
+                .bool("global/stats_connection_send")?
+                .unwrap_or(true),
+            stats_connection_ttl: settings
+                .number("global/stats_connection_ttl")?
+                .unwrap_or(120),
+        })
+    }
+}
+
+/// Replicates Settings::load with string input instead of file
+/// Crate-public because other modules' tests use it
+#[cfg(test)]
+pub(crate) fn parse(text: &str) -> Result<Settings, SettingsError> {
+    let ini = Ini::load_from_str(text).map_err(ini::Error::Parse)?;
+    Settings::from_values(read_ini(&ini)?, PathBuf::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     mod helpers {
         use super::*;
+        pub(super) use crate::core::settings::parse;
         use crate::core::test_dir;
         use std::fs;
         use std::path::PathBuf;
-
-        pub(super) fn parse(text: &str) -> Result<Settings, SettingsError> {
-            let ini = Ini::load_from_str(text).map_err(ini::Error::Parse)?;
-            Settings::from_values(read_ini(&ini)?, PathBuf::new())
-        }
 
         pub(super) fn read_value<T>(
             key: &str,
@@ -532,7 +560,6 @@ mod tests {
     }
 
     mod variables {
-        use super::helpers::*;
         use super::*;
 
         #[test]
