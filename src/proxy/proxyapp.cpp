@@ -471,7 +471,7 @@ int proxy_init(const ffi::ProxyCliArgs *argsFfi) {
     int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
     int statsConnectionsMaxTtl = settings.value("proxy/stats_connections_max_ttl", 60).toInt();
     int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
-    QString debugSocket = settings.value("proxy/debug_socket").toString();
+    QString debugSocket = settings.value("proxy/debug_socket").toStringList().join(',');
     QString prometheusPort = settings.value("proxy/prometheus_port").toString();
     QString prometheusPrefix = settings.value("proxy/prometheus_prefix", "proxy").toString();
 

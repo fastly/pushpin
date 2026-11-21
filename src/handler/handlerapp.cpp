@@ -274,7 +274,7 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
     int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
     int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
     QString statsFormat = settings.value("handler/stats_format").toString();
-    QString debugSocket = settings.value("handler/debug_socket").toString();
+    QString debugSocket = settings.value("handler/debug_socket").toStringList().join(',');
     QString prometheusPort = settings.value("handler/prometheus_port").toString();
     QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
 
