@@ -15,13 +15,36 @@
  */
 
 use clap::Parser;
-use log::debug;
+use log::{debug, error};
 use pushpin::core::log::ffi::{log_init, log_set_level};
+use pushpin::core::settings::{Settings, SettingsError};
 use pushpin::handler::cliargs::{destroy_handler_cli_args, CliArgs};
 use pushpin::handler::settings::ffi;
+use std::convert::TryFrom;
 use std::ffi::CString;
+use std::path::Path;
 use std::process::ExitCode;
 use std::ptr;
+
+fn load_settings(args: &CliArgs, config_file: &str) -> Result<ffi::HandlerSettings, SettingsError> {
+    let mut settings = Settings::load(Path::new(config_file))?;
+
+    if let Some(ipc_prefix) = args.ipc_prefix.as_deref().filter(|p| !p.is_empty()) {
+        settings.set_ipc_prefix(ipc_prefix);
+    }
+
+    if let Some(port_offset) = args.port_offset {
+        let port_offset = i32::try_from(port_offset).map_err(|_| SettingsError::InvalidValue {
+            key: "port-offset".to_string(),
+            value: port_offset.to_string(),
+            expected: "at most 2147483647",
+        })?;
+
+        settings.set_port_offset(port_offset);
+    }
+
+    ffi::HandlerSettings::from_settings(&settings)
+}
 
 fn main() -> ExitCode {
     let cli_args = CliArgs::parse().verify();
@@ -41,10 +64,27 @@ fn main() -> ExitCode {
 
     debug!("starting...");
 
+    let config_file = cli_args
+        .config_file
+        .clone()
+        .expect("verify sets the config file");
+
+    let settings = match load_settings(&cli_args, &config_file) {
+        Ok(settings) => settings,
+        Err(e) => {
+            error!("failed to load config file {config_file}: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
     let cli_args_ffi = cli_args.to_ffi();
 
-    let exit_code =
-        unsafe { ffi::handler_init(&cli_args_ffi as *const _ as *const ffi::HandlerCliArgs) };
+    let exit_code = unsafe {
+        ffi::handler_init(
+            &cli_args_ffi as *const _ as *const ffi::HandlerCliArgs,
+            &settings,
+        )
+    };
 
     // Clean up the allocated memory
     unsafe { destroy_handler_cli_args(cli_args_ffi) };

@@ -46,9 +46,6 @@
 #include <iostream>
 #include <unistd.h>
 
-#define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
-#define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
-
 static void trimlist(QStringList *list) {
     for (int n = 0; n < list->count(); ++n) {
         if ((*list)[n].isEmpty()) {
@@ -77,6 +74,10 @@ static QString firstSpec(const QString &s, int peerCount) {
         return s + "-0";
 
     return s;
+}
+
+static QString toQString(const rust::String &s) {
+    return QString::fromUtf8(s.data(), (qsizetype)s.size());
 }
 
 static int runLoop(const QString &logFile, const HandlerEngine::Configuration &config) {
@@ -157,7 +158,7 @@ static int runLoop(const QString &logFile, const HandlerEngine::Configuration &c
 
 namespace ffi {
 
-int handler_init(const HandlerCliArgs *argsFfi) {
+int handler_init(const HandlerCliArgs *argsFfi, const HandlerSettings &s) {
     HandlerArgsData args(argsFfi);
 
     // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
@@ -223,51 +224,19 @@ int handler_init(const HandlerCliArgs *argsFfi) {
     QStringList ws_control_stream_specs =
         settings.value("handler/proxy_ws_control_stream_specs").toStringList();
     trimlist(&ws_control_stream_specs);
-    QString stats_spec = settings.value("handler/stats_spec").toString();
-    QString command_spec = settings.value("handler/command_spec").toString();
-    QString state_spec = settings.value("handler/state_spec").toString();
     QStringList proxy_stats_specs = settings.value("handler/proxy_stats_specs").toStringList();
     trimlist(&proxy_stats_specs);
     QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
     if (!proxy_stats_spec.isEmpty())
         proxy_stats_specs += proxy_stats_spec;
     QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
-    QString push_in_spec = settings.value("handler/push_in_spec").toString();
     QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
     trimlist(&push_in_sub_specs);
     QString push_in_sub_spec = settings.value("handler/push_in_sub_spec").toString();
     if (!push_in_sub_spec.isEmpty())
         push_in_sub_specs += push_in_sub_spec;
-    bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
     QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
     int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
-    int push_in_http_max_headers_size =
-        settings.value("handler/push_in_http_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE)
-            .toInt();
-    int push_in_http_max_body_size =
-        settings.value("handler/push_in_http_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
-    bool ok;
-    int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
-    bool shareAll = settings.value("handler/share_all").toBool();
-    int messageRate = settings.value("handler/message_rate", -1).toInt();
-    int messageHwm = settings.value("handler/message_hwm", -1).toInt();
-    int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
-    int messageWait = settings.value("handler/message_wait", 5000).toInt();
-    int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
-    bool updateOnFirstSubscription =
-        settings.value("handler/update_on_first_subscription", true).toBool();
-    int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
-    int connectionSubscriptionMax =
-        settings.value("handler/connection_subscription_max", 20).toInt();
-    int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
-    int statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
-    int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
-    int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
-    int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
-    QString statsFormat = settings.value("handler/stats_format").toString();
-    QString debugSocket = settings.value("handler/debug_socket").toStringList().join(',');
-    QString prometheusPort = settings.value("handler/prometheus_port").toString();
-    QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
 
     if (m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty()) {
         log_error("must set m2a_in_stream_specs and m2a_out_specs");
@@ -288,9 +257,9 @@ int handler_init(const HandlerCliArgs *argsFfi) {
 
     std::unique_ptr<::DebugLogger> debugLogger;
 
-    if (!debugSocket.isEmpty()) {
+    if (!s.debug_socket.empty()) {
         CowString debugError;
-        debugLogger = ::DebugLogger::create(debugSocket, 1000, &debugError);
+        debugLogger = ::DebugLogger::create(toQString(s.debug_socket), 1000, &debugError);
         if (!debugLogger) {
             log_error("failed to bind debug socket: %s", cowPrintable(debugError));
             return 1;
@@ -316,39 +285,39 @@ int handler_init(const HandlerCliArgs *argsFfi) {
     config.retryOutSpecs = expandSpecs(proxy_retry_out_specs, proxyWorkerCount);
     config.wsControlInitSpecs = expandSpecs(ws_control_init_specs, proxyWorkerCount);
     config.wsControlStreamSpecs = expandSpecs(ws_control_stream_specs, proxyWorkerCount);
-    config.statsSpec = stats_spec;
-    config.commandSpec = command_spec;
-    config.stateSpec = state_spec;
+    config.statsSpec = toQString(s.stats_spec);
+    config.commandSpec = toQString(s.command_spec);
+    config.stateSpec = toQString(s.state_spec);
     config.proxyStatsSpecs = expandSpecs(proxy_stats_specs, proxyWorkerCount);
     config.proxyCommandSpec = firstSpec(proxy_command_spec, proxyWorkerCount);
-    config.pushInSpec = push_in_spec;
+    config.pushInSpec = toQString(s.push_in_spec);
     config.pushInSubSpecs = push_in_sub_specs;
-    config.pushInSubConnect = push_in_sub_connect;
+    config.pushInSubConnect = s.push_in_sub_connect;
     if (!services.contains("api")) {
         // Only serve the API here if the api component is not enabled
         config.pushInHttpAddr = QHostAddress(push_in_http_addr);
         config.pushInHttpPort = push_in_http_port;
     }
-    config.pushInHttpMaxHeadersSize = push_in_http_max_headers_size;
-    config.pushInHttpMaxBodySize = push_in_http_max_body_size;
-    config.ipcFileMode = ipcFileMode;
-    config.shareAll = shareAll;
-    config.messageRate = messageRate;
-    config.messageHwm = messageHwm;
-    config.messageBlockSize = messageBlockSize;
-    config.messageWait = messageWait;
-    config.idCacheTtl = idCacheTtl;
-    config.updateOnFirstSubscription = updateOnFirstSubscription;
-    config.connectionsMax = clientMaxconn;
-    config.connectionSubscriptionMax = connectionSubscriptionMax;
-    config.subscriptionLinger = subscriptionLinger;
-    config.statsConnectionSend = statsConnectionSend;
-    config.statsConnectionTtl = statsConnectionTtl;
-    config.statsSubscriptionTtl = statsSubscriptionTtl;
-    config.statsReportInterval = statsReportInterval;
-    config.statsFormat = statsFormat;
-    config.prometheusPort = prometheusPort;
-    config.prometheusPrefix = prometheusPrefix;
+    config.pushInHttpMaxHeadersSize = s.push_in_http_max_headers_size;
+    config.pushInHttpMaxBodySize = s.push_in_http_max_body_size;
+    config.ipcFileMode = s.ipc_file_mode;
+    config.shareAll = s.share_all;
+    config.messageRate = s.message_rate;
+    config.messageHwm = s.message_hwm;
+    config.messageBlockSize = s.message_block_size;
+    config.messageWait = s.message_wait;
+    config.idCacheTtl = s.id_cache_ttl;
+    config.updateOnFirstSubscription = s.update_on_first_subscription;
+    config.connectionsMax = s.connections_max;
+    config.connectionSubscriptionMax = s.connection_subscription_max;
+    config.subscriptionLinger = s.subscription_linger;
+    config.statsConnectionSend = s.stats_connection_send;
+    config.statsConnectionTtl = s.stats_connection_ttl;
+    config.statsSubscriptionTtl = s.stats_subscription_ttl;
+    config.statsReportInterval = s.stats_report_interval;
+    config.statsFormat = toQString(s.stats_format);
+    config.prometheusPort = toQString(s.prometheus_port);
+    config.prometheusPrefix = toQString(s.prometheus_prefix);
 
     return runLoop(args.logFile, config);
 }

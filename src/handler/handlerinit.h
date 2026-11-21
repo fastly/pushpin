@@ -22,8 +22,9 @@
 namespace ffi {
 
 struct HandlerCliArgs;
+struct HandlerSettings;
 
-int handler_init(const HandlerCliArgs *args);
+int handler_init(const HandlerCliArgs *args, const HandlerSettings &settings);
 
 } // namespace ffi
 
