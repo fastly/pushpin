@@ -31,6 +31,7 @@
 #include "httpsessionupdatemanager.h"
 #include "log.h"
 #include "processquit.h"
+#include "pushpin/src/handler/settings.rs.h"
 #include "reactor.h"
 #include "rust/bindings.h"
 #include "settings.h"
@@ -154,9 +155,9 @@ static int runLoop(const QString &logFile, const HandlerEngine::Configuration &c
     return exitCode.value();
 }
 
-extern "C" {
+namespace ffi {
 
-int handler_init(const ffi::HandlerCliArgs *argsFfi) {
+int handler_init(const HandlerCliArgs *argsFfi) {
     HandlerArgsData args(argsFfi);
 
     // QSettings doesn't inform us if the config file can't be opened, so do that ourselves
@@ -285,11 +286,11 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
         return 1;
     }
 
-    std::unique_ptr<DebugLogger> debugLogger;
+    std::unique_ptr<::DebugLogger> debugLogger;
 
     if (!debugSocket.isEmpty()) {
         CowString debugError;
-        debugLogger = DebugLogger::create(debugSocket, 1000, &debugError);
+        debugLogger = ::DebugLogger::create(debugSocket, 1000, &debugError);
         if (!debugLogger) {
             log_error("failed to bind debug socket: %s", cowPrintable(debugError));
             return 1;
@@ -351,4 +352,5 @@ int handler_init(const ffi::HandlerCliArgs *argsFfi) {
 
     return runLoop(args.logFile, config);
 }
-}
+
+} // namespace ffi

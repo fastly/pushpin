@@ -27,7 +27,8 @@ HEADERS += \
 	$$PWD/filter.h \
 	$$PWD/filterstack.h \
 	$$PWD/handlerengine.h \
-	$$PWD/handlerargsdata.h
+	$$PWD/handlerargsdata.h \
+	$$PWD/handlerinit.h
 
 SOURCES += \
 	$$PWD/deferred.cpp \
