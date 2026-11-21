@@ -1743,7 +1743,7 @@ where
         let src_ref: &'static [u8] = unsafe { mem::transmute(src_ref) };
 
         // SAFETY: Self will take ownership of scratch, and the location
-        // referred to by scratch_mut is in an memorypool, and scratch will not
+        // referred to by scratch_mut is in a memorypool, and scratch will not
         // be dropped until Self is dropped, so the location referred to by
         // scratch_mut will remain valid for the lifetime of Self
         //
