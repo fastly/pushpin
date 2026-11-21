@@ -29,9 +29,19 @@ pub mod ffi {
     struct HandlerSettings {
         server_in_stream_specs: Vec<String>,
         server_out_specs: Vec<String>,
+        client_out_specs: Vec<String>,
+        client_out_stream_specs: Vec<String>,
+        client_in_specs: Vec<String>,
+        inspect_specs: Vec<String>,
+        accept_specs: Vec<String>,
+        retry_out_specs: Vec<String>,
+        ws_control_init_specs: Vec<String>,
+        ws_control_stream_specs: Vec<String>,
         stats_spec: String,
         command_spec: String,
         state_spec: String,
+        proxy_stats_specs: Vec<String>,
+        proxy_command_spec: String,
         push_in_spec: String,
         push_in_sub_specs: Vec<String>,
         push_in_sub_connect: bool,
@@ -72,6 +82,7 @@ pub mod ffi {
 impl ffi::HandlerSettings {
     pub fn from_settings(settings: &Settings) -> Result<Self, SettingsError> {
         let common = CommonSettings::from_settings(settings)?;
+        let workers = common.proxy_workers;
         let has_service = |name: &str| common.services.iter().any(|s| s == name);
 
         let mut connmgr_in_stream_specs = settings.list("proxy/connmgr_in_stream_specs")?;
@@ -86,6 +97,28 @@ impl ffi::HandlerSettings {
         if m2a_in_stream_specs.is_empty() || m2a_out_specs.is_empty() {
             return Err(SettingsError::Missing(
                 "m2a_in_stream_specs and m2a_out_specs",
+            ));
+        }
+
+        let inspect_specs = combined_specs(
+            settings,
+            "handler/proxy_inspect_specs",
+            "handler/proxy_inspect_spec",
+        )?;
+        let accept_specs = combined_specs(
+            settings,
+            "handler/proxy_accept_specs",
+            "handler/proxy_accept_spec",
+        )?;
+        let retry_out_specs = combined_specs(
+            settings,
+            "handler/proxy_retry_out_specs",
+            "handler/proxy_retry_out_spec",
+        )?;
+
+        if inspect_specs.is_empty() || accept_specs.is_empty() || retry_out_specs.is_empty() {
+            return Err(SettingsError::Missing(
+                "proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs",
             ));
         }
 
@@ -110,9 +143,47 @@ impl ffi::HandlerSettings {
         Ok(Self {
             server_in_stream_specs,
             server_out_specs,
+            client_out_specs: expand_specs(
+                settings.list("handler/proxy_intreq_out_specs")?,
+                workers,
+            ),
+            client_out_stream_specs: expand_specs(
+                settings.list("handler/proxy_intreq_out_stream_specs")?,
+                workers,
+            ),
+            client_in_specs: expand_specs(settings.list("handler/proxy_intreq_in_specs")?, workers),
+            inspect_specs: expand_specs(inspect_specs, workers),
+            accept_specs: expand_specs(accept_specs, workers),
+            retry_out_specs: expand_specs(retry_out_specs, workers),
+            ws_control_init_specs: expand_specs(
+                settings.list("handler/proxy_ws_control_init_specs")?,
+                workers,
+            ),
+            ws_control_stream_specs: expand_specs(
+                settings.list("handler/proxy_ws_control_stream_specs")?,
+                workers,
+            ),
             stats_spec: string(settings, "handler/stats_spec")?,
             command_spec: string(settings, "handler/command_spec")?,
             state_spec: string(settings, "handler/state_spec")?,
+            proxy_stats_specs: expand_specs(
+                combined_specs(
+                    settings,
+                    "handler/proxy_stats_specs",
+                    "handler/proxy_stats_spec",
+                )?,
+                workers,
+            ),
+            proxy_command_spec: settings
+                .string("handler/proxy_command_spec")?
+                .map(|spec| {
+                    if spec.starts_with("ipc:") && workers > 1 {
+                        format!("{spec}-0")
+                    } else {
+                        spec
+                    }
+                })
+                .unwrap_or_default(),
             push_in_spec: string(settings, "handler/push_in_spec")?,
             push_in_sub_specs: combined_specs(
                 settings,
@@ -199,6 +270,15 @@ fn combined_specs(
     Ok(specs)
 }
 
+fn expand_specs(specs: Vec<String>, workers: u32) -> Vec<String> {
+    match specs.as_slice() {
+        [base] if base.starts_with("ipc:") && workers > 1 => {
+            (0..workers).map(|i| format!("{base}-{i}")).collect()
+        }
+        _ => specs,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +309,12 @@ mod tests {
             vec!["ipc://run/pushpin-connmgr-out-stream"]
         );
         assert_eq!(s.server_out_specs, vec!["ipc://run/pushpin-connmgr-in"]);
+        assert_eq!(s.client_out_specs, vec!["ipc://run/pushpin-intreq-in"]);
+        assert_eq!(s.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
+        assert_eq!(s.accept_specs, vec!["ipc://run/pushpin-accept"]);
+        assert_eq!(s.retry_out_specs, vec!["ipc://run/pushpin-retry"]);
+        assert_eq!(s.proxy_stats_specs, vec!["ipc://run/pushpin-proxy-stats"]);
+        assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command");
         assert_eq!(s.stats_spec, "ipc://run/pushpin-stats");
         assert_eq!(s.command_spec, "tcp://127.0.0.1:5563");
         assert_eq!(s.state_spec, "");
@@ -254,6 +340,10 @@ mod tests {
             (
                 "[global]\nrundir=run\n".to_string(),
                 "must set m2a_in_stream_specs and m2a_out_specs",
+            ),
+            (
+                "[global]\nrundir=run\n[handler]\nm2a_in_stream_specs=ipc://run/a\nm2a_out_specs=ipc://run/b\n".to_string(),
+                "must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs",
             ),
             (
                 format!("{BASE_CONF}[handler]\npush_in_http_addr=127.0.0.l\n"),
@@ -326,6 +416,7 @@ mod tests {
             assert_eq!(f.connections_max, 100);
             assert!(!f.stats_connection_send);
             assert_eq!(f.stats_connection_ttl, 30);
+            assert_eq!(f.inspect_specs, vec!["ipc://run/pushpin-inspect"]);
         }
     }
 
@@ -343,6 +434,27 @@ mod tests {
         }
 
         #[test]
+        fn expanded_per_proxy_worker() {
+            let s = load_conf(&format!("{BASE_CONF}[proxy]\nworkers=3\n")).unwrap();
+
+            assert_eq!(
+                s.inspect_specs,
+                vec![
+                    "ipc://run/pushpin-inspect-0",
+                    "ipc://run/pushpin-inspect-1",
+                    "ipc://run/pushpin-inspect-2"
+                ]
+            );
+            assert_eq!(s.client_out_specs.len(), 3);
+            assert_eq!(s.ws_control_init_specs.len(), 3);
+            assert_eq!(s.proxy_command_spec, "ipc://run/pushpin-proxy-command-0");
+            assert_eq!(
+                s.server_in_stream_specs,
+                vec!["ipc://run/pushpin-connmgr-out-stream"]
+            );
+        }
+
+        #[test]
         fn condure_merged_into_connmgr() {
             let s = load_conf(&format!(
                 "{BASE_CONF}[proxy]\ncondure_in_stream_specs=ipc://run/condure-out-stream\n"
@@ -355,6 +467,19 @@ mod tests {
                     "ipc://run/pushpin-connmgr-out-stream",
                     "ipc://run/condure-out-stream"
                 ]
+            );
+        }
+
+        #[test]
+        fn single_spec_appended_to_list() {
+            let s = load_conf(&format!(
+                "{BASE_CONF}[handler]\nproxy_inspect_spec=ipc://run/extra-inspect\n"
+            ))
+            .unwrap();
+
+            assert_eq!(
+                s.inspect_specs,
+                vec!["ipc://run/pushpin-inspect", "ipc://run/extra-inspect"]
             );
         }
     }
