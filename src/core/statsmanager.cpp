@@ -1411,7 +1411,7 @@ void StatsManager::addConnection(const CowByteArray &id, const CowByteArray &rou
 
     if (d->reportInterval > 0) {
         // Check if this connection should replace a lingering external one.
-        // Note: this iterates over all the known external sources, which at at the time of this
+        // Note: this iterates over all the known external sources, which at the time of this
         // writing is almost certainly just 1 (a single pushpin-proxy source).
         QHashIterator<CowByteArray, QHash<CowByteArray, Private::ConnectionInfo *>> it(
             d->externalConnectionInfoByFrom);
