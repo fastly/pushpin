@@ -1685,7 +1685,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
         }
 
         // If the connection exists under a different from address, remove it.
-        // note: this iterates over all the known external sources, which at at the time of this
+        // note: this iterates over all the known external sources, which at the time of this
         // writing is almost certainly just 1 (a single pushpin-proxy source).
         QList<Private::ConnectionInfo *> toDelete;
         QHashIterator<CowByteArray, QHash<CowByteArray, Private::ConnectionInfo *>> it(
