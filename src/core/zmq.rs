@@ -380,7 +380,7 @@ impl ZmqSocket {
 
         let mut added = Vec::new();
 
-        // Add specs we dont have. On fail, undo them
+        // Add specs we don't have. On fail, undo them
         for spec in to_add.iter() {
             match setup_spec(&self.inner, spec) {
                 Ok(endpoint) => {

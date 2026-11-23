@@ -128,7 +128,7 @@ void WsSession::processPublishQueue() {
             boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
 
         // Websocket sessions currently don't support previous IDs on subscriptions, but we still
-        // need to populate the channel names in in the filter context even if all the values will
+        // need to populate the channel names in the filter context even if all the values will
         // be null
         QHash<QString, QString> prevIds;
         QHashIterator<QString, Instruct::Channel> it(channels);
