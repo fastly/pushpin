@@ -59,7 +59,7 @@ pub struct Settings {
     libdir: PathBuf,
     rundir: PathBuf,
     ipc_prefix: String,
-    port_offset: i32,
+    port_offset: u16,
     config_dir: PathBuf,
 }
 
@@ -147,9 +147,9 @@ impl Settings {
             .unwrap_or_else(|| "pushpin-".to_string());
 
         let port_offset = match get("global/port_offset") {
-            Some(v) => v
-                .parse()
-                .map_err(|_| invalid_value("global/port_offset", &v, "a number"))?,
+            Some(v) => v.parse().map_err(|_| {
+                invalid_value("global/port_offset", &v, "an integer between 0 and 65535")
+            })?,
             None => 0,
         };
 
@@ -197,7 +197,7 @@ impl Settings {
     }
 
     pub fn set_port_offset(&mut self, port_offset: i32) {
-        self.port_offset = port_offset;
+        self.port_offset = u16::try_from(port_offset).unwrap_or(u16::MAX);
     }
 
     pub fn string(&self, key: &str) -> Result<Option<String>, SettingsError> {
@@ -267,9 +267,10 @@ impl Settings {
             Some("") => Ok(Some(0)),
             Some(v) => match v.parse::<u16>() {
                 Ok(0) => Ok(Some(0)),
-                Ok(port) => u16::try_from(i32::from(port) + self.port_offset)
+                Ok(port) => port
+                    .checked_add(self.port_offset)
                     .map(Some)
-                    .map_err(|_| invalid_value(key, v, "a port")),
+                    .ok_or_else(|| invalid_value(key, v, "a port")),
                 Err(_) => Err(invalid_value(key, v, "a port")),
             },
         }
@@ -319,8 +320,9 @@ impl Settings {
                 return Err(SettingsError::InvalidTcpAddress(s.to_string()));
             };
 
-            let port = u16::try_from(i32::from(port) + self.port_offset)
-                .map_err(|_| SettingsError::InvalidTcpAddress(s.to_string()))?
+            let port = port
+                .checked_add(self.port_offset)
+                .ok_or_else(|| SettingsError::InvalidTcpAddress(s.to_string()))?
                 .to_string();
             out.replace_range(start..end, &port);
             at = start + port.len();
@@ -442,7 +444,7 @@ mod tests {
                 ),
                 (
                     "[global]\nport_offset=one\n",
-                    "global/port_offset must be a number: one",
+                    "global/port_offset must be an integer between 0 and 65535: one",
                 ),
             ];
 
