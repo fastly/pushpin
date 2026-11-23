@@ -884,6 +884,15 @@ pub mod ffi {
             }
         };
 
+        if let Some(k) = config.params.keys().next() {
+            unsafe {
+                *error = CString::new(format!("invalid param: {k}"))
+                    .unwrap_or_default()
+                    .into_raw();
+            }
+            return std::ptr::null_mut();
+        }
+
         let listener = match bind_unix_config(&config) {
             Ok(l) => l,
             Err(e) => {
